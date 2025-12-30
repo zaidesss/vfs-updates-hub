@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Update, Acknowledgement } from '@/types';
+import { fetchUpdates, fetchAcknowledgements, acknowledgeUpdate as apiAcknowledgeUpdate, createUpdate as apiCreateUpdate } from '@/lib/api';
 import { mockUpdates, mockAcknowledgements } from '@/lib/mockData';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,15 +16,47 @@ interface UpdatesContextType {
   getAcknowledgementsForUpdate: (updateId: string) => Acknowledgement[];
   createUpdate: (update: Omit<Update, 'id' | 'posted_at'>) => Promise<void>;
   updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
+  refreshData: () => Promise<void>;
 }
 
 const UpdatesContext = createContext<UpdatesContextType | undefined>(undefined);
 
 export function UpdatesProvider({ children }: { children: ReactNode }) {
-  const [updates, setUpdates] = useState<Update[]>(mockUpdates);
-  const [acknowledgements, setAcknowledgements] = useState<Acknowledgement[]>(mockAcknowledgements);
-  const [isLoading] = useState(false);
+  const [updates, setUpdates] = useState<Update[]>([]);
+  const [acknowledgements, setAcknowledgements] = useState<Acknowledgement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+
+  const loadData = async () => {
+    setIsLoading(true);
+    
+    const [updatesResult, acksResult] = await Promise.all([
+      fetchUpdates(),
+      fetchAcknowledgements(),
+    ]);
+
+    if (updatesResult.data) {
+      setUpdates(updatesResult.data);
+    } else {
+      setUpdates(mockUpdates);
+    }
+
+    if (acksResult.data) {
+      setAcknowledgements(acksResult.data);
+    } else {
+      setAcknowledgements(mockAcknowledgements);
+    }
+
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const refreshData = async () => {
+    await loadData();
+  };
 
   const getUpdateById = (id: string) => updates.find(u => u.id === id);
 
@@ -40,11 +73,22 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   };
 
   const acknowledgeUpdate = async (updateId: string, agentEmail: string) => {
-    // In production, this would call the API
+    const result = await apiAcknowledgeUpdate(updateId, agentEmail);
+    
+    if (result.error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to acknowledge update. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Optimistically add the acknowledgement
     const newAck: Acknowledgement = {
       update_id: updateId,
       agent_email: agentEmail,
-      acknowledged_at: new Date().toISOString(),
+      acknowledged_at: result.data?.acknowledged_at || new Date().toISOString(),
     };
     
     setAcknowledgements(prev => [...prev, newAck]);
@@ -64,13 +108,20 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   };
 
   const createUpdate = async (update: Omit<Update, 'id' | 'posted_at'>) => {
-    const newUpdate: Update = {
-      ...update,
-      id: String(Date.now()),
-      posted_at: new Date().toISOString(),
-    };
+    const result = await apiCreateUpdate(update);
     
-    setUpdates(prev => [newUpdate, ...prev]);
+    if (result.error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to create update. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (result.data?.update) {
+      setUpdates(prev => [result.data!.update, ...prev]);
+    }
     
     toast({
       title: 'Update created',
@@ -79,6 +130,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUpdateStatus = async (id: string, status: Update['status']) => {
+    // For now, update locally (the API would need to support this)
     setUpdates(prev => prev.map(u => u.id === id ? { ...u, status } : u));
     
     toast({
@@ -100,6 +152,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       getAcknowledgementsForUpdate,
       createUpdate,
       updateUpdateStatus,
+      refreshData,
     }}>
       {children}
     </UpdatesContext.Provider>

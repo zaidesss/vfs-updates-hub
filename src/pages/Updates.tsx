@@ -5,16 +5,19 @@ import { Layout } from '@/components/Layout';
 import { UpdateCard } from '@/components/UpdateCard';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Search, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Search, FileText, RefreshCw, Loader2 } from 'lucide-react';
 
 type FilterTab = 'unread' | 'read' | 'all';
 
 export default function Updates() {
-  const { user } = useAuth();
-  const { updates, isAcknowledged } = useUpdates();
+  const { user, agents } = useAuth();
+  const { updates, isAcknowledged, isLoading, refreshData } = useUpdates();
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const activeAgents = agents.filter(a => a.active);
   const publishedUpdates = updates.filter(u => u.status === 'published');
 
   const filteredUpdates = useMemo(() => {
@@ -45,14 +48,41 @@ export default function Updates() {
   const unreadCount = publishedUpdates.filter(u => !isAcknowledged(u.id, user?.email || '')).length;
   const readCount = publishedUpdates.filter(u => isAcknowledged(u.id, user?.email || '')).length;
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setIsRefreshing(false);
+  };
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Updates</h1>
-          <p className="text-muted-foreground mt-1">
-            Review the latest process updates and acknowledge when complete
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Updates</h1>
+            <p className="text-muted-foreground mt-1">
+              Review the latest process updates and acknowledge when complete
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isRefreshing && "animate-spin")} />
+            Refresh
+          </Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
@@ -107,7 +137,7 @@ export default function Updates() {
                 style={{ animationDelay: `${index * 50}ms` }}
                 className="animate-slide-up"
               >
-                <UpdateCard update={update} />
+                <UpdateCard update={update} totalAgents={activeAgents.length} />
               </div>
             ))}
           </div>
@@ -115,4 +145,8 @@ export default function Updates() {
       </div>
     </Layout>
   );
+}
+
+function cn(...classes: (string | boolean | undefined)[]) {
+  return classes.filter(Boolean).join(' ');
 }

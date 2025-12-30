@@ -20,17 +20,18 @@ import {
   CheckCircle2, 
   Circle, 
   Download,
-  Eye
+  Eye,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { mockAgents } from '@/lib/mockData';
 import { Update } from '@/types';
 
 export default function Admin() {
-  const { isAdmin } = useAuth();
-  const { updates, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, updateUpdateStatus } = useUpdates();
+  const { isAdmin, agents, refreshAgents } = useAuth();
+  const { updates, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedUpdate, setSelectedUpdate] = useState<Update | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -41,7 +42,7 @@ export default function Admin() {
     status: 'draft' as Update['status'],
   });
 
-  const activeAgents = mockAgents.filter(a => a.active);
+  const activeAgents = agents.filter(a => a.active);
 
   if (!isAdmin) {
     return (
@@ -53,6 +54,12 @@ export default function Admin() {
       </Layout>
     );
   }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([refreshData(), refreshAgents()]);
+    setIsRefreshing(false);
+  };
 
   const handleCreateUpdate = async () => {
     await createUpdate(newUpdate);
@@ -70,7 +77,6 @@ export default function Admin() {
 
   const exportAcknowledgements = (update: Update) => {
     const acks = getAcknowledgementsForUpdate(update.id);
-    const acknowledgedEmails = new Set(acks.map(a => a.agent_email.toLowerCase()));
     
     const rows = activeAgents.map(agent => {
       const ack = acks.find(a => a.agent_email.toLowerCase() === agent.email.toLowerCase());
@@ -97,6 +103,16 @@ export default function Admin() {
     URL.revokeObjectURL(url);
   };
 
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
@@ -108,96 +124,108 @@ export default function Admin() {
             </p>
           </div>
 
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Update
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create New Update</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={newUpdate.title}
-                    onChange={(e) => setNewUpdate(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="e.g., Revalida - Dec 29-Jan 4"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="summary">Summary</Label>
-                  <Input
-                    id="summary"
-                    value={newUpdate.summary}
-                    onChange={(e) => setNewUpdate(prev => ({ ...prev, summary: e.target.value }))}
-                    placeholder="Brief description of the update"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="body">Body</Label>
-                  <Textarea
-                    id="body"
-                    value={newUpdate.body}
-                    onChange={(e) => setNewUpdate(prev => ({ ...prev, body: e.target.value }))}
-                    placeholder="Full content of the update (supports markdown)"
-                    rows={6}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="help_center_url">Help Center URL</Label>
-                  <Input
-                    id="help_center_url"
-                    value={newUpdate.help_center_url}
-                    onChange={(e) => setNewUpdate(prev => ({ ...prev, help_center_url: e.target.value }))}
-                    placeholder="https://..."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="posted_by">Posted By</Label>
-                    <Input
-                      id="posted_by"
-                      value={newUpdate.posted_by}
-                      onChange={(e) => setNewUpdate(prev => ({ ...prev, posted_by: e.target.value }))}
-                      placeholder="Your name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="deadline_at">Deadline (optional)</Label>
-                    <Input
-                      id="deadline_at"
-                      type="datetime-local"
-                      value={newUpdate.deadline_at}
-                      onChange={(e) => setNewUpdate(prev => ({ ...prev, deadline_at: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={newUpdate.status}
-                    onValueChange={(value: Update['status']) => setNewUpdate(prev => ({ ...prev, status: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title}>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
                   Create Update
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create New Update</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      value={newUpdate.title}
+                      onChange={(e) => setNewUpdate(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="e.g., Revalida - Dec 29-Jan 4"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="summary">Summary</Label>
+                    <Input
+                      id="summary"
+                      value={newUpdate.summary}
+                      onChange={(e) => setNewUpdate(prev => ({ ...prev, summary: e.target.value }))}
+                      placeholder="Brief description of the update"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="body">Body</Label>
+                    <Textarea
+                      id="body"
+                      value={newUpdate.body}
+                      onChange={(e) => setNewUpdate(prev => ({ ...prev, body: e.target.value }))}
+                      placeholder="Full content of the update (supports markdown)"
+                      rows={6}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="help_center_url">Help Center URL</Label>
+                    <Input
+                      id="help_center_url"
+                      value={newUpdate.help_center_url}
+                      onChange={(e) => setNewUpdate(prev => ({ ...prev, help_center_url: e.target.value }))}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="posted_by">Posted By</Label>
+                      <Input
+                        id="posted_by"
+                        value={newUpdate.posted_by}
+                        onChange={(e) => setNewUpdate(prev => ({ ...prev, posted_by: e.target.value }))}
+                        placeholder="Your name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="deadline_at">Deadline (optional)</Label>
+                      <Input
+                        id="deadline_at"
+                        type="datetime-local"
+                        value={newUpdate.deadline_at}
+                        onChange={(e) => setNewUpdate(prev => ({ ...prev, deadline_at: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select
+                      value={newUpdate.status}
+                      onValueChange={(value: Update['status']) => setNewUpdate(prev => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="published">Published</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title}>
+                    Create Update
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {/* Stats */}
@@ -279,7 +307,9 @@ export default function Admin() {
               <TableBody>
                 {updates.map(update => {
                   const ackCount = getAcknowledgementCount(update.id);
-                  const completionPercent = Math.round((ackCount / activeAgents.length) * 100);
+                  const completionPercent = activeAgents.length > 0 
+                    ? Math.round((ackCount / activeAgents.length) * 100)
+                    : 0;
                   
                   return (
                     <TableRow key={update.id}>
@@ -304,7 +334,7 @@ export default function Admin() {
                         <div className="flex items-center justify-end gap-2">
                           <Dialog>
                             <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" onClick={() => setSelectedUpdate(update)}>
+                              <Button variant="ghost" size="sm">
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </DialogTrigger>
