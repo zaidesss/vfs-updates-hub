@@ -292,12 +292,22 @@ export default function Admin() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="posted_by">Posted By</Label>
-                      <Input
-                        id="posted_by"
+                      <Select
                         value={newUpdate.posted_by}
-                        onChange={(e) => setNewUpdate(prev => ({ ...prev, posted_by: e.target.value }))}
-                        placeholder="Your name"
-                      />
+                        onValueChange={(value) => setNewUpdate(prev => ({ ...prev, posted_by: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select admin" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Patrick">Patrick</SelectItem>
+                          <SelectItem value="Meryl Jean Iman">Meryl Jean Iman</SelectItem>
+                          <SelectItem value="Malcom Joseph Vincent Salmero">Malcom Joseph Vincent Salmero</SelectItem>
+                          <SelectItem value="Kristin Joann Argao">Kristin Joann Argao</SelectItem>
+                          <SelectItem value="Juno Dianne Garciano">Juno Dianne Garciano</SelectItem>
+                          <SelectItem value="Jaeran Sanchez">Jaeran Sanchez</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="deadline_at">Deadline (optional)</Label>
@@ -324,7 +334,7 @@ export default function Admin() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title}>
+                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by}>
                     Create Update
                   </Button>
                 </div>
