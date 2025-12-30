@@ -192,17 +192,70 @@ export async function removeUser(email: string): Promise<ApiResponse<{ ok: boole
   }
 }
 
+async function parseEdgeFunctionError<T>(action: string, error: any, response?: Response): Promise<ApiResponse<T>> {
+  let status: number | undefined;
+  let detail: string | undefined;
+
+  if (response) {
+    status = response.status;
+    try {
+      const cloned = response.clone();
+      const contentType = cloned.headers.get('Content-Type') || '';
+
+      if (contentType.includes('application/json')) {
+        const json = await cloned.json();
+        detail = typeof json?.error === 'string' ? json.error : JSON.stringify(json);
+      } else {
+        detail = await cloned.text();
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  const cleanedDetail = detail?.trim();
+  const truncatedDetail = cleanedDetail && cleanedDetail.length > 300
+    ? `${cleanedDetail.slice(0, 300)}…`
+    : cleanedDetail;
+
+  const message = truncatedDetail
+    ? `${truncatedDetail}${status ? ` (HTTP ${status})` : ''}`
+    : `${error?.message || 'Edge function error'}${status ? ` (HTTP ${status})` : ''}`;
+
+  console.error(`API error for ${action}:`, { message, status, error });
+  return { data: null, error: message };
+}
+
 async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
   try {
-    // Get current session for authentication
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    // Refresh session to get a fresh JWT token (prevents "Invalid JWT" errors)
+    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
 
-    if (sessionError || !session) {
-      console.error('No active session for edge function call');
-      return { data: null, error: 'Authentication required. Please log in.' };
+    if (refreshError || !session) {
+      // Fallback to getSession if refresh fails
+      const { data: { session: existingSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !existingSession) {
+        console.error('No active session for edge function call');
+        return { data: null, error: 'Authentication required. Please log in.' };
+      }
+
+      // Call edge function with existing session token
+      const { data, error, response } = (await (supabase.functions as any).invoke('google-sheets-api', {
+        body: { action, ...body },
+        headers: {
+          Authorization: `Bearer ${existingSession.access_token}`,
+        },
+      })) as { data: T | null; error: any; response?: Response };
+
+      if (error) {
+        return parseEdgeFunctionError<T>(action, error, response);
+      }
+
+      return { data: data as T, error: null };
     }
 
-    // Call edge function with JWT token
+    // Call edge function with refreshed JWT token
     const { data, error, response } = (await (supabase.functions as any).invoke('google-sheets-api', {
       body: { action, ...body },
       headers: {
@@ -211,37 +264,7 @@ async function callEdgeFunction<T>(action: string, body?: Record<string, unknown
     })) as { data: T | null; error: any; response?: Response };
 
     if (error) {
-      let status: number | undefined;
-      let detail: string | undefined;
-
-      if (response) {
-        status = response.status;
-        try {
-          const cloned = response.clone();
-          const contentType = cloned.headers.get('Content-Type') || '';
-
-          if (contentType.includes('application/json')) {
-            const json = await cloned.json();
-            detail = typeof json?.error === 'string' ? json.error : JSON.stringify(json);
-          } else {
-            detail = await cloned.text();
-          }
-        } catch {
-          // ignore parse errors
-        }
-      }
-
-      const cleanedDetail = detail?.trim();
-      const truncatedDetail = cleanedDetail && cleanedDetail.length > 300
-        ? `${cleanedDetail.slice(0, 300)}…`
-        : cleanedDetail;
-
-      const message = truncatedDetail
-        ? `${truncatedDetail}${status ? ` (HTTP ${status})` : ''}`
-        : `${error?.message || 'Edge function error'}${status ? ` (HTTP ${status})` : ''}`;
-
-      console.error(`API error for ${action}:`, { message, status, error });
-      return { data: null, error: message };
+      return parseEdgeFunctionError<T>(action, error, response);
     }
 
     return { data: data as T, error: null };
@@ -360,6 +383,40 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
     } catch (notifyError) {
       console.error('Failed to send notifications:', notifyError);
       // Don't fail the create - notifications are best-effort
+    }
+  }
+  
+  return result;
+}
+
+export async function editUpdate(updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
+  if (USE_MOCK_DATA) {
+    const editedUpdate: Update = {
+      id: updateId,
+      posted_at: new Date().toISOString(),
+      title: update.title || '',
+      summary: update.summary || '',
+      body: update.body || '',
+      help_center_url: update.help_center_url || '',
+      posted_by: update.posted_by || '',
+      deadline_at: update.deadline_at || null,
+      status: update.status || 'draft',
+    };
+    return { data: { ok: true, update: editedUpdate }, error: null };
+  }
+  
+  const result = await callEdgeFunction<{ ok: boolean; update: Update }>('edit_update', { update_id: updateId, update });
+  
+  // If update was edited successfully, send notification email
+  if (result.data?.ok && result.data.update) {
+    try {
+      await supabase.functions.invoke('send-notifications', {
+        body: { updateTitle: update.title, isEdit: true }
+      });
+      console.log('Notifications sent for edited update');
+    } catch (notifyError) {
+      console.error('Failed to send edit notifications:', notifyError);
+      // Don't fail the edit - notifications are best-effort
     }
   }
   

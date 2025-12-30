@@ -25,16 +25,20 @@ import {
   Loader2,
   Shield,
   Trash2,
-  UserPlus
+  UserPlus,
+  Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update } from '@/types';
 import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, AdminRole } from '@/lib/api';
 import { toast } from 'sonner';
+import { getDefaultDeadline } from '@/lib/dateUtils';
+import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
+import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 
 export default function Admin() {
   const { isAdmin, agents, refreshAgents, user } = useAuth();
-  const { updates, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
+  const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [admins, setAdmins] = useState<AdminRole[]>([]);
@@ -45,15 +49,23 @@ export default function Admin() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [removingUserEmail, setRemovingUserEmail] = useState<string | null>(null);
+  const [editingUpdate, setEditingUpdate] = useState<Update | null>(null);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
     body: '',
     help_center_url: '',
-    posted_by: '',
-    deadline_at: '',
+    posted_by: user?.email || '',
+    deadline_at: getDefaultDeadline(),
     status: 'draft' as Update['status'],
   });
+
+  // Auto-populate Posted By when user changes
+  useEffect(() => {
+    if (user?.email) {
+      setNewUpdate(prev => ({ ...prev, posted_by: user.email }));
+    }
+  }, [user?.email]);
 
   const activeAgents = agents.filter(a => a.active);
 
