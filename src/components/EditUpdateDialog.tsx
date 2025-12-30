@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Update } from '@/types';
 import { AdminRole } from '@/lib/api';
@@ -98,12 +98,11 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-body">Body</Label>
-            <Textarea
-              id="edit-body"
+            <MarkdownEditor
               value={formData.body}
-              onChange={(e) => setFormData(prev => ({ ...prev, body: e.target.value }))}
-              placeholder="Full content of the update (supports markdown)"
-              rows={6}
+              onChange={(value) => setFormData(prev => ({ ...prev, body: value }))}
+              placeholder="Write your article content here..."
+              minHeight={300}
             />
           </div>
           <div className="space-y-2">
