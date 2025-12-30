@@ -825,6 +825,21 @@ export default function Admin() {
                                   <SelectItem value="obsolete">Obsolete</SelectItem>
                                 </SelectContent>
                               </Select>
+                              {user?.email?.toLowerCase() === 'hr@virtualfreelancesolutions.com' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => handleDeleteUpdate(update.id)}
+                                  disabled={deletingUpdateId === update.id}
+                                >
+                                  {deletingUpdateId === update.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>
