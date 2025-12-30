@@ -94,9 +94,11 @@ export default function Login() {
           </CardContent>
         </Card>
 
-        <p className="text-xs text-center text-muted-foreground mt-6">
-          Demo: Use any email from the roster (e.g., patrickargao@gmail.com for admin)
-        </p>
+        {import.meta.env.DEV && (
+          <p className="text-xs text-center text-muted-foreground mt-6">
+            Demo mode: Use admin@example.com for testing
+          </p>
+        )}
       </div>
     </div>
   );
