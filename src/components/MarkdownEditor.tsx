@@ -2,7 +2,10 @@ import { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { Wand2, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface MarkdownEditorProps {
   value: string;
@@ -20,6 +23,57 @@ export function MarkdownEditor({
   minHeight = 400
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
+  const [isFormatting, setIsFormatting] = useState(false);
+  const { toast } = useToast();
+
+  const handleAIFormat = async () => {
+    if (!value.trim()) {
+      toast({
+        title: "Nothing to format",
+        description: "Please add some content first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsFormatting(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/format-update`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ content: value }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to format content');
+      }
+
+      if (data.formattedContent) {
+        onChange(data.formattedContent);
+        toast({
+          title: "Content formatted",
+          description: "Your update has been formatted with AI. Review and adjust as needed.",
+        });
+      }
+    } catch (error) {
+      console.error('Format error:', error);
+      toast({
+        title: "Formatting failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsFormatting(false);
+    }
+  };
 
   return (
     <div className={cn("border rounded-lg overflow-hidden", className)} data-color-mode="light">
@@ -39,9 +93,26 @@ export function MarkdownEditor({
               Preview
             </TabsTrigger>
           </TabsList>
-          <span className="text-xs text-muted-foreground">
-            Supports Markdown
-          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAIFormat}
+              disabled={isFormatting || !value.trim()}
+              className="h-7 text-xs gap-1.5"
+            >
+              {isFormatting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              AI Format
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Supports Markdown
+            </span>
+          </div>
         </div>
 
         <TabsContent value="write" className="m-0">

@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.send-leave-decision-notification]
 verify_jwt = false
+
+[functions.format-update]
+verify_jwt = false
