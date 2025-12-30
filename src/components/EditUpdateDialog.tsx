@@ -9,6 +9,7 @@ import { Update } from '@/types';
 import { AdminRole } from '@/lib/api';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { Loader2 } from 'lucide-react';
+import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 
 interface EditUpdateDialogProps {
   update: Update | null;
@@ -28,6 +29,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
     posted_by: '',
     deadline_at: '',
     status: 'draft' as Update['status'],
+    category: '' as UpdateCategory | '',
   });
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
         posted_by: update.posted_by,
         deadline_at: update.deadline_at || '',
         status: update.status,
+        category: update.category || '',
       });
     }
   }, [update]);
@@ -49,7 +52,11 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
     
     setIsLoading(true);
     try {
-      await onSave(update.id, formData);
+      const dataToSave = {
+        ...formData,
+        category: formData.category || null,
+      };
+      await onSave(update.id, dataToSave);
       onOpenChange(false);
     } finally {
       setIsLoading(false);
@@ -143,22 +150,42 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-status">Status</Label>
-            <Select
-              value={formData.status}
-              onValueChange={(value: Update['status']) => setFormData(prev => ({ ...prev, status: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-                <SelectItem value="obsolete">Obsolete</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-category">Category</Label>
+              <Select
+                value={formData.category}
+                onValueChange={(value: UpdateCategory) => setFormData(prev => ({ ...prev, category: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value: Update['status']) => setFormData(prev => ({ ...prev, status: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                  <SelectItem value="obsolete">Obsolete</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <Button 
             onClick={handleSave} 

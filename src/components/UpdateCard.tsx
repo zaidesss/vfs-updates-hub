@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Calendar, Clock, CheckCircle2, Circle, ExternalLink, AlertTriangle } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
-
+import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
 interface UpdateCardProps {
   update: Update;
 }
@@ -51,6 +51,11 @@ export function UpdateCard({ update }: UpdateCardProps) {
               </p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
+              {update.category && (
+                <Badge variant="outline" className={cn("text-xs", getCategoryColor(update.category))}>
+                  {getCategoryLabel(update.category)}
+                </Badge>
+              )}
               {isObsolete ? (
                 <Badge variant="destructive" className="text-xs">
                   Obsolete

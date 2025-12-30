@@ -6,7 +6,10 @@ import { UpdateCard } from '@/components/UpdateCard';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, FileText, RefreshCw, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, FileText, RefreshCw, Loader2, Filter } from 'lucide-react';
+import { CATEGORIES, UpdateCategory } from '@/lib/categories';
+import { cn } from '@/lib/utils';
 
 type FilterTab = 'unread' | 'read' | 'all';
 
@@ -16,6 +19,7 @@ export default function Updates() {
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<UpdateCategory | 'all'>('all');
 
   const publishedUpdates = updates.filter(u => u.status === 'published');
 
@@ -27,6 +31,11 @@ export default function Updates() {
       filtered = filtered.filter(u => !isAcknowledged(u.id, user?.email || ''));
     } else if (activeTab === 'read') {
       filtered = filtered.filter(u => isAcknowledged(u.id, user?.email || ''));
+    }
+
+    // Filter by category
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(u => u.category === categoryFilter);
     }
 
     // Filter by search
@@ -42,7 +51,7 @@ export default function Updates() {
     return filtered.sort((a, b) => 
       new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
     );
-  }, [publishedUpdates, activeTab, searchQuery, isAcknowledged, user?.email]);
+  }, [publishedUpdates, activeTab, searchQuery, isAcknowledged, user?.email, categoryFilter]);
 
   const unreadCount = publishedUpdates.filter(u => !isAcknowledged(u.id, user?.email || '')).length;
   const readCount = publishedUpdates.filter(u => isAcknowledged(u.id, user?.email || '')).length;
@@ -84,15 +93,37 @@ export default function Updates() {
           </Button>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search updates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search updates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Select
+                value={categoryFilter}
+                onValueChange={(value) => setCategoryFilter(value as UpdateCategory | 'all')}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {CATEGORIES.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
@@ -144,8 +175,4 @@ export default function Updates() {
       </div>
     </Layout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

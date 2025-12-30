@@ -8,6 +8,8 @@ import { UpdateChangeHistory } from '@/types';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -108,6 +110,7 @@ export default function UpdateDetail() {
       posted_by: 'Posted By',
       deadline_at: 'Posted Date',
       status: 'Status',
+      category: 'Category',
     };
     return fieldNames[field] || field;
   };
@@ -139,7 +142,12 @@ export default function UpdateDetail() {
           <CardHeader className="pb-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {update.category && (
+                    <Badge variant="outline" className={cn("text-xs", getCategoryColor(update.category))}>
+                      {getCategoryLabel(update.category)}
+                    </Badge>
+                  )}
                   {isObsolete ? (
                     <Badge variant="destructive">
                       <AlertTriangle className="mr-1 h-3 w-3" />

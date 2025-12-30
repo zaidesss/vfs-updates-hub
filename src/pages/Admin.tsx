@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
+import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 
 export default function Admin() {
   const { isAdmin, user } = useAuth();
@@ -60,6 +61,7 @@ export default function Admin() {
     posted_by: user?.email || '',
     deadline_at: getDefaultDeadline(),
     status: 'draft' as Update['status'],
+    category: '' as UpdateCategory | '',
   });
 
   // Auto-populate Posted By when user changes
@@ -185,7 +187,11 @@ export default function Admin() {
   };
 
   const handleCreateUpdate = async () => {
-    await createUpdate(newUpdate);
+    const updateData = {
+      ...newUpdate,
+      category: newUpdate.category || null,
+    };
+    await createUpdate(updateData);
     setNewUpdate({
       title: '',
       summary: '',
@@ -194,6 +200,7 @@ export default function Admin() {
       posted_by: user?.email || '',
       deadline_at: getDefaultDeadline(),
       status: 'draft',
+      category: '',
     });
     setIsCreateDialogOpen(false);
   };
@@ -372,21 +379,41 @@ export default function Admin() {
                       <p className="text-xs text-muted-foreground">Default: 24h from now (NY EST)</p>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={newUpdate.status}
-                      onValueChange={(value: Update['status']) => setNewUpdate(prev => ({ ...prev, status: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                        <SelectItem value="obsolete">Obsolete</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="category">Category</Label>
+                      <Select
+                        value={newUpdate.category}
+                        onValueChange={(value: UpdateCategory) => setNewUpdate(prev => ({ ...prev, category: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIES.map(cat => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Status</Label>
+                      <Select
+                        value={newUpdate.status}
+                        onValueChange={(value: Update['status']) => setNewUpdate(prev => ({ ...prev, status: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="published">Published</SelectItem>
+                          <SelectItem value="obsolete">Obsolete</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at}>
                     Create Update

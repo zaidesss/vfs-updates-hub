@@ -134,6 +134,7 @@ export type Database = {
       updates: {
         Row: {
           body: string
+          category: Database["public"]["Enums"]["update_category"] | null
           deadline_at: string | null
           help_center_url: string | null
           id: string
@@ -145,6 +146,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          category?: Database["public"]["Enums"]["update_category"] | null
           deadline_at?: string | null
           help_center_url?: string | null
           id?: string
@@ -156,6 +158,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          category?: Database["public"]["Enums"]["update_category"] | null
           deadline_at?: string | null
           help_center_url?: string | null
           id?: string
@@ -204,6 +207,17 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      update_category:
+        | "orders_transactions"
+        | "payments_billing"
+        | "shipping_tracking"
+        | "delivery_issues"
+        | "international_customs"
+        | "product_issues"
+        | "product_information"
+        | "subscriptions"
+        | "warehouse_fulfillment"
+        | "internal_operations"
       update_status: "draft" | "published" | "obsolete"
     }
     CompositeTypes: {
@@ -333,6 +347,18 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      update_category: [
+        "orders_transactions",
+        "payments_billing",
+        "shipping_tracking",
+        "delivery_issues",
+        "international_customs",
+        "product_issues",
+        "product_information",
+        "subscriptions",
+        "warehouse_fulfillment",
+        "internal_operations",
+      ],
       update_status: ["draft", "published", "obsolete"],
     },
   },

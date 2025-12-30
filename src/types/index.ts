@@ -1,3 +1,5 @@
+import type { UpdateCategory } from '@/lib/categories';
+
 export interface Agent {
   id?: string;
   name: string;
@@ -16,6 +18,7 @@ export interface Update {
   posted_at: string;
   deadline_at: string | null;
   status: 'draft' | 'published' | 'archived' | 'obsolete';
+  category?: UpdateCategory | null;
 }
 
 export interface Acknowledgement {
