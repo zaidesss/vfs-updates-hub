@@ -98,7 +98,7 @@ export default function CategoryArticles() {
             {filteredUpdates.map(update => (
               <Link
                 key={update.id}
-                to={`/updates/${update.id}`}
+                to={`/knowledge-base/${categoryKey}/${update.id}`}
                 className="flex items-start gap-4 p-5 hover:bg-muted/50 transition-colors"
               >
                 <FileText className="h-5 w-5 text-primary shrink-0 mt-0.5" />

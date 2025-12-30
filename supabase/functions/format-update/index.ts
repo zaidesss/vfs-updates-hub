@@ -29,63 +29,149 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = `You are a professional technical writer creating internal knowledge base articles. Format the raw text into clean, structured markdown following these EXACT patterns:
+    const systemPrompt = `You are a professional technical writer creating structured knowledge base articles. Convert raw text into a JSON structure following this EXACT schema.
 
-## HEADING STRUCTURE
-- Use ## for main sections (e.g., "## A. Prerequisites", "## B. Status Definitions")
-- Use ### for subsections (e.g., "### Agent Action:", "### TL Action:")
-- Keep section letters/numbers from the original if present
+OUTPUT FORMAT: Return ONLY valid JSON, no markdown, no explanations.
 
-## INLINE CODE STYLING
-Use backticks for these elements to make them stand out as badges:
-- System names: \`Sticky\`, \`Authorize.net\`, \`Zendesk\`, \`PayPal\`
-- IDs and numbers: \`MID 6833393\`, \`Transaction ID\`
-- Domains: \`Dalesshop.co\`
-- Status values: \`Expired\`, \`Settled\`, \`Refunded\`
-- Field names: \`Invoice #\`, \`Status\`
+SCHEMA:
+{
+  "title": "Main article title",
+  "subtitle": "Brief description of what this article covers",
+  "tags": ["Tag1", "Tag2", "Tag3"],
+  "sections": [
+    {
+      "id": "section-id",
+      "letter": "A",
+      "title": "Section Title",
+      "content": [
+        // Content blocks go here (see types below)
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "date": "January 1, 2025",
+      "author": "Author Name",
+      "description": "What changed"
+    }
+  ]
+}
 
-## LISTS
-- Use **bold** for labels at the start of list items: "**Agent:** Initiates refunds..."
-- Use numbered lists (1. 2. 3.) for sequential steps/procedures
-- Use bullet points (-) for non-sequential items
-- Indent sub-items properly
+CONTENT BLOCK TYPES:
 
-## CALLOUTS (use blockquotes with keywords)
-For warnings/important notes, use:
-> **⚠️ VERY IMPORTANT:** [text here]
+1. Info Grid (for key-value information, prerequisites, system info):
+{
+  "type": "info-grid",
+  "items": [
+    {
+      "title": "Card Title",
+      "icon": "document|globe|list|card|package|users",
+      "items": [
+        { "label": "Field Name", "value": "Field Value" }
+      ]
+    }
+  ]
+}
 
-For general info/notes, use:
-> **ℹ️ Note:** [text here]
+2. Role Cards (for responsibilities by role):
+{
+  "type": "role-cards",
+  "roles": [
+    {
+      "title": "Agent",
+      "description": "What this role does",
+      "color": "blue|teal|purple|orange|green|red"
+    }
+  ]
+}
 
-For success/tips, use:
-> **✅ Tip:** [text here]
+3. Steps (for numbered procedures):
+{
+  "type": "steps",
+  "steps": [
+    {
+      "number": 1,
+      "title": "Step title",
+      "description": "Optional detailed description",
+      "substeps": ["Optional substep 1", "Optional substep 2"]
+    }
+  ]
+}
 
-## MESSAGING TEMPLATES
-Wrap customer messaging samples in blockquotes WITHOUT warning keywords:
-> Hi [Name],
-> Your refund of [Amount] has been processed successfully...
-> Best, [Agent]
+4. Callout (for warnings, tips, important notes):
+{
+  "type": "callout",
+  "variant": "warning|info|success|tip",
+  "title": "Optional title",
+  "text": "The callout message"
+}
 
-## TIMELINE SECTION
-Format timeline entries as:
-**July 15, 2025:** Created a guide – "Step-by-Step Guide..." – Created by Malcom.
+5. Message Template (for customer messaging scripts):
+{
+  "type": "message-template",
+  "label": "Template Name",
+  "content": "Hi [Name],\\n\\nYour message content here...\\n\\nBest,\\n[Agent]"
+}
 
-## TABLES
-Convert any tabular data into markdown tables with headers.
+6. Checklist (for quick reference items):
+{
+  "type": "checklist",
+  "title": "Optional title",
+  "items": ["Item 1", "Item 2", "Item 3"]
+}
 
-## SEPARATORS
-Use --- between major sections when transitioning topics.
+7. Paragraph (for regular text):
+{
+  "type": "paragraph",
+  "text": "Regular paragraph text here."
+}
 
-## GENERAL RULES
-- Preserve ALL original content - only add formatting
-- Make the document scannable with clear visual hierarchy
-- Add blank lines between sections for readability
-- Keep messaging templates clearly separated from instructions
-- Bold key action words and important terms
+8. Table (for tabular data):
+{
+  "type": "table",
+  "headers": ["Column 1", "Column 2"],
+  "rows": [
+    ["Value 1", "Value 2"],
+    ["Value 3", "Value 4"]
+  ]
+}
 
-Return ONLY the formatted markdown, no explanations.`;
+9. List (for bulleted items):
+{
+  "type": "list",
+  "title": "Optional title",
+  "items": [
+    { "label": "Optional label", "value": "Item text" }
+  ]
+}
 
-    console.log('Calling Lovable AI for formatting...');
+SECTION LETTER ASSIGNMENT:
+- Use A, B, C, D, E, F, etc. in order for each section
+- Common section patterns:
+  - A: Prerequisites, Overview, Key Information
+  - B: Status Definitions, Terms, Concepts
+  - C: Main Process/Workflow Steps
+  - D: Secondary Process/Special Cases
+  - E: Checklist, Quick Reference
+  - F: Additional Information, FAQs
+
+TAG GUIDELINES:
+- Extract 2-4 relevant tags from the content
+- Use system names, categories, or key concepts as tags
+- Examples: "Authorize.net", "Refunds", "Bank Transactions", "PayPal"
+
+CONTENT CONVERSION RULES:
+- Group related information into info-grid blocks
+- Convert role descriptions into role-cards
+- Convert numbered lists into steps
+- Convert warning/important notes into callouts
+- Convert messaging scripts into message-templates
+- Convert bullet lists into checklist or list blocks
+- Use paragraphs sparingly, prefer structured content
+
+PRESERVE ALL ORIGINAL CONTENT - only restructure and organize it.`;
+
+    console.log('Calling Lovable AI for structured formatting...');
     
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -97,7 +183,7 @@ Return ONLY the formatted markdown, no explanations.`;
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Format the following update text into professional markdown for our internal knowledge base:\n\n${content}` }
+          { role: 'user', content: `Convert the following raw update text into the structured JSON format for our knowledge base. Extract all information and organize it properly:\n\n${content}` }
         ],
       }),
     });
@@ -126,7 +212,7 @@ Return ONLY the formatted markdown, no explanations.`;
     }
 
     const data = await response.json();
-    const formattedContent = data.choices?.[0]?.message?.content;
+    let formattedContent = data.choices?.[0]?.message?.content;
 
     if (!formattedContent) {
       console.error('No content in AI response:', data);
@@ -136,12 +222,35 @@ Return ONLY the formatted markdown, no explanations.`;
       );
     }
 
-    console.log('Successfully formatted content');
-    
-    return new Response(
-      JSON.stringify({ formattedContent }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    // Clean up the response - remove markdown code blocks if present
+    formattedContent = formattedContent.trim();
+    if (formattedContent.startsWith('```json')) {
+      formattedContent = formattedContent.slice(7);
+    } else if (formattedContent.startsWith('```')) {
+      formattedContent = formattedContent.slice(3);
+    }
+    if (formattedContent.endsWith('```')) {
+      formattedContent = formattedContent.slice(0, -3);
+    }
+    formattedContent = formattedContent.trim();
+
+    // Validate JSON
+    try {
+      const parsed = JSON.parse(formattedContent);
+      console.log('Successfully formatted content to structured JSON');
+      
+      return new Response(
+        JSON.stringify({ formattedContent, structuredData: parsed }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Raw content:', formattedContent);
+      return new Response(
+        JSON.stringify({ error: 'AI returned invalid JSON format', rawContent: formattedContent }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
   } catch (error) {
     console.error('Error in format-update function:', error);
