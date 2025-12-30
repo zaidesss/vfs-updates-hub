@@ -86,6 +86,78 @@ export type Database = {
         }
         Relationships: []
       }
+      leave_requests: {
+        Row: {
+          agent_email: string
+          agent_name: string
+          attachment_url: string | null
+          client_name: string
+          created_at: string
+          daily_hours: number | null
+          end_date: string
+          end_time: string
+          id: string
+          outage_duration_hours: number | null
+          outage_reason: string
+          remarks: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          role: string
+          start_date: string
+          start_time: string
+          status: string
+          team_lead_name: string
+          total_days: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_email: string
+          agent_name: string
+          attachment_url?: string | null
+          client_name: string
+          created_at?: string
+          daily_hours?: number | null
+          end_date: string
+          end_time: string
+          id?: string
+          outage_duration_hours?: number | null
+          outage_reason: string
+          remarks?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          role: string
+          start_date: string
+          start_time: string
+          status?: string
+          team_lead_name: string
+          total_days?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string
+          attachment_url?: string | null
+          client_name?: string
+          created_at?: string
+          daily_hours?: number | null
+          end_date?: string
+          end_time?: string
+          id?: string
+          outage_duration_hours?: number | null
+          outage_reason?: string
+          remarks?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          role?: string
+          start_date?: string
+          start_time?: string
+          status?: string
+          team_lead_name?: string
+          total_days?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reminder_logs: {
         Row: {
           id: string

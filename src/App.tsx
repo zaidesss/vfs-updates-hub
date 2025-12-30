@@ -12,6 +12,8 @@ import Activity from "./pages/Activity";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
 import Requests from "./pages/Requests";
+import LeaveRequest from "./pages/LeaveRequest";
+import Calendar from "./pages/Calendar";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -86,6 +88,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Requests />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/leave-request"
+        element={
+          <ProtectedRoute>
+            <LeaveRequest />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/calendar"
+        element={
+          <ProtectedRoute>
+            <Calendar />
           </ProtectedRoute>
         }
       />
