@@ -1,0 +1,111 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface RequestNotificationPayload {
+  requestId: string;
+  submittedBy: string;
+  description: string;
+  category: string | null;
+  requestType: string;
+  sampleTicket: string | null;
+  priority: string;
+  approverEmails: string[];
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      console.log("RESEND_API_KEY not configured, skipping email notifications");
+      return new Response(JSON.stringify({ success: true, skipped: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const payload: RequestNotificationPayload = await req.json();
+
+    console.log("Sending request notifications to approvers:", payload.approverEmails);
+
+    const emailPromises = payload.approverEmails.map(email =>
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: "VFS Updates Hub <onboarding@resend.dev>",
+          to: [email],
+          subject: `New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
+          html: `
+            <h2>New Article Request Submitted</h2>
+            <p>A new request requires your approval.</p>
+            
+            <table style="border-collapse: collapse; margin: 20px 0;">
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Submitted By:</td>
+                <td style="padding: 8px;">${payload.submittedBy}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Request Type:</td>
+                <td style="padding: 8px;">${payload.requestType === 'new_article' ? 'New Article' : payload.requestType === 'update_existing' ? 'Update Existing' : 'General'}</td>
+              </tr>
+              ${payload.category ? `
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Category:</td>
+                <td style="padding: 8px;">${payload.category}</td>
+              </tr>
+              ` : ''}
+              ${payload.sampleTicket ? `
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Sample Ticket:</td>
+                <td style="padding: 8px;">${payload.sampleTicket}</td>
+              </tr>
+              ` : ''}
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Priority:</td>
+                <td style="padding: 8px;">${payload.priority}</td>
+              </tr>
+            </table>
+            
+            <h3>Description:</h3>
+            <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${payload.description}</p>
+            
+            <p style="margin-top: 20px;">
+              <strong>Please log in to the VFS Updates Hub to review and approve this request.</strong>
+            </p>
+            
+            <p style="color: #666; font-size: 12px; margin-top: 30px;">
+              This is an automated message from VFS Updates Hub.
+            </p>
+          `,
+        }),
+      })
+    );
+
+    const results = await Promise.allSettled(emailPromises);
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failedCount = results.filter(r => r.status === 'rejected').length;
+
+    console.log(`Sent ${successCount} emails, ${failedCount} failed`);
+
+    return new Response(
+      JSON.stringify({ success: true, sent: successCount, failed: failedCount }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Error sending request notifications:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

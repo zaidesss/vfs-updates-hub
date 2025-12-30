@@ -11,3 +11,15 @@ verify_jwt = false
 
 [functions.send-reminders]
 verify_jwt = false
+
+[functions.find-similar-updates]
+verify_jwt = false
+
+[functions.send-request-notification]
+verify_jwt = false
+
+[functions.check-full-approval]
+verify_jwt = false
+
+[functions.send-approval-reminders]
+verify_jwt = false
