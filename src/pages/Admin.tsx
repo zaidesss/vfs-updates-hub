@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, AdminRole } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, AdminRole } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function Admin() {
@@ -41,6 +41,10 @@ export default function Admin() {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [isAddingAdmin, setIsAddingAdmin] = useState(false);
   const [removingAdminEmail, setRemovingAdminEmail] = useState<string | null>(null);
+  const [users, setUsers] = useState<AdminRole[]>([]);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [removingUserEmail, setRemovingUserEmail] = useState<string | null>(null);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -56,12 +60,20 @@ export default function Admin() {
   // Load admins on mount
   useEffect(() => {
     loadAdmins();
+    loadUsers();
   }, []);
 
   const loadAdmins = async () => {
     const { data } = await fetchAdmins();
     if (data) {
       setAdmins(data);
+    }
+  };
+
+  const loadUsers = async () => {
+    const { data } = await fetchUsers();
+    if (data) {
+      setUsers(data);
     }
   };
 
@@ -102,6 +114,39 @@ export default function Admin() {
 
     setAdmins(prev => prev.filter(a => a.email.toLowerCase() !== email.toLowerCase()));
     toast.success('Admin removed successfully');
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim()) return;
+    
+    setIsAddingUser(true);
+    const { data, error } = await addUser(newUserEmail.trim());
+    setIsAddingUser(false);
+
+    if (error) {
+      toast.error('Failed to add user', { description: error });
+      return;
+    }
+
+    if (data) {
+      setUsers(prev => [...prev, data]);
+      setNewUserEmail('');
+      toast.success('User added successfully');
+    }
+  };
+
+  const handleRemoveUser = async (email: string) => {
+    setRemovingUserEmail(email);
+    const { error } = await removeUser(email);
+    setRemovingUserEmail(null);
+
+    if (error) {
+      toast.error('Failed to remove user', { description: error });
+      return;
+    }
+
+    setUsers(prev => prev.filter(u => u.email.toLowerCase() !== email.toLowerCase()));
+    toast.success('User removed successfully');
   };
 
   if (!isAdmin) {
@@ -414,7 +459,73 @@ export default function Admin() {
           </CardContent>
         </Card>
 
-        {/* Updates Table */}
+        {/* User Management */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <CardTitle>User Management</CardTitle>
+            </div>
+            <CardDescription>Add or remove users who can log in to the system</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter email address"
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddUser()}
+              />
+              <Button onClick={handleAddUser} disabled={isAddingUser || !newUserEmail.trim()}>
+                {isAddingUser ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add User
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+              {users.map((userItem) => (
+                <div key={userItem.id} className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{userItem.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleRemoveUser(userItem.email)}
+                    disabled={removingUserEmail === userItem.email}
+                  >
+                    {removingUserEmail === userItem.email ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ))}
+              {users.length === 0 && (
+                <div className="p-6 text-center text-muted-foreground">
+                  No users configured
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>All Updates</CardTitle>

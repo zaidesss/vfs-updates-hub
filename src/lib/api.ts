@@ -126,6 +126,72 @@ export async function fetchAdmins(): Promise<ApiResponse<AdminRole[]>> {
   }
 }
 
+// Fetch all users (non-admin)
+export async function fetchUsers(): Promise<ApiResponse<AdminRole[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('role', 'user')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as AdminRole[], error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch users:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Add a new user
+export async function addUser(email: string): Promise<ApiResponse<AdminRole>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .insert({ email: email.toLowerCase(), role: 'user' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding user:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as AdminRole, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to add user:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Remove a user
+export async function removeUser(email: string): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { error } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('email', email.toLowerCase())
+      .eq('role', 'user');
+
+    if (error) {
+      console.error('Error removing user:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to remove user:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
 async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
   try {
     // Get current session for authentication
