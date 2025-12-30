@@ -319,5 +319,20 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
     return { data: { ok: true, update: newUpdate }, error: null };
   }
   
-  return callEdgeFunction('create_update', { update });
+  const result = await callEdgeFunction<{ ok: boolean; update: Update }>('create_update', { update });
+  
+  // If update was created successfully and is published, send notifications
+  if (result.data?.ok && result.data.update && update.status === 'published') {
+    try {
+      await supabase.functions.invoke('send-notifications', {
+        body: { updateTitle: update.title }
+      });
+      console.log('Notifications sent for new update');
+    } catch (notifyError) {
+      console.error('Failed to send notifications:', notifyError);
+      // Don't fail the create - notifications are best-effort
+    }
+  }
+  
+  return result;
 }
