@@ -234,16 +234,15 @@ async function callEdgeFunction<T>(action: string, body?: Record<string, unknown
       return { data: null, error: 'Authentication required. Please log in.' };
     }
 
-    const invokeWithToken = async (accessToken: string) =>
+    const invoke = async () =>
       ((await (supabase.functions as any).invoke('google-sheets-api', {
         body: { action, ...body },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       })) as { data: T | null; error: any; response?: Response });
 
-    // First attempt with current token
-    let { data, error, response } = await invokeWithToken(sessionData.session.access_token);
+    // Ensure the backend call uses the latest auth token
+    supabase.functions.setAuth(sessionData.session.access_token);
+
+    let { data, error, response } = await invoke();
 
     // If JWT is invalid/expired, refresh once and retry with the NEW token
     if (error && response?.status === 401) {
@@ -252,7 +251,8 @@ async function callEdgeFunction<T>(action: string, body?: Record<string, unknown
       if (!refreshed.session) {
         return { data: null, error: 'Authentication required. Please log in.' };
       }
-      ({ data, error, response } = await invokeWithToken(refreshed.session.access_token));
+      supabase.functions.setAuth(refreshed.session.access_token);
+      ({ data, error, response } = await invoke());
     }
 
     if (error) {

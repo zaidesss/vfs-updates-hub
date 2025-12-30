@@ -7,8 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Update } from '@/types';
 import { AdminRole } from '@/lib/api';
+import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { Loader2 } from 'lucide-react';
-
 interface EditUpdateDialogProps {
   update: Update | null;
   open: boolean;
@@ -112,11 +112,17 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
                   <SelectValue placeholder="Select admin" />
                 </SelectTrigger>
                 <SelectContent>
-                  {admins.map(admin => (
-                    <SelectItem key={admin.id} value={admin.email}>
-                      {admin.email}
-                    </SelectItem>
-                  ))}
+                  {admins.map(admin => {
+                    const name = getKnownNameByEmail(admin.email) || admin.email;
+                    return (
+                      <SelectItem key={admin.id} value={admin.email} textValue={name}>
+                        <div className="flex flex-col">
+                          <span>{name}</span>
+                          <span className="text-xs text-muted-foreground">{admin.email}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
