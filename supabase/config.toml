@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.send-leave-request-notification]
 verify_jwt = false
+
+[functions.send-leave-decision-notification]
+verify_jwt = false
