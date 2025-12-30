@@ -111,9 +111,10 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     const result = await apiCreateUpdate(update);
     
     if (result.error) {
+      console.error('Create update error:', result.error);
       toast({
         title: 'Error',
-        description: 'Failed to create update. Please try again.',
+        description: result.error || 'Failed to create update. Please try again.',
         variant: 'destructive',
       });
       return;
