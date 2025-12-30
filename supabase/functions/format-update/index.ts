@@ -29,27 +29,61 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = `You are a professional technical writer. Your job is to format raw update/guide text into clean, well-structured markdown.
+    const systemPrompt = `You are a professional technical writer creating internal knowledge base articles. Format the raw text into clean, structured markdown following these EXACT patterns:
 
-FORMATTING RULES:
-1. **Headings**: Use ## for main sections, ### for subsections
-2. **Lists**: Use bullet points (-) for unordered lists, numbers (1.) for sequential steps
-3. **Bold**: Use **bold** for important terms, labels, field names, and key actions
-4. **Blockquotes**: Wrap customer messaging templates in blockquotes (>)
-5. **Callouts**: Add ⚠️ for warnings/important notes, ✅ for success indicators, ℹ️ for info
-6. **Tables**: Format any tabular data as markdown tables
-7. **Code**: Use backticks for system names, MIDs, transaction IDs, etc.
-8. **Separators**: Use --- for major section breaks
-9. **Timeline**: Format timeline entries with **Date**: Description format
+## HEADING STRUCTURE
+- Use ## for main sections (e.g., "## A. Prerequisites", "## B. Status Definitions")
+- Use ### for subsections (e.g., "### Agent Action:", "### TL Action:")
+- Keep section letters/numbers from the original if present
 
-STYLE GUIDELINES:
-- Keep all original content - only add formatting, never remove information
+## INLINE CODE STYLING
+Use backticks for these elements to make them stand out as badges:
+- System names: \`Sticky\`, \`Authorize.net\`, \`Zendesk\`, \`PayPal\`
+- IDs and numbers: \`MID 6833393\`, \`Transaction ID\`
+- Domains: \`Dalesshop.co\`
+- Status values: \`Expired\`, \`Settled\`, \`Refunded\`
+- Field names: \`Invoice #\`, \`Status\`
+
+## LISTS
+- Use **bold** for labels at the start of list items: "**Agent:** Initiates refunds..."
+- Use numbered lists (1. 2. 3.) for sequential steps/procedures
+- Use bullet points (-) for non-sequential items
+- Indent sub-items properly
+
+## CALLOUTS (use blockquotes with keywords)
+For warnings/important notes, use:
+> **⚠️ VERY IMPORTANT:** [text here]
+
+For general info/notes, use:
+> **ℹ️ Note:** [text here]
+
+For success/tips, use:
+> **✅ Tip:** [text here]
+
+## MESSAGING TEMPLATES
+Wrap customer messaging samples in blockquotes WITHOUT warning keywords:
+> Hi [Name],
+> Your refund of [Amount] has been processed successfully...
+> Best, [Agent]
+
+## TIMELINE SECTION
+Format timeline entries as:
+**July 15, 2025:** Created a guide – "Step-by-Step Guide..." – Created by Malcom.
+
+## TABLES
+Convert any tabular data into markdown tables with headers.
+
+## SEPARATORS
+Use --- between major sections when transitioning topics.
+
+## GENERAL RULES
+- Preserve ALL original content - only add formatting
 - Make the document scannable with clear visual hierarchy
-- Group related information together
-- Use consistent formatting throughout
-- Add spacing between sections for readability
+- Add blank lines between sections for readability
+- Keep messaging templates clearly separated from instructions
+- Bold key action words and important terms
 
-Return ONLY the formatted markdown, no explanations or additional text.`;
+Return ONLY the formatted markdown, no explanations.`;
 
     console.log('Calling Lovable AI for formatting...');
     
@@ -63,7 +97,7 @@ Return ONLY the formatted markdown, no explanations or additional text.`;
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Format the following update text into professional markdown:\n\n${content}` }
+          { role: 'user', content: `Format the following update text into professional markdown for our internal knowledge base:\n\n${content}` }
         ],
       }),
     });
