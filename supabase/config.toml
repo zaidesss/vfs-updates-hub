@@ -3,8 +3,5 @@ project_id = "rsjjvgyobtazxgeedmvi"
 [functions.check-allowlist]
 verify_jwt = false
 
-[functions.validate-agent]
-verify_jwt = false
-
 [functions.send-notifications]
 verify_jwt = false

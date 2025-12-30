@@ -35,6 +35,42 @@ export type Database = {
         }
         Relationships: []
       }
+      updates: {
+        Row: {
+          body: string
+          deadline_at: string | null
+          help_center_url: string | null
+          id: string
+          posted_at: string
+          posted_by: string
+          status: Database["public"]["Enums"]["update_status"]
+          summary: string
+          title: string
+        }
+        Insert: {
+          body: string
+          deadline_at?: string | null
+          help_center_url?: string | null
+          id?: string
+          posted_at?: string
+          posted_by: string
+          status?: Database["public"]["Enums"]["update_status"]
+          summary: string
+          title: string
+        }
+        Update: {
+          body?: string
+          deadline_at?: string | null
+          help_center_url?: string | null
+          id?: string
+          posted_at?: string
+          posted_by?: string
+          status?: Database["public"]["Enums"]["update_status"]
+          summary?: string
+          title?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -69,6 +105,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      update_status: "draft" | "published"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -197,6 +234,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      update_status: ["draft", "published"],
     },
   },
 } as const

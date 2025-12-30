@@ -11,13 +11,12 @@ import { Search, FileText, RefreshCw, Loader2 } from 'lucide-react';
 type FilterTab = 'unread' | 'read' | 'all';
 
 export default function Updates() {
-  const { user, agents } = useAuth();
+  const { user } = useAuth();
   const { updates, isAcknowledged, isLoading, refreshData } = useUpdates();
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const activeAgents = agents.filter(a => a.active);
   const publishedUpdates = updates.filter(u => u.status === 'published');
 
   const filteredUpdates = useMemo(() => {
@@ -137,7 +136,7 @@ export default function Updates() {
                 style={{ animationDelay: `${index * 50}ms` }}
                 className="animate-slide-up"
               >
-                <UpdateCard update={update} totalAgents={activeAgents.length} />
+                <UpdateCard update={update} />
               </div>
             ))}
           </div>
