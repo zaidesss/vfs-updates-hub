@@ -17,6 +17,7 @@ import OutageReport from "./pages/OutageReport";
 import OutageStats from "./pages/OutageStats";
 import Calendar from "./pages/Calendar";
 import AgentProfile from "./pages/AgentProfile";
+import ManageProfiles from "./pages/ManageProfiles";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -131,6 +132,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AgentProfile />
+          </ProtectedRoute>
+        }
+        />
+      <Route
+        path="/manage-profiles"
+        element={
+          <ProtectedRoute>
+            <ManageProfiles />
           </ProtectedRoute>
         }
       />
