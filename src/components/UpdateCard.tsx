@@ -8,20 +8,19 @@ import { Progress } from '@/components/ui/progress';
 import { Calendar, Clock, CheckCircle2, Circle, ExternalLink } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { mockAgents } from '@/lib/mockData';
 
 interface UpdateCardProps {
   update: Update;
+  totalAgents: number;
 }
 
-export function UpdateCard({ update }: UpdateCardProps) {
+export function UpdateCard({ update, totalAgents }: UpdateCardProps) {
   const { user } = useAuth();
   const { isAcknowledged, getAcknowledgementCount } = useUpdates();
   
   const acknowledged = user ? isAcknowledged(update.id, user.email) : false;
   const ackCount = getAcknowledgementCount(update.id);
-  const totalAgents = mockAgents.filter(a => a.active).length;
-  const completionPercent = Math.round((ackCount / totalAgents) * 100);
+  const completionPercent = totalAgents > 0 ? Math.round((ackCount / totalAgents) * 100) : 0;
   
   const isOverdue = update.deadline_at && isPast(new Date(update.deadline_at)) && !acknowledged;
 

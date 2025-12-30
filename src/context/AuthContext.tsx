@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuthUser, Agent } from '@/types';
+import { fetchAgents } from '@/lib/api';
 import { mockAgents, adminEmails } from '@/lib/mockData';
 
 interface AuthContextType {
@@ -9,6 +10,7 @@ interface AuthContextType {
   login: (email: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
+  refreshAgents: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,24 +20,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Load agents (in production, this would fetch from API)
-    setAgents(mockAgents);
-
-    // Check for stored session
-    const storedUser = localStorage.getItem('vfs_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        localStorage.removeItem('vfs_user');
-      }
+  const loadAgents = async () => {
+    const result = await fetchAgents();
+    if (result.data) {
+      setAgents(result.data);
+    } else {
+      // Fallback to mock data
+      setAgents(mockAgents);
     }
-    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      await loadAgents();
+
+      // Check for stored session
+      const storedUser = localStorage.getItem('vfs_user');
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (e) {
+          localStorage.removeItem('vfs_user');
+        }
+      }
+      setIsLoading(false);
+    };
+
+    init();
   }, []);
+
+  const refreshAgents = async () => {
+    await loadAgents();
+  };
 
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
+    
+    // Refresh agents list before login
+    await loadAgents();
     
     // Find agent by email
     const agent = agents.find(a => a.email.toLowerCase() === normalizedEmail && a.active);
@@ -66,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, agents, isLoading, login, logout, isAdmin }}>
+    <AuthContext.Provider value={{ user, agents, isLoading, login, logout, isAdmin, refreshAgents }}>
       {children}
     </AuthContext.Provider>
   );
