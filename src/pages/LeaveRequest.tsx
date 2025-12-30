@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -22,6 +21,7 @@ import {
   LeaveRequest as LeaveRequestType,
   LeaveRequestInput
 } from '@/lib/leaveRequestApi';
+import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS } from '@/lib/agentDirectory';
 
 const OUTAGE_REASONS = [
   'Sick Leave',
@@ -56,6 +56,8 @@ export default function LeaveRequest() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requests, setRequests] = useState<LeaveRequestType[]>([]);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+  const [agentClients, setAgentClients] = useState<string[]>(CLIENT_OPTIONS);
+  const [isDirectoryUser, setIsDirectoryUser] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState<LeaveRequestInput>({
@@ -72,8 +74,25 @@ export default function LeaveRequest() {
   });
 
   useEffect(() => {
-    if (user?.name) {
-      setFormData(prev => ({ ...prev, agent_name: user.name }));
+    if (user?.email) {
+      const agentInfo = getAgentInfoByEmail(user.email);
+      if (agentInfo) {
+        setIsDirectoryUser(true);
+        setAgentClients(agentInfo.clients);
+        setFormData(prev => ({
+          ...prev,
+          agent_name: agentInfo.name,
+          team_lead_name: agentInfo.teamLead,
+          role: agentInfo.position,
+          client_name: agentInfo.clients.length === 1 ? agentInfo.clients[0] : ''
+        }));
+      } else {
+        setIsDirectoryUser(false);
+        setAgentClients(CLIENT_OPTIONS);
+        if (user.name) {
+          setFormData(prev => ({ ...prev, agent_name: user.name }));
+        }
+      }
     }
     loadRequests();
   }, [user]);
@@ -179,19 +198,35 @@ export default function LeaveRequest() {
         title: 'Success',
         description: 'Leave request submitted successfully'
       });
-      // Reset form
-      setFormData({
-        agent_name: user.name,
-        client_name: '',
-        team_lead_name: '',
-        role: '',
-        start_date: '',
-        end_date: '',
-        start_time: '09:00',
-        end_time: '17:00',
-        outage_reason: '',
-        attachment_url: ''
-      });
+      // Reset form - preserve directory data
+      const agentInfo = getAgentInfoByEmail(user.email);
+      if (agentInfo) {
+        setFormData({
+          agent_name: agentInfo.name,
+          client_name: agentInfo.clients.length === 1 ? agentInfo.clients[0] : '',
+          team_lead_name: agentInfo.teamLead,
+          role: agentInfo.position,
+          start_date: '',
+          end_date: '',
+          start_time: '09:00',
+          end_time: '17:00',
+          outage_reason: '',
+          attachment_url: ''
+        });
+      } else {
+        setFormData({
+          agent_name: user.name,
+          client_name: '',
+          team_lead_name: '',
+          role: '',
+          start_date: '',
+          end_date: '',
+          start_time: '09:00',
+          end_time: '17:00',
+          outage_reason: '',
+          attachment_url: ''
+        });
+      }
       setConflictWarning(null);
       loadRequests();
     }
@@ -275,12 +310,19 @@ export default function LeaveRequest() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="client_name">Client Name *</Label>
-                  <Input
-                    id="client_name"
+                  <Select
                     value={formData.client_name}
-                    onChange={(e) => handleInputChange('client_name', e.target.value)}
-                    placeholder="Client name"
-                  />
+                    onValueChange={(value) => handleInputChange('client_name', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agentClients.map(client => (
+                        <SelectItem key={client} value={client}>{client}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 
                 <div className="space-y-2">
@@ -290,6 +332,8 @@ export default function LeaveRequest() {
                     value={formData.team_lead_name}
                     onChange={(e) => handleInputChange('team_lead_name', e.target.value)}
                     placeholder="Team lead name"
+                    disabled={isDirectoryUser}
+                    className={isDirectoryUser ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -300,6 +344,8 @@ export default function LeaveRequest() {
                     value={formData.role}
                     onChange={(e) => handleInputChange('role', e.target.value)}
                     placeholder="Your role"
+                    disabled={isDirectoryUser}
+                    className={isDirectoryUser ? 'bg-muted' : ''}
                   />
                 </div>
                 
