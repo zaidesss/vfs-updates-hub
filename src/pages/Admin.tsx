@@ -37,7 +37,7 @@ import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 
 export default function Admin() {
-  const { isAdmin, agents, refreshAgents, user } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -67,14 +67,11 @@ export default function Admin() {
     }
   }, [user?.email]);
 
-  const activeAgents = agents.filter(a => a.active);
+  // Total users count from user_roles
+  const totalUsers = users.length;
 
   const getNameByEmail = (email: string) => {
-    const override = getKnownNameByEmail(email);
-    if (override) return override;
-    const key = email.toLowerCase();
-    const found = agents.find(a => a.email.toLowerCase() === key);
-    return found?.name || email;
+    return getKnownNameByEmail(email) || email;
   };
   // Load admins on mount
   useEffect(() => {
@@ -181,7 +178,7 @@ export default function Admin() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([refreshData(), refreshAgents()]);
+    await Promise.all([refreshData(), loadAdmins(), loadUsers()]);
     setIsRefreshing(false);
   };
 
@@ -207,20 +204,15 @@ export default function Admin() {
   const exportAcknowledgements = (update: Update) => {
     const acks = getAcknowledgementsForUpdate(update.id);
     
-    const rows = activeAgents.map(agent => {
-      const ack = acks.find(a => a.agent_email.toLowerCase() === agent.email.toLowerCase());
-      return {
-        name: agent.name,
-        email: agent.email,
-        client: agent.client_name,
-        acknowledged: ack ? 'Yes' : 'No',
-        acknowledged_at: ack ? format(new Date(ack.acknowledged_at), 'yyyy-MM-dd HH:mm') : '',
-      };
-    });
+    const rows = acks.map(ack => ({
+      email: ack.agent_email,
+      acknowledged: 'Yes',
+      acknowledged_at: format(new Date(ack.acknowledged_at), 'yyyy-MM-dd HH:mm'),
+    }));
 
     const csv = [
-      ['Name', 'Email', 'Client', 'Acknowledged', 'Acknowledged At'],
-      ...rows.map(r => [r.name, r.email, r.client, r.acknowledged, r.acknowledged_at]),
+      ['Email', 'Acknowledged', 'Acknowledged At'],
+      ...rows.map(r => [r.email, r.acknowledged, r.acknowledged_at]),
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -421,8 +413,8 @@ export default function Admin() {
                   <Users className="h-5 w-5 text-accent-foreground" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{activeAgents.length}</p>
-                  <p className="text-xs text-muted-foreground">Active Agents</p>
+                  <p className="text-2xl font-bold">{totalUsers}</p>
+                  <p className="text-xs text-muted-foreground">Total Users</p>
                 </div>
               </div>
             </CardContent>
@@ -590,10 +582,10 @@ export default function Admin() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {updates.map(update => {
+              {updates.map(update => {
                   const ackCount = getAcknowledgementCount(update.id);
-                  const completionPercent = activeAgents.length > 0 
-                    ? Math.round((ackCount / activeAgents.length) * 100)
+                  const completionPercent = totalUsers > 0 
+                    ? Math.round((ackCount / totalUsers) * 100)
                     : 0;
                   
                   return (
@@ -611,7 +603,7 @@ export default function Admin() {
                         <div className="flex items-center gap-2">
                           <Progress value={completionPercent} className="w-20 h-1.5" />
                           <span className="text-xs text-muted-foreground">
-                            {ackCount}/{activeAgents.length}
+                            {ackCount}/{totalUsers}
                           </span>
                         </div>
                       </TableCell>
@@ -634,12 +626,9 @@ export default function Admin() {
                               <DialogHeader>
                                 <DialogTitle>{update.title}</DialogTitle>
                               </DialogHeader>
-                              <Tabs defaultValue="pending" className="mt-4">
+                              <Tabs defaultValue="acknowledged" className="mt-4">
                                 <div className="flex items-center justify-between mb-4">
                                   <TabsList>
-                                    <TabsTrigger value="pending">
-                                      Not Acknowledged ({activeAgents.length - ackCount})
-                                    </TabsTrigger>
                                     <TabsTrigger value="acknowledged">
                                       Acknowledged ({ackCount})
                                     </TabsTrigger>
@@ -649,38 +638,22 @@ export default function Admin() {
                                     Export CSV
                                   </Button>
                                 </div>
-                                <TabsContent value="pending">
-                                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                                    {activeAgents
-                                      .filter(agent => !getAcknowledgementsForUpdate(update.id).some(
-                                        a => a.agent_email.toLowerCase() === agent.email.toLowerCase()
-                                      ))
-                                      .map(agent => (
-                                        <div key={agent.email} className="flex items-center gap-3 p-2 rounded bg-muted/50">
-                                          <Circle className="h-4 w-4 text-muted-foreground" />
-                                          <div className="flex-1">
-                                            <p className="text-sm font-medium">{agent.name}</p>
-                                            <p className="text-xs text-muted-foreground">{agent.email}</p>
-                                          </div>
-                                          <Badge variant="outline" className="text-xs">{agent.client_name}</Badge>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </TabsContent>
                                 <TabsContent value="acknowledged">
                                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                                    {getAcknowledgementsForUpdate(update.id).map(ack => {
-                                      const agent = activeAgents.find(a => a.email.toLowerCase() === ack.agent_email.toLowerCase());
-                                      return (
-                                        <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
-                                          <CheckCircle2 className="h-4 w-4 text-success" />
-                                          <div className="flex-1">
-                                            <p className="text-sm font-medium">{agent?.name || ack.agent_email}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                              {format(new Date(ack.acknowledged_at), 'MMM d, yyyy at h:mm a')}
-                                            </p>
-                                          </div>
-                                          <Badge variant="secondary" className="text-xs">{agent?.client_name}</Badge>
+                                    {getAcknowledgementsForUpdate(update.id).map(ack => (
+                                      <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
+                                        <CheckCircle2 className="h-4 w-4 text-success" />
+                                        <div className="flex-1">
+                                          <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {format(new Date(ack.acknowledged_at), 'MMM d, yyyy at h:mm a')}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {getAcknowledgementsForUpdate(update.id).length === 0 && (
+                                      <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
+                                    )}
                                         </div>
                                       );
                                     })}

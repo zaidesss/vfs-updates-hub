@@ -2,10 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Users, CheckCircle2, XCircle } from 'lucide-react';
-import { Update, Acknowledgement, Agent } from '@/types';
+import { Update, Acknowledgement } from '@/types';
+import { getKnownNameByEmail } from '@/lib/nameDirectory';
 
 interface UserAcknowledgementDashboardProps {
-  agents: Agent[];
   updates: Update[];
   acknowledgements: Acknowledgement[];
 }
@@ -18,17 +18,18 @@ interface UserAckStats {
   percentage: number;
 }
 
-export function UserAcknowledgementDashboard({ agents, updates, acknowledgements }: UserAcknowledgementDashboardProps) {
+export function UserAcknowledgementDashboard({ updates, acknowledgements }: UserAcknowledgementDashboardProps) {
   // Only count published updates
   const publishedUpdates = updates.filter(u => u.status === 'published');
   const totalUpdates = publishedUpdates.length;
 
-  const activeAgents = agents.filter(a => a.active);
+  // Get unique users from acknowledgements
+  const uniqueEmails = [...new Set(acknowledgements.map(a => a.agent_email.toLowerCase()))];
 
   // Calculate acknowledgement stats for each user
-  const userStats: UserAckStats[] = activeAgents.map(agent => {
+  const userStats: UserAckStats[] = uniqueEmails.map(email => {
     const userAcks = acknowledgements.filter(
-      ack => ack.agent_email.toLowerCase() === agent.email.toLowerCase()
+      ack => ack.agent_email.toLowerCase() === email
     );
 
     // Count how many published updates this user has acknowledged
@@ -37,8 +38,8 @@ export function UserAcknowledgementDashboard({ agents, updates, acknowledgements
     ).length;
 
     return {
-      email: agent.email,
-      name: agent.name,
+      email,
+      name: getKnownNameByEmail(email) || email,
       acknowledged,
       total: totalUpdates,
       percentage: totalUpdates > 0 ? Math.round((acknowledged / totalUpdates) * 100) : 0,
@@ -62,7 +63,7 @@ export function UserAcknowledgementDashboard({ agents, updates, acknowledgements
       <CardContent>
         {userStats.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            No users found
+            No acknowledgements yet
           </div>
         ) : (
           <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -109,4 +110,3 @@ export function UserAcknowledgementDashboard({ agents, updates, acknowledgements
     </Card>
   );
 }
-

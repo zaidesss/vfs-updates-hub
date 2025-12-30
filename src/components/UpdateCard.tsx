@@ -4,24 +4,19 @@ import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Calendar, Clock, CheckCircle2, Circle, ExternalLink } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface UpdateCardProps {
   update: Update;
-  totalAgents: number;
 }
 
-export function UpdateCard({ update, totalAgents }: UpdateCardProps) {
+export function UpdateCard({ update }: UpdateCardProps) {
   const { user } = useAuth();
-  const { isAcknowledged, getAcknowledgementCount } = useUpdates();
+  const { isAcknowledged } = useUpdates();
   
   const acknowledged = user ? isAcknowledged(update.id, user.email) : false;
-  const ackCount = getAcknowledgementCount(update.id);
-  const completionPercent = totalAgents > 0 ? Math.round((ackCount / totalAgents) * 100) : 0;
-  
   const isOverdue = update.deadline_at && isPast(new Date(update.deadline_at)) && !acknowledged;
 
   return (
@@ -78,18 +73,12 @@ export function UpdateCard({ update, totalAgents }: UpdateCardProps) {
               </div>
             )}
             
-            <div className="flex items-center gap-1">
-              <ExternalLink className="h-3.5 w-3.5" />
-              <span>Help Center</span>
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-muted-foreground">Team completion</span>
-              <span className="font-medium">{ackCount}/{totalAgents} ({completionPercent}%)</span>
-            </div>
-            <Progress value={completionPercent} className="h-1.5" />
+            {update.help_center_url && (
+              <div className="flex items-center gap-1">
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Help Center</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -21,7 +21,7 @@ import { format } from 'date-fns';
 export default function UpdateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, agents } = useAuth();
+  const { user } = useAuth();
   const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate } = useUpdates();
 
   const update = getUpdateById(id || '');
@@ -47,6 +47,9 @@ export default function UpdateDetail() {
       await acknowledgeUpdate(update.id, user.email);
     }
   };
+
+  // Get display name for posted_by
+  const postedByName = getKnownNameByEmail(update.posted_by) || update.posted_by;
 
   return (
     <Layout>
@@ -85,12 +88,7 @@ export default function UpdateDetail() {
             <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <User className="h-4 w-4" />
-                <span>
-                  Posted by{' '}
-                  {getKnownNameByEmail(update.posted_by) ||
-                    agents.find(a => a.email.toLowerCase() === update.posted_by.toLowerCase())?.name ||
-                    update.posted_by}
-                </span>
+                <span>Posted by {postedByName}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />

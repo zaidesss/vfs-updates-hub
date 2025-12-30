@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 
 export default function Dashboard() {
-  const { isAdmin, agents } = useAuth();
+  const { isAdmin } = useAuth();
   const { updates, acknowledgements, isLoading } = useUpdates();
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function Dashboard() {
       </header>
 
       <main className="space-y-6">
-        <UserAcknowledgementDashboard agents={agents} updates={updates} acknowledgements={acknowledgements} />
+        <UserAcknowledgementDashboard updates={updates} acknowledgements={acknowledgements} />
 
         {isLoading ? (
           <section className="text-muted-foreground">Loading…</section>

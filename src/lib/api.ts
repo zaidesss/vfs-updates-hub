@@ -1,6 +1,6 @@
-import { Agent, Update, Acknowledgement } from '@/types';
+import { Update, Acknowledgement } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
-import { mockAgents, mockUpdates, mockAcknowledgements } from '@/lib/mockData';
+import { mockUpdates, mockAcknowledgements } from '@/lib/mockData';
 
 // Flag to control whether to use the real API or mock data
 const USE_MOCK_DATA = false;
@@ -192,118 +192,48 @@ export async function removeUser(email: string): Promise<ApiResponse<{ ok: boole
   }
 }
 
-async function parseEdgeFunctionError<T>(action: string, error: any, response?: Response): Promise<ApiResponse<T>> {
-  let status: number | undefined;
-  let detail: string | undefined;
-
-  if (response) {
-    status = response.status;
-    try {
-      const cloned = response.clone();
-      const contentType = cloned.headers.get('Content-Type') || '';
-
-      if (contentType.includes('application/json')) {
-        const json = await cloned.json();
-        detail = typeof json?.error === 'string' ? json.error : JSON.stringify(json);
-      } else {
-        detail = await cloned.text();
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  const cleanedDetail = detail?.trim();
-  const truncatedDetail = cleanedDetail && cleanedDetail.length > 300
-    ? `${cleanedDetail.slice(0, 300)}…`
-    : cleanedDetail;
-
-  const message = truncatedDetail
-    ? `${truncatedDetail}${status ? ` (HTTP ${status})` : ''}`
-    : `${error?.message || 'Edge function error'}${status ? ` (HTTP ${status})` : ''}`;
-
-  console.error(`API error for ${action}:`, { message, status, error });
-  return { data: null, error: message };
-}
-
-async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
-  try {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
-      console.error('No active session for edge function call', sessionError);
-      return { data: null, error: 'Authentication required. Please log in.' };
-    }
-
-    const invoke = async () =>
-      ((await (supabase.functions as any).invoke('google-sheets-api', {
-        body: { action, ...body },
-      })) as { data: T | null; error: any; response?: Response });
-
-    // Ensure the backend call uses the latest auth token
-    supabase.functions.setAuth(sessionData.session.access_token);
-
-    let { data, error, response } = await invoke();
-
-    // If JWT is invalid/expired, refresh once and retry with the NEW token
-    if (error && response?.status === 401) {
-      await supabase.auth.refreshSession();
-      const { data: refreshed } = await supabase.auth.getSession();
-      if (!refreshed.session) {
-        return { data: null, error: 'Authentication required. Please log in.' };
-      }
-      supabase.functions.setAuth(refreshed.session.access_token);
-      ({ data, error, response } = await invoke());
-    }
-
-    if (error) {
-      return parseEdgeFunctionError<T>(action, error, response);
-    }
-
-    return { data: data as T, error: null };
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`Failed to call ${action}:`, errorMessage);
-    return { data: null, error: errorMessage };
-  }
-}
-
-export async function fetchAgents(): Promise<ApiResponse<Agent[]>> {
-  if (USE_MOCK_DATA) {
-    return { data: mockAgents, error: null };
-  }
-  
-  const result = await callEdgeFunction<Agent[]>('agents');
-  
-  // Fallback to mock data if API fails
-  if (result.error || !result.data) {
-    console.log('Falling back to mock agents data');
-    return { data: mockAgents, error: null };
-  }
-  
-  return result;
-}
-
+// Fetch updates directly from the database
 export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
   if (USE_MOCK_DATA) {
     return { data: mockUpdates, error: null };
   }
-  
-  const result = await callEdgeFunction<Update[]>('updates');
-  
-  // Fallback to mock data if API fails
-  if (result.error || !result.data) {
+
+  try {
+    const { data, error } = await supabase
+      .from('updates')
+      .select('*')
+      .order('posted_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching updates:', error);
+      return { data: mockUpdates, error: null };
+    }
+
+    // Map database rows to Update type
+    const updates: Update[] = (data || []).map(row => ({
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      body: row.body,
+      help_center_url: row.help_center_url || '',
+      posted_by: row.posted_by,
+      posted_at: row.posted_at,
+      deadline_at: row.deadline_at,
+      status: row.status as 'draft' | 'published' | 'archived',
+    }));
+
+    return { data: updates, error: null };
+  } catch (err) {
     console.log('Falling back to mock updates data');
     return { data: mockUpdates, error: null };
   }
-  
-  return result;
 }
 
 export async function fetchAcknowledgements(): Promise<ApiResponse<Acknowledgement[]>> {
   if (USE_MOCK_DATA) {
     return { data: mockAcknowledgements, error: null };
   }
-  
+
   try {
     const { data, error } = await supabase
       .from('acknowledgements')
@@ -323,15 +253,15 @@ export async function fetchAcknowledgements(): Promise<ApiResponse<Acknowledgeme
 
 export async function acknowledgeUpdate(updateId: string, agentEmail: string): Promise<ApiResponse<{ ok: boolean; acknowledged_at: string }>> {
   if (USE_MOCK_DATA) {
-    return { 
-      data: { ok: true, acknowledged_at: new Date().toISOString() }, 
-      error: null 
+    return {
+      data: { ok: true, acknowledged_at: new Date().toISOString() },
+      error: null
     };
   }
-  
+
   try {
     const acknowledged_at = new Date().toISOString();
-    
+
     const { error } = await supabase
       .from('acknowledgements')
       .insert({
@@ -362,23 +292,58 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
     };
     return { data: { ok: true, update: newUpdate }, error: null };
   }
-  
-  const result = await callEdgeFunction<{ ok: boolean; update: Update }>('create_update', { update });
-  
-  // If update was created successfully and is published, send notifications
-  if (result.data?.ok && result.data.update && update.status === 'published') {
-    try {
-      await supabase.functions.invoke('send-notifications', {
-        body: { updateTitle: update.title }
-      });
-      console.log('Notifications sent for new update');
-    } catch (notifyError) {
-      console.error('Failed to send notifications:', notifyError);
-      // Don't fail the create - notifications are best-effort
+
+  try {
+    const { data, error } = await supabase
+      .from('updates')
+      .insert([{
+        title: update.title,
+        summary: update.summary,
+        body: update.body,
+        help_center_url: update.help_center_url || null,
+        posted_by: update.posted_by,
+        deadline_at: update.deadline_at || null,
+        status: update.status,
+      }] as any)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating update:', error);
+      return { data: null, error: error.message };
     }
+
+    const newUpdate: Update = {
+      id: data.id,
+      title: data.title,
+      summary: data.summary,
+      body: data.body,
+      help_center_url: data.help_center_url || '',
+      posted_by: data.posted_by,
+      posted_at: data.posted_at,
+      deadline_at: data.deadline_at,
+      status: data.status as 'draft' | 'published' | 'archived',
+    };
+
+    // If update is published, send notifications
+    if (update.status === 'published') {
+      try {
+        await supabase.functions.invoke('send-notifications', {
+          body: { updateTitle: update.title }
+        });
+        console.log('Notifications sent for new update');
+      } catch (notifyError) {
+        console.error('Failed to send notifications:', notifyError);
+        // Don't fail the create - notifications are best-effort
+      }
+    }
+
+    return { data: { ok: true, update: newUpdate }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to create update:', errorMessage);
+    return { data: null, error: errorMessage };
   }
-  
-  return result;
 }
 
 export async function editUpdate(updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
@@ -396,21 +361,57 @@ export async function editUpdate(updateId: string, update: Partial<Omit<Update, 
     };
     return { data: { ok: true, update: editedUpdate }, error: null };
   }
-  
-  const result = await callEdgeFunction<{ ok: boolean; update: Update }>('edit_update', { update_id: updateId, update });
-  
-  // If update was edited successfully, send notification email
-  if (result.data?.ok && result.data.update) {
+
+  try {
+    // Build update object with only defined fields
+    const updateFields: Record<string, unknown> = {};
+    if (update.title !== undefined) updateFields.title = update.title;
+    if (update.summary !== undefined) updateFields.summary = update.summary;
+    if (update.body !== undefined) updateFields.body = update.body;
+    if (update.help_center_url !== undefined) updateFields.help_center_url = update.help_center_url || null;
+    if (update.posted_by !== undefined) updateFields.posted_by = update.posted_by;
+    if (update.deadline_at !== undefined) updateFields.deadline_at = update.deadline_at || null;
+    if (update.status !== undefined) updateFields.status = update.status;
+
+    const { data, error } = await supabase
+      .from('updates')
+      .update(updateFields)
+      .eq('id', updateId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error editing update:', error);
+      return { data: null, error: error.message };
+    }
+
+    const editedUpdate: Update = {
+      id: data.id,
+      title: data.title,
+      summary: data.summary,
+      body: data.body,
+      help_center_url: data.help_center_url || '',
+      posted_by: data.posted_by,
+      posted_at: data.posted_at,
+      deadline_at: data.deadline_at,
+      status: data.status as 'draft' | 'published' | 'archived',
+    };
+
+    // Send notification for edit
     try {
       await supabase.functions.invoke('send-notifications', {
-        body: { updateTitle: update.title, isEdit: true }
+        body: { updateTitle: update.title || editedUpdate.title, isEdit: true }
       });
       console.log('Notifications sent for edited update');
     } catch (notifyError) {
       console.error('Failed to send edit notifications:', notifyError);
       // Don't fail the edit - notifications are best-effort
     }
+
+    return { data: { ok: true, update: editedUpdate }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to edit update:', errorMessage);
+    return { data: null, error: errorMessage };
   }
-  
-  return result;
 }

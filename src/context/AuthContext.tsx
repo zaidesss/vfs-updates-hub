@@ -1,36 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AuthUser, Agent } from '@/types';
-import { fetchAgents, checkIsAdmin, fetchAdminEmails } from '@/lib/api';
-import { mockAgents, adminEmails as fallbackAdminEmails } from '@/lib/mockData';
+import { AuthUser } from '@/types';
+import { checkIsAdmin, fetchAdminEmails } from '@/lib/api';
+import { adminEmails as fallbackAdminEmails } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
   user: AuthUser | null;
-  agents: Agent[];
   isLoading: boolean;
   login: (email: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
-  refreshAgents: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [adminEmails, setAdminEmails] = useState<string[]>(fallbackAdminEmails);
-
-  const loadAgents = async () => {
-    const result = await fetchAgents();
-    if (result.data) {
-      setAgents(result.data);
-    } else {
-      // Fallback to mock data
-      setAgents(mockAgents);
-    }
-  };
 
   const loadAdminEmails = async () => {
     const result = await fetchAdminEmails();
@@ -42,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      await Promise.all([loadAgents(), loadAdminEmails()]);
+      await loadAdminEmails();
 
       // Set up auth state listener FIRST
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -83,10 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     init();
   }, []);
-
-  const refreshAgents = async () => {
-    await Promise.all([loadAgents(), loadAdminEmails()]);
-  };
 
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
@@ -142,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, agents, isLoading, login, logout, isAdmin, refreshAgents }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );
