@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Updates from "./pages/Updates";
 import UpdateDetail from "./pages/UpdateDetail";
 import Activity from "./pages/Activity";
+import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
@@ -60,6 +61,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Activity />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
           </ProtectedRoute>
         }
       />

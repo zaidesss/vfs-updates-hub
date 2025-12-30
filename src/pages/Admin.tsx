@@ -33,7 +33,6 @@ import { Update } from '@/types';
 import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, AdminRole } from '@/lib/api';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
-import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 
 export default function Admin() {
@@ -69,6 +68,10 @@ export default function Admin() {
 
   const activeAgents = agents.filter(a => a.active);
 
+  const getNameByEmail = (email: string) => {
+    const found = agents.find(a => a.email.toLowerCase() === email.toLowerCase());
+    return found?.name || email;
+  };
   // Load admins on mount
   useEffect(() => {
     loadAdmins();
@@ -319,7 +322,10 @@ export default function Admin() {
                         <SelectContent>
                           {admins.map(admin => (
                             <SelectItem key={admin.id} value={admin.email}>
-                              {admin.email}
+                              <div className="flex flex-col">
+                                <span>{getNameByEmail(admin.email)}</span>
+                                <span className="text-xs text-muted-foreground">{admin.email}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -456,9 +462,9 @@ export default function Admin() {
                       <Shield className="h-4 w-4 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">{admin.email}</p>
+                      <p className="text-sm font-medium">{getNameByEmail(admin.email)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Added {format(new Date(admin.created_at), 'MMM d, yyyy')}
+                        {admin.email} • Added {format(new Date(admin.created_at), 'MMM d, yyyy')}
                       </p>
                     </div>
                   </div>
@@ -523,9 +529,9 @@ export default function Admin() {
                       <Users className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">{userItem.email}</p>
+                      <p className="text-sm font-medium">{getNameByEmail(userItem.email)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
+                        {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
                       </p>
                     </div>
                   </div>
@@ -553,12 +559,6 @@ export default function Admin() {
           </CardContent>
         </Card>
 
-        {/* User Acknowledgement Dashboard */}
-        <UserAcknowledgementDashboard 
-          users={users} 
-          updates={updates} 
-          acknowledgements={acknowledgements} 
-        />
 
         {/* Edit Update Dialog */}
         <EditUpdateDialog
