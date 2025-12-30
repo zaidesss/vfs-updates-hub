@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion } from 'lucide-react';
+import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -16,6 +16,8 @@ export function Layout({ children }: LayoutProps) {
   const navItems = [
     { href: '/updates', label: 'Updates', icon: FileText },
     { href: '/requests', label: 'Submit a Request', icon: FileQuestion },
+    { href: '/leave-request', label: 'Leave Request', icon: Clock },
+    { href: '/calendar', label: 'Calendar', icon: CalendarDays },
     { href: '/activity', label: 'My Activity', icon: User },
     ...(isAdmin ? [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
     ...((isAdmin || isHR) ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
@@ -31,7 +33,7 @@ export function Layout({ children }: LayoutProps) {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Bell className="h-5 w-5" />
               </div>
-              <span className="text-lg font-semibold">VFS Updates Hub</span>
+              <span className="text-lg font-semibold">VFS Agent Portal</span>
             </Link>
 
             <nav className="hidden md:flex items-center gap-1">
