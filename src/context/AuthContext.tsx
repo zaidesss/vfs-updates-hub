@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { AuthUser, Agent } from '@/types';
 import { fetchAgents, checkIsAdmin, fetchAdminEmails } from '@/lib/api';
 import { mockAgents, adminEmails as fallbackAdminEmails } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -43,21 +44,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       await Promise.all([loadAgents(), loadAdminEmails()]);
 
-      // Check for stored session
-      const storedUser = localStorage.getItem('vfs_user');
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser) as AuthUser;
-          // Re-verify admin status from database
-          const isAdminUser = await checkIsAdmin(parsedUser.email);
-          parsedUser.role = isAdminUser ? 'admin' : 'agent';
-          setUser(parsedUser);
-          localStorage.setItem('vfs_user', JSON.stringify(parsedUser));
-        } catch (e) {
-          localStorage.removeItem('vfs_user');
+      // Set up auth state listener FIRST
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('Auth state changed:', event, session?.user?.email);
+          
+          if (session?.user?.email) {
+            // Defer admin check to avoid Supabase deadlock
+            setTimeout(async () => {
+              const isAdminUser = await checkIsAdmin(session.user.email || '');
+              setUser({
+                email: session.user.email || '',
+                name: session.user.user_metadata?.name || session.user.email || '',
+                role: isAdminUser ? 'admin' : 'agent'
+              });
+            }, 0);
+          } else {
+            setUser(null);
+          }
         }
+      );
+
+      // THEN check for existing session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) {
+        const isAdminUser = await checkIsAdmin(session.user.email);
+        setUser({
+          email: session.user.email,
+          name: session.user.user_metadata?.name || session.user.email,
+          role: isAdminUser ? 'admin' : 'agent'
+        });
       }
+      
       setIsLoading(false);
+
+      return () => subscription.unsubscribe();
     };
 
     init();
@@ -70,34 +91,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
-    // Refresh agents and admin lists before login
+    // Refresh agents list before login
     await Promise.all([loadAgents(), loadAdminEmails()]);
     
-    // Find agent by email
+    // Find agent by email to verify they're in the system
     const agent = agents.find(a => a.email.toLowerCase() === normalizedEmail && a.active);
     
     if (!agent) {
       return { success: false, error: 'Email not recognized. Please contact your administrator.' };
     }
 
-    // Check admin status from database
-    const isAdminUser = await checkIsAdmin(normalizedEmail);
+    // Use Supabase Auth magic link
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: `${window.location.origin}/updates`,
+        shouldCreateUser: false, // Only allow existing users
+      }
+    });
     
-    const authUser: AuthUser = {
-      email: agent.email,
-      name: agent.name,
-      role: isAdminUser ? 'admin' : 'agent',
-    };
+    if (error) {
+      console.error('Login error:', error);
+      // If user doesn't exist in Supabase, create them first
+      if (error.message.includes('Signups not allowed')) {
+        return { success: false, error: 'Account not set up. Please contact your administrator.' };
+      }
+      return { success: false, error: error.message };
+    }
 
-    setUser(authUser);
-    localStorage.setItem('vfs_user', JSON.stringify(authUser));
-    
-    return { success: true };
+    return { 
+      success: true, 
+      error: 'Check your email for the login link. It may take a few moments to arrive.' 
+    };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('vfs_user');
   };
 
   const isAdmin = user?.role === 'admin';

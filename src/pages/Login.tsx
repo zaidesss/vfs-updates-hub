@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Bell, Loader2, AlertCircle } from 'lucide-react';
+import { Bell, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -18,12 +19,14 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setIsLoading(true);
 
     const result = await login(email);
     
     if (result.success) {
-      navigate('/updates');
+      // Show success message for magic link
+      setSuccess(result.error || 'Check your email for the login link.');
     } else {
       setError(result.error || 'Login failed');
     }
@@ -45,7 +48,7 @@ export default function Login() {
         <Card className="shadow-lg border-border/50">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-xl">Welcome back</CardTitle>
-            <CardDescription>Enter your email to access updates</CardDescription>
+            <CardDescription>Enter your email to receive a secure login link</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -53,6 +56,15 @@ export default function Login() {
                 <Alert variant="destructive" className="animate-scale-in">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {success && (
+                <Alert className="animate-scale-in border-green-500 bg-green-50 dark:bg-green-950">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800 dark:text-green-200">
+                    {success}
+                  </AlertDescription>
                 </Alert>
               )}
               
@@ -67,21 +79,24 @@ export default function Login() {
                   required
                   className="h-11"
                   autoComplete="email"
+                  disabled={!!success}
                 />
               </div>
 
               <Button
                 type="submit"
                 className="w-full h-11 font-medium"
-                disabled={isLoading}
+                disabled={isLoading || !!success}
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    Sending login link...
                   </>
+                ) : success ? (
+                  'Check your email'
                 ) : (
-                  'Sign in'
+                  'Send login link'
                 )}
               </Button>
             </form>
@@ -93,12 +108,6 @@ export default function Login() {
             </div>
           </CardContent>
         </Card>
-
-        {import.meta.env.DEV && (
-          <p className="text-xs text-center text-muted-foreground mt-6">
-            Demo mode: Use admin@example.com for testing
-          </p>
-        )}
       </div>
     </div>
   );
