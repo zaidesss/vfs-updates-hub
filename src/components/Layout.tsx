@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock } from 'lucide-react';
+import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -23,6 +23,7 @@ export function Layout({ children }: LayoutProps) {
     { href: '/activity', label: 'My Activity', icon: User },
     ...(isAdmin ? [{ href: '/outage-stats', label: 'Out Stats', icon: BarChart3 }] : []),
     ...(isAdmin ? [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
+    ...((isAdmin || isHR) ? [{ href: '/manage-profiles', label: 'All Bios', icon: Users }] : []),
     ...((isAdmin || isHR) ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
   ];
 
