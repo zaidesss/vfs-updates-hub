@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,20 +10,22 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORIES, getCategoryLabel } from '@/lib/categories';
-import { REQUIRED_APPROVERS, isRequiredApprover } from '@/lib/approvers';
-import { fetchArticleRequests, createArticleRequest, approveRequest, rejectRequest } from '@/lib/requestApi';
-import { ArticleRequestWithApprovals } from '@/types/request';
-import { Plus, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { PRE_APPROVERS, FINAL_APPROVER, isPreApprover, isFinalApprover } from '@/lib/approvers';
+import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview } from '@/lib/requestApi';
+import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
+import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown } from 'lucide-react';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 export default function Requests() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [requests, setRequests] = useState<ArticleRequestWithApprovals[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showNewRequest, setShowNewRequest] = useState(false);
+  const [finalNotes, setFinalNotes] = useState<Record<string, string>>({});
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   
   const [newRequest, setNewRequest] = useState({
     category: '',
@@ -33,7 +35,8 @@ export default function Requests() {
     priority: 'normal',
   });
 
-  const isApprover = user?.email ? isRequiredApprover(user.email) : false;
+  const userIsPreApprover = user?.email ? isPreApprover(user.email) : false;
+  const userIsFinalApprover = user?.email ? isFinalApprover(user.email) : false;
 
   useEffect(() => {
     loadRequests();
@@ -67,7 +70,7 @@ export default function Requests() {
     if (result.error) {
       toast({ title: 'Error', description: result.error, variant: 'destructive' });
     } else {
-      toast({ title: 'Request submitted', description: 'Approvers have been notified.' });
+      toast({ title: 'Request submitted', description: 'Pre-approvers have been notified.' });
       setShowNewRequest(false);
       setNewRequest({ category: '', request_type: 'new_article', sample_ticket: '', description: '', priority: 'normal' });
       loadRequests();
@@ -75,7 +78,7 @@ export default function Requests() {
     setIsSubmitting(false);
   };
 
-  const handleApprove = async (requestId: string) => {
+  const handlePreApprove = async (requestId: string) => {
     if (!user?.email) return;
     const result = await approveRequest(requestId, user.email);
     if (result.error) {
@@ -86,9 +89,23 @@ export default function Requests() {
     }
   };
 
+  const handleFinalDecision = async (requestId: string, decision: FinalDecision) => {
+    if (!user?.email || !decision) return;
+    setProcessingRequest(requestId);
+    const result = await finalizeRequestReview(requestId, user.email, decision, finalNotes[requestId]);
+    if (result.error) {
+      toast({ title: 'Error', description: result.error, variant: 'destructive' });
+    } else {
+      toast({ title: decision === 'reject' ? 'Rejected' : 'Approved', description: 'HR and submitter have been notified.' });
+      loadRequests();
+    }
+    setProcessingRequest(null);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'pending': return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Pending</Badge>;
+      case 'pending': return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Pending Pre-Approval</Badge>;
+      case 'pending_final_review': return <Badge className="bg-amber-500"><Crown className="h-3 w-3 mr-1" /> Awaiting Final Review</Badge>;
       case 'approved': return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Approved</Badge>;
       case 'rejected': return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Rejected</Badge>;
       default: return <Badge>{status}</Badge>;
@@ -177,43 +194,100 @@ export default function Requests() {
           <Card><CardContent className="py-12 text-center text-muted-foreground">No requests yet</CardContent></Card>
         ) : (
           <div className="space-y-4">
-            {requests.map(request => (
-              <Card key={request.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {getStatusBadge(request.status)}
-                      <Badge variant="outline">{request.request_type === 'new_article' ? 'New Article' : request.request_type === 'update_existing' ? 'Update' : 'General'}</Badge>
-                      {request.category && <Badge variant="secondary">{getCategoryLabel(request.category)}</Badge>}
-                      <Badge variant={request.priority === 'urgent' ? 'destructive' : request.priority === 'high' ? 'default' : 'outline'}>{request.priority}</Badge>
+            {requests.map(request => {
+              const preApprovals = request.approvals.filter(a => a.stage === 1);
+              const finalApproval = request.approvals.find(a => a.stage === 2);
+              const preApprovedCount = preApprovals.filter(a => a.approved).length;
+
+              return (
+                <Card key={request.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {getStatusBadge(request.status)}
+                        <Badge variant="outline">{request.request_type === 'new_article' ? 'New Article' : request.request_type === 'update_existing' ? 'Update' : 'General'}</Badge>
+                        {request.category && <Badge variant="secondary">{getCategoryLabel(request.category)}</Badge>}
+                        <Badge variant={request.priority === 'urgent' ? 'destructive' : request.priority === 'high' ? 'default' : 'outline'}>{request.priority}</Badge>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{format(new Date(request.submitted_at), 'PPp')}</span>
                     </div>
-                    <span className="text-sm text-muted-foreground">{format(new Date(request.submitted_at), 'PPp')}</span>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">By: {request.submitted_by}</p>
-                    {request.sample_ticket && <p className="text-sm text-muted-foreground">Ticket: {request.sample_ticket}</p>}
-                  </div>
-                  <p className="text-sm">{request.description}</p>
-                  
-                  <div className="border-t pt-4">
-                    <p className="text-sm font-medium mb-2">Approvals ({request.approvals.filter(a => a.approved).length}/{request.approvals.length})</p>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                      {request.approvals.map(approval => {
-                        const canApprove = user?.email?.toLowerCase() === approval.approver_email.toLowerCase() && !approval.approved && request.status === 'pending';
-                        return (
-                          <div key={approval.id} className="flex items-center gap-2">
-                            <Checkbox checked={approval.approved} disabled={!canApprove} onCheckedChange={() => canApprove && handleApprove(request.id)} />
-                            <span className={`text-sm ${approval.approved ? 'text-green-600' : 'text-muted-foreground'}`}>{approval.approver_name || approval.approver_email}</span>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">By: {request.submitted_by}</p>
+                      {request.sample_ticket && <p className="text-sm text-muted-foreground">Ticket: {request.sample_ticket}</p>}
+                    </div>
+                    <p className="text-sm">{request.description}</p>
+                    
+                    {/* Pre-Approvals Section */}
+                    <div className="border-t pt-4">
+                      <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" />
+                        Pre-Approvals ({preApprovedCount}/{PRE_APPROVERS.length})
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {preApprovals.map(approval => {
+                          const canApprove = user?.email?.toLowerCase() === approval.approver_email.toLowerCase() && !approval.approved && request.status === 'pending';
+                          return (
+                            <div key={approval.id} className="flex items-center gap-2">
+                              <Checkbox checked={approval.approved} disabled={!canApprove} onCheckedChange={() => canApprove && handlePreApprove(request.id)} />
+                              <span className={`text-sm ${approval.approved ? 'text-green-600' : 'text-muted-foreground'}`}>{approval.approver_name || approval.approver_email}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Final Review Section */}
+                    <div className="border-t pt-4">
+                      <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Crown className="h-4 w-4" />
+                        Final Review ({FINAL_APPROVER.name})
+                      </p>
+                      
+                      {request.status === 'pending' && (
+                        <p className="text-sm text-muted-foreground">Waiting for all pre-approvals before final review.</p>
+                      )}
+
+                      {request.status === 'pending_final_review' && userIsFinalApprover && (
+                        <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
+                          <Textarea 
+                            placeholder="Optional notes for your decision..."
+                            value={finalNotes[request.id] || ''}
+                            onChange={e => setFinalNotes(prev => ({ ...prev, [request.id]: e.target.value }))}
+                            rows={2}
+                          />
+                          <div className="flex gap-2 flex-wrap">
+                            <Button size="sm" onClick={() => handleFinalDecision(request.id, 'create_new')} disabled={processingRequest === request.id}>
+                              {processingRequest === request.id && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                              Approve: Create New
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => handleFinalDecision(request.id, 'update_existing')} disabled={processingRequest === request.id}>
+                              Approve: Update Existing
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleFinalDecision(request.id, 'reject')} disabled={processingRequest === request.id}>
+                              Reject
+                            </Button>
                           </div>
-                        );
-                      })}
+                        </div>
+                      )}
+
+                      {request.status === 'pending_final_review' && !userIsFinalApprover && (
+                        <p className="text-sm text-amber-600">Awaiting {FINAL_APPROVER.name}'s final decision.</p>
+                      )}
+
+                      {(request.status === 'approved' || request.status === 'rejected') && request.final_decision && (
+                        <div className="text-sm">
+                          <p><strong>Decision:</strong> {request.final_decision === 'create_new' ? 'Create New Article' : request.final_decision === 'update_existing' ? 'Update Existing' : 'Rejected'}</p>
+                          {request.final_notes && <p><strong>Notes:</strong> {request.final_notes}</p>}
+                          {request.final_reviewed_at && <p className="text-muted-foreground">Reviewed: {format(new Date(request.final_reviewed_at), 'PPp')}</p>}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

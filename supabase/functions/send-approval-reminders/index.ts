@@ -25,11 +25,11 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch pending requests with their approvals
+    // Fetch pending requests (both 'pending' and 'pending_final_review')
     const { data: pendingRequests, error: requestsError } = await supabase
       .from('article_requests')
       .select('*')
-      .eq('status', 'pending');
+      .in('status', ['pending', 'pending_final_review']);
 
     if (requestsError) {
       console.error('Error fetching pending requests:', requestsError);
@@ -50,12 +50,13 @@ serve(async (req) => {
     let remindersSent = 0;
 
     for (const request of pendingRequests) {
-      // Get pending approvals for this request
+      // Get only ACTIVE pending approvals for this request
       const { data: pendingApprovals, error: approvalsError } = await supabase
         .from('request_approvals')
         .select('*')
         .eq('request_id', request.id)
-        .eq('approved', false);
+        .eq('approved', false)
+        .eq('active', true); // Only remind active approvers
 
       if (approvalsError) {
         console.error('Error fetching approvals for request:', request.id, approvalsError);
@@ -66,8 +67,13 @@ serve(async (req) => {
         continue;
       }
 
-      // Send reminders to pending approvers
+      // Send reminders to pending active approvers
       for (const approval of pendingApprovals) {
+        const isFinalReview = approval.stage === 2;
+        const subject = isFinalReview 
+          ? `[Final Review Reminder] Article Request Awaiting Your Decision`
+          : `⏰ Reminder: Article Request Awaiting Your Approval`;
+
         try {
           const emailResponse = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -78,11 +84,11 @@ serve(async (req) => {
             body: JSON.stringify({
               from: "VFS Updates Hub <onboarding@resend.dev>",
               to: [approval.approver_email],
-              subject: `⏰ Reminder: Article Request Awaiting Your Approval`,
+              subject,
               html: `
-                <h2>Reminder: Pending Approval Required</h2>
+                <h2>${isFinalReview ? 'Final Review Reminder' : 'Approval Reminder'}</h2>
                 <p>Hi ${approval.approver_name || 'there'},</p>
-                <p>A request is still waiting for your approval.</p>
+                <p>This is a reminder that the following article request is waiting for your ${isFinalReview ? 'final decision' : 'approval'}.</p>
                 
                 <table style="border-collapse: collapse; margin: 20px 0;">
                   <tr>
@@ -107,7 +113,7 @@ serve(async (req) => {
                 <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${request.description}</p>
                 
                 <p style="margin-top: 20px;">
-                  <strong>Please log in to the VFS Updates Hub to review and approve this request.</strong>
+                  <strong>Please log in to the VFS Updates Hub to ${isFinalReview ? 'review and make your decision' : 'approve this request'}.</strong>
                 </p>
                 
                 <p style="color: #666; font-size: 12px; margin-top: 30px;">
