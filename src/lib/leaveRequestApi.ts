@@ -188,6 +188,47 @@ export async function createLeaveRequest(
   }
 }
 
+export async function updateLeaveRequest(
+  id: string,
+  input: LeaveRequestInput,
+  agentEmail: string
+): Promise<ApiResponse<LeaveRequest>> {
+  try {
+    const durations = calculateDurations(input.start_date, input.end_date, input.start_time, input.end_time);
+    
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .update({
+        agent_name: input.agent_name,
+        client_name: input.client_name,
+        team_lead_name: input.team_lead_name,
+        role: input.role,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        start_time: input.start_time,
+        end_time: input.end_time,
+        outage_reason: input.outage_reason,
+        attachment_url: input.attachment_url || null,
+        ...durations
+      })
+      .eq('id', id)
+      .eq('agent_email', agentEmail.toLowerCase())
+      .eq('status', 'pending')
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating leave request:', error);
+      return { data: null, error: error.message };
+    }
+    
+    return { data: data as LeaveRequest, error: null };
+  } catch (err) {
+    console.error('Error updating leave request:', err);
+    return { data: null, error: 'Failed to update leave request' };
+  }
+}
+
 export async function fetchMyLeaveRequests(): Promise<ApiResponse<LeaveRequest[]>> {
   try {
     const { data, error } = await supabase
