@@ -45,9 +45,11 @@ export type Database = {
           emergency_contact_phone: string | null
           full_name: string | null
           home_address: string | null
+          hourly_rate: number | null
           id: string
           phone_number: string | null
           position: string | null
+          rate_history: Json | null
           start_date: string | null
           team_lead: string | null
           updated_at: string | null
@@ -61,9 +63,11 @@ export type Database = {
           emergency_contact_phone?: string | null
           full_name?: string | null
           home_address?: string | null
+          hourly_rate?: number | null
           id?: string
           phone_number?: string | null
           position?: string | null
+          rate_history?: Json | null
           start_date?: string | null
           team_lead?: string | null
           updated_at?: string | null
@@ -77,9 +81,11 @@ export type Database = {
           emergency_contact_phone?: string | null
           full_name?: string | null
           home_address?: string | null
+          hourly_rate?: number | null
           id?: string
           phone_number?: string | null
           position?: string | null
+          rate_history?: Json | null
           start_date?: string | null
           team_lead?: string | null
           updated_at?: string | null

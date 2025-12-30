@@ -1,5 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
 
+export interface RateHistoryEntry {
+  date: string;
+  rate: number;
+}
+
 export interface AgentProfile {
   id: string;
   email: string;
@@ -13,6 +18,8 @@ export interface AgentProfile {
   position: string | null;
   team_lead: string | null;
   clients: string | null;
+  hourly_rate: number | null;
+  rate_history: RateHistoryEntry[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +36,16 @@ export interface AgentProfileInput {
   position?: string;
   team_lead?: string;
   clients?: string;
+  hourly_rate?: number | null;
+  rate_history?: RateHistoryEntry[];
+}
+
+function transformProfile(data: any): AgentProfile | null {
+  if (!data) return null;
+  return {
+    ...data,
+    rate_history: Array.isArray(data.rate_history) ? data.rate_history : []
+  };
 }
 
 export async function fetchMyProfile(): Promise<{ data: AgentProfile | null; error: string | null }> {
@@ -47,7 +64,7 @@ export async function fetchMyProfile(): Promise<{ data: AgentProfile | null; err
     return { data: null, error: error.message };
   }
 
-  return { data: data as AgentProfile | null, error: null };
+  return { data: transformProfile(data), error: null };
 }
 
 export async function fetchAllProfiles(): Promise<{ data: AgentProfile[] | null; error: string | null }> {
@@ -60,7 +77,7 @@ export async function fetchAllProfiles(): Promise<{ data: AgentProfile[] | null;
     return { data: null, error: error.message };
   }
 
-  return { data: data as AgentProfile[], error: null };
+  return { data: (data || []).map(d => transformProfile(d)!) , error: null };
 }
 
 export async function upsertProfile(input: AgentProfileInput): Promise<{ data: AgentProfile | null; error: string | null }> {
@@ -69,11 +86,17 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     return { data: null, error: 'Not authenticated' };
   }
 
+  const dbInput = {
+    ...input,
+    email: input.email.toLowerCase(),
+    rate_history: input.rate_history ? JSON.parse(JSON.stringify(input.rate_history)) : []
+  };
+
   // First check if profile exists
   const { data: existing } = await supabase
     .from('agent_profiles')
     .select('id')
-    .eq('email', input.email.toLowerCase())
+    .eq('email', dbInput.email)
     .maybeSingle();
 
   let result;
@@ -82,21 +105,17 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     result = await supabase
       .from('agent_profiles')
       .update({
-        ...input,
-        email: input.email.toLowerCase(),
+        ...dbInput,
         updated_at: new Date().toISOString()
       })
-      .eq('email', input.email.toLowerCase())
+      .eq('email', dbInput.email)
       .select()
       .single();
   } else {
     // Insert new profile
     result = await supabase
       .from('agent_profiles')
-      .insert({
-        ...input,
-        email: input.email.toLowerCase()
-      })
+      .insert(dbInput)
       .select()
       .single();
   }
@@ -105,5 +124,5 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     return { data: null, error: result.error.message };
   }
 
-  return { data: result.data as AgentProfile, error: null };
+  return { data: transformProfile(result.data), error: null };
 }
