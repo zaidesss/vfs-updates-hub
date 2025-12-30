@@ -128,8 +128,20 @@ export async function fetchAdmins(): Promise<ApiResponse<AdminRole[]>> {
 
 async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
   try {
+    // Get current session for authentication
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      console.error('No active session for edge function call');
+      return { data: null, error: 'Authentication required. Please log in.' };
+    }
+
+    // Call edge function with JWT token
     const { data, error } = await supabase.functions.invoke('google-sheets-api', {
       body: { action, ...body },
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      }
     });
 
     if (error) {
