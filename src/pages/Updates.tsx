@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
 import { UpdateCard } from '@/components/UpdateCard';
+import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,8 +15,12 @@ import { cn } from '@/lib/utils';
 type FilterTab = 'unread' | 'read' | 'all';
 
 export default function Updates() {
-  const { user } = useAuth();
-  const { updates, isAcknowledged, isLoading, refreshData } = useUpdates();
+  const { user, isAdmin } = useAuth();
+  const { updates, acknowledgements, isAcknowledged, isLoading, refreshData } = useUpdates();
+
+  useEffect(() => {
+    document.title = 'Updates | VFS Updates Hub';
+  }, []);
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -170,6 +175,13 @@ export default function Updates() {
                 <UpdateCard update={update} />
               </div>
             ))}
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold text-foreground mb-4">Team Acknowledgement Overview</h2>
+            <UserAcknowledgementDashboard updates={updates} acknowledgements={acknowledgements} />
           </div>
         )}
       </div>
