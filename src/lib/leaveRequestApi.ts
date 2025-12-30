@@ -219,18 +219,14 @@ export async function updateLeaveRequest(
       updateData.remarks = null;
     }
 
-    let query = supabase
+    // For agent edits - always require their email match
+    const { data, error } = await supabase
       .from('leave_requests')
       .update(updateData)
       .eq('id', id)
-      .eq('agent_email', agentEmail.toLowerCase());
-    
-    // Only restrict to pending status if not resetting
-    if (!resetToPending) {
-      query = query.eq('status', 'pending');
-    }
-    
-    const { data, error } = await query.select().single();
+      .eq('agent_email', agentEmail.toLowerCase())
+      .select()
+      .single();
     
     if (error) {
       console.error('Error updating leave request:', error);
@@ -240,6 +236,47 @@ export async function updateLeaveRequest(
     return { data: data as LeaveRequest, error: null };
   } catch (err) {
     console.error('Error updating leave request:', err);
+    return { data: null, error: 'Failed to update leave request' };
+  }
+}
+
+// Admin update - no agent_email restriction
+export async function adminUpdateLeaveRequest(
+  id: string,
+  input: LeaveRequestInput
+): Promise<ApiResponse<LeaveRequest>> {
+  try {
+    const durations = calculateDurations(input.start_date, input.end_date, input.start_time, input.end_time);
+    
+    const updateData: Record<string, unknown> = {
+      agent_name: input.agent_name,
+      client_name: input.client_name,
+      team_lead_name: input.team_lead_name,
+      role: input.role,
+      start_date: input.start_date,
+      end_date: input.end_date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      outage_reason: input.outage_reason,
+      attachment_url: input.attachment_url || null,
+      ...durations
+    };
+
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating leave request (admin):', error);
+      return { data: null, error: error.message };
+    }
+    
+    return { data: data as LeaveRequest, error: null };
+  } catch (err) {
+    console.error('Error updating leave request (admin):', err);
     return { data: null, error: 'Failed to update leave request' };
   }
 }
@@ -316,7 +353,7 @@ export async function updateLeaveRequestStatus(
       reviewed_at: new Date().toISOString()
     };
     
-    if (remarks) {
+    if (remarks !== undefined) {
       updateData.remarks = remarks;
     }
     
@@ -367,6 +404,7 @@ export async function updateLeaveRequestStatus(
   }
 }
 
+// Cancel leave request - allow canceling any status (pending or approved)
 export async function cancelLeaveRequest(id: string, agentEmail: string): Promise<ApiResponse<LeaveRequest>> {
   try {
     const { data, error } = await supabase
@@ -377,7 +415,7 @@ export async function cancelLeaveRequest(id: string, agentEmail: string): Promis
         reviewed_at: new Date().toISOString()
       })
       .eq('id', id)
-      .eq('status', 'pending')
+      .eq('agent_email', agentEmail.toLowerCase())
       .select()
       .single();
     
@@ -385,10 +423,65 @@ export async function cancelLeaveRequest(id: string, agentEmail: string): Promis
       console.error('Error canceling leave request:', error);
       return { data: null, error: error.message };
     }
+
+    // Send cancellation notification
+    if (data) {
+      try {
+        await supabase.functions.invoke('send-leave-decision-notification', {
+          body: {
+            requestId: data.id,
+            agentName: data.agent_name,
+            agentEmail: data.agent_email,
+            clientName: data.client_name,
+            teamLeadName: data.team_lead_name,
+            role: data.role,
+            startDate: data.start_date,
+            endDate: data.end_date,
+            startTime: data.start_time,
+            endTime: data.end_time,
+            outageReason: data.outage_reason,
+            totalDays: data.total_days,
+            outageDurationHours: data.outage_duration_hours,
+            decision: 'canceled',
+            reviewedBy: agentEmail,
+            remarks: 'Canceled by agent'
+          }
+        });
+      } catch (notifyErr) {
+        console.error('Failed to send cancellation notification:', notifyErr);
+      }
+    }
     
     return { data: data as LeaveRequest, error: null };
   } catch (err) {
     console.error('Error canceling leave request:', err);
     return { data: null, error: 'Failed to cancel leave request' };
+  }
+}
+
+// Upload file to storage bucket
+export async function uploadAttachment(file: File, agentEmail: string): Promise<ApiResponse<string>> {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${agentEmail}/${Date.now()}.${fileExt}`;
+    
+    const { data, error } = await supabase.storage
+      .from('leave-attachments')
+      .upload(fileName, file);
+    
+    if (error) {
+      console.error('Error uploading attachment:', error);
+      return { data: null, error: error.message };
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('leave-attachments')
+      .getPublicUrl(data.path);
+    
+    return { data: urlData.publicUrl, error: null };
+  } catch (err) {
+    console.error('Error uploading attachment:', err);
+    return { data: null, error: 'Failed to upload attachment' };
   }
 }
