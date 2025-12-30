@@ -149,7 +149,51 @@ serve(async (req) => {
       });
     }
 
-    // Extract and verify JWT token
+    // Parse request body first to check for unauthenticated actions
+    const body = await req.json();
+    const { action, update_id, agent_email, update, email } = body;
+
+    // Handle unauthenticated action: validate_agent (for login flow)
+    if (action === 'validate_agent') {
+      if (!email || typeof email !== 'string') {
+        return new Response(JSON.stringify({ error: 'Email is required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log(`Validating agent email: ${normalizedEmail}`);
+
+      // Fetch agents from Google Sheets
+      const url = `${apiUrl}?action=agents&key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'X-API-KEY': apiKey },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch agents for validation');
+        return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const agents = await response.json();
+      const isValid = Array.isArray(agents) && agents.some(
+        (agent: { email?: string; active?: boolean }) => 
+          agent.email?.toLowerCase() === normalizedEmail && agent.active !== false
+      );
+
+      console.log(`Agent validation result for ${normalizedEmail}: ${isValid}`);
+
+      return new Response(JSON.stringify({ valid: isValid }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // All other actions require authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.error('Missing or invalid authorization header');
@@ -182,8 +226,7 @@ serve(async (req) => {
     const userEmail = user.email.toLowerCase();
     console.log(`Authenticated user: ${userEmail}`);
 
-    const { action, update_id, agent_email, update } = await req.json();
-    
+    // Body already parsed above, use those values
     console.log(`Processing action: ${action} for user: ${userEmail}`);
 
     // Determine action type for rate limiting
