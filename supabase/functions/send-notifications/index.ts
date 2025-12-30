@@ -77,8 +77,9 @@ serve(async (req) => {
         
         // Send to all users (Resend supports up to 50 recipients per call)
         const emoji = isEdit ? '✏️' : '📢';
+        // Use verified domain email - must match domain verified in Resend
         const emailResponse = await resend.emails.send({
-          from: 'VFS Updates Hub <onboarding@resend.dev>',
+          from: 'VFS Updates Hub <hr@virtualfreelancesolutions.com>',
           to: emails,
           subject: `${notificationType} Update: ${updateTitle}`,
           html: `
