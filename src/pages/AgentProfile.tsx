@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User } from 'lucide-react';
-import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput } from '@/lib/agentProfileApi';
+import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry } from '@/lib/agentProfileApi';
+import { DollarSign } from 'lucide-react';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
 
 export default function AgentProfilePage() {
@@ -17,6 +18,8 @@ export default function AgentProfilePage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const emptyRateHistory = Array(6).fill({ date: '', rate: '' });
+  
   const [profile, setProfile] = useState<AgentProfileInput>({
     email: '',
     full_name: '',
@@ -28,8 +31,12 @@ export default function AgentProfilePage() {
     emergency_contact_phone: '',
     position: '',
     team_lead: '',
-    clients: ''
+    clients: '',
+    hourly_rate: null,
+    rate_history: []
   });
+  
+  const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>(emptyRateHistory);
 
   useEffect(() => {
     loadProfile();
@@ -53,8 +60,18 @@ export default function AgentProfilePage() {
         emergency_contact_phone: result.data.emergency_contact_phone || '',
         position: result.data.position || '',
         team_lead: result.data.team_lead || '',
-        clients: result.data.clients || ''
+        clients: result.data.clients || '',
+        hourly_rate: result.data.hourly_rate,
+        rate_history: result.data.rate_history || []
       });
+      
+      // Populate rate history UI
+      const existingHistory = result.data.rate_history || [];
+      const historyUI = Array(6).fill(null).map((_, i) => ({
+        date: existingHistory[i]?.date || '',
+        rate: existingHistory[i]?.rate?.toString() || ''
+      }));
+      setRateHistoryUI(historyUI);
     } else {
       // Pre-fill from directory if available
       const agentInfo = getAgentInfoByEmail(user.email);
@@ -69,23 +86,44 @@ export default function AgentProfilePage() {
         emergency_contact_phone: '',
         position: agentInfo?.position || '',
         team_lead: agentInfo?.teamLead || '',
-        clients: agentInfo?.clients.join(', ') || ''
+        clients: agentInfo?.clients.join(', ') || '',
+        hourly_rate: null,
+        rate_history: []
       });
+      setRateHistoryUI(Array(6).fill(null).map(() => ({ date: '', rate: '' })));
     }
     setIsLoading(false);
   };
 
-  const handleInputChange = (field: keyof AgentProfileInput, value: string) => {
+  const handleInputChange = (field: keyof AgentProfileInput, value: string | number | null) => {
     setProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleRateHistoryChange = (index: number, field: 'date' | 'rate', value: string) => {
+    setRateHistoryUI(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
   const handleSave = async () => {
     if (!user?.email) return;
     
     setIsSaving(true);
+    
+    // Convert rate history UI to proper format (filter out empty entries)
+    const rateHistory: RateHistoryEntry[] = rateHistoryUI
+      .filter(entry => entry.date && entry.rate)
+      .map(entry => ({
+        date: entry.date,
+        rate: parseFloat(entry.rate)
+      }));
+    
     const result = await upsertProfile({
       ...profile,
-      email: user.email.toLowerCase()
+      email: user.email.toLowerCase(),
+      rate_history: rateHistory
     });
     
     if (result.data) {
@@ -253,6 +291,55 @@ export default function AgentProfilePage() {
                   onChange={(e) => handleInputChange('clients', e.target.value)}
                   placeholder="e.g., VFS Global, Other Client"
                 />
+              </div>
+            </div>
+
+            {/* Compensation */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Compensation</h3>
+              
+              <div className="space-y-2">
+                <Label htmlFor="hourly_rate">Current Hourly Rate ($)</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="hourly_rate"
+                    type="number"
+                    step="0.01"
+                    className="pl-9"
+                    value={profile.hourly_rate ?? ''}
+                    onChange={(e) => handleInputChange('hourly_rate', e.target.value ? parseFloat(e.target.value) : null)}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <Label>Rate History (Progressions)</Label>
+                <div className="space-y-2">
+                  {rateHistoryUI.map((entry, index) => (
+                    <div key={index} className="grid grid-cols-2 gap-3">
+                      <Input
+                        type="date"
+                        value={entry.date}
+                        onChange={(e) => handleRateHistoryChange(index, 'date', e.target.value)}
+                        placeholder="Date"
+                      />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          className="pl-9"
+                          value={entry.rate}
+                          onChange={(e) => handleRateHistoryChange(index, 'rate', e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Enter dates and rates for up to 6 rate changes</p>
               </div>
             </div>
 
