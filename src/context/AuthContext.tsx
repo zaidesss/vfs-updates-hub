@@ -91,14 +91,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
-    // Refresh agents list before login
-    await Promise.all([loadAgents(), loadAdminEmails()]);
-    
-    // Find agent by email to verify they're in the system
-    const agent = agents.find(a => a.email.toLowerCase() === normalizedEmail && a.active);
-    
-    if (!agent) {
-      return { success: false, error: 'Email not recognized. Please contact your administrator.' };
+    // Validate agent via edge function (no auth required)
+    try {
+      const { data, error } = await supabase.functions.invoke('google-sheets-api', {
+        body: { action: 'validate_agent', email: normalizedEmail }
+      });
+
+      if (error) {
+        console.error('Agent validation error:', error);
+        return { success: false, error: 'Unable to verify email. Please try again.' };
+      }
+
+      if (!data?.valid) {
+        return { success: false, error: 'Email not recognized. Please contact your administrator.' };
+      }
+    } catch (err) {
+      console.error('Failed to validate agent:', err);
+      return { success: false, error: 'Unable to verify email. Please try again.' };
     }
 
     // Use Supabase Auth magic link
