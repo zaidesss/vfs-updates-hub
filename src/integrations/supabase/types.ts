@@ -35,6 +35,45 @@ export type Database = {
         }
         Relationships: []
       }
+      article_requests: {
+        Row: {
+          category: Database["public"]["Enums"]["update_category"] | null
+          created_at: string
+          description: string
+          id: string
+          priority: string | null
+          request_type: Database["public"]["Enums"]["request_type"]
+          sample_ticket: string | null
+          status: Database["public"]["Enums"]["request_status"]
+          submitted_at: string
+          submitted_by: string
+        }
+        Insert: {
+          category?: Database["public"]["Enums"]["update_category"] | null
+          created_at?: string
+          description: string
+          id?: string
+          priority?: string | null
+          request_type?: Database["public"]["Enums"]["request_type"]
+          sample_ticket?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          submitted_at?: string
+          submitted_by: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["update_category"] | null
+          created_at?: string
+          description?: string
+          id?: string
+          priority?: string | null
+          request_type?: Database["public"]["Enums"]["request_type"]
+          sample_ticket?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          submitted_at?: string
+          submitted_by?: string
+        }
+        Relationships: []
+      }
       reminder_logs: {
         Row: {
           id: string
@@ -63,6 +102,44 @@ export type Database = {
             columns: ["update_id"]
             isOneToOne: false
             referencedRelation: "updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_approvals: {
+        Row: {
+          approved: boolean | null
+          approved_at: string | null
+          approver_email: string
+          approver_name: string | null
+          created_at: string
+          id: string
+          request_id: string
+        }
+        Insert: {
+          approved?: boolean | null
+          approved_at?: string | null
+          approver_email: string
+          approver_name?: string | null
+          created_at?: string
+          id?: string
+          request_id: string
+        }
+        Update: {
+          approved?: boolean | null
+          approved_at?: string | null
+          approver_email?: string
+          approver_name?: string | null
+          created_at?: string
+          id?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_approvals_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "article_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -207,6 +284,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "hr"
+      request_status: "pending" | "approved" | "rejected"
+      request_type: "new_article" | "update_existing" | "general"
       update_category:
         | "orders_transactions"
         | "payments_billing"
@@ -347,6 +426,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "hr"],
+      request_status: ["pending", "approved", "rejected"],
+      request_type: ["new_article", "update_existing", "general"],
       update_category: [
         "orders_transactions",
         "payments_billing",
