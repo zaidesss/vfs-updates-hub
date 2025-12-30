@@ -35,6 +35,57 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_profiles: {
+        Row: {
+          birthday: string | null
+          clients: string | null
+          created_at: string | null
+          email: string
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          full_name: string | null
+          home_address: string | null
+          id: string
+          phone_number: string | null
+          position: string | null
+          start_date: string | null
+          team_lead: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          birthday?: string | null
+          clients?: string | null
+          created_at?: string | null
+          email: string
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          full_name?: string | null
+          home_address?: string | null
+          id?: string
+          phone_number?: string | null
+          position?: string | null
+          start_date?: string | null
+          team_lead?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          birthday?: string | null
+          clients?: string | null
+          created_at?: string | null
+          email?: string
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          full_name?: string | null
+          home_address?: string | null
+          id?: string
+          phone_number?: string | null
+          position?: string | null
+          start_date?: string | null
+          team_lead?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       article_requests: {
         Row: {
           category: Database["public"]["Enums"]["update_category"] | null

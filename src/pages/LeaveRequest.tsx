@@ -775,15 +775,17 @@ export default function LeaveRequest() {
                         <TableCell>
                           <div className="flex gap-2 flex-wrap">
                             {isAdmin && req.status === 'pending' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-success hover:text-success"
+                                onClick={() => openDecisionDialog(req.id, 'approved', req.agent_name)}
+                              >
+                                Approve
+                              </Button>
+                            )}
+                            {isAdmin && (req.status === 'pending' || req.status === 'approved') && (
                               <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-success hover:text-success"
-                                  onClick={() => openDecisionDialog(req.id, 'approved', req.agent_name)}
-                                >
-                                  Approve
-                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"

@@ -220,13 +220,17 @@ export async function updateLeaveRequest(
     }
 
     // For agent edits - always require their email match
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .update(updateData)
-      .eq('id', id)
-      .eq('agent_email', agentEmail.toLowerCase())
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .update(updateData)
+    .eq('id', id)
+    .eq('agent_email', agentEmail.toLowerCase())
+    .select()
+    .maybeSingle();
+
+  if (!data && !error) {
+    return { data: null, error: 'Request not found or you do not have permission to update it' };
+  }
     
     if (error) {
       console.error('Error updating leave request:', error);
