@@ -138,7 +138,7 @@ export default function Requests() {
                   <Select value={newRequest.category} onValueChange={v => setNewRequest(p => ({ ...p, category: v }))}>
                     <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map(cat => <SelectItem key={cat} value={cat}>{getCategoryLabel(cat)}</SelectItem>)}
+                      {CATEGORIES.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

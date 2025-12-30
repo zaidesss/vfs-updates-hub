@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuthUser } from '@/types';
 import { checkIsAdmin, fetchAdminEmails } from '@/lib/api';
+import { checkIsHR } from '@/lib/requestApi';
 import { adminEmails as fallbackAdminEmails } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -10,6 +11,7 @@ interface AuthContextType {
   login: (email: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
+  isHR: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,6 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [adminEmails, setAdminEmails] = useState<string[]>(fallbackAdminEmails);
+  const [hrStatus, setHrStatus] = useState(false);
 
   const loadAdminEmails = async () => {
     const result = await fetchAdminEmails();
@@ -40,14 +43,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Defer admin check to avoid Supabase deadlock
             setTimeout(async () => {
               const isAdminUser = await checkIsAdmin(session.user.email || '');
+              const isHRUser = await checkIsHR(session.user.email || '');
+              setHrStatus(isHRUser);
               setUser({
                 email: session.user.email || '',
                 name: session.user.user_metadata?.name || session.user.email || '',
-                role: isAdminUser ? 'admin' : 'agent'
+                role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent' // HR gets admin-level access to view updates
               });
             }, 0);
           } else {
             setUser(null);
+            setHrStatus(false);
           }
         }
       );
@@ -56,10 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user?.email) {
         const isAdminUser = await checkIsAdmin(session.user.email);
+        const isHRUser = await checkIsHR(session.user.email);
+        setHrStatus(isHRUser);
         setUser({
           email: session.user.email,
           name: session.user.user_metadata?.name || session.user.email,
-          role: isAdminUser ? 'admin' : 'agent'
+          role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
         });
       }
       
@@ -120,12 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setHrStatus(false);
   };
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' && !hrStatus;
+  const isHR = hrStatus;
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAdmin }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, isAdmin, isHR }}>
       {children}
     </AuthContext.Provider>
   );

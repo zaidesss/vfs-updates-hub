@@ -26,19 +26,23 @@ import {
   Shield,
   Trash2,
   UserPlus,
-  Pencil
+  Pencil,
+  Search,
+  Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update } from '@/types';
 import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole } from '@/lib/api';
+import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
+import { SimilarUpdatesModal } from '@/components/SimilarUpdatesModal';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 
 export default function Admin() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isHR, user } = useAuth();
   const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -53,6 +57,8 @@ export default function Admin() {
   const [bulkEmails, setBulkEmails] = useState('');
   const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<Update | null>(null);
+  const [showSimilarModal, setShowSimilarModal] = useState(false);
+  const [deletingUpdateId, setDeletingUpdateId] = useState<string | null>(null);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -169,7 +175,8 @@ export default function Admin() {
     toast.success('User removed successfully');
   };
 
-  if (!isAdmin) {
+  // HR can only see updates list and delete, not admin/user management
+  if (!isAdmin && !isHR) {
     return (
       <Layout>
         <div className="text-center py-12">
@@ -179,6 +186,20 @@ export default function Admin() {
       </Layout>
     );
   }
+
+  const handleDeleteUpdate = async (updateId: string) => {
+    setDeletingUpdateId(updateId);
+    const result = await deleteUpdate(updateId);
+    setDeletingUpdateId(null);
+    
+    if (result.error) {
+      toast.error('Failed to delete update', { description: result.error });
+      return;
+    }
+    
+    toast.success('Update deleted successfully');
+    refreshData();
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -328,7 +349,19 @@ export default function Admin() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="body">Body</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="body">Body</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowSimilarModal(true)}
+                        disabled={!newUpdate.title && !newUpdate.summary && !newUpdate.body}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Check for Similar Updates
+                      </Button>
+                    </div>
                     <Textarea
                       id="body"
                       value={newUpdate.body}
@@ -483,7 +516,8 @@ export default function Admin() {
           </Card>
         </div>
 
-        {/* Admin Management */}
+        {/* Admin Management - Only visible to admins, not HR */}
+        {isAdmin && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -549,8 +583,10 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+        )}
 
-        {/* User Management */}
+        {/* User Management - Only visible to admins, not HR */}
+        {isAdmin && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -650,7 +686,7 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
-
+        )}
 
         {/* Edit Update Dialog */}
         <EditUpdateDialog
@@ -705,70 +741,91 @@ export default function Admin() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setEditingUpdate(update)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
+                          {/* HR users can only delete */}
+                          {isHR && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteUpdate(update.id)}
+                              disabled={deletingUpdateId === update.id}
+                            >
+                              {deletingUpdateId === update.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                          {/* Admin users get full controls */}
+                          {isAdmin && (
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => setEditingUpdate(update)}
+                              >
+                                <Pencil className="h-4 w-4" />
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                              <DialogHeader>
-                                <DialogTitle>{update.title}</DialogTitle>
-                              </DialogHeader>
-                              <Tabs defaultValue="acknowledged" className="mt-4">
-                                <div className="flex items-center justify-between mb-4">
-                                  <TabsList>
-                                    <TabsTrigger value="acknowledged">
-                                      Acknowledged ({ackCount})
-                                    </TabsTrigger>
-                                  </TabsList>
-                                  <Button variant="outline" size="sm" onClick={() => exportAcknowledgements(update)}>
-                                    <Download className="mr-2 h-4 w-4" />
-                                    Export CSV
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <Eye className="h-4 w-4" />
                                   </Button>
-                                </div>
-                                <TabsContent value="acknowledged">
-                                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                                    {getAcknowledgementsForUpdate(update.id).map(ack => (
-                                      <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
-                                        <CheckCircle2 className="h-4 w-4 text-success" />
-                                        <div className="flex-1">
-                                          <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {format(new Date(ack.acknowledged_at), 'MMM d, yyyy at h:mm a')}
-                                          </p>
-                                        </div>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle>{update.title}</DialogTitle>
+                                  </DialogHeader>
+                                  <Tabs defaultValue="acknowledged" className="mt-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <TabsList>
+                                        <TabsTrigger value="acknowledged">
+                                          Acknowledged ({ackCount})
+                                        </TabsTrigger>
+                                      </TabsList>
+                                      <Button variant="outline" size="sm" onClick={() => exportAcknowledgements(update)}>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Export CSV
+                                      </Button>
+                                    </div>
+                                    <TabsContent value="acknowledged">
+                                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                                        {getAcknowledgementsForUpdate(update.id).map(ack => (
+                                          <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
+                                            <CheckCircle2 className="h-4 w-4 text-success" />
+                                            <div className="flex-1">
+                                              <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
+                                              <p className="text-xs text-muted-foreground">
+                                                {format(new Date(ack.acknowledged_at), 'MMM d, yyyy at h:mm a')}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        ))}
+                                        {getAcknowledgementsForUpdate(update.id).length === 0 && (
+                                          <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
+                                        )}
                                       </div>
-                                    ))}
-                                    {getAcknowledgementsForUpdate(update.id).length === 0 && (
-                                      <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
-                                    )}
-                                  </div>
-                                </TabsContent>
-                              </Tabs>
-                            </DialogContent>
-                          </Dialog>
-                          <Select
-                            value={update.status}
-                            onValueChange={(value: Update['status']) => updateUpdateStatus(update.id, value)}
-                          >
-                            <SelectTrigger className="w-28 h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="published">Published</SelectItem>
-                              <SelectItem value="archived">Archived</SelectItem>
-                              <SelectItem value="obsolete">Obsolete</SelectItem>
-                            </SelectContent>
-                          </Select>
+                                    </TabsContent>
+                                  </Tabs>
+                                </DialogContent>
+                              </Dialog>
+                              <Select
+                                value={update.status}
+                                onValueChange={(value: Update['status']) => updateUpdateStatus(update.id, value)}
+                              >
+                                <SelectTrigger className="w-28 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="draft">Draft</SelectItem>
+                                  <SelectItem value="published">Published</SelectItem>
+                                  <SelectItem value="archived">Archived</SelectItem>
+                                  <SelectItem value="obsolete">Obsolete</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -778,6 +835,22 @@ export default function Admin() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Similar Updates Modal */}
+        <SimilarUpdatesModal
+          open={showSimilarModal}
+          onOpenChange={setShowSimilarModal}
+          title={newUpdate.title}
+          summary={newUpdate.summary}
+          body={newUpdate.body}
+          onEditExisting={(updateId) => {
+            const update = updates.find(u => u.id === updateId);
+            if (update) {
+              setEditingUpdate(update);
+              setIsCreateDialogOpen(false);
+            }
+          }}
+        />
       </div>
     </Layout>
   );
