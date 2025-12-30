@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
@@ -22,16 +22,25 @@ import {
   Download,
   Eye,
   RefreshCw,
-  Loader2
+  Loader2,
+  Shield,
+  Trash2,
+  UserPlus
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update } from '@/types';
+import { fetchAdmins, addAdmin, removeAdmin, AdminRole } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function Admin() {
-  const { isAdmin, agents, refreshAgents } = useAuth();
+  const { isAdmin, agents, refreshAgents, user } = useAuth();
   const { updates, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [admins, setAdmins] = useState<AdminRole[]>([]);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+  const [removingAdminEmail, setRemovingAdminEmail] = useState<string | null>(null);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -43,6 +52,57 @@ export default function Admin() {
   });
 
   const activeAgents = agents.filter(a => a.active);
+
+  // Load admins on mount
+  useEffect(() => {
+    loadAdmins();
+  }, []);
+
+  const loadAdmins = async () => {
+    const { data } = await fetchAdmins();
+    if (data) {
+      setAdmins(data);
+    }
+  };
+
+  const handleAddAdmin = async () => {
+    if (!newAdminEmail.trim()) return;
+    
+    setIsAddingAdmin(true);
+    const { data, error } = await addAdmin(newAdminEmail.trim());
+    setIsAddingAdmin(false);
+
+    if (error) {
+      toast.error('Failed to add admin', { description: error });
+      return;
+    }
+
+    if (data) {
+      setAdmins(prev => [...prev, data]);
+      setNewAdminEmail('');
+      toast.success('Admin added successfully');
+    }
+  };
+
+  const handleRemoveAdmin = async (email: string) => {
+    // Prevent removing yourself
+    if (user?.email?.toLowerCase() === email.toLowerCase()) {
+      toast.error('Cannot remove yourself as admin');
+      return;
+    }
+
+    setRemovingAdminEmail(email);
+    const { error } = await removeAdmin(email);
+    setRemovingAdminEmail(null);
+
+    if (error) {
+      toast.error('Failed to remove admin', { description: error });
+      return;
+    }
+
+    setAdmins(prev => prev.filter(a => a.email.toLowerCase() !== email.toLowerCase()));
+    toast.success('Admin removed successfully');
+  };
 
   if (!isAdmin) {
     return (
@@ -286,6 +346,73 @@ export default function Admin() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Management */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <CardTitle>Admin Management</CardTitle>
+            </div>
+            <CardDescription>Add or remove administrators who can manage updates</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter email address"
+                type="email"
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddAdmin()}
+              />
+              <Button onClick={handleAddAdmin} disabled={isAddingAdmin || !newAdminEmail.trim()}>
+                {isAddingAdmin ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Admin
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="border rounded-lg divide-y">
+              {admins.map((admin) => (
+                <div key={admin.id} className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Shield className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{admin.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Added {format(new Date(admin.created_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleRemoveAdmin(admin.email)}
+                    disabled={removingAdminEmail === admin.email || user?.email?.toLowerCase() === admin.email.toLowerCase()}
+                  >
+                    {removingAdminEmail === admin.email ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ))}
+              {admins.length === 0 && (
+                <div className="p-6 text-center text-muted-foreground">
+                  No admins configured
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Updates Table */}
         <Card>
