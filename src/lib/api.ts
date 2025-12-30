@@ -10,6 +10,122 @@ export interface ApiResponse<T> {
   error: string | null;
 }
 
+export interface AdminRole {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  created_at: string;
+}
+
+// Fetch admin emails from the database
+export async function fetchAdminEmails(): Promise<ApiResponse<string[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('email')
+      .eq('role', 'admin');
+
+    if (error) {
+      console.error('Error fetching admin emails:', error);
+      return { data: null, error: error.message };
+    }
+
+    const emails = data?.map(row => row.email.toLowerCase()) || [];
+    return { data: emails, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch admin emails:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Check if an email is an admin
+export async function checkIsAdmin(email: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('email', email.toLowerCase())
+      .eq('role', 'admin')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking admin status:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (err) {
+    console.error('Failed to check admin status:', err);
+    return false;
+  }
+}
+
+// Add a new admin
+export async function addAdmin(email: string): Promise<ApiResponse<AdminRole>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .insert({ email: email.toLowerCase(), role: 'admin' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding admin:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as AdminRole, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to add admin:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Remove an admin
+export async function removeAdmin(email: string): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { error } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('email', email.toLowerCase());
+
+    if (error) {
+      console.error('Error removing admin:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to remove admin:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Fetch all admins
+export async function fetchAdmins(): Promise<ApiResponse<AdminRole[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('role', 'admin')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching admins:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as AdminRole[], error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch admins:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
 async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
   try {
     const { data, error } = await supabase.functions.invoke('google-sheets-api', {
