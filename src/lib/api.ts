@@ -203,16 +203,45 @@ async function callEdgeFunction<T>(action: string, body?: Record<string, unknown
     }
 
     // Call edge function with JWT token
-    const { data, error } = await supabase.functions.invoke('google-sheets-api', {
+    const { data, error, response } = (await (supabase.functions as any).invoke('google-sheets-api', {
       body: { action, ...body },
       headers: {
-        Authorization: `Bearer ${session.access_token}`
-      }
-    });
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    })) as { data: T | null; error: any; response?: Response };
 
     if (error) {
-      console.error(`API error for ${action}:`, error);
-      return { data: null, error: error.message };
+      let status: number | undefined;
+      let detail: string | undefined;
+
+      if (response) {
+        status = response.status;
+        try {
+          const cloned = response.clone();
+          const contentType = cloned.headers.get('Content-Type') || '';
+
+          if (contentType.includes('application/json')) {
+            const json = await cloned.json();
+            detail = typeof json?.error === 'string' ? json.error : JSON.stringify(json);
+          } else {
+            detail = await cloned.text();
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+
+      const cleanedDetail = detail?.trim();
+      const truncatedDetail = cleanedDetail && cleanedDetail.length > 300
+        ? `${cleanedDetail.slice(0, 300)}…`
+        : cleanedDetail;
+
+      const message = truncatedDetail
+        ? `${truncatedDetail}${status ? ` (HTTP ${status})` : ''}`
+        : `${error?.message || 'Edge function error'}${status ? ` (HTTP ${status})` : ''}`;
+
+      console.error(`API error for ${action}:`, { message, status, error });
+      return { data: null, error: message };
     }
 
     return { data: data as T, error: null };
