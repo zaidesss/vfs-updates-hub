@@ -2,40 +2,43 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Users, CheckCircle2, XCircle } from 'lucide-react';
-import { Update, Acknowledgement } from '@/types';
-import { AdminRole } from '@/lib/api';
+import { Update, Acknowledgement, Agent } from '@/types';
 
 interface UserAcknowledgementDashboardProps {
-  users: AdminRole[];
+  agents: Agent[];
   updates: Update[];
   acknowledgements: Acknowledgement[];
 }
 
 interface UserAckStats {
   email: string;
+  name: string;
   acknowledged: number;
   total: number;
   percentage: number;
 }
 
-export function UserAcknowledgementDashboard({ users, updates, acknowledgements }: UserAcknowledgementDashboardProps) {
+export function UserAcknowledgementDashboard({ agents, updates, acknowledgements }: UserAcknowledgementDashboardProps) {
   // Only count published updates
   const publishedUpdates = updates.filter(u => u.status === 'published');
   const totalUpdates = publishedUpdates.length;
 
+  const activeAgents = agents.filter(a => a.active);
+
   // Calculate acknowledgement stats for each user
-  const userStats: UserAckStats[] = users.map(user => {
+  const userStats: UserAckStats[] = activeAgents.map(agent => {
     const userAcks = acknowledgements.filter(
-      ack => ack.agent_email.toLowerCase() === user.email.toLowerCase()
+      ack => ack.agent_email.toLowerCase() === agent.email.toLowerCase()
     );
-    
+
     // Count how many published updates this user has acknowledged
     const acknowledged = publishedUpdates.filter(update =>
       userAcks.some(ack => ack.update_id === update.id)
     ).length;
 
     return {
-      email: user.email,
+      email: agent.email,
+      name: agent.name,
       acknowledged,
       total: totalUpdates,
       percentage: totalUpdates > 0 ? Math.round((acknowledged / totalUpdates) * 100) : 0,
@@ -50,10 +53,10 @@ export function UserAcknowledgementDashboard({ users, updates, acknowledgements 
       <CardHeader>
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-primary" />
-          <CardTitle>User Acknowledgement Dashboard</CardTitle>
+          <CardTitle>Dashboard</CardTitle>
         </div>
         <CardDescription>
-          Track how many updates each user has acknowledged ({totalUpdates} total published updates)
+          Acknowledgements per user ({totalUpdates} published updates)
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -80,16 +83,19 @@ export function UserAcknowledgementDashboard({ users, updates, acknowledgements 
                     </div>
                   )}
                 </div>
+
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{stat.email}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <p className="text-sm font-medium truncate">{stat.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{stat.email}</p>
+                  <div className="flex items-center gap-2 mt-2">
                     <Progress value={stat.percentage} className="flex-1 h-2" />
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {stat.acknowledged}/{stat.total}
                     </span>
                   </div>
                 </div>
-                <Badge 
+
+                <Badge
                   variant={stat.percentage === 100 ? 'default' : stat.percentage >= 50 ? 'secondary' : 'outline'}
                   className="flex-shrink-0"
                 >
@@ -103,3 +109,4 @@ export function UserAcknowledgementDashboard({ users, updates, acknowledgements 
     </Card>
   );
 }
+
