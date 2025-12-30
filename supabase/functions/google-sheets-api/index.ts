@@ -64,6 +64,8 @@ const ALLOWED_URL_DOMAINS = [
   'customerserviceadvocates.zendesk.com',
   'docs.google.com',
   'forms.gle',
+  'lovable.app',
+  'vfs-updates-hub.lovable.app',
 ];
 
 function validateUrl(url: string | null | undefined): boolean {
