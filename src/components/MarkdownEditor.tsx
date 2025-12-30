@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { PlaybookPage } from './playbook/PlaybookPage';
+import { PlaybookArticle } from '@/lib/playbookTypes';
 import { Wand2, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -25,6 +27,20 @@ export function MarkdownEditor({
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [isFormatting, setIsFormatting] = useState(false);
   const { toast } = useToast();
+
+  // Parse content as Playbook JSON if possible
+  const playbookData = useMemo<PlaybookArticle | null>(() => {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed.title && parsed.sections && Array.isArray(parsed.sections)) {
+        return parsed as PlaybookArticle;
+      }
+    } catch {
+      // Not JSON, will render as markdown
+    }
+    return null;
+  }, [value]);
 
   const handleAIFormat = async () => {
     if (!value.trim()) {
@@ -58,9 +74,11 @@ export function MarkdownEditor({
 
       if (data.formattedContent) {
         onChange(data.formattedContent);
+        // Auto-switch to Preview mode after formatting
+        setMode('preview');
         toast({
           title: "Content formatted",
-          description: "Your update has been formatted with AI. Review and adjust as needed.",
+          description: "Your article has been rewritten for clarity. Check the preview!",
         });
       }
     } catch (error) {
@@ -134,13 +152,19 @@ export function MarkdownEditor({
 
         <TabsContent value="preview" className="m-0">
           <div 
-            className="p-4 overflow-auto bg-background"
+            className="overflow-auto bg-background"
             style={{ minHeight: minHeight }}
           >
             {value ? (
-              <MarkdownRenderer content={value} showToc={false} />
+              playbookData ? (
+                <PlaybookPage article={playbookData} />
+              ) : (
+                <div className="p-4">
+                  <MarkdownRenderer content={value} showToc={false} />
+                </div>
+              )
             ) : (
-              <p className="text-muted-foreground italic">Nothing to preview yet...</p>
+              <p className="p-4 text-muted-foreground italic">Nothing to preview yet...</p>
             )}
           </div>
         </TabsContent>
