@@ -155,8 +155,20 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUpdateStatus = async (id: string, status: Update['status']) => {
-    // For now, update locally (the API would need to support this)
-    setUpdates(prev => prev.map(u => u.id === id ? { ...u, status } : u));
+    const result = await apiEditUpdate(id, { status });
+    
+    if (result.error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update status. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (result.data?.update) {
+      setUpdates(prev => prev.map(u => u.id === id ? result.data!.update : u));
+    }
     
     toast({
       title: 'Status updated',

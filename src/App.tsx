@@ -11,6 +11,7 @@ import UpdateDetail from "./pages/UpdateDetail";
 import Activity from "./pages/Activity";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
+import Requests from "./pages/Requests";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -77,6 +78,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Admin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/requests"
+        element={
+          <ProtectedRoute>
+            <Requests />
           </ProtectedRoute>
         }
       />
