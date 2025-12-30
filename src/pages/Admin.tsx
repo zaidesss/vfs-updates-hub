@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
+import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -363,12 +364,18 @@ export default function Admin() {
                         Check for Similar Updates
                       </Button>
                     </div>
-                    <Textarea
-                      id="body"
+                    <MarkdownEditor
                       value={newUpdate.body}
-                      onChange={(e) => setNewUpdate(prev => ({ ...prev, body: e.target.value }))}
-                      placeholder="Full content of the update (supports markdown)"
-                      rows={6}
+                      onChange={(value) => setNewUpdate(prev => ({ ...prev, body: value }))}
+                      placeholder="Write your article content here...
+
+Supports **markdown** formatting:
+- # Heading 1
+- ## Heading 2  
+- **bold** and *italic*
+- Lists, tables, code blocks
+- > Blockquotes for messaging templates"
+                      minHeight={300}
                     />
                   </div>
                   <div className="space-y-2">

@@ -6,6 +6,7 @@ import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { fetchChangeHistory, submitQuestion } from '@/lib/api';
 import { UpdateChangeHistory } from '@/types';
 import { Layout } from '@/components/Layout';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
@@ -191,26 +192,7 @@ export default function UpdateDetail() {
           <Separator />
 
           <CardContent className="pt-6">
-            <div className="prose prose-sm max-w-none text-foreground">
-              {update.body.split('\n').map((paragraph, index) => {
-                if (paragraph.startsWith('## ')) {
-                  return <h2 key={index} className="text-lg font-semibold mt-4 mb-2">{paragraph.replace('## ', '')}</h2>;
-                }
-                if (paragraph.startsWith('### ')) {
-                  return <h3 key={index} className="text-base font-semibold mt-3 mb-1">{paragraph.replace('### ', '')}</h3>;
-                }
-                if (paragraph.startsWith('- ')) {
-                  return <li key={index} className="ml-4 text-muted-foreground">{paragraph.replace('- ', '')}</li>;
-                }
-                if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
-                  return <p key={index} className="font-semibold text-foreground">{paragraph.replace(/\*\*/g, '')}</p>;
-                }
-                if (paragraph.trim()) {
-                  return <p key={index} className="text-muted-foreground mb-2">{paragraph}</p>;
-                }
-                return null;
-              })}
-            </div>
+            <MarkdownRenderer content={update.body} showToc={false} />
 
             {update.help_center_url && (
               <div className="mt-6 p-4 bg-accent/50 rounded-lg">
