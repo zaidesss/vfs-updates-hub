@@ -269,7 +269,7 @@ export default function Admin() {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
+                    <Label htmlFor="title">Article Title</Label>
                     <Input
                       id="title"
                       value={newUpdate.title}
@@ -278,13 +278,19 @@ export default function Admin() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="summary">Summary</Label>
-                    <Input
-                      id="summary"
+                    <Label htmlFor="summary">Article Status</Label>
+                    <Select
                       value={newUpdate.summary}
-                      onChange={(e) => setNewUpdate(prev => ({ ...prev, summary: e.target.value }))}
-                      placeholder="Brief description of the update"
-                    />
+                      onValueChange={(value) => setNewUpdate(prev => ({ ...prev, summary: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select article status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Created New Article">Created New Article</SelectItem>
+                        <SelectItem value="Updated Existing Article">Updated Existing Article</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="body">Body</Label>
@@ -328,7 +334,7 @@ export default function Admin() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="deadline_at">Deadline (Required)</Label>
+                      <Label htmlFor="deadline_at">Posted Date</Label>
                       <Input
                         id="deadline_at"
                         type="datetime-local"
@@ -350,6 +356,7 @@ export default function Admin() {
                       <SelectContent>
                         <SelectItem value="draft">Draft</SelectItem>
                         <SelectItem value="published">Published</SelectItem>
+                        <SelectItem value="obsolete">Obsolete</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -670,6 +677,7 @@ export default function Admin() {
                               <SelectItem value="draft">Draft</SelectItem>
                               <SelectItem value="published">Published</SelectItem>
                               <SelectItem value="archived">Archived</SelectItem>
+                              <SelectItem value="obsolete">Obsolete</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

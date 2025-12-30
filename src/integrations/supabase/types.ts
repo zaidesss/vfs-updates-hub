@@ -35,6 +35,102 @@ export type Database = {
         }
         Relationships: []
       }
+      reminder_logs: {
+        Row: {
+          id: string
+          reminder_type: string
+          sent_at: string
+          update_id: string | null
+          user_email: string
+        }
+        Insert: {
+          id?: string
+          reminder_type?: string
+          sent_at?: string
+          update_id?: string | null
+          user_email: string
+        }
+        Update: {
+          id?: string
+          reminder_type?: string
+          sent_at?: string
+          update_id?: string | null
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_logs_update_id_fkey"
+            columns: ["update_id"]
+            isOneToOne: false
+            referencedRelation: "updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      update_change_history: {
+        Row: {
+          changed_at: string
+          changed_by: string
+          changes: Json
+          id: string
+          update_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by: string
+          changes: Json
+          id?: string
+          update_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string
+          changes?: Json
+          id?: string
+          update_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "update_change_history_update_id_fkey"
+            columns: ["update_id"]
+            isOneToOne: false
+            referencedRelation: "updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      update_questions: {
+        Row: {
+          created_at: string
+          id: string
+          question: string
+          update_id: string
+          user_email: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question: string
+          update_id: string
+          user_email: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question?: string
+          update_id?: string
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "update_questions_update_id_fkey"
+            columns: ["update_id"]
+            isOneToOne: false
+            referencedRelation: "updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       updates: {
         Row: {
           body: string
@@ -76,18 +172,21 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          name: string | null
           role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
           created_at?: string
           email: string
           id?: string
+          name?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
         Update: {
           created_at?: string
           email?: string
           id?: string
+          name?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
@@ -105,7 +204,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      update_status: "draft" | "published"
+      update_status: "draft" | "published" | "obsolete"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -234,7 +333,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      update_status: ["draft", "published"],
+      update_status: ["draft", "published", "obsolete"],
     },
   },
 } as const

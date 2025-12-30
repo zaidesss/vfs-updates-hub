@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Calendar, Clock, CheckCircle2, Circle, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, Circle, ExternalLink, AlertTriangle } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -18,24 +18,31 @@ export function UpdateCard({ update }: UpdateCardProps) {
   
   const acknowledged = user ? isAcknowledged(update.id, user.email) : false;
   const isOverdue = update.deadline_at && isPast(new Date(update.deadline_at)) && !acknowledged;
+  const isObsolete = update.status === 'obsolete';
 
   return (
     <Link to={`/updates/${update.id}`}>
       <Card className={cn(
         'group transition-all duration-200 hover:shadow-md cursor-pointer animate-fade-in',
         acknowledged ? 'bg-accent/30' : 'bg-card',
-        isOverdue && 'border-destructive/50'
+        isOverdue && !isObsolete && 'border-destructive/50',
+        isObsolete && 'border-destructive bg-destructive/5 opacity-75'
       )}>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                {acknowledged ? (
+                {isObsolete ? (
+                  <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                ) : acknowledged ? (
                   <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                 ) : (
                   <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
                 )}
-                <h3 className="font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                <h3 className={cn(
+                  "font-semibold line-clamp-1 group-hover:text-primary transition-colors",
+                  isObsolete ? "text-destructive" : "text-foreground"
+                )}>
                   {update.title}
                 </h3>
               </div>
@@ -44,10 +51,16 @@ export function UpdateCard({ update }: UpdateCardProps) {
               </p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
-              <Badge variant={acknowledged ? 'secondary' : 'default'} className="text-xs">
-                {acknowledged ? 'Read' : 'Unread'}
-              </Badge>
-              {isOverdue && (
+              {isObsolete ? (
+                <Badge variant="destructive" className="text-xs">
+                  Obsolete
+                </Badge>
+              ) : (
+                <Badge variant={acknowledged ? 'secondary' : 'default'} className="text-xs">
+                  {acknowledged ? 'Read' : 'Unread'}
+                </Badge>
+              )}
+              {isOverdue && !isObsolete && (
                 <Badge variant="destructive" className="text-xs">
                   Overdue
                 </Badge>
@@ -66,7 +79,7 @@ export function UpdateCard({ update }: UpdateCardProps) {
             {update.deadline_at && (
               <div className={cn(
                 'flex items-center gap-1',
-                isOverdue && 'text-destructive'
+                isOverdue && !isObsolete && 'text-destructive'
               )}>
                 <Clock className="h-3.5 w-3.5" />
                 <span>Due {format(new Date(update.deadline_at), 'MMM d, h:mm a')}</span>

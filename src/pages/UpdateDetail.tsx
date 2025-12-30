@@ -1,12 +1,17 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
+import { fetchChangeHistory, submitQuestion } from '@/lib/api';
+import { UpdateChangeHistory } from '@/types';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -14,9 +19,15 @@ import {
   User, 
   ExternalLink, 
   CheckCircle2,
-  Circle
+  Circle,
+  AlertTriangle,
+  MessageCircleQuestion,
+  History,
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export default function UpdateDetail() {
   const { id } = useParams<{ id: string }>();
@@ -24,9 +35,27 @@ export default function UpdateDetail() {
   const { user } = useAuth();
   const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate } = useUpdates();
 
+  const [question, setQuestion] = useState('');
+  const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false);
+  const [changeHistory, setChangeHistory] = useState<UpdateChangeHistory[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
   const update = getUpdateById(id || '');
   const acknowledged = user ? isAcknowledged(id || '', user.email) : false;
   const acknowledgement = user ? getAcknowledgement(id || '', user.email) : undefined;
+
+  // Load change history
+  useEffect(() => {
+    async function loadHistory() {
+      if (id) {
+        const { data } = await fetchChangeHistory(id);
+        if (data) {
+          setChangeHistory(data);
+        }
+      }
+    }
+    loadHistory();
+  }, [id]);
 
   if (!update) {
     return (
@@ -48,8 +77,40 @@ export default function UpdateDetail() {
     }
   };
 
+  const handleSubmitQuestion = async () => {
+    if (!question.trim() || !user) return;
+
+    setIsSubmittingQuestion(true);
+    const { error } = await submitQuestion(update.id, update.title, user.email, question);
+    setIsSubmittingQuestion(false);
+
+    if (error) {
+      toast.error('Failed to submit question');
+    } else {
+      toast.success('Question submitted! HR will get back to you.');
+      setQuestion('');
+    }
+  };
+
   // Get display name for posted_by
   const postedByName = getKnownNameByEmail(update.posted_by) || update.posted_by;
+
+  // Check if update is obsolete
+  const isObsolete = update.status === 'obsolete';
+
+  // Format field name for display
+  const formatFieldName = (field: string) => {
+    const fieldNames: Record<string, string> = {
+      title: 'Title',
+      summary: 'Summary',
+      body: 'Body',
+      help_center_url: 'Help Center URL',
+      posted_by: 'Posted By',
+      deadline_at: 'Posted Date',
+      status: 'Status',
+    };
+    return fieldNames[field] || field;
+  };
 
   return (
     <Layout>
@@ -63,12 +124,28 @@ export default function UpdateDetail() {
           Back to Updates
         </Button>
 
-        <Card className="shadow-md">
+        {/* Obsolete Warning Banner */}
+        {isObsolete && (
+          <div className="bg-destructive text-destructive-foreground p-4 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6 shrink-0" />
+            <div>
+              <p className="font-bold text-lg">THIS IS AN OBSOLETE UPDATE</p>
+              <p className="text-sm opacity-90">Do not use this information. It has been superseded or is no longer valid.</p>
+            </div>
+          </div>
+        )}
+
+        <Card className={`shadow-md ${isObsolete ? 'border-destructive/50 opacity-75' : ''}`}>
           <CardHeader className="pb-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  {acknowledged ? (
+                  {isObsolete ? (
+                    <Badge variant="destructive">
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      Obsolete
+                    </Badge>
+                  ) : acknowledged ? (
                     <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Acknowledged
@@ -142,6 +219,7 @@ export default function UpdateDetail() {
 
           <Separator />
 
+          {/* Acknowledgement Section */}
           <CardContent className="pt-6">
             {acknowledged && acknowledgement ? (
               <div className="flex items-center gap-3 p-4 bg-success/5 border border-success/20 rounded-lg">
@@ -153,7 +231,7 @@ export default function UpdateDetail() {
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : !isObsolete ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   After reviewing this update and the linked article, click below to confirm you've read and understood the content.
@@ -163,8 +241,94 @@ export default function UpdateDetail() {
                   Acknowledge Update
                 </Button>
               </div>
-            )}
+            ) : null}
           </CardContent>
+
+          <Separator />
+
+          {/* Questions Section */}
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <MessageCircleQuestion className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">Got any questions?</h3>
+              </div>
+              <Textarea
+                placeholder="Type your question here..."
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                rows={3}
+              />
+              <Button 
+                onClick={handleSubmitQuestion}
+                disabled={!question.trim() || isSubmittingQuestion}
+                className="w-full sm:w-auto"
+              >
+                {isSubmittingQuestion ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Question'
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Your question will be sent to HR and they will get back to you.
+              </p>
+            </div>
+          </CardContent>
+
+          {/* Change History Section */}
+          {changeHistory.length > 0 && (
+            <>
+              <Separator />
+              <CardContent className="pt-6">
+                <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                      <div className="flex items-center gap-2">
+                        <History className="h-5 w-5 text-muted-foreground" />
+                        <h3 className="font-semibold text-foreground">Change History ({changeHistory.length})</h3>
+                      </div>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4 space-y-4">
+                    {changeHistory.map((entry) => (
+                      <div key={entry.id} className="border rounded-lg p-4 bg-muted/30">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-medium">
+                            {getKnownNameByEmail(entry.changed_by) || entry.changed_by}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(entry.changed_at), 'MMM d, yyyy at h:mm a')}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {Object.entries(entry.changes).map(([field, change]) => (
+                            <div key={field} className="text-sm">
+                              <span className="font-medium">{formatFieldName(field)}:</span>
+                              <div className="ml-4 text-muted-foreground">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-destructive shrink-0">−</span>
+                                  <span className="line-through opacity-60 break-all">{change.old || '(empty)'}</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <span className="text-success shrink-0">+</span>
+                                  <span className="break-all">{change.new || '(empty)'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
+            </>
+          )}
         </Card>
       </div>
     </Layout>
