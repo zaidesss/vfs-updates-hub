@@ -23,6 +23,36 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+// Rate limiting configuration
+const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
+  'read': { max: 100, windowMs: 60000 },      // 100/min for reads
+  'ack': { max: 50, windowMs: 60000 },        // 50/min for acknowledgements
+  'create_update': { max: 10, windowMs: 60000 } // 10/min for creating updates
+};
+
+// In-memory rate limit store (resets on function cold start)
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(userEmail: string, actionType: string): { allowed: boolean; retryAfter?: number } {
+  const limits = RATE_LIMITS[actionType] || RATE_LIMITS['read'];
+  const key = `${userEmail}:${actionType}`;
+  const now = Date.now();
+  const userLimit = rateLimitStore.get(key);
+  
+  if (!userLimit || now > userLimit.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + limits.windowMs });
+    return { allowed: true };
+  }
+  
+  if (userLimit.count >= limits.max) {
+    const retryAfter = Math.ceil((userLimit.resetAt - now) / 1000);
+    return { allowed: false, retryAfter };
+  }
+  
+  userLimit.count++;
+  return { allowed: true };
+}
+
 // Input validation schemas
 const MAX_TITLE_LENGTH = 200;
 const MAX_SUMMARY_LENGTH = 500;
@@ -104,13 +134,19 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
     if (!apiUrl || !apiKey) {
-      console.error('Missing required environment variables');
-      throw new Error('API configuration missing');
+      console.error('Missing required environment variables: GOOGLE_APPS_SCRIPT_URL or GOOGLE_APPS_SCRIPT_API_KEY');
+      return new Response(JSON.stringify({ error: 'Service configuration error' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error('Missing Supabase environment variables');
-      throw new Error('Supabase configuration missing');
+      return new Response(JSON.stringify({ error: 'Service configuration error' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     // Extract and verify JWT token
@@ -136,7 +172,7 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
     if (userError || !user || !user.email) {
-      console.error('Auth error:', userError);
+      console.error('Auth error:', userError?.message || 'No user or email');
       return new Response(JSON.stringify({ error: 'Unauthorized - invalid or expired token' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -149,6 +185,28 @@ serve(async (req) => {
     const { action, update_id, agent_email, update } = await req.json();
     
     console.log(`Processing action: ${action} for user: ${userEmail}`);
+
+    // Determine action type for rate limiting
+    let actionType = 'read';
+    if (action === 'ack') {
+      actionType = 'ack';
+    } else if (action === 'create_update') {
+      actionType = 'create_update';
+    }
+
+    // Apply rate limiting
+    const rateCheck = checkRateLimit(userEmail, actionType);
+    if (!rateCheck.allowed) {
+      console.warn(`Rate limit exceeded for ${userEmail} on action ${actionType}`);
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+        status: 429,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'Retry-After': String(rateCheck.retryAfter || 60)
+        }
+      });
+    }
 
     if (req.method === 'GET' || action === 'agents' || action === 'updates' || action === 'acknowledgements') {
       // GET request - fetch data (any authenticated user can read)
@@ -165,7 +223,10 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`API error: ${response.status} - ${errorText}`);
-        throw new Error(`API returned ${response.status}`);
+        return new Response(JSON.stringify({ error: 'Failed to fetch data. Please try again.' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
       const data = await response.json();
@@ -205,7 +266,10 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`API error: ${response.status} - ${errorText}`);
-        throw new Error(`API returned ${response.status}`);
+        return new Response(JSON.stringify({ error: 'Failed to acknowledge update. Please try again.' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
       const data = await response.json();
@@ -221,7 +285,7 @@ serve(async (req) => {
         .rpc('is_admin', { _email: userEmail });
 
       if (adminError || !isAdminResult) {
-        console.error(`Admin check failed for ${userEmail}:`, adminError);
+        console.error(`Admin check failed for ${userEmail}:`, adminError?.message || 'Not an admin');
         return new Response(JSON.stringify({ error: 'Forbidden - admin access required' }), {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -255,7 +319,10 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`API error: ${response.status} - ${errorText}`);
-        throw new Error(`API returned ${response.status}`);
+        return new Response(JSON.stringify({ error: 'Failed to create update. Please try again.' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
       const data = await response.json();
@@ -274,9 +341,9 @@ serve(async (req) => {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Error in google-sheets-api function:', errorMessage);
+    // Return generic error to client - do not expose internal details
     return new Response(JSON.stringify({ 
-      error: errorMessage,
-      details: 'Check the edge function logs for more information'
+      error: 'An internal error occurred. Please try again later.'
     }), {
       status: 500,
       headers: { ...getCorsHeaders(req.headers.get('origin')), 'Content-Type': 'application/json' },
