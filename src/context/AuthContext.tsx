@@ -93,8 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Validate agent via edge function (no auth required)
     try {
-      const { data, error } = await supabase.functions.invoke('google-sheets-api', {
-        body: { action: 'validate_agent', email: normalizedEmail }
+      const { data, error } = await supabase.functions.invoke('validate-agent', {
+        body: { email: normalizedEmail }
       });
 
       if (error) {
