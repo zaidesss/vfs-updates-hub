@@ -91,22 +91,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
-    // Validate agent via edge function (no auth required)
+    // Check if email is in the allowlist (user_roles table)
     try {
-      const { data, error } = await supabase.functions.invoke('validate-agent', {
+      const { data, error } = await supabase.functions.invoke('check-allowlist', {
         body: { email: normalizedEmail }
       });
 
       if (error) {
-        console.error('Agent validation error:', error);
+        console.error('Allowlist check error:', error);
         return { success: false, error: 'Unable to verify email. Please try again.' };
       }
 
-      if (!data?.valid) {
-        return { success: false, error: 'Email not recognized. Please contact your administrator.' };
+      if (!data?.allowed) {
+        return { success: false, error: 'Email not recognized. Please contact your administrator to be added.' };
       }
     } catch (err) {
-      console.error('Failed to validate agent:', err);
+      console.error('Failed to check allowlist:', err);
       return { success: false, error: 'Unable to verify email. Please try again.' };
     }
 
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: normalizedEmail,
       options: {
         emailRedirectTo: `${window.location.origin}/updates`,
-        shouldCreateUser: false, // Only allow existing users
+        shouldCreateUser: true, // Auto-create user if in allowlist
       }
     });
     
