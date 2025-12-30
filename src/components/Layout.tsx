@@ -15,9 +15,9 @@ export function Layout({ children }: LayoutProps) {
 
   const navItems = [
     { href: '/updates', label: 'Updates', icon: FileText },
-    { href: '/requests', label: 'Submit a Request', icon: FileQuestion },
-    { href: '/leave-request', label: 'Leave Request', icon: Clock },
-    { href: '/calendar', label: 'Calendar', icon: CalendarDays },
+    { href: '/requests', label: 'Upd Req', icon: FileQuestion },
+    { href: '/leave-request', label: 'Out Req', icon: Clock },
+    { href: '/calendar', label: 'Out Cal', icon: CalendarDays },
     { href: '/activity', label: 'My Activity', icon: User },
     ...(isAdmin ? [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
     ...((isAdmin || isHR) ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
