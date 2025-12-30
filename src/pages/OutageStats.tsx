@@ -51,15 +51,20 @@ export default function OutageStats() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
 
-  // Generate last 12 months for dropdown
+  // Generate months from Jan 2024 to Dec 2026
   const monthOptions = useMemo(() => {
     const months = [];
-    for (let i = 0; i < 12; i++) {
-      const date = subMonths(new Date(), i);
-      months.push({
-        value: format(date, 'yyyy-MM'),
-        label: format(date, 'MMMM yyyy')
-      });
+    const startYear = 2024;
+    const endYear = 2026;
+    
+    for (let year = endYear; year >= startYear; year--) {
+      for (let month = 11; month >= 0; month--) {
+        const date = new Date(year, month);
+        months.push({
+          value: format(date, 'yyyy-MM'),
+          label: format(date, 'MMMM yyyy')
+        });
+      }
     }
     return months;
   }, []);

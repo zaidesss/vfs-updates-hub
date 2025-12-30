@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,17 +8,21 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   createLeaveRequest,
   updateLeaveRequest,
+  adminUpdateLeaveRequest,
   fetchMyLeaveRequests,
   fetchAllLeaveRequests,
   checkConflicts,
   updateLeaveRequestStatus,
   cancelLeaveRequest,
+  uploadAttachment,
   LeaveRequest as LeaveRequestType,
   LeaveRequestInput
 } from '@/lib/leaveRequestApi';
@@ -53,14 +57,27 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 export default function LeaveRequest() {
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [requests, setRequests] = useState<LeaveRequestType[]>([]);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [agentClients, setAgentClients] = useState<string[]>(CLIENT_OPTIONS);
   const [isDirectoryUser, setIsDirectoryUser] = useState(false);
   const [editingRequest, setEditingRequest] = useState<LeaveRequestType | null>(null);
+  const [isAdminEditing, setIsAdminEditing] = useState(false);
+  
+  // Decision dialog state
+  const [decisionDialog, setDecisionDialog] = useState<{
+    open: boolean;
+    requestId: string;
+    decision: 'approved' | 'declined' | 'canceled';
+    agentName: string;
+  } | null>(null);
+  const [decisionRemarks, setDecisionRemarks] = useState('');
+  const [isProcessingDecision, setIsProcessingDecision] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState<LeaveRequestInput>({
@@ -121,6 +138,36 @@ export default function LeaveRequest() {
   const handleInputChange = (field: keyof LeaveRequestInput, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setConflictWarning(null);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.email) return;
+    
+    setIsUploading(true);
+    const result = await uploadAttachment(file, user.email);
+    
+    if (result.data) {
+      setFormData(prev => ({ ...prev, attachment_url: result.data! }));
+      toast({
+        title: 'Success',
+        description: 'File uploaded successfully'
+      });
+    } else if (result.error) {
+      toast({
+        title: 'Upload Error',
+        description: result.error,
+        variant: 'destructive'
+      });
+    }
+    setIsUploading(false);
+  };
+
+  const clearAttachment = () => {
+    setFormData(prev => ({ ...prev, attachment_url: '' }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const validateForm = (): boolean => {
@@ -189,35 +236,39 @@ export default function LeaveRequest() {
     
     let result;
     
-    const isEditOfApproved = editingRequest && editingRequest.status !== 'pending';
-    
     if (editingRequest) {
-      // Update existing request - will reset to pending if was approved
-      result = await updateLeaveRequest(editingRequest.id, formData, user.email, isEditOfApproved);
-      
-      // If editing approved request, send notification as updated request
-      if (result.data && isEditOfApproved) {
-        try {
-          await supabase.functions.invoke('send-leave-request-notification', {
-            body: {
-              agentName: formData.agent_name,
-              agentEmail: user.email,
-              clientName: formData.client_name,
-              teamLeadName: formData.team_lead_name,
-              role: formData.role,
-              startDate: formData.start_date,
-              endDate: formData.end_date,
-              startTime: formData.start_time,
-              endTime: formData.end_time,
-              outageReason: formData.outage_reason,
-              attachmentUrl: formData.attachment_url,
-              totalDays: result.data.total_days,
-              outageDurationHours: result.data.outage_duration_hours,
-              isUpdated: true
-            }
-          });
-        } catch (notifyErr) {
-          console.error('Failed to send notification:', notifyErr);
+      if (isAdminEditing) {
+        // Admin editing any request
+        result = await adminUpdateLeaveRequest(editingRequest.id, formData);
+      } else {
+        // Agent editing their own request - always reset to pending
+        const isEditOfNonPending = editingRequest.status !== 'pending';
+        result = await updateLeaveRequest(editingRequest.id, formData, user.email, isEditOfNonPending);
+        
+        // If editing non-pending request, send notification as updated request
+        if (result.data && isEditOfNonPending) {
+          try {
+            await supabase.functions.invoke('send-leave-request-notification', {
+              body: {
+                agentName: formData.agent_name,
+                agentEmail: user.email,
+                clientName: formData.client_name,
+                teamLeadName: formData.team_lead_name,
+                role: formData.role,
+                startDate: formData.start_date,
+                endDate: formData.end_date,
+                startTime: formData.start_time,
+                endTime: formData.end_time,
+                outageReason: formData.outage_reason,
+                attachmentUrl: formData.attachment_url,
+                totalDays: result.data.total_days,
+                outageDurationHours: result.data.outage_duration_hours,
+                isUpdated: true
+              }
+            });
+          } catch (notifyErr) {
+            console.error('Failed to send notification:', notifyErr);
+          }
         }
       }
     } else {
@@ -262,6 +313,7 @@ export default function LeaveRequest() {
         description: editingRequest ? 'Leave request updated successfully' : 'Leave request submitted successfully'
       });
       setEditingRequest(null);
+      setIsAdminEditing(false);
       // Reset form - preserve directory data
       const agentInfo = getAgentInfoByEmail(user.email);
       if (agentInfo) {
@@ -298,8 +350,9 @@ export default function LeaveRequest() {
     setIsSubmitting(false);
   };
   
-  const handleEdit = (req: LeaveRequestType) => {
+  const handleEdit = (req: LeaveRequestType, adminEdit: boolean = false) => {
     setEditingRequest(req);
+    setIsAdminEditing(adminEdit);
     setFormData({
       agent_name: req.agent_name,
       client_name: req.client_name,
@@ -319,6 +372,7 @@ export default function LeaveRequest() {
   
   const handleCancelEdit = () => {
     setEditingRequest(null);
+    setIsAdminEditing(false);
     setConflictWarning(null);
     // Reset form
     const agentInfo = user?.email ? getAgentInfoByEmail(user.email) : null;
@@ -351,10 +405,21 @@ export default function LeaveRequest() {
     }
   };
 
-  const handleStatusChange = async (id: string, status: 'approved' | 'declined' | 'canceled') => {
-    if (!user?.email) return;
+  const openDecisionDialog = (requestId: string, decision: 'approved' | 'declined' | 'canceled', agentName: string) => {
+    setDecisionDialog({ open: true, requestId, decision, agentName });
+    setDecisionRemarks('');
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!decisionDialog || !user?.email) return;
     
-    const result = await updateLeaveRequestStatus(id, status, user.email);
+    setIsProcessingDecision(true);
+    const result = await updateLeaveRequestStatus(
+      decisionDialog.requestId, 
+      decisionDialog.decision, 
+      user.email,
+      decisionRemarks || undefined
+    );
     
     if (result.error) {
       toast({
@@ -365,10 +430,14 @@ export default function LeaveRequest() {
     } else {
       toast({
         title: 'Success',
-        description: `Request ${status}`
+        description: `Request ${decisionDialog.decision}`
       });
       loadRequests();
     }
+    
+    setIsProcessingDecision(false);
+    setDecisionDialog(null);
+    setDecisionRemarks('');
   };
 
   const handleCancel = async (id: string) => {
@@ -402,8 +471,18 @@ export default function LeaveRequest() {
         {/* Submit Form */}
         <Card>
           <CardHeader>
-            <CardTitle>{editingRequest ? 'Edit Request' : 'Submit New Request'}</CardTitle>
-            <CardDescription>Fill in all required fields to submit a leave request</CardDescription>
+            <CardTitle>
+              {editingRequest 
+                ? (isAdminEditing ? 'Edit Request (Admin)' : 'Edit Request') 
+                : 'Submit New Request'
+              }
+            </CardTitle>
+            <CardDescription>
+              {editingRequest && !isAdminEditing && editingRequest.status !== 'pending'
+                ? 'Editing will reset this request to pending status'
+                : 'Fill in all required fields to submit a leave request'
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -449,8 +528,8 @@ export default function LeaveRequest() {
                     value={formData.team_lead_name}
                     onChange={(e) => handleInputChange('team_lead_name', e.target.value)}
                     placeholder="Team lead name"
-                    disabled={isDirectoryUser}
-                    className={isDirectoryUser ? 'bg-muted' : ''}
+                    disabled={isDirectoryUser && !isAdminEditing}
+                    className={isDirectoryUser && !isAdminEditing ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -461,8 +540,8 @@ export default function LeaveRequest() {
                     value={formData.role}
                     onChange={(e) => handleInputChange('role', e.target.value)}
                     placeholder="Your role"
-                    disabled={isDirectoryUser}
-                    className={isDirectoryUser ? 'bg-muted' : ''}
+                    disabled={isDirectoryUser && !isAdminEditing}
+                    className={isDirectoryUser && !isAdminEditing ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -524,18 +603,64 @@ export default function LeaveRequest() {
                 </div>
                 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="attachment_url">Attachment URL (optional)</Label>
-                  <Input
-                    id="attachment_url"
-                    value={formData.attachment_url}
-                    onChange={(e) => handleInputChange('attachment_url', e.target.value)}
-                    placeholder="Google Drive link or other attachment URL"
-                  />
+                  <Label>Attachment (optional)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileUpload}
+                      disabled={isUploading}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    {!formData.attachment_url ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="w-full justify-start"
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Choose File
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-2 p-2 border rounded-lg w-full">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <a 
+                          href={formData.attachment_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline truncate flex-1"
+                        >
+                          View Attachment
+                        </a>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={clearAttachment}
+                          className="h-6 w-6"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               
               <div className="flex gap-2">
-                <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
+                <Button type="submit" disabled={isSubmitting || isUploading} className="w-full md:w-auto">
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -581,6 +706,7 @@ export default function LeaveRequest() {
                       <TableHead>Times</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
+                      {isAdmin && <TableHead>Remarks</TableHead>}
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -615,7 +741,22 @@ export default function LeaveRequest() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{req.outage_reason}</TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <span>{req.outage_reason}</span>
+                            {req.attachment_url && (
+                              <a 
+                                href={req.attachment_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                              >
+                                <FileText className="h-3 w-3" />
+                                Attachment
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={STATUS_COLORS[req.status]}>
                             <span className="flex items-center gap-1">
@@ -624,15 +765,22 @@ export default function LeaveRequest() {
                             </span>
                           </Badge>
                         </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <p className="text-xs text-muted-foreground max-w-[150px] truncate" title={req.remarks || ''}>
+                              {req.remarks || '-'}
+                            </p>
+                          </TableCell>
+                        )}
                         <TableCell>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             {isAdmin && req.status === 'pending' && (
                               <>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="text-success hover:text-success"
-                                  onClick={() => handleStatusChange(req.id, 'approved')}
+                                  onClick={() => openDecisionDialog(req.id, 'approved', req.agent_name)}
                                 >
                                   Approve
                                 </Button>
@@ -640,7 +788,7 @@ export default function LeaveRequest() {
                                   size="sm"
                                   variant="outline"
                                   className="text-destructive hover:text-destructive"
-                                  onClick={() => handleStatusChange(req.id, 'declined')}
+                                  onClick={() => openDecisionDialog(req.id, 'declined', req.agent_name)}
                                 >
                                   Decline
                                 </Button>
@@ -648,23 +796,33 @@ export default function LeaveRequest() {
                                   size="sm"
                                   variant="outline"
                                   className="text-muted-foreground hover:text-muted-foreground"
-                                  onClick={() => handleStatusChange(req.id, 'canceled')}
+                                  onClick={() => openDecisionDialog(req.id, 'canceled', req.agent_name)}
                                 >
                                   Cancel
                                 </Button>
                               </>
+                            )}
+                            {isAdmin && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEdit(req, true)}
+                              >
+                                <Pencil className="h-3 w-3 mr-1" />
+                                Edit
+                              </Button>
                             )}
                             {!isAdmin && req.agent_email === user?.email?.toLowerCase() && (
                               <>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleEdit(req)}
+                                  onClick={() => handleEdit(req, false)}
                                 >
                                   <Pencil className="h-3 w-3 mr-1" />
                                   Edit
                                 </Button>
-                                {req.status === 'pending' && (
+                                {(req.status === 'pending' || req.status === 'approved') && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -687,6 +845,58 @@ export default function LeaveRequest() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Decision Dialog */}
+      <Dialog open={decisionDialog?.open || false} onOpenChange={(open) => !open && setDecisionDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {decisionDialog?.decision === 'approved' && 'Approve Request'}
+              {decisionDialog?.decision === 'declined' && 'Decline Request'}
+              {decisionDialog?.decision === 'canceled' && 'Cancel Request'}
+            </DialogTitle>
+            <DialogDescription>
+              {decisionDialog?.decision === 'approved' && `Approve the leave request for ${decisionDialog?.agentName}?`}
+              {decisionDialog?.decision === 'declined' && `Decline the leave request for ${decisionDialog?.agentName}?`}
+              {decisionDialog?.decision === 'canceled' && `Cancel the leave request for ${decisionDialog?.agentName}?`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="remarks">Remarks (optional)</Label>
+              <Textarea
+                id="remarks"
+                value={decisionRemarks}
+                onChange={(e) => setDecisionRemarks(e.target.value)}
+                placeholder="Add any notes or reason for this decision..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDecisionDialog(null)} disabled={isProcessingDecision}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmDecision} 
+              disabled={isProcessingDecision}
+              className={
+                decisionDialog?.decision === 'approved' ? 'bg-success hover:bg-success/90' :
+                decisionDialog?.decision === 'declined' ? 'bg-destructive hover:bg-destructive/90' : ''
+              }
+            >
+              {isProcessingDecision ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                `Confirm ${decisionDialog?.decision?.charAt(0).toUpperCase()}${decisionDialog?.decision?.slice(1)}`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
