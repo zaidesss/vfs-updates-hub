@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Update, Acknowledgement } from '@/types';
-import { fetchUpdates, fetchAcknowledgements, acknowledgeUpdate as apiAcknowledgeUpdate, createUpdate as apiCreateUpdate } from '@/lib/api';
+import { fetchUpdates, fetchAcknowledgements, acknowledgeUpdate as apiAcknowledgeUpdate, createUpdate as apiCreateUpdate, editUpdate as apiEditUpdate } from '@/lib/api';
 import { mockUpdates, mockAcknowledgements } from '@/lib/mockData';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,6 +15,7 @@ interface UpdatesContextType {
   getAcknowledgementCount: (updateId: string) => number;
   getAcknowledgementsForUpdate: (updateId: string) => Acknowledgement[];
   createUpdate: (update: Omit<Update, 'id' | 'posted_at'>) => Promise<void>;
+  editUpdate: (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => Promise<void>;
   updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
   refreshData: () => Promise<void>;
 }
@@ -130,6 +131,29 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const editUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
+    const result = await apiEditUpdate(updateId, update);
+    
+    if (result.error) {
+      console.error('Edit update error:', result.error);
+      toast({
+        title: 'Error',
+        description: result.error || 'Failed to edit update. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (result.data?.update) {
+      setUpdates(prev => prev.map(u => u.id === updateId ? result.data!.update : u));
+    }
+    
+    toast({
+      title: 'Update edited',
+      description: 'The update has been saved and notifications sent.',
+    });
+  };
+
   const updateUpdateStatus = async (id: string, status: Update['status']) => {
     // For now, update locally (the API would need to support this)
     setUpdates(prev => prev.map(u => u.id === id ? { ...u, status } : u));
@@ -152,6 +176,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       getAcknowledgementCount,
       getAcknowledgementsForUpdate,
       createUpdate,
+      editUpdate,
       updateUpdateStatus,
       refreshData,
     }}>

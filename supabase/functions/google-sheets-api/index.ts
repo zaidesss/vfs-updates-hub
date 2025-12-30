@@ -376,6 +376,66 @@ serve(async (req) => {
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    } else if (action === 'edit_update') {
+      // POST request - edit existing update (admin only)
+      // Check admin permission using the RPC function
+      const { data: isAdminResult, error: adminError } = await supabaseClient
+        .rpc('is_admin', { _email: userEmail });
+
+      if (adminError || !isAdminResult) {
+        console.error(`Admin check failed for ${userEmail}:`, adminError?.message || 'Not an admin');
+        return new Response(JSON.stringify({ error: 'Forbidden - admin access required' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const updateId = body.update_id;
+      if (!updateId) {
+        return new Response(JSON.stringify({ error: 'Update ID is required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Validate update input (partial validation for edits)
+      if (update?.title && (typeof update.title !== 'string' || update.title.length > MAX_TITLE_LENGTH)) {
+        return new Response(JSON.stringify({ error: `Title must be less than ${MAX_TITLE_LENGTH} characters` }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log(`Admin ${userEmail} editing update ${updateId}: ${update?.title || '(no title change)'}`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-KEY': apiKey,
+        },
+        body: JSON.stringify({
+          action: 'edit_update',
+          update_id: updateId,
+          ...update,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`API error: ${response.status} - ${errorText}`);
+        return new Response(JSON.stringify({ error: 'Failed to edit update. Please try again.' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const data = await response.json();
+      console.log('Edit update response:', data);
+
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), {

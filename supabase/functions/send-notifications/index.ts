@@ -20,9 +20,10 @@ serve(async (req) => {
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
 
-    const { updateTitle } = await req.json();
+    const { updateTitle, isEdit } = await req.json();
 
-    console.log(`Sending notifications for update: ${updateTitle}`);
+    const notificationType = isEdit ? 'Updated' : 'New';
+    console.log(`Sending notifications for ${notificationType.toLowerCase()} update: ${updateTitle}`);
 
     // Get all users (admins and regular users) from user_roles
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -47,11 +48,12 @@ serve(async (req) => {
     // Send Slack notification
     if (slackWebhookUrl) {
       try {
+        const emoji = isEdit ? '✏️' : '📢';
         const slackResponse = await fetch(slackWebhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: `📢 *New Update: ${updateTitle}*\n\nThere's a new update. Go to ${APP_URL} to acknowledge the update.`,
+            text: `${emoji} *${notificationType} Update: ${updateTitle}*\n\nThere's ${isEdit ? 'an updated' : 'a new'} update. Go to ${APP_URL} to ${isEdit ? 'review the changes and' : ''} acknowledge the update.`,
           }),
         });
 
@@ -74,16 +76,19 @@ serve(async (req) => {
         const resend = new Resend(resendApiKey);
         
         // Send to all users (Resend supports up to 50 recipients per call)
+        const emoji = isEdit ? '✏️' : '📢';
         const emailResponse = await resend.emails.send({
           from: 'VFS Updates Hub <onboarding@resend.dev>',
           to: emails,
-          subject: `New Update: ${updateTitle}`,
+          subject: `${notificationType} Update: ${updateTitle}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h1 style="color: #333;">📢 New Update Available</h1>
+              <h1 style="color: #333;">${emoji} ${notificationType} Update Available</h1>
               <h2 style="color: #555;">${updateTitle}</h2>
               <p style="color: #666; font-size: 16px;">
-                There's a new update. Please review and acknowledge it.
+                ${isEdit 
+                  ? 'An existing update has been modified. Please review the changes and acknowledge it.' 
+                  : 'There\'s a new update. Please review and acknowledge it.'}
               </p>
               <a href="${APP_URL}" 
                  style="display: inline-block; background-color: #14b8a6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
