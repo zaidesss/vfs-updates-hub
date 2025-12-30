@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuthUser, Agent } from '@/types';
-import { fetchAgents } from '@/lib/api';
-import { mockAgents, adminEmails } from '@/lib/mockData';
+import { fetchAgents, checkIsAdmin, fetchAdminEmails } from '@/lib/api';
+import { mockAgents, adminEmails as fallbackAdminEmails } from '@/lib/mockData';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -19,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [adminEmails, setAdminEmails] = useState<string[]>(fallbackAdminEmails);
 
   const loadAgents = async () => {
     const result = await fetchAgents();
@@ -30,15 +31,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loadAdminEmails = async () => {
+    const result = await fetchAdminEmails();
+    if (result.data) {
+      setAdminEmails(result.data);
+    }
+    // Keep fallback if fetch fails
+  };
+
   useEffect(() => {
     const init = async () => {
-      await loadAgents();
+      await Promise.all([loadAgents(), loadAdminEmails()]);
 
       // Check for stored session
       const storedUser = localStorage.getItem('vfs_user');
       if (storedUser) {
         try {
-          setUser(JSON.parse(storedUser));
+          const parsedUser = JSON.parse(storedUser) as AuthUser;
+          // Re-verify admin status from database
+          const isAdminUser = await checkIsAdmin(parsedUser.email);
+          parsedUser.role = isAdminUser ? 'admin' : 'agent';
+          setUser(parsedUser);
+          localStorage.setItem('vfs_user', JSON.stringify(parsedUser));
         } catch (e) {
           localStorage.removeItem('vfs_user');
         }
@@ -50,14 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshAgents = async () => {
-    await loadAgents();
+    await Promise.all([loadAgents(), loadAdminEmails()]);
   };
 
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
-    // Refresh agents list before login
-    await loadAgents();
+    // Refresh agents and admin lists before login
+    await Promise.all([loadAgents(), loadAdminEmails()]);
     
     // Find agent by email
     const agent = agents.find(a => a.email.toLowerCase() === normalizedEmail && a.active);
@@ -66,12 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Email not recognized. Please contact your administrator.' };
     }
 
-    const isAdmin = adminEmails.includes(normalizedEmail);
+    // Check admin status from database
+    const isAdminUser = await checkIsAdmin(normalizedEmail);
     
     const authUser: AuthUser = {
       email: agent.email,
       name: agent.name,
-      role: isAdmin ? 'admin' : 'agent',
+      role: isAdminUser ? 'admin' : 'agent',
     };
 
     setUser(authUser);
