@@ -14,12 +14,12 @@ export function Layout({ children }: LayoutProps) {
   const location = useLocation();
 
   const navItems = [
+    { href: '/profile', label: 'Bio', icon: User },
     { href: '/updates', label: 'Upd', icon: FileText },
     { href: '/requests', label: 'Upd Req', icon: FileQuestion },
     { href: '/leave-request', label: 'Out Req', icon: Clock },
     { href: '/calendar', label: 'Out Cal', icon: CalendarDays },
     ...(!isAdmin ? [{ href: '/outage-report', label: 'Out Rep', icon: User }] : []),
-    { href: '/profile', label: 'Profile', icon: User },
     { href: '/activity', label: 'My Activity', icon: User },
     ...(isAdmin ? [{ href: '/outage-stats', label: 'Out Stats', icon: BarChart3 }] : []),
     ...(isAdmin ? [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
