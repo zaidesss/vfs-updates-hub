@@ -13,6 +13,8 @@ import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
 import Requests from "./pages/Requests";
 import LeaveRequest from "./pages/LeaveRequest";
+import OutageReport from "./pages/OutageReport";
+import OutageStats from "./pages/OutageStats";
 import Calendar from "./pages/Calendar";
 import NotFound from "./pages/NotFound";
 
@@ -104,6 +106,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Calendar />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/outage-report"
+        element={
+          <ProtectedRoute>
+            <OutageReport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/outage-stats"
+        element={
+          <ProtectedRoute>
+            <OutageStats />
           </ProtectedRoute>
         }
       />

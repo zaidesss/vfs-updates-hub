@@ -26,14 +26,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS } from '@/lib/agentDirectory';
 
 const OUTAGE_REASONS = [
-  'Sick Leave',
-  'Vacation Leave',
-  'Emergency Leave',
-  'Personal Leave',
-  'Bereavement Leave',
-  'Medical Appointment',
-  'Family Emergency',
-  'Other'
+  'Power Outage',
+  'Wi-Fi Issue',
+  'Medical Leave',
+  'Planned Leave',
+  'Equipment Issue',
+  'Late Login',
+  'Undertime',
+  'Unplanned'
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -189,9 +189,37 @@ export default function LeaveRequest() {
     
     let result;
     
+    const isEditOfApproved = editingRequest && editingRequest.status !== 'pending';
+    
     if (editingRequest) {
-      // Update existing request
-      result = await updateLeaveRequest(editingRequest.id, formData, user.email);
+      // Update existing request - will reset to pending if was approved
+      result = await updateLeaveRequest(editingRequest.id, formData, user.email, isEditOfApproved);
+      
+      // If editing approved request, send notification as updated request
+      if (result.data && isEditOfApproved) {
+        try {
+          await supabase.functions.invoke('send-leave-request-notification', {
+            body: {
+              agentName: formData.agent_name,
+              agentEmail: user.email,
+              clientName: formData.client_name,
+              teamLeadName: formData.team_lead_name,
+              role: formData.role,
+              startDate: formData.start_date,
+              endDate: formData.end_date,
+              startTime: formData.start_time,
+              endTime: formData.end_time,
+              outageReason: formData.outage_reason,
+              attachmentUrl: formData.attachment_url,
+              totalDays: result.data.total_days,
+              outageDurationHours: result.data.outage_duration_hours,
+              isUpdated: true
+            }
+          });
+        } catch (notifyErr) {
+          console.error('Failed to send notification:', notifyErr);
+        }
+      }
     } else {
       // Create new request and send notification
       result = await createLeaveRequest(formData, user.email);
@@ -626,7 +654,7 @@ export default function LeaveRequest() {
                                 </Button>
                               </>
                             )}
-                            {!isAdmin && req.status === 'pending' && req.agent_email === user?.email?.toLowerCase() && (
+                            {!isAdmin && req.agent_email === user?.email?.toLowerCase() && (
                               <>
                                 <Button
                                   size="sm"
@@ -636,14 +664,16 @@ export default function LeaveRequest() {
                                   <Pencil className="h-3 w-3 mr-1" />
                                   Edit
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => handleCancel(req.id)}
-                                >
-                                  Cancel
-                                </Button>
+                                {req.status === 'pending' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => handleCancel(req.id)}
+                                  >
+                                    Cancel
+                                  </Button>
+                                )}
                               </>
                             )}
                           </div>

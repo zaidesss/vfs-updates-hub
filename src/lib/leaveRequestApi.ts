@@ -191,31 +191,46 @@ export async function createLeaveRequest(
 export async function updateLeaveRequest(
   id: string,
   input: LeaveRequestInput,
-  agentEmail: string
+  agentEmail: string,
+  resetToPending: boolean = false
 ): Promise<ApiResponse<LeaveRequest>> {
   try {
     const durations = calculateDurations(input.start_date, input.end_date, input.start_time, input.end_time);
     
-    const { data, error } = await supabase
+    const updateData: Record<string, unknown> = {
+      agent_name: input.agent_name,
+      client_name: input.client_name,
+      team_lead_name: input.team_lead_name,
+      role: input.role,
+      start_date: input.start_date,
+      end_date: input.end_date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      outage_reason: input.outage_reason,
+      attachment_url: input.attachment_url || null,
+      ...durations
+    };
+
+    // If resetting to pending (editing an approved request), clear review info
+    if (resetToPending) {
+      updateData.status = 'pending';
+      updateData.reviewed_by = null;
+      updateData.reviewed_at = null;
+      updateData.remarks = null;
+    }
+
+    let query = supabase
       .from('leave_requests')
-      .update({
-        agent_name: input.agent_name,
-        client_name: input.client_name,
-        team_lead_name: input.team_lead_name,
-        role: input.role,
-        start_date: input.start_date,
-        end_date: input.end_date,
-        start_time: input.start_time,
-        end_time: input.end_time,
-        outage_reason: input.outage_reason,
-        attachment_url: input.attachment_url || null,
-        ...durations
-      })
+      .update(updateData)
       .eq('id', id)
-      .eq('agent_email', agentEmail.toLowerCase())
-      .eq('status', 'pending')
-      .select()
-      .single();
+      .eq('agent_email', agentEmail.toLowerCase());
+    
+    // Only restrict to pending status if not resetting
+    if (!resetToPending) {
+      query = query.eq('status', 'pending');
+    }
+    
+    const { data, error } = await query.select().single();
     
     if (error) {
       console.error('Error updating leave request:', error);
@@ -315,6 +330,34 @@ export async function updateLeaveRequestStatus(
     if (error) {
       console.error('Error updating leave request:', error);
       return { data: null, error: error.message };
+    }
+
+    // Send decision notification
+    if (data) {
+      try {
+        await supabase.functions.invoke('send-leave-decision-notification', {
+          body: {
+            requestId: data.id,
+            agentName: data.agent_name,
+            agentEmail: data.agent_email,
+            clientName: data.client_name,
+            teamLeadName: data.team_lead_name,
+            role: data.role,
+            startDate: data.start_date,
+            endDate: data.end_date,
+            startTime: data.start_time,
+            endTime: data.end_time,
+            outageReason: data.outage_reason,
+            totalDays: data.total_days,
+            outageDurationHours: data.outage_duration_hours,
+            decision: status,
+            reviewedBy: reviewedBy,
+            remarks: remarks
+          }
+        });
+      } catch (notifyErr) {
+        console.error('Failed to send decision notification:', notifyErr);
+      }
     }
     
     return { data: data as LeaveRequest, error: null };
