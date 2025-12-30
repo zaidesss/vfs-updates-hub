@@ -11,11 +11,26 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORIES, getCategoryLabel } from '@/lib/categories';
 import { PRE_APPROVERS, FINAL_APPROVER, isPreApprover, isFinalApprover } from '@/lib/approvers';
-import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview } from '@/lib/requestApi';
+import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates } from '@/lib/requestApi';
 import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
-import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown } from 'lucide-react';
+import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+
+interface SimilarUpdate {
+  id: string;
+  title: string;
+  similarity: 'high' | 'medium' | 'low';
+  reason: string;
+  update: {
+    id: string;
+    title: string;
+    summary: string;
+    category: string | null;
+    status: string;
+    posted_at: string;
+  } | null;
+}
 
 export default function Requests() {
   const { user } = useAuth();
@@ -26,6 +41,9 @@ export default function Requests() {
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [finalNotes, setFinalNotes] = useState<Record<string, string>>({});
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
+  const [showSimilarResults, setShowSimilarResults] = useState(false);
+  const [similarUpdates, setSimilarUpdates] = useState<SimilarUpdate[]>([]);
   
   const [newRequest, setNewRequest] = useState({
     category: '',
@@ -51,7 +69,31 @@ export default function Requests() {
     setIsLoading(false);
   };
 
-  const handleSubmit = async () => {
+  const handleCheckSimilar = async () => {
+    if (!newRequest.description.trim()) {
+      toast({ title: 'Error', description: 'Please enter a description first', variant: 'destructive' });
+      return;
+    }
+
+    setIsCheckingSimilar(true);
+    const result = await findSimilarUpdates({ body: newRequest.description });
+    setIsCheckingSimilar(false);
+
+    if (result.error) {
+      toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      return;
+    }
+
+    if (result.data && result.data.length > 0) {
+      setSimilarUpdates(result.data);
+      setShowSimilarResults(true);
+    } else {
+      // No similar updates found, proceed to submit
+      await submitRequest();
+    }
+  };
+
+  const submitRequest = async () => {
     if (!user?.email || !newRequest.description.trim()) {
       toast({ title: 'Error', description: 'Please fill in all required fields', variant: 'destructive' });
       return;
@@ -72,10 +114,25 @@ export default function Requests() {
     } else {
       toast({ title: 'Request submitted', description: 'Pre-approvers have been notified.' });
       setShowNewRequest(false);
+      setShowSimilarResults(false);
+      setSimilarUpdates([]);
       setNewRequest({ category: '', request_type: 'new_article', sample_ticket: '', description: '', priority: 'normal' });
       loadRequests();
     }
     setIsSubmitting(false);
+  };
+
+  const getSimilarityBadge = (similarity: string) => {
+    switch (similarity) {
+      case 'high':
+        return <Badge variant="destructive">High Match</Badge>;
+      case 'medium':
+        return <Badge className="bg-orange-500">Medium Match</Badge>;
+      case 'low':
+        return <Badge variant="secondary">Low Match</Badge>;
+      default:
+        return <Badge>{similarity}</Badge>;
+    }
   };
 
   const handlePreApprove = async (requestId: string) => {
@@ -179,11 +236,73 @@ export default function Requests() {
                   <label className="text-sm font-medium">Description *</label>
                   <Textarea placeholder="Describe what article or update you need..." value={newRequest.description} onChange={e => setNewRequest(p => ({ ...p, description: e.target.value }))} rows={4} />
                 </div>
-                <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full">
-                  {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Submit Request
+                <Button onClick={handleCheckSimilar} disabled={isSubmitting || isCheckingSimilar} className="w-full">
+                  {(isSubmitting || isCheckingSimilar) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {isCheckingSimilar ? 'Checking...' : <><Sparkles className="h-4 w-4 mr-2" />Check for Similar Updates</>}
                 </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Similar Updates Results Dialog */}
+          <Dialog open={showSimilarResults} onOpenChange={setShowSimilarResults}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Similar Updates Found
+                </DialogTitle>
+                <DialogDescription>
+                  We found {similarUpdates.length} potentially similar update(s). Review them and decide whether to proceed.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 py-4">
+                {similarUpdates.map((similar) => (
+                  <div
+                    key={similar.id}
+                    className="border rounded-lg p-4 space-y-2 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          {getSimilarityBadge(similar.similarity)}
+                          {similar.update?.status && (
+                            <Badge variant="outline">{similar.update.status}</Badge>
+                          )}
+                        </div>
+                        <h4 className="font-medium">{similar.title}</h4>
+                        {similar.update?.posted_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Posted: {format(new Date(similar.update.posted_at), 'MMM d, yyyy')}
+                          </p>
+                        )}
+                      </div>
+                      {similar.update && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/updates/${similar.update!.id}`, '_blank')}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{similar.reason}</p>
+                  </div>
+                ))}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setShowSimilarResults(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={submitRequest} disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Submit Anyway
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>

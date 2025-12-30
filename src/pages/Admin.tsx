@@ -357,6 +357,7 @@ export default function Admin() {
                         size="sm"
                         onClick={() => setShowSimilarModal(true)}
                         disabled={!newUpdate.title && !newUpdate.summary && !newUpdate.body}
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-300"
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Check for Similar Updates
