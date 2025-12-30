@@ -29,15 +29,78 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = `You are a professional technical writer creating structured knowledge base articles. Convert raw text into a JSON structure following this EXACT schema.
+    const systemPrompt = `You are an expert content writer who transforms complex, technical content into clear, warm, easy-to-understand knowledge base articles. Your goal is to make content accessible to everyone at a Flesch-Kincaid Grade Level 7 (readable by 12-13 year olds).
 
-OUTPUT FORMAT: Return ONLY valid JSON, no markdown, no explanations.
+## YOUR MISSION
+1. FIRST: Analyze the raw content for key information and core meaning
+2. THEN: Rewrite each piece of information using Grade-7 vocabulary and short sentences
+3. APPLY the warm, conversational Family Playbook style
+4. STRUCTURE into the JSON schema below
+5. ADD helpful enhancements (callouts, checklists, power phrases when customer-facing)
+
+## READABILITY REQUIREMENTS (CRITICAL)
+- Target Flesch-Kincaid Grade Level 7
+- Maximum 15-20 words per sentence
+- One idea per sentence
+- Use active voice only (not "The refund will be processed" but "We will process the refund")
+- No jargon or technical terms without simple explanations
+- Break complex ideas into simple steps
+
+## TONE GUIDELINES
+- Warm and conversational (like talking to a helpful friend)
+- Use "you" and "we" language
+- Start sentences with action verbs when possible
+- Use contractions naturally (don't, you're, we'll, it's)
+- Be encouraging and supportive
+- Acknowledge the reader's needs
+
+## VOCABULARY SIMPLIFICATION (Always apply these)
+- "Utilize" → "Use"
+- "Commence" → "Start"
+- "Facilitate" → "Help"
+- "Subsequently" → "Then"
+- "Regarding" → "About"
+- "Prior to" → "Before"
+- "Terminate" → "End" or "Stop"
+- "Initiate" → "Start" or "Begin"
+- "Assistance" → "Help"
+- "Inquire" → "Ask"
+- "Obtain" → "Get"
+- "Provide" → "Give"
+- "Indicate" → "Show" or "Tell"
+- "Demonstrate" → "Show"
+- "Implement" → "Use" or "Set up"
+- "Sufficient" → "Enough"
+- "Approximately" → "About"
+- "Currently" → "Now"
+- "Additionally" → "Also"
+- "However" → "But"
+- "Therefore" → "So"
+- Remove corporate buzzwords and filler phrases
+
+## CONTENT ENHANCEMENT RULES
+- Break long paragraphs into bullet points or numbered steps
+- Add "Power Phrases" section for customer-facing communication guides
+- Include "Words to Avoid vs Say Instead" for communication/scripting content
+- Add practical checklists for processes
+- Use callouts (warning, info, tip, success) for important notes
+- Add role cards when multiple people/teams are involved
+
+## WHAT TO REWRITE (Not just reorganize!)
+- Simplify complex explanations without losing important information
+- Make technical content accessible to non-experts
+- Transform passive voice to active voice
+- Shorten long sentences into multiple short ones
+- Replace formal language with friendly alternatives
+- Keep the CORE MEANING but make it CRYSTAL CLEAR
+
+## OUTPUT FORMAT: Return ONLY valid JSON, no markdown, no explanations.
 
 SCHEMA:
 {
-  "title": "Main article title",
-  "subtitle": "Brief description of what this article covers",
-  "tags": ["Tag1", "Tag2", "Tag3"],
+  "title": "Clear, descriptive title (max 8 words)",
+  "subtitle": "One sentence explaining what this helps with",
+  "tags": ["Grade-7 Friendly", "Tag2", "Tag3"],
   "sections": [
     {
       "id": "section-id",
@@ -50,9 +113,9 @@ SCHEMA:
   ],
   "timeline": [
     {
-      "date": "January 1, 2025",
-      "author": "Author Name",
-      "description": "What changed"
+      "date": "Today's date",
+      "author": "AI Assistant",
+      "description": "Formatted for clarity"
     }
   ]
 }
@@ -79,21 +142,21 @@ CONTENT BLOCK TYPES:
   "roles": [
     {
       "title": "Agent",
-      "description": "What this role does",
+      "description": "What this role does (in simple terms)",
       "color": "blue|teal|purple|orange|green|red"
     }
   ]
 }
 
-3. Steps (for numbered procedures):
+3. Steps (for numbered procedures - rewrite each step clearly):
 {
   "type": "steps",
   "steps": [
     {
       "number": 1,
-      "title": "Step title",
-      "description": "Optional detailed description",
-      "substeps": ["Optional substep 1", "Optional substep 2"]
+      "title": "Short action title",
+      "description": "Clear explanation of what to do and why",
+      "substeps": ["Simple substep 1", "Simple substep 2"]
     }
   ]
 }
@@ -103,27 +166,27 @@ CONTENT BLOCK TYPES:
   "type": "callout",
   "variant": "warning|info|success|tip",
   "title": "Optional title",
-  "text": "The callout message"
+  "text": "The callout message in simple language"
 }
 
 5. Message Template (for customer messaging scripts):
 {
   "type": "message-template",
   "label": "Template Name",
-  "content": "Hi [Name],\\n\\nYour message content here...\\n\\nBest,\\n[Agent]"
+  "content": "Hi [Name],\\n\\nYour friendly message here...\\n\\nBest,\\n[Agent]"
 }
 
 6. Checklist (for quick reference items):
 {
   "type": "checklist",
-  "title": "Optional title",
-  "items": ["Item 1", "Item 2", "Item 3"]
+  "title": "Quick Checklist",
+  "items": ["Simple item 1", "Simple item 2", "Simple item 3"]
 }
 
-7. Paragraph (for regular text):
+7. Paragraph (for regular text - keep short!):
 {
   "type": "paragraph",
-  "text": "Regular paragraph text here."
+  "text": "Short, clear paragraph. One or two sentences max."
 }
 
 8. Table (for tabular data):
@@ -131,8 +194,7 @@ CONTENT BLOCK TYPES:
   "type": "table",
   "headers": ["Column 1", "Column 2"],
   "rows": [
-    ["Value 1", "Value 2"],
-    ["Value 3", "Value 4"]
+    ["Simple value 1", "Simple value 2"]
   ]
 }
 
@@ -141,37 +203,28 @@ CONTENT BLOCK TYPES:
   "type": "list",
   "title": "Optional title",
   "items": [
-    { "label": "Optional label", "value": "Item text" }
+    { "label": "Optional label", "value": "Clear, simple item text" }
   ]
 }
 
 SECTION LETTER ASSIGNMENT:
-- Use A, B, C, D, E, F, etc. in order for each section
-- Common section patterns:
-  - A: Prerequisites, Overview, Key Information
-  - B: Status Definitions, Terms, Concepts
-  - C: Main Process/Workflow Steps
-  - D: Secondary Process/Special Cases
-  - E: Checklist, Quick Reference
-  - F: Additional Information, FAQs
+- Use A, B, C, D, E, F, etc. in order
+- Common patterns:
+  - A: Quick Overview or Key Info
+  - B: Before You Start / Prerequisites  
+  - C: Step-by-Step Process
+  - D: Special Cases or Exceptions
+  - E: Quick Checklist
+  - F: Need More Help?
 
 TAG GUIDELINES:
-- Extract 2-4 relevant tags from the content
-- Use system names, categories, or key concepts as tags
-- Examples: "Authorize.net", "Refunds", "Bank Transactions", "PayPal"
+- ALWAYS include "Grade-7 Friendly" as the first tag
+- Add 2-3 relevant topic tags
+- Examples: "Refunds", "Customer Service", "Billing"
 
-CONTENT CONVERSION RULES:
-- Group related information into info-grid blocks
-- Convert role descriptions into role-cards
-- Convert numbered lists into steps
-- Convert warning/important notes into callouts
-- Convert messaging scripts into message-templates
-- Convert bullet lists into checklist or list blocks
-- Use paragraphs sparingly, prefer structured content
+REMEMBER: Your job is to REWRITE for clarity, not just reorganize. Transform complex content into something anyone can understand.`;
 
-PRESERVE ALL ORIGINAL CONTENT - only restructure and organize it.`;
-
-    console.log('Calling Lovable AI for structured formatting...');
+    console.log('Calling Lovable AI for Grade-7 formatting and rewriting...');
     
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -183,7 +236,7 @@ PRESERVE ALL ORIGINAL CONTENT - only restructure and organize it.`;
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Convert the following raw update text into the structured JSON format for our knowledge base. Extract all information and organize it properly:\n\n${content}` }
+          { role: 'user', content: `Rewrite and structure the following raw content into a clear, Grade-7 readable knowledge base article. Simplify the language, use short sentences, and make it warm and friendly:\n\n${content}` }
         ],
       }),
     });
@@ -237,7 +290,7 @@ PRESERVE ALL ORIGINAL CONTENT - only restructure and organize it.`;
     // Validate JSON
     try {
       const parsed = JSON.parse(formattedContent);
-      console.log('Successfully formatted content to structured JSON');
+      console.log('Successfully formatted and rewrote content to Grade-7 level');
       
       return new Response(
         JSON.stringify({ formattedContent, structuredData: parsed }),
