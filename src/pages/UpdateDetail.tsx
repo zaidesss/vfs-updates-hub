@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
@@ -7,6 +7,8 @@ import { fetchChangeHistory, submitQuestion } from '@/lib/api';
 import { UpdateChangeHistory } from '@/types';
 import { Layout } from '@/components/Layout';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { PlaybookPage } from '@/components/playbook/PlaybookPage';
+import { PlaybookArticle } from '@/lib/playbookTypes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
@@ -59,6 +61,20 @@ export default function UpdateDetail() {
     }
     loadHistory();
   }, [id]);
+
+  // Parse body as Playbook JSON if possible
+  const playbookData = useMemo<PlaybookArticle | null>(() => {
+    if (!update?.body) return null;
+    try {
+      const parsed = JSON.parse(update.body);
+      if (parsed.title && parsed.sections && Array.isArray(parsed.sections)) {
+        return parsed as PlaybookArticle;
+      }
+    } catch {
+      // Not JSON, will render as markdown
+    }
+    return null;
+  }, [update?.body]);
 
   if (!update) {
     return (
@@ -192,7 +208,11 @@ export default function UpdateDetail() {
           <Separator />
 
           <CardContent className="pt-6">
-            <MarkdownRenderer content={update.body} showToc={false} />
+            {playbookData ? (
+              <PlaybookPage article={playbookData} />
+            ) : (
+              <MarkdownRenderer content={update.body} showToc={false} />
+            )}
 
             {update.help_center_url && (
               <div className="mt-6 p-4 bg-accent/50 rounded-lg">
