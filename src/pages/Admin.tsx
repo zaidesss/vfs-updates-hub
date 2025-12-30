@@ -654,9 +654,6 @@ export default function Admin() {
                                     {getAcknowledgementsForUpdate(update.id).length === 0 && (
                                       <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
                                     )}
-                                        </div>
-                                      );
-                                    })}
                                   </div>
                                 </TabsContent>
                               </Tabs>
