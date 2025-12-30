@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, AdminRole } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole } from '@/lib/api';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
@@ -49,6 +49,8 @@ export default function Admin() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [removingUserEmail, setRemovingUserEmail] = useState<string | null>(null);
+  const [bulkEmails, setBulkEmails] = useState('');
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<Update | null>(null);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
@@ -197,8 +199,34 @@ export default function Admin() {
   };
 
   const handleEditUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
-    await editUpdate(updateId, update);
+    await editUpdate(updateId, update, user?.email);
     setEditingUpdate(null);
+  };
+
+  const handleBulkImport = async () => {
+    if (!bulkEmails.trim()) return;
+    
+    setIsBulkImporting(true);
+    const emails = bulkEmails.split(/[\n,;]+/).map(e => e.trim()).filter(e => e);
+    
+    const { data, error } = await bulkAddUsers(emails);
+    setIsBulkImporting(false);
+    
+    if (error) {
+      toast.error('Bulk import failed');
+      return;
+    }
+    
+    if (data) {
+      await loadUsers();
+      setBulkEmails('');
+      
+      if (data.failed.length > 0) {
+        toast.warning(`Added ${data.added} users. ${data.failed.length} failed (may already exist).`);
+      } else {
+        toast.success(`Successfully added ${data.added} users`);
+      }
+    }
   };
 
   const exportAcknowledgements = (update: Update) => {
@@ -505,6 +533,7 @@ export default function Admin() {
             <CardDescription>Add or remove users who can log in to the system</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Single user add */}
             <div className="flex gap-2">
               <Input
                 placeholder="Enter email address"
@@ -520,6 +549,39 @@ export default function Admin() {
                   <>
                     <UserPlus className="h-4 w-4 mr-2" />
                     Add User
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            {/* Bulk import */}
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Bulk Import Users</span>
+              </div>
+              <Textarea
+                placeholder="Enter multiple email addresses (one per line, or separated by commas)"
+                value={bulkEmails}
+                onChange={(e) => setBulkEmails(e.target.value)}
+                rows={3}
+                className="bg-background"
+              />
+              <Button 
+                onClick={handleBulkImport} 
+                disabled={isBulkImporting || !bulkEmails.trim()}
+                variant="secondary"
+                className="w-full"
+              >
+                {isBulkImporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Import Users
                   </>
                 )}
               </Button>

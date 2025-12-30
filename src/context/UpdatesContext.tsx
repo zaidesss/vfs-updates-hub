@@ -15,7 +15,7 @@ interface UpdatesContextType {
   getAcknowledgementCount: (updateId: string) => number;
   getAcknowledgementsForUpdate: (updateId: string) => Acknowledgement[];
   createUpdate: (update: Omit<Update, 'id' | 'posted_at'>) => Promise<void>;
-  editUpdate: (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => Promise<void>;
+  editUpdate: (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>, changedBy?: string) => Promise<void>;
   updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
   refreshData: () => Promise<void>;
 }
@@ -131,8 +131,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const editUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
-    const result = await apiEditUpdate(updateId, update);
+  const editUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>, changedBy?: string) => {
+    const result = await apiEditUpdate(updateId, update, changedBy);
     
     if (result.error) {
       console.error('Edit update error:', result.error);
