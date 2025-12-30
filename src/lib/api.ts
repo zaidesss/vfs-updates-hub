@@ -228,30 +228,31 @@ async function parseEdgeFunctionError<T>(action: string, error: any, response?: 
 
 async function callEdgeFunction<T>(action: string, body?: Record<string, unknown>): Promise<ApiResponse<T>> {
   try {
-    // Ensure we have an authenticated session before calling protected backend functions
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
       console.error('No active session for edge function call', sessionError);
       return { data: null, error: 'Authentication required. Please log in.' };
     }
 
-    // If the token is close to expiry, refresh it first.
-    const expiresAtMs = (sessionData.session.expires_at ?? 0) * 1000;
-    if (expiresAtMs && expiresAtMs < Date.now() + 60_000) {
-      await supabase.auth.refreshSession();
-    }
-
-    const invoke = async () =>
+    const invokeWithToken = async (accessToken: string) =>
       ((await (supabase.functions as any).invoke('google-sheets-api', {
         body: { action, ...body },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       })) as { data: T | null; error: any; response?: Response });
 
-    let { data, error, response } = await invoke();
+    // First attempt with current token
+    let { data, error, response } = await invokeWithToken(sessionData.session.access_token);
 
-    // If we got a 401, refresh once and retry (common when a token rotated).
+    // If JWT is invalid/expired, refresh once and retry with the NEW token
     if (error && response?.status === 401) {
       await supabase.auth.refreshSession();
-      ({ data, error, response } = await invoke());
+      const { data: refreshed } = await supabase.auth.getSession();
+      if (!refreshed.session) {
+        return { data: null, error: 'Authentication required. Please log in.' };
+      }
+      ({ data, error, response } = await invokeWithToken(refreshed.session.access_token));
     }
 
     if (error) {
