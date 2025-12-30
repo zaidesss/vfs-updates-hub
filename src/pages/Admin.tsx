@@ -68,8 +68,20 @@ export default function Admin() {
 
   const activeAgents = agents.filter(a => a.active);
 
+  const NAME_OVERRIDES: Record<string, string> = {
+    'hr@virtualfreelancesolutions.com': 'Patrick',
+    'mjesguerraiman@gmail.com': 'Meryl Jean Iman',
+    'salmeromalcomeduc@gmail.com': 'Malcom Joseph Vincent Salmero',
+    'joanargao@gmail.com': 'Kristin Joann Argao',
+    'dzaydee06@gmail.com': 'Juno Dianne Garciano',
+    'jaeransanchez@gmail.com': 'Jaeran Sanchez',
+  };
+
   const getNameByEmail = (email: string) => {
-    const found = agents.find(a => a.email.toLowerCase() === email.toLowerCase());
+    const key = email.toLowerCase();
+    const override = NAME_OVERRIDES[key];
+    if (override) return override;
+    const found = agents.find(a => a.email.toLowerCase() === key);
     return found?.name || email;
   };
   // Load admins on mount
