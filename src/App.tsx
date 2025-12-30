@@ -16,6 +16,7 @@ import LeaveRequest from "./pages/LeaveRequest";
 import OutageReport from "./pages/OutageReport";
 import OutageStats from "./pages/OutageStats";
 import Calendar from "./pages/Calendar";
+import AgentProfile from "./pages/AgentProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -122,6 +123,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <OutageStats />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <AgentProfile />
           </ProtectedRoute>
         }
       />

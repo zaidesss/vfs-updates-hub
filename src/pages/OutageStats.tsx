@@ -6,12 +6,35 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle, Zap, Wifi, Heart, Calendar, Wrench, Clock, Timer, HelpCircle } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
 import { fetchAllLeaveRequests, LeaveRequest } from '@/lib/leaveRequestApi';
 import { useToast } from '@/hooks/use-toast';
 import { Navigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
+
+const OUTAGE_REASONS = [
+  'Power Outage',
+  'Wi-Fi Issue',
+  'Medical Leave',
+  'Planned Leave',
+  'Equipment Issue',
+  'Late Login',
+  'Undertime',
+  'Unplanned'
+];
+
+const REASON_ICONS: Record<string, React.ReactNode> = {
+  'Power Outage': <Zap className="h-4 w-4" />,
+  'Wi-Fi Issue': <Wifi className="h-4 w-4" />,
+  'Medical Leave': <Heart className="h-4 w-4" />,
+  'Planned Leave': <Calendar className="h-4 w-4" />,
+  'Equipment Issue': <Wrench className="h-4 w-4" />,
+  'Late Login': <Clock className="h-4 w-4" />,
+  'Undertime': <Timer className="h-4 w-4" />,
+  'Unplanned': <HelpCircle className="h-4 w-4" />
+};
 
 // Threshold configuration: max occurrences per month per reason
 const REASON_THRESHOLDS: Record<string, number> = {
@@ -50,6 +73,8 @@ export default function OutageStats() {
   const [isLoading, setIsLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
+  const [selectedAgent, setSelectedAgent] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Generate months from Jan 2024 to Dec 2026
   const monthOptions = useMemo(() => {
@@ -90,7 +115,16 @@ export default function OutageStats() {
     setIsLoading(false);
   };
 
-  // Filter requests by selected month
+  // Get unique agents from requests
+  const agents = useMemo(() => {
+    const agentSet = new Set(requests.map(r => r.agent_email));
+    return Array.from(agentSet).map(email => {
+      const req = requests.find(r => r.agent_email === email);
+      return { email, name: req?.agent_name || email };
+    });
+  }, [requests]);
+
+  // Filter requests by selected month and agent
   const filteredRequests = useMemo(() => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const monthStart = startOfMonth(new Date(year, month - 1));
@@ -99,9 +133,30 @@ export default function OutageStats() {
     return requests.filter(req => {
       const reqStart = parseISO(req.start_date);
       const reqEnd = parseISO(req.end_date);
-      return reqStart <= monthEnd && reqEnd >= monthStart;
+      const inMonth = reqStart <= monthEnd && reqEnd >= monthStart;
+      const matchesAgent = selectedAgent === 'all' || req.agent_email === selectedAgent;
+      return inMonth && matchesAgent;
     });
-  }, [requests, selectedMonth]);
+  }, [requests, selectedMonth, selectedAgent]);
+
+  // Calculate stats by reason (for breakdown table)
+  const reasonStats = useMemo(() => {
+    const stats: Record<string, { count: number; hours: number; days: number }> = {};
+    
+    OUTAGE_REASONS.forEach(reason => {
+      stats[reason] = { count: 0, hours: 0, days: 0 };
+    });
+
+    filteredRequests.forEach(req => {
+      if (stats[req.outage_reason]) {
+        stats[req.outage_reason].count += 1;
+        stats[req.outage_reason].hours += req.outage_duration_hours || 0;
+        stats[req.outage_reason].days += req.total_days || 0;
+      }
+    });
+
+    return stats;
+  }, [filteredRequests]);
 
   // Monthly trend data (last 6 months)
   const trendData = useMemo(() => {
@@ -232,7 +287,7 @@ export default function OutageStats() {
             <p className="text-muted-foreground">Trends, patterns, and repeat offender tracking</p>
           </div>
           
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select month" />
@@ -240,6 +295,18 @@ export default function OutageStats() {
               <SelectContent>
                 {monthOptions.map(opt => (
                   <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                {agents.map(agent => (
+                  <SelectItem key={agent.email} value={agent.email}>{agent.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -253,8 +320,15 @@ export default function OutageStats() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
+            <TabsTrigger value="offenders">Repeat Offenders</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -403,80 +477,169 @@ export default function OutageStats() {
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
 
-        {/* Threshold Reference */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Thresholds</CardTitle>
-            <CardDescription>Maximum allowed occurrences per month before flagging as repeat offender</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(REASON_THRESHOLDS).map(([reason, threshold]) => (
-                <div key={reason} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm font-medium">{reason}</span>
-                  <Badge variant="outline">{threshold}/mo</Badge>
-                </div>
-              ))}
+          {/* Breakdown Tab */}
+          <TabsContent value="breakdown" className="space-y-6 mt-6">
+            {/* Summary Cards for Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Outages</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{filteredRequests.length}</p>
+                  <p className="text-xs text-muted-foreground">requests this period</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Hours</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{filteredRequests.reduce((sum, r) => sum + (r.outage_duration_hours || 0), 0).toFixed(1)}</p>
+                  <p className="text-xs text-muted-foreground">outage hours</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Days</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{filteredRequests.reduce((sum, r) => sum + (r.total_days || 0), 0)}</p>
+                  <p className="text-xs text-muted-foreground">days affected</p>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Repeat Offenders Table */}
-        <Card className={repeatOffenders.length > 0 ? 'border-destructive/50' : ''}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className={repeatOffenders.length > 0 ? 'h-5 w-5 text-destructive' : 'h-5 w-5'} />
-              Repeat Offenders
-            </CardTitle>
-            <CardDescription>
-              Agents who have exceeded the monthly threshold for any outage reason
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {repeatOffenders.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Agent</TableHead>
-                    <TableHead>Violations</TableHead>
-                    <TableHead className="text-center">Exceeded By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {repeatOffenders.map((offender, idx) => (
-                    <TableRow key={offender.agentEmail} className="bg-destructive/5">
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-destructive">{offender.agentName}</p>
-                          <p className="text-xs text-muted-foreground">{offender.agentEmail}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          {offender.violations.map((v, i) => (
-                            <Badge key={i} variant="destructive" className="text-xs">
-                              {v.reason}: {v.count}/{v.threshold}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-bold text-destructive">+{offender.totalViolations}</span>
-                      </TableCell>
+            {/* Breakdown by Reason Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Breakdown by Reason</CardTitle>
+                <CardDescription>Detailed statistics for each outage type</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Reason</TableHead>
+                      <TableHead className="text-center">Count</TableHead>
+                      <TableHead className="text-center">Total Days</TableHead>
+                      <TableHead className="text-center">Total Hours</TableHead>
                     </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {OUTAGE_REASONS.map(reason => {
+                      const stats = reasonStats[reason];
+                      if (stats.count === 0) return null;
+                      return (
+                        <TableRow key={reason}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {REASON_ICONS[reason]}
+                              <span className="font-medium">{reason}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="secondary">{stats.count}</Badge>
+                          </TableCell>
+                          <TableCell className="text-center">{stats.days}</TableCell>
+                          <TableCell className="text-center">{stats.hours.toFixed(1)}h</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {filteredRequests.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          No outages recorded for this period
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Repeat Offenders Tab */}
+          <TabsContent value="offenders" className="space-y-6 mt-6">
+            {/* Threshold Reference */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly Thresholds</CardTitle>
+                <CardDescription>Maximum allowed occurrences per month before flagging as repeat offender</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Object.entries(REASON_THRESHOLDS).map(([reason, threshold]) => (
+                    <div key={reason} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">{reason}</span>
+                      <Badge variant="outline">{threshold}/mo</Badge>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No repeat offenders this month</p>
-                <p className="text-sm">All agents are within acceptable thresholds</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Repeat Offenders Table */}
+            <Card className={repeatOffenders.length > 0 ? 'border-destructive/50' : ''}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className={repeatOffenders.length > 0 ? 'h-5 w-5 text-destructive' : 'h-5 w-5'} />
+                  Repeat Offenders
+                </CardTitle>
+                <CardDescription>
+                  Agents who have exceeded the monthly threshold for any outage reason
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {repeatOffenders.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agent</TableHead>
+                        <TableHead>Violations</TableHead>
+                        <TableHead className="text-center">Exceeded By</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {repeatOffenders.map((offender) => (
+                        <TableRow key={offender.agentEmail} className="bg-destructive/5">
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-destructive">{offender.agentName}</p>
+                              <p className="text-xs text-muted-foreground">{offender.agentEmail}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              {offender.violations.map((v, i) => (
+                                <Badge key={i} variant="destructive" className="text-xs">
+                                  {v.reason}: {v.count}/{v.threshold}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-bold text-destructive">+{offender.totalViolations}</span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No repeat offenders this month</p>
+                    <p className="text-sm">All agents are within acceptable thresholds</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );
