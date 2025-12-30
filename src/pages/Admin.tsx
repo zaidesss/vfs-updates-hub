@@ -185,11 +185,16 @@ export default function Admin() {
       summary: '',
       body: '',
       help_center_url: '',
-      posted_by: '',
-      deadline_at: '',
+      posted_by: user?.email || '',
+      deadline_at: getDefaultDeadline(),
       status: 'draft',
     });
     setIsCreateDialogOpen(false);
+  };
+
+  const handleEditUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
+    await editUpdate(updateId, update);
+    setEditingUpdate(null);
   };
 
   const exportAcknowledgements = (update: Update) => {
@@ -312,23 +317,23 @@ export default function Admin() {
                           <SelectValue placeholder="Select admin" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Patrick">Patrick</SelectItem>
-                          <SelectItem value="Meryl Jean Iman">Meryl Jean Iman</SelectItem>
-                          <SelectItem value="Malcom Joseph Vincent Salmero">Malcom Joseph Vincent Salmero</SelectItem>
-                          <SelectItem value="Kristin Joann Argao">Kristin Joann Argao</SelectItem>
-                          <SelectItem value="Juno Dianne Garciano">Juno Dianne Garciano</SelectItem>
-                          <SelectItem value="Jaeran Sanchez">Jaeran Sanchez</SelectItem>
+                          {admins.map(admin => (
+                            <SelectItem key={admin.id} value={admin.email}>
+                              {admin.email}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="deadline_at">Deadline (optional)</Label>
+                      <Label htmlFor="deadline_at">Deadline (Required)</Label>
                       <Input
                         id="deadline_at"
                         type="datetime-local"
                         value={newUpdate.deadline_at}
                         onChange={(e) => setNewUpdate(prev => ({ ...prev, deadline_at: e.target.value }))}
                       />
+                      <p className="text-xs text-muted-foreground">Default: 24h from now (NY EST)</p>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -346,7 +351,7 @@ export default function Admin() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by}>
+                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at}>
                     Create Update
                   </Button>
                 </div>
@@ -548,6 +553,22 @@ export default function Admin() {
           </CardContent>
         </Card>
 
+        {/* User Acknowledgement Dashboard */}
+        <UserAcknowledgementDashboard 
+          users={users} 
+          updates={updates} 
+          acknowledgements={acknowledgements} 
+        />
+
+        {/* Edit Update Dialog */}
+        <EditUpdateDialog
+          update={editingUpdate}
+          open={!!editingUpdate}
+          onOpenChange={(open) => !open && setEditingUpdate(null)}
+          onSave={handleEditUpdate}
+          admins={admins}
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>All Updates</CardTitle>
@@ -592,6 +613,13 @@ export default function Admin() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setEditingUpdate(update)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="sm">
