@@ -40,6 +40,10 @@ export type Database = {
           category: Database["public"]["Enums"]["update_category"] | null
           created_at: string
           description: string
+          final_decision: string | null
+          final_notes: string | null
+          final_reviewed_at: string | null
+          final_reviewed_by: string | null
           id: string
           priority: string | null
           request_type: Database["public"]["Enums"]["request_type"]
@@ -52,6 +56,10 @@ export type Database = {
           category?: Database["public"]["Enums"]["update_category"] | null
           created_at?: string
           description: string
+          final_decision?: string | null
+          final_notes?: string | null
+          final_reviewed_at?: string | null
+          final_reviewed_by?: string | null
           id?: string
           priority?: string | null
           request_type?: Database["public"]["Enums"]["request_type"]
@@ -64,6 +72,10 @@ export type Database = {
           category?: Database["public"]["Enums"]["update_category"] | null
           created_at?: string
           description?: string
+          final_decision?: string | null
+          final_notes?: string | null
+          final_reviewed_at?: string | null
+          final_reviewed_by?: string | null
           id?: string
           priority?: string | null
           request_type?: Database["public"]["Enums"]["request_type"]
@@ -108,6 +120,7 @@ export type Database = {
       }
       request_approvals: {
         Row: {
+          active: boolean
           approved: boolean | null
           approved_at: string | null
           approver_email: string
@@ -115,8 +128,10 @@ export type Database = {
           created_at: string
           id: string
           request_id: string
+          stage: number
         }
         Insert: {
+          active?: boolean
           approved?: boolean | null
           approved_at?: string | null
           approver_email: string
@@ -124,8 +139,10 @@ export type Database = {
           created_at?: string
           id?: string
           request_id: string
+          stage?: number
         }
         Update: {
+          active?: boolean
           approved?: boolean | null
           approved_at?: string | null
           approver_email?: string
@@ -133,6 +150,7 @@ export type Database = {
           created_at?: string
           id?: string
           request_id?: string
+          stage?: number
         }
         Relationships: [
           {
@@ -284,7 +302,11 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "hr"
-      request_status: "pending" | "approved" | "rejected"
+      request_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "pending_final_review"
       request_type: "new_article" | "update_existing" | "general"
       update_category:
         | "orders_transactions"
@@ -426,7 +448,12 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "hr"],
-      request_status: ["pending", "approved", "rejected"],
+      request_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "pending_final_review",
+      ],
       request_type: ["new_article", "update_existing", "general"],
       update_category: [
         "orders_transactions",

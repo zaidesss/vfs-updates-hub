@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
-import { ArticleRequest, ArticleRequestWithApprovals, RequestApproval } from '@/types/request';
-import { REQUIRED_APPROVERS } from '@/lib/approvers';
+import { ArticleRequest, ArticleRequestWithApprovals, RequestApproval, FinalDecision } from '@/types/request';
+import { PRE_APPROVERS, FINAL_APPROVER } from '@/lib/approvers';
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -34,6 +34,7 @@ export async function fetchArticleRequests(): Promise<ApiResponse<ArticleRequest
     // Combine requests with their approvals
     const requestsWithApprovals: ArticleRequestWithApprovals[] = (requests || []).map(request => ({
       ...request,
+      final_decision: request.final_decision as FinalDecision,
       approvals: (approvals || []).filter(a => a.request_id === request.id) as RequestApproval[],
     }));
 
@@ -74,12 +75,14 @@ export async function createArticleRequest(request: {
       return { data: null, error: error.message };
     }
 
-    // Create approval records for all required approvers
-    const approvalInserts = REQUIRED_APPROVERS.map(approver => ({
+    // Create approval records only for PRE-APPROVERS (stage 1)
+    const approvalInserts = PRE_APPROVERS.map(approver => ({
       request_id: data.id,
       approver_email: approver.email,
       approver_name: approver.name,
       approved: false,
+      stage: 1,
+      active: true,
     }));
 
     const { error: approvalsError } = await supabase
@@ -90,7 +93,7 @@ export async function createArticleRequest(request: {
       console.error('Error creating approvals:', approvalsError);
     }
 
-    // Send notification to approvers
+    // Send notification only to pre-approvers
     try {
       await supabase.functions.invoke('send-request-notification', {
         body: {
@@ -101,10 +104,10 @@ export async function createArticleRequest(request: {
           requestType: request.request_type,
           sampleTicket: request.sample_ticket,
           priority: request.priority,
-          approverEmails: REQUIRED_APPROVERS.map(a => a.email),
+          approverEmails: PRE_APPROVERS.map(a => a.email),
         },
       });
-      console.log('Sent notifications to approvers');
+      console.log('Sent notifications to pre-approvers');
     } catch (notifyError) {
       console.error('Failed to send notifications:', notifyError);
     }
@@ -117,7 +120,7 @@ export async function createArticleRequest(request: {
   }
 }
 
-// Approve a request (for approvers)
+// Approve a request (for pre-approvers)
 export async function approveRequest(requestId: string, approverEmail: string): Promise<ApiResponse<{ ok: boolean }>> {
   try {
     const { error } = await supabase
@@ -134,7 +137,7 @@ export async function approveRequest(requestId: string, approverEmail: string): 
       return { data: null, error: error.message };
     }
 
-    // Check if all approvers have approved
+    // Check if all pre-approvers have approved
     try {
       const { data: checkResult } = await supabase.functions.invoke('check-full-approval', {
         body: { requestId },
@@ -148,6 +151,36 @@ export async function approveRequest(requestId: string, approverEmail: string): 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to approve request:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Final review by Patrick
+export async function finalizeRequestReview(
+  requestId: string,
+  approverEmail: string,
+  decision: FinalDecision,
+  notes?: string
+): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { data, error } = await supabase.functions.invoke('finalize-request-review', {
+      body: {
+        requestId,
+        approverEmail,
+        decision,
+        notes,
+      },
+    });
+
+    if (error) {
+      console.error('Error finalizing review:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to finalize review:', errorMessage);
     return { data: null, error: errorMessage };
   }
 }

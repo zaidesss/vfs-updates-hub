@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.send-approval-reminders]
 verify_jwt = false
+
+[functions.finalize-request-review]
+verify_jwt = false
