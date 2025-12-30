@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.finalize-request-review]
 verify_jwt = false
+
+[functions.send-leave-request-notification]
+verify_jwt = false

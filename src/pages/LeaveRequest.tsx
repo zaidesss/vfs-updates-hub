@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   createLeaveRequest,
+  updateLeaveRequest,
   fetchMyLeaveRequests,
   fetchAllLeaveRequests,
   checkConflicts,
@@ -21,6 +22,7 @@ import {
   LeaveRequest as LeaveRequestType,
   LeaveRequestInput
 } from '@/lib/leaveRequestApi';
+import { supabase } from '@/integrations/supabase/client';
 import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS } from '@/lib/agentDirectory';
 
 const OUTAGE_REASONS = [
@@ -58,6 +60,7 @@ export default function LeaveRequest() {
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [agentClients, setAgentClients] = useState<string[]>(CLIENT_OPTIONS);
   const [isDirectoryUser, setIsDirectoryUser] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<LeaveRequestType | null>(null);
   
   // Form state
   const [formData, setFormData] = useState<LeaveRequestInput>({
@@ -159,8 +162,8 @@ export default function LeaveRequest() {
     
     setIsSubmitting(true);
     
-    // Check for conflicts first
-    const conflictResult = await checkConflicts(formData);
+    // Check for conflicts first (exclude current request when editing)
+    const conflictResult = await checkConflicts(formData, editingRequest?.id);
     
     if (conflictResult.error) {
       toast({
@@ -184,8 +187,40 @@ export default function LeaveRequest() {
       return;
     }
     
-    // No conflict, proceed with submission
-    const result = await createLeaveRequest(formData, user.email);
+    let result;
+    
+    if (editingRequest) {
+      // Update existing request
+      result = await updateLeaveRequest(editingRequest.id, formData, user.email);
+    } else {
+      // Create new request and send notification
+      result = await createLeaveRequest(formData, user.email);
+      
+      // Send notification for new requests
+      if (result.data) {
+        try {
+          await supabase.functions.invoke('send-leave-request-notification', {
+            body: {
+              agentName: formData.agent_name,
+              agentEmail: user.email,
+              clientName: formData.client_name,
+              teamLeadName: formData.team_lead_name,
+              role: formData.role,
+              startDate: formData.start_date,
+              endDate: formData.end_date,
+              startTime: formData.start_time,
+              endTime: formData.end_time,
+              outageReason: formData.outage_reason,
+              attachmentUrl: formData.attachment_url,
+              totalDays: result.data.total_days,
+              outageDurationHours: result.data.outage_duration_hours
+            }
+          });
+        } catch (notifyErr) {
+          console.error('Failed to send notification:', notifyErr);
+        }
+      }
+    }
     
     if (result.error) {
       toast({
@@ -196,8 +231,9 @@ export default function LeaveRequest() {
     } else {
       toast({
         title: 'Success',
-        description: 'Leave request submitted successfully'
+        description: editingRequest ? 'Leave request updated successfully' : 'Leave request submitted successfully'
       });
+      setEditingRequest(null);
       // Reset form - preserve directory data
       const agentInfo = getAgentInfoByEmail(user.email);
       if (agentInfo) {
@@ -233,8 +269,61 @@ export default function LeaveRequest() {
     
     setIsSubmitting(false);
   };
+  
+  const handleEdit = (req: LeaveRequestType) => {
+    setEditingRequest(req);
+    setFormData({
+      agent_name: req.agent_name,
+      client_name: req.client_name,
+      team_lead_name: req.team_lead_name,
+      role: req.role,
+      start_date: req.start_date,
+      end_date: req.end_date,
+      start_time: req.start_time,
+      end_time: req.end_time,
+      outage_reason: req.outage_reason,
+      attachment_url: req.attachment_url || ''
+    });
+    setConflictWarning(null);
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  const handleCancelEdit = () => {
+    setEditingRequest(null);
+    setConflictWarning(null);
+    // Reset form
+    const agentInfo = user?.email ? getAgentInfoByEmail(user.email) : null;
+    if (agentInfo) {
+      setFormData({
+        agent_name: agentInfo.name,
+        client_name: agentInfo.clients.length === 1 ? agentInfo.clients[0] : '',
+        team_lead_name: agentInfo.teamLead,
+        role: agentInfo.position,
+        start_date: '',
+        end_date: '',
+        start_time: '09:00',
+        end_time: '17:00',
+        outage_reason: '',
+        attachment_url: ''
+      });
+    } else {
+      setFormData({
+        agent_name: user?.name || '',
+        client_name: '',
+        team_lead_name: '',
+        role: '',
+        start_date: '',
+        end_date: '',
+        start_time: '09:00',
+        end_time: '17:00',
+        outage_reason: '',
+        attachment_url: ''
+      });
+    }
+  };
 
-  const handleStatusChange = async (id: string, status: 'approved' | 'declined') => {
+  const handleStatusChange = async (id: string, status: 'approved' | 'declined' | 'canceled') => {
     if (!user?.email) return;
     
     const result = await updateLeaveRequestStatus(id, status, user.email);
@@ -285,7 +374,7 @@ export default function LeaveRequest() {
         {/* Submit Form */}
         <Card>
           <CardHeader>
-            <CardTitle>Submit New Request</CardTitle>
+            <CardTitle>{editingRequest ? 'Edit Request' : 'Submit New Request'}</CardTitle>
             <CardDescription>Fill in all required fields to submit a leave request</CardDescription>
           </CardHeader>
           <CardContent>
@@ -417,16 +506,23 @@ export default function LeaveRequest() {
                 </div>
               </div>
               
-              <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Request'
+              <div className="flex gap-2">
+                <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      {editingRequest ? 'Updating...' : 'Submitting...'}
+                    </>
+                  ) : (
+                    editingRequest ? 'Update Request' : 'Submit Request'
+                  )}
+                </Button>
+                {editingRequest && (
+                  <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                    Cancel Edit
+                  </Button>
                 )}
-              </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -520,17 +616,35 @@ export default function LeaveRequest() {
                                 >
                                   Decline
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-muted-foreground hover:text-muted-foreground"
+                                  onClick={() => handleStatusChange(req.id, 'canceled')}
+                                >
+                                  Cancel
+                                </Button>
                               </>
                             )}
                             {!isAdmin && req.status === 'pending' && req.agent_email === user?.email?.toLowerCase() && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => handleCancel(req.id)}
-                              >
-                                Cancel
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEdit(req)}
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => handleCancel(req.id)}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
                             )}
                           </div>
                         </TableCell>
