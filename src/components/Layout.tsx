@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users } from 'lucide-react';
+import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -16,6 +16,7 @@ export function Layout({ children }: LayoutProps) {
   const navItems = [
     ...(!isAdmin ? [{ href: '/profile', label: 'Bio', icon: User }] : []),
     { href: '/updates', label: 'Upd', icon: FileText },
+    { href: '/knowledge-base', label: 'KB', icon: BookOpen },
     { href: '/requests', label: 'Upd Req', icon: FileQuestion },
     { href: '/leave-request', label: 'Out Req', icon: Clock },
     { href: '/calendar', label: 'Out Cal', icon: CalendarDays },

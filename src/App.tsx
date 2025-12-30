@@ -18,6 +18,8 @@ import OutageStats from "./pages/OutageStats";
 import Calendar from "./pages/Calendar";
 import AgentProfile from "./pages/AgentProfile";
 import ManageProfiles from "./pages/ManageProfiles";
+import KnowledgeBase from "./pages/KnowledgeBase";
+import CategoryArticles from "./pages/CategoryArticles";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -140,6 +142,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ManageProfiles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/knowledge-base"
+        element={
+          <ProtectedRoute>
+            <KnowledgeBase />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/knowledge-base/:category"
+        element={
+          <ProtectedRoute>
+            <CategoryArticles />
           </ProtectedRoute>
         }
       />
