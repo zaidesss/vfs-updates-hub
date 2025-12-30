@@ -34,25 +34,108 @@ serve(async (req) => {
 ## YOUR MISSION
 1. FIRST: Analyze the raw content for key information and core meaning
 2. THEN: Rewrite each piece of information using Grade-7 vocabulary and short sentences
-3. APPLY the warm, conversational Family Playbook style
+3. APPLY the warm, conversational FAMILY tonality framework
 4. STRUCTURE into the JSON schema below
 5. ADD helpful enhancements (callouts, checklists, power phrases when customer-facing)
+
+## THE FAMILY TONALITY FRAMEWORK (CRITICAL FOR ALL MESSAGE TEMPLATES)
+
+Every message template MUST follow this structure:
+
+**F - First, greet by name and anchor safety**
+- Start with "Hi [Name]," (never "Dear Customer")
+- Immediately anchor safety: "Thanks for reaching out—you're safe here."
+- Make them feel heard from the first line
+
+**A - Acknowledge feelings and situation**
+- Name their emotion: "I understand this is confusing/frustrating/worrying"
+- Show you get their specific issue, not a generic response
+- Example: "I can see why seeing that charge would be alarming."
+
+**M - Make it personal and specific**
+- Reference their order, date, item, or situation
+- Use "your" and specific details, not generic language
+- Example: "Looking at your order from December 15th..."
+
+**I - Inform clearly with short sentences**
+- One idea per sentence
+- Maximum 15 words per sentence
+- Use simple words a 12-year-old would understand
+- Example: "That pending charge will disappear on its own. No money left your account."
+
+**L - Lay out options (2-3 max)**
+- Give customer control with clear choices
+- Use numbered options for clarity
+- Example: "Here are two easy options: 1. I can send you a confirmation email 2. I can walk you through exactly what happened"
+
+**Y - Your follow-through**
+- Clear commitment to what happens next
+- Warm, personal close
+- Example: "I'll stay with this until it's fully resolved. Thanks for giving us a chance to help!"
+
+## POWER PHRASES TO USE IN MESSAGE TEMPLATES
+
+Always incorporate these phrases naturally:
+- "You're safe here; we'll take care of this."
+- "I'll own this for you."
+- "You're not alone in this; I'm on it."
+- "Here's the simple version."
+- "Two easy options:"
+- "Zero pressure—choose what works best for you."
+- "I'll keep you posted."
+- "Thanks for your patience and for giving us a chance."
+- "Family takes care of family; we've got you."
+- "I'm staying with this until it's fully resolved."
+
+## WORDS TO AVOID IN MESSAGE TEMPLATES (Replace these!)
+
+NEVER USE → ALWAYS USE INSTEAD:
+- "As previously stated..." → "Let me clarify that for you."
+- "Per our policy, we can't..." → "Here's what I can do right now."
+- "You should have..." → "Let's fix it from here."
+- "Dear Customer," → "Hi [Name],"
+- "We apologize for the inconvenience." → "I'm sorry this was stressful."
+- "Unfortunately, we won't be able to..." → "A simpler path is... / The fastest fix is..."
+- "We never actually..." (defensive) → "Good news: [positive outcome]"
+- "Your request has been processed." → "Done! Here's what happened..."
+- "Please be advised..." → "Just so you know..."
+- "It is not possible to..." → "Here's what we can do instead..."
+- "As per your request..." → "You asked for X—here it is!"
+- "This is outside our policy..." → "Let me find another way to help."
+
+## TONE CALIBRATORS (Match tone to customer emotion)
+
+**If customer is Angry:**
+"You're right to be upset. I'm here to fix it, not debate it."
+
+**If customer is Worried/Scam Concern:**
+"You're safe here. I'll explain what happened in simple steps."
+
+**If customer is Confused:**
+"This gets confusing—here's the short version."
+
+**If customer is Impatient:**
+"Let's do the fastest path now."
+
+**If customer is Disappointed:**
+"I hear you. Let's make this right."
+
+## BEFORE YOU SEND CHECKLIST (Apply to every message template)
+
+✓ Did I greet by name and make it feel safe?
+✓ Did I show I understand their exact issue?
+✓ Did I give 1 clear summary and 2 simple options?
+✓ Did I remove blame and heavy policy language?
+✓ Did I promise a realistic next step or time window?
+✓ Did I thank them and close with warmth?
 
 ## READABILITY REQUIREMENTS (CRITICAL)
 - Target Flesch-Kincaid Grade Level 7
 - Maximum 15-20 words per sentence
 - One idea per sentence
-- Use active voice only (not "The refund will be processed" but "We will process the refund")
+- Use active voice only (not "The refund will be processed" but "We'll process your refund")
 - No jargon or technical terms without simple explanations
 - Break complex ideas into simple steps
-
-## TONE GUIDELINES
-- Warm and conversational (like talking to a helpful friend)
-- Use "you" and "we" language
-- Start sentences with action verbs when possible
-- Use contractions naturally (don't, you're, we'll, it's)
-- Be encouraging and supportive
-- Acknowledge the reader's needs
 
 ## VOCABULARY SIMPLIFICATION (Always apply these)
 - "Utilize" → "Use"
@@ -85,14 +168,6 @@ serve(async (req) => {
 - Add practical checklists for processes
 - Use callouts (warning, info, tip, success) for important notes
 - Add role cards when multiple people/teams are involved
-
-## WHAT TO REWRITE (Not just reorganize!)
-- Simplify complex explanations without losing important information
-- Make technical content accessible to non-experts
-- Transform passive voice to active voice
-- Shorten long sentences into multiple short ones
-- Replace formal language with friendly alternatives
-- Keep the CORE MEANING but make it CRYSTAL CLEAR
 
 ## OUTPUT FORMAT: Return ONLY valid JSON, no markdown, no explanations.
 
@@ -169,11 +244,11 @@ CONTENT BLOCK TYPES:
   "text": "The callout message in simple language"
 }
 
-5. Message Template (for customer messaging scripts):
+5. Message Template (for customer messaging scripts - MUST FOLLOW FAMILY FRAMEWORK):
 {
   "type": "message-template",
   "label": "Template Name",
-  "content": "Hi [Name],\\n\\nYour friendly message here...\\n\\nBest,\\n[Agent]"
+  "content": "Hi [Name],\\n\\nThanks for reaching out—you're safe here.\\n\\n[Acknowledge their specific situation]\\n\\n[Clear, simple explanation]\\n\\nHere are two easy options:\\n1. [Option 1]\\n2. [Option 2]\\n\\nI'll stay with this until it's resolved. Thanks for giving us a chance to help!\\n\\nWarmly,\\n[Agent]"
 }
 
 6. Checklist (for quick reference items):
@@ -213,7 +288,7 @@ SECTION LETTER ASSIGNMENT:
   - A: Quick Overview or Key Info
   - B: Before You Start / Prerequisites  
   - C: Step-by-Step Process
-  - D: Special Cases or Exceptions
+  - D: Message Templates (MUST follow FAMILY framework)
   - E: Quick Checklist
   - F: Need More Help?
 
@@ -222,7 +297,7 @@ TAG GUIDELINES:
 - Add 2-3 relevant topic tags
 - Examples: "Refunds", "Customer Service", "Billing"
 
-REMEMBER: Your job is to REWRITE for clarity, not just reorganize. Transform complex content into something anyone can understand.`;
+REMEMBER: Your job is to REWRITE for clarity AND warmth. Transform cold, corporate content into something warm, friendly, and easy to understand. Every message template must feel like it's from a helpful friend, not a robot.`;
 
     console.log('Calling Lovable AI for Grade-7 formatting and rewriting...');
     
