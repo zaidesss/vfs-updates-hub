@@ -260,15 +260,21 @@ export async function fetchAcknowledgements(): Promise<ApiResponse<Acknowledgeme
     return { data: mockAcknowledgements, error: null };
   }
   
-  const result = await callEdgeFunction<Acknowledgement[]>('acknowledgements');
-  
-  // Fallback to mock data if API fails  
-  if (result.error || !result.data) {
+  try {
+    const { data, error } = await supabase
+      .from('acknowledgements')
+      .select('update_id, agent_email, acknowledged_at');
+
+    if (error) {
+      console.error('Error fetching acknowledgements:', error);
+      return { data: mockAcknowledgements, error: null };
+    }
+
+    return { data: data as Acknowledgement[], error: null };
+  } catch (err) {
     console.log('Falling back to mock acknowledgements data');
     return { data: mockAcknowledgements, error: null };
   }
-  
-  return result;
 }
 
 export async function acknowledgeUpdate(updateId: string, agentEmail: string): Promise<ApiResponse<{ ok: boolean; acknowledged_at: string }>> {
@@ -279,7 +285,28 @@ export async function acknowledgeUpdate(updateId: string, agentEmail: string): P
     };
   }
   
-  return callEdgeFunction('ack', { update_id: updateId, agent_email: agentEmail });
+  try {
+    const acknowledged_at = new Date().toISOString();
+    
+    const { error } = await supabase
+      .from('acknowledgements')
+      .insert({
+        update_id: updateId,
+        agent_email: agentEmail.toLowerCase(),
+        acknowledged_at
+      });
+
+    if (error) {
+      console.error('Error acknowledging update:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true, acknowledged_at }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to acknowledge update:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
 }
 
 export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Promise<ApiResponse<{ ok: boolean; update: Update }>> {

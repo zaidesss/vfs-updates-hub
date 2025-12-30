@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      acknowledgements: {
+        Row: {
+          acknowledged_at: string
+          agent_email: string
+          id: string
+          update_id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          agent_email: string
+          id?: string
+          update_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          agent_email?: string
+          id?: string
+          update_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
