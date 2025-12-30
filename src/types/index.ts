@@ -15,7 +15,7 @@ export interface Update {
   posted_by: string;
   posted_at: string;
   deadline_at: string | null;
-  status: 'draft' | 'published' | 'archived';
+  status: 'draft' | 'published' | 'archived' | 'obsolete';
 }
 
 export interface Acknowledgement {
@@ -23,6 +23,22 @@ export interface Acknowledgement {
   update_id: string;
   agent_email: string;
   acknowledged_at: string;
+}
+
+export interface UpdateQuestion {
+  id: string;
+  update_id: string;
+  user_email: string;
+  question: string;
+  created_at: string;
+}
+
+export interface UpdateChangeHistory {
+  id: string;
+  update_id: string;
+  changed_by: string;
+  changed_at: string;
+  changes: Record<string, { old: string | null; new: string | null }>;
 }
 
 export type UserRole = 'agent' | 'admin';

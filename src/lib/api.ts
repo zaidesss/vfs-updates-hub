@@ -1,4 +1,4 @@
-import { Update, Acknowledgement } from '@/types';
+import { Update, Acknowledgement, UpdateChangeHistory } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { mockUpdates, mockAcknowledgements } from '@/lib/mockData';
 
@@ -15,6 +15,7 @@ export interface AdminRole {
   email: string;
   role: 'admin' | 'user';
   created_at: string;
+  name?: string;
 }
 
 // Fetch admin emails from the database
@@ -62,11 +63,11 @@ export async function checkIsAdmin(email: string): Promise<boolean> {
 }
 
 // Add a new admin
-export async function addAdmin(email: string): Promise<ApiResponse<AdminRole>> {
+export async function addAdmin(email: string, name?: string): Promise<ApiResponse<AdminRole>> {
   try {
     const { data, error } = await supabase
       .from('user_roles')
-      .insert({ email: email.toLowerCase(), role: 'admin' })
+      .insert({ email: email.toLowerCase(), role: 'admin', name: name || null })
       .select()
       .single();
 
@@ -149,11 +150,11 @@ export async function fetchUsers(): Promise<ApiResponse<AdminRole[]>> {
 }
 
 // Add a new user
-export async function addUser(email: string): Promise<ApiResponse<AdminRole>> {
+export async function addUser(email: string, name?: string): Promise<ApiResponse<AdminRole>> {
   try {
     const { data, error } = await supabase
       .from('user_roles')
-      .insert({ email: email.toLowerCase(), role: 'user' })
+      .insert({ email: email.toLowerCase(), role: 'user', name: name || null })
       .select()
       .single();
 
@@ -192,6 +193,25 @@ export async function removeUser(email: string): Promise<ApiResponse<{ ok: boole
   }
 }
 
+// Bulk add users
+export async function bulkAddUsers(emails: string[]): Promise<ApiResponse<{ added: number; failed: string[] }>> {
+  const results = { added: 0, failed: [] as string[] };
+  
+  for (const email of emails) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) continue;
+    
+    const { error } = await addUser(trimmedEmail);
+    if (error) {
+      results.failed.push(trimmedEmail);
+    } else {
+      results.added++;
+    }
+  }
+  
+  return { data: results, error: null };
+}
+
 // Fetch updates directly from the database
 export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
   if (USE_MOCK_DATA) {
@@ -219,7 +239,7 @@ export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
       posted_by: row.posted_by,
       posted_at: row.posted_at,
       deadline_at: row.deadline_at,
-      status: row.status as 'draft' | 'published' | 'archived',
+      status: row.status as 'draft' | 'published' | 'archived' | 'obsolete',
     }));
 
     return { data: updates, error: null };
@@ -322,7 +342,7 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
       posted_by: data.posted_by,
       posted_at: data.posted_at,
       deadline_at: data.deadline_at,
-      status: data.status as 'draft' | 'published' | 'archived',
+      status: data.status as 'draft' | 'published' | 'archived' | 'obsolete',
     };
 
     // If update is published, send notifications
@@ -346,7 +366,11 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
   }
 }
 
-export async function editUpdate(updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
+export async function editUpdate(
+  updateId: string, 
+  update: Partial<Omit<Update, 'id' | 'posted_at'>>,
+  changedBy?: string
+): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
   if (USE_MOCK_DATA) {
     const editedUpdate: Update = {
       id: updateId,
@@ -363,6 +387,17 @@ export async function editUpdate(updateId: string, update: Partial<Omit<Update, 
   }
 
   try {
+    // Fetch current update to track changes
+    const { data: currentUpdate, error: fetchError } = await supabase
+      .from('updates')
+      .select('*')
+      .eq('id', updateId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching current update:', fetchError);
+    }
+
     // Build update object with only defined fields
     const updateFields: Record<string, unknown> = {};
     if (update.title !== undefined) updateFields.title = update.title;
@@ -394,8 +429,36 @@ export async function editUpdate(updateId: string, update: Partial<Omit<Update, 
       posted_by: data.posted_by,
       posted_at: data.posted_at,
       deadline_at: data.deadline_at,
-      status: data.status as 'draft' | 'published' | 'archived',
+      status: data.status as 'draft' | 'published' | 'archived' | 'obsolete',
     };
+
+    // Track changes in change history
+    if (currentUpdate && changedBy) {
+      const changes: Record<string, { old: string | null; new: string | null }> = {};
+      
+      const fieldsToTrack = ['title', 'summary', 'body', 'help_center_url', 'posted_by', 'deadline_at', 'status'];
+      for (const field of fieldsToTrack) {
+        const oldValue = currentUpdate[field];
+        const newValue = data[field];
+        if (oldValue !== newValue) {
+          changes[field] = { old: oldValue, new: newValue };
+        }
+      }
+
+      if (Object.keys(changes).length > 0) {
+        const { error: historyError } = await supabase
+          .from('update_change_history')
+          .insert({
+            update_id: updateId,
+            changed_by: changedBy,
+            changes: changes,
+          });
+
+        if (historyError) {
+          console.error('Error saving change history:', historyError);
+        }
+      }
+    }
 
     // Send notification for edit
     try {
@@ -412,6 +475,53 @@ export async function editUpdate(updateId: string, update: Partial<Omit<Update, 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to edit update:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Fetch change history for an update
+export async function fetchChangeHistory(updateId: string): Promise<ApiResponse<UpdateChangeHistory[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('update_change_history')
+      .select('*')
+      .eq('update_id', updateId)
+      .order('changed_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching change history:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as UpdateChangeHistory[], error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch change history:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Submit a question about an update
+export async function submitQuestion(
+  updateId: string, 
+  updateTitle: string, 
+  userEmail: string, 
+  question: string
+): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { error } = await supabase.functions.invoke('send-question', {
+      body: { updateId, updateTitle, userEmail, question }
+    });
+
+    if (error) {
+      console.error('Error submitting question:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to submit question:', errorMessage);
     return { data: null, error: errorMessage };
   }
 }

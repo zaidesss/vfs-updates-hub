@@ -9,6 +9,7 @@ import { Update } from '@/types';
 import { AdminRole } from '@/lib/api';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { Loader2 } from 'lucide-react';
+
 interface EditUpdateDialogProps {
   update: Update | null;
   open: boolean;
@@ -65,7 +66,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-title">Title</Label>
+            <Label htmlFor="edit-title">Article Title</Label>
             <Input
               id="edit-title"
               value={formData.title}
@@ -74,13 +75,19 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-summary">Summary</Label>
-            <Input
-              id="edit-summary"
+            <Label htmlFor="edit-summary">Article Status</Label>
+            <Select
               value={formData.summary}
-              onChange={(e) => setFormData(prev => ({ ...prev, summary: e.target.value }))}
-              placeholder="Brief description of the update"
-            />
+              onValueChange={(value) => setFormData(prev => ({ ...prev, summary: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select article status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Created New Article">Created New Article</SelectItem>
+                <SelectItem value="Updated Existing Article">Updated Existing Article</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-body">Body</Label>
@@ -127,7 +134,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-deadline_at">Deadline (Required)</Label>
+              <Label htmlFor="edit-deadline_at">Posted Date</Label>
               <Input
                 id="edit-deadline_at"
                 type="datetime-local"
@@ -149,6 +156,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="published">Published</SelectItem>
                 <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="obsolete">Obsolete</SelectItem>
               </SelectContent>
             </Select>
           </div>

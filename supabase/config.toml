@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.send-notifications]
 verify_jwt = false
+
+[functions.send-question]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false
