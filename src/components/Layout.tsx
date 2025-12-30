@@ -10,7 +10,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isHR } = useAuth();
   const location = useLocation();
 
   const navItems = [
@@ -18,7 +18,7 @@ export function Layout({ children }: LayoutProps) {
     { href: '/requests', label: 'Submit a Request', icon: FileQuestion },
     { href: '/activity', label: 'My Activity', icon: User },
     ...(isAdmin ? [{ href: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
-    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
+    ...((isAdmin || isHR) ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
   ];
 
   return (
