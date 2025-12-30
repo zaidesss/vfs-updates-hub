@@ -79,7 +79,7 @@ serve(async (req) => {
         const emoji = isEdit ? '✏️' : '📢';
         // Use verified domain email - must match domain verified in Resend
         const emailResponse = await resend.emails.send({
-          from: 'VFS Updates Hub <hr@virtualfreelancesolutions.com>',
+          from: 'VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>',
           to: emails,
           subject: `${notificationType} Update: ${updateTitle}`,
           html: `
