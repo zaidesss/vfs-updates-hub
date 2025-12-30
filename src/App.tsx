@@ -20,6 +20,7 @@ import AgentProfile from "./pages/AgentProfile";
 import ManageProfiles from "./pages/ManageProfiles";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import CategoryArticles from "./pages/CategoryArticles";
+import PlaybookArticle from "./pages/PlaybookArticle";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -158,6 +159,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CategoryArticles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/knowledge-base/:category/:id"
+        element={
+          <ProtectedRoute>
+            <PlaybookArticle />
           </ProtectedRoute>
         }
       />
