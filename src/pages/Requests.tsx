@@ -34,7 +34,7 @@ interface SimilarUpdate {
 }
 
 export default function Requests() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isHR } = useAuth();
   const { toast } = useToast();
   const [requests, setRequests] = useState<ArticleRequestWithApprovals[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +46,8 @@ export default function Requests() {
   const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
   const [showSimilarResults, setShowSimilarResults] = useState(false);
   const [similarUpdates, setSimilarUpdates] = useState<SimilarUpdate[]>([]);
+  const [showNoSimilarDialog, setShowNoSimilarDialog] = useState(false);
+  const [submitReason, setSubmitReason] = useState('');
   
   const [newRequest, setNewRequest] = useState({
     category: '',
@@ -57,6 +59,7 @@ export default function Requests() {
 
   const userIsPreApprover = user?.email ? isPreApprover(user.email) : false;
   const userIsFinalApprover = user?.email ? isFinalApprover(user.email) : false;
+  const canDelete = isAdmin || isHR;
 
   useEffect(() => {
     loadRequests();
@@ -90,8 +93,8 @@ export default function Requests() {
       setSimilarUpdates(result.data);
       setShowSimilarResults(true);
     } else {
-      // No similar updates found, proceed to submit
-      await submitRequest();
+      // No similar updates found, show confirmation dialog
+      setShowNoSimilarDialog(true);
     }
   };
 
@@ -117,7 +120,9 @@ export default function Requests() {
       toast({ title: 'Request submitted', description: 'Pre-approvers have been notified.' });
       setShowNewRequest(false);
       setShowSimilarResults(false);
+      setShowNoSimilarDialog(false);
       setSimilarUpdates([]);
+      setSubmitReason('');
       setNewRequest({ category: '', request_type: 'new_article', sample_ticket: '', description: '', priority: 'normal' });
       loadRequests();
     }
@@ -251,10 +256,46 @@ export default function Requests() {
                   <Textarea placeholder="Describe what article or update you need..." value={newRequest.description} onChange={e => setNewRequest(p => ({ ...p, description: e.target.value }))} rows={4} />
                 </div>
                 <Button onClick={handleCheckSimilar} disabled={isSubmitting || isCheckingSimilar} className="w-full">
-                  {(isSubmitting || isCheckingSimilar) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {isCheckingSimilar ? 'Checking...' : <><Sparkles className="h-4 w-4 mr-2" />Check for Similar Updates</>}
+                  {isCheckingSimilar ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Checking for similar updates...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Check for Similar Updates
+                    </>
+                  )}
                 </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* No Similar Updates Found Dialog */}
+          <Dialog open={showNoSimilarDialog} onOpenChange={setShowNoSimilarDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  No Similar Updates Found
+                </DialogTitle>
+                <DialogDescription>
+                  We checked our database and found no existing updates similar to your request.
+                </DialogDescription>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground py-4">
+                Would you like to proceed with submitting your request?
+              </p>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setShowNoSimilarDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={submitRequest} disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Yes, Submit Request
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -308,13 +349,31 @@ export default function Requests() {
                 ))}
               </div>
 
+              <div className="border-t pt-4 space-y-3">
+                <div>
+                  <label className="text-sm font-medium">
+                    If you still believe this request should be submitted, please explain your reasoning below: *
+                  </label>
+                  <Textarea
+                    placeholder="Explain why this request is different from the existing updates..."
+                    value={submitReason}
+                    onChange={(e) => setSubmitReason(e.target.value)}
+                    rows={3}
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+
               <DialogFooter className="gap-2 sm:gap-0">
                 <Button variant="outline" onClick={() => setShowSimilarResults(false)}>
                   Cancel
                 </Button>
-                <Button onClick={submitRequest} disabled={isSubmitting}>
+                <Button 
+                  onClick={submitRequest} 
+                  disabled={isSubmitting || !submitReason.trim()}
+                >
                   {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Submit Anyway
+                  Proceed with Submission
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -327,16 +386,20 @@ export default function Requests() {
           <Card><CardContent className="py-12 text-center text-muted-foreground">No requests yet</CardContent></Card>
         ) : (
           <div className="space-y-4">
-            {requests.map(request => {
+            {requests.map((request, index) => {
               const preApprovals = request.approvals.filter(a => a.stage === 1);
               const finalApproval = request.approvals.find(a => a.stage === 2);
               const preApprovedCount = preApprovals.filter(a => a.approved).length;
+              const referenceNumber = (request as any).reference_number;
 
               return (
                 <Card key={request.id}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-3 flex-wrap">
+                        {referenceNumber && (
+                          <Badge variant="outline" className="font-mono">{referenceNumber}</Badge>
+                        )}
                         {getStatusBadge(request.status)}
                         <Badge variant="outline">{request.request_type === 'new_article' ? 'New Article' : request.request_type === 'update_existing' ? 'Update' : 'General'}</Badge>
                         {request.category && <Badge variant="secondary">{getCategoryLabel(request.category)}</Badge>}
@@ -344,7 +407,7 @@ export default function Requests() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">{format(new Date(request.submitted_at), 'PPp')}</span>
-                        {isAdmin && (
+                        {canDelete && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
@@ -355,7 +418,7 @@ export default function Requests() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete Request</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete this request? This action cannot be undone.
+                                  Are you sure you want to delete this request{referenceNumber ? ` (${referenceNumber})` : ''}? This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

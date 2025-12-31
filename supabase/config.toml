@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.format-update]
 verify_jwt = false
+
+[functions.send-override-request-notification]
+verify_jwt = false
+
+[functions.create-user-with-password]
+verify_jwt = false
