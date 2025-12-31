@@ -244,7 +244,7 @@ export async function updateLeaveRequest(
   }
 }
 
-// Admin update - no agent_email restriction
+// Admin update - no agent_email restriction, always resets to pending
 export async function adminUpdateLeaveRequest(
   id: string,
   input: LeaveRequestInput
@@ -263,7 +263,12 @@ export async function adminUpdateLeaveRequest(
       end_time: input.end_time,
       outage_reason: input.outage_reason,
       attachment_url: input.attachment_url || null,
-      ...durations
+      ...durations,
+      // Always reset to pending when admin edits
+      status: 'pending',
+      reviewed_by: null,
+      reviewed_at: null,
+      remarks: null
     };
 
     const { data, error } = await supabase
