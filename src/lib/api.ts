@@ -525,3 +525,32 @@ export async function submitQuestion(
     return { data: null, error: errorMessage };
   }
 }
+
+// Create user with password via edge function
+export async function createUserWithPassword(
+  email: string,
+  password: string,
+  name: string,
+  role: 'admin' | 'user' | 'hr'
+): Promise<ApiResponse<{ success: boolean; userId?: string }>> {
+  try {
+    const { data, error } = await supabase.functions.invoke('create-user-with-password', {
+      body: { email, password, name, role }
+    });
+
+    if (error) {
+      console.error('Error creating user with password:', error);
+      return { data: null, error: error.message };
+    }
+
+    if (data?.error) {
+      return { data: null, error: data.error };
+    }
+
+    return { data: { success: true, userId: data?.userId }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to create user with password:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
