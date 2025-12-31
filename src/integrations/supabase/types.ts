@@ -103,6 +103,7 @@ export type Database = {
           final_reviewed_by: string | null
           id: string
           priority: string | null
+          reference_number: string | null
           request_type: Database["public"]["Enums"]["request_type"]
           sample_ticket: string | null
           status: Database["public"]["Enums"]["request_status"]
@@ -119,6 +120,7 @@ export type Database = {
           final_reviewed_by?: string | null
           id?: string
           priority?: string | null
+          reference_number?: string | null
           request_type?: Database["public"]["Enums"]["request_type"]
           sample_ticket?: string | null
           status?: Database["public"]["Enums"]["request_status"]
@@ -135,6 +137,7 @@ export type Database = {
           final_reviewed_by?: string | null
           id?: string
           priority?: string | null
+          reference_number?: string | null
           request_type?: Database["public"]["Enums"]["request_type"]
           sample_ticket?: string | null
           status?: Database["public"]["Enums"]["request_status"]
@@ -188,6 +191,7 @@ export type Database = {
           agent_name: string
           attachment_url: string | null
           client_name: string
+          conflicting_agents: string | null
           created_at: string
           daily_hours: number | null
           end_date: string
@@ -195,6 +199,8 @@ export type Database = {
           id: string
           outage_duration_hours: number | null
           outage_reason: string
+          override_reason: string | null
+          reference_number: string | null
           remarks: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -211,6 +217,7 @@ export type Database = {
           agent_name: string
           attachment_url?: string | null
           client_name: string
+          conflicting_agents?: string | null
           created_at?: string
           daily_hours?: number | null
           end_date: string
@@ -218,6 +225,8 @@ export type Database = {
           id?: string
           outage_duration_hours?: number | null
           outage_reason: string
+          override_reason?: string | null
+          reference_number?: string | null
           remarks?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -234,6 +243,7 @@ export type Database = {
           agent_name?: string
           attachment_url?: string | null
           client_name?: string
+          conflicting_agents?: string | null
           created_at?: string
           daily_hours?: number | null
           end_date?: string
@@ -241,6 +251,8 @@ export type Database = {
           id?: string
           outage_duration_hours?: number | null
           outage_reason?: string
+          override_reason?: string | null
+          reference_number?: string | null
           remarks?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -367,6 +379,7 @@ export type Database = {
           created_at: string
           id: string
           question: string
+          reference_number: string | null
           update_id: string
           user_email: string
         }
@@ -374,6 +387,7 @@ export type Database = {
           created_at?: string
           id?: string
           question: string
+          reference_number?: string | null
           update_id: string
           user_email: string
         }
@@ -381,6 +395,7 @@ export type Database = {
           created_at?: string
           id?: string
           question?: string
+          reference_number?: string | null
           update_id?: string
           user_email?: string
         }
@@ -403,6 +418,7 @@ export type Database = {
           id: string
           posted_at: string
           posted_by: string
+          reference_number: string | null
           status: Database["public"]["Enums"]["update_status"]
           summary: string
           title: string
@@ -415,6 +431,7 @@ export type Database = {
           id?: string
           posted_at?: string
           posted_by: string
+          reference_number?: string | null
           status?: Database["public"]["Enums"]["update_status"]
           summary: string
           title: string
@@ -427,6 +444,7 @@ export type Database = {
           id?: string
           posted_at?: string
           posted_by?: string
+          reference_number?: string | null
           status?: Database["public"]["Enums"]["update_status"]
           summary?: string
           title?: string
@@ -438,6 +456,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          must_change_password: boolean | null
           name: string | null
           role: Database["public"]["Enums"]["app_role"]
         }
@@ -445,6 +464,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          must_change_password?: boolean | null
           name?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
@@ -452,6 +472,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          must_change_password?: boolean | null
           name?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
