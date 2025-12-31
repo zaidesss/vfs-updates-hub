@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ChevronLeft, ChevronRight, Clock, CheckCircle2, Building2 } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Clock, CheckCircle2, Building2, AlertCircle } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, parseISO, isSameDay, isWithinInterval } from 'date-fns';
 import { fetchCalendarRequests, CalendarLeaveRequest } from '@/lib/leaveRequestApi';
 import { cn } from '@/lib/utils';
@@ -235,6 +235,14 @@ export default function Calendar() {
                           {req.status === 'pending' ? <Clock className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
                           {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
                         </Badge>
+                      </div>
+                      
+                      <div className="text-sm">
+                        <p className="text-muted-foreground">Reason</p>
+                        <p className="flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3 text-muted-foreground" />
+                          {req.outage_reason}
+                        </p>
                       </div>
                       
                       <div className="text-sm">
