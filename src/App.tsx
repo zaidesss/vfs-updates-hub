@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UpdatesProvider } from "@/context/UpdatesContext";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import Updates from "./pages/Updates";
 import UpdateDetail from "./pages/UpdateDetail";
 import Activity from "./pages/Activity";
@@ -49,6 +50,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/updates" replace /> : <Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/" element={<Navigate to="/updates" replace />} />
       <Route
         path="/updates"
