@@ -420,12 +420,46 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      leave_calendar_view: {
+        Row: {
+          agent_name: string | null
+          client_name: string | null
+          end_date: string | null
+          id: string | null
+          start_date: string | null
+          status: string | null
+        }
+        Insert: {
+          agent_name?: string | null
+          client_name?: string | null
+          end_date?: string | null
+          id?: string | null
+          start_date?: string | null
+          status?: string | null
+        }
+        Update: {
+          agent_name?: string | null
+          client_name?: string | null
+          end_date?: string | null
+          id?: string | null
+          start_date?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
+      }
+      insert_reminder_log: {
+        Args: {
+          p_reminder_type?: string
+          p_update_id?: string
+          p_user_email: string
+        }
+        Returns: string
       }
       is_admin: { Args: { _email: string }; Returns: boolean }
     }
