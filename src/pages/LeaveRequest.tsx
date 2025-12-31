@@ -11,8 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
   createLeaveRequest,
   updateLeaveRequest,
@@ -24,6 +25,7 @@ import {
   cancelLeaveRequest,
   uploadAttachment,
   fetchLeaveRequestHistory,
+  deleteLeaveRequest,
   LeaveRequest as LeaveRequestType,
   LeaveRequestInput,
   LeaveRequestHistory
@@ -531,6 +533,24 @@ export default function LeaveRequest() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    const result = await deleteLeaveRequest(id);
+    
+    if (result.error) {
+      toast({
+        title: 'Error',
+        description: result.error,
+        variant: 'destructive'
+      });
+    } else {
+      toast({
+        title: 'Success',
+        description: 'Request deleted'
+      });
+      loadRequests();
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
@@ -943,6 +963,35 @@ export default function LeaveRequest() {
                                 >
                                   <History className="h-3 w-3" />
                                 </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-destructive hover:text-destructive"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Leave Request</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this leave request from {req.agent_name}? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleDelete(req.id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </>
                             )}
                             {!isAdmin && req.agent_email === user?.email?.toLowerCase() && (

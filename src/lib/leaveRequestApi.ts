@@ -622,3 +622,23 @@ export async function uploadAttachment(file: File, agentEmail: string): Promise<
     return { data: null, error: 'Failed to upload attachment' };
   }
 }
+
+// Delete leave request (admin/HR only)
+export async function deleteLeaveRequest(id: string): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { error } = await supabase
+      .from('leave_requests')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Error deleting leave request:', error);
+      return { data: null, error: error.message };
+    }
+    
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    console.error('Error deleting leave request:', err);
+    return { data: null, error: 'Failed to delete leave request' };
+  }
+}
