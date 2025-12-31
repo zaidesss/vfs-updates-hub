@@ -143,6 +143,45 @@ export type Database = {
         }
         Relationships: []
       }
+      leave_request_history: {
+        Row: {
+          changed_at: string
+          changed_by: string
+          changes: Json
+          id: string
+          leave_request_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by: string
+          changes: Json
+          id?: string
+          leave_request_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string
+          changes?: Json
+          id?: string
+          leave_request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_request_history_leave_request_id_fkey"
+            columns: ["leave_request_id"]
+            isOneToOne: false
+            referencedRelation: "leave_calendar_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_request_history_leave_request_id_fkey"
+            columns: ["leave_request_id"]
+            isOneToOne: false
+            referencedRelation: "leave_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leave_requests: {
         Row: {
           agent_email: string

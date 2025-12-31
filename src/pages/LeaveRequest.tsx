@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   createLeaveRequest,
@@ -23,8 +23,10 @@ import {
   updateLeaveRequestStatus,
   cancelLeaveRequest,
   uploadAttachment,
+  fetchLeaveRequestHistory,
   LeaveRequest as LeaveRequestType,
-  LeaveRequestInput
+  LeaveRequestInput,
+  LeaveRequestHistory
 } from '@/lib/leaveRequestApi';
 import { supabase } from '@/integrations/supabase/client';
 import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS } from '@/lib/agentDirectory';
@@ -78,6 +80,15 @@ export default function LeaveRequest() {
   } | null>(null);
   const [decisionRemarks, setDecisionRemarks] = useState('');
   const [isProcessingDecision, setIsProcessingDecision] = useState(false);
+  
+  // History dialog state
+  const [historyDialog, setHistoryDialog] = useState<{
+    open: boolean;
+    requestId: string;
+    agentName: string;
+  } | null>(null);
+  const [historyData, setHistoryData] = useState<LeaveRequestHistory[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState<LeaveRequestInput>({
@@ -239,7 +250,7 @@ export default function LeaveRequest() {
     if (editingRequest) {
       if (isAdminEditing) {
         // Admin editing any request
-        result = await adminUpdateLeaveRequest(editingRequest.id, formData);
+        result = await adminUpdateLeaveRequest(editingRequest.id, formData, user.email);
       } else {
         // Agent editing their own request - always reset to pending
         const isEditOfNonPending = editingRequest.status !== 'pending';
@@ -438,6 +449,33 @@ export default function LeaveRequest() {
     setIsProcessingDecision(false);
     setDecisionDialog(null);
     setDecisionRemarks('');
+  };
+
+  const openHistoryDialog = async (requestId: string, agentName: string) => {
+    setHistoryDialog({ open: true, requestId, agentName });
+    setIsLoadingHistory(true);
+    
+    const result = await fetchLeaveRequestHistory(requestId);
+    if (result.data) {
+      setHistoryData(result.data);
+    } else {
+      toast({
+        title: 'Error',
+        description: result.error || 'Failed to load history',
+        variant: 'destructive'
+      });
+    }
+    setIsLoadingHistory(false);
+  };
+
+  const formatFieldName = (field: string): string => {
+    return field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const formatFieldValue = (value: unknown): string => {
+    if (value === null || value === undefined) return '-';
+    if (typeof value === 'string') return value;
+    return String(value);
   };
 
   const handleCancel = async (id: string) => {
@@ -805,14 +843,24 @@ export default function LeaveRequest() {
                               </>
                             )}
                             {isAdmin && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEdit(req, true)}
-                              >
-                                <Pencil className="h-3 w-3 mr-1" />
-                                Edit
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEdit(req, true)}
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => openHistoryDialog(req.id, req.agent_name)}
+                                  title="View History"
+                                >
+                                  <History className="h-3 w-3" />
+                                </Button>
+                              </>
                             )}
                             {!isAdmin && req.agent_email === user?.email?.toLowerCase() && (
                               <>
@@ -897,6 +945,46 @@ export default function LeaveRequest() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={historyDialog?.open || false} onOpenChange={(open) => !open && setHistoryDialog(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit History - {historyDialog?.agentName}</DialogTitle>
+            <DialogDescription>View all changes made to this leave request</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {isLoadingHistory ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : historyData.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4">No edit history found</p>
+            ) : (
+              historyData.map((entry) => (
+                <div key={entry.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">{entry.changed_by}</span>
+                    <span className="text-muted-foreground">
+                      {format(parseISO(entry.changed_at), 'MMM d, yyyy h:mm a')}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(entry.changes).map(([field, change]) => (
+                      <div key={field} className="text-sm">
+                        <span className="font-medium">{formatFieldName(field)}:</span>{' '}
+                        <span className="text-destructive line-through">{formatFieldValue(change.old)}</span>
+                        {' → '}
+                        <span className="text-success">{formatFieldValue(change.new)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </Layout>
