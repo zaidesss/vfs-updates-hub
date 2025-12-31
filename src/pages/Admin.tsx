@@ -31,11 +31,13 @@ import {
   Search,
   Sparkles,
   MessageSquare,
-  ExternalLink
+  ExternalLink,
+  KeyRound,
+  Copy
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update, UpdateQuestion } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
@@ -64,6 +66,14 @@ export default function Admin() {
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [deletingUpdateId, setDeletingUpdateId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string; reference_number?: string })[]>([]);
+  const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    email: '',
+    name: '',
+    password: '',
+    role: 'user' as 'admin' | 'user' | 'hr',
+  });
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -198,6 +208,42 @@ export default function Admin() {
       setNewUserEmail('');
       toast.success('User added successfully');
     }
+  };
+
+  const handleCreateUserWithPassword = async () => {
+    if (!newUserData.email.trim() || !newUserData.password.trim() || !newUserData.name.trim()) return;
+    
+    setIsCreatingUser(true);
+    const { data, error } = await createUserWithPassword(
+      newUserData.email.trim(),
+      newUserData.password.trim(),
+      newUserData.name.trim(),
+      newUserData.role
+    );
+    setIsCreatingUser(false);
+
+    if (error) {
+      toast.error('Failed to create user', { description: error });
+      return;
+    }
+
+    if (data?.success) {
+      setNewUserData({ email: '', name: '', password: '', role: 'user' });
+      setIsCreateUserDialogOpen(false);
+      await loadUsers();
+      toast.success('User created successfully', { 
+        description: 'A welcome email with credentials has been sent.' 
+      });
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewUserData(prev => ({ ...prev, password }));
   };
 
   const handleRemoveUser = async (email: string) => {
@@ -695,6 +741,26 @@ Supports **markdown** formatting:
                 )}
               </Button>
             </div>
+
+            {/* Create User with Password */}
+            <div className="border rounded-lg p-4 bg-primary/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Create User with Password</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setIsCreateUserDialogOpen(true)}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create User
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Create a user with a temporary password. They will receive an email with credentials and be required to change their password on first login.
+              </p>
+            </div>
             <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
               {users.map((userItem) => (
                 <div key={userItem.id} className="flex items-center justify-between p-3">
@@ -742,6 +808,106 @@ Supports **markdown** formatting:
           onSave={handleEditUpdate}
           admins={admins}
         />
+
+        {/* Create User with Password Dialog */}
+        <Dialog open={isCreateUserDialogOpen} onOpenChange={setIsCreateUserDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create User with Password</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="create-user-name">Full Name</Label>
+                <Input
+                  id="create-user-name"
+                  value={newUserData.name}
+                  onChange={(e) => setNewUserData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="John Doe"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-user-email">Email</Label>
+                <Input
+                  id="create-user-email"
+                  type="email"
+                  value={newUserData.email}
+                  onChange={(e) => setNewUserData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="john@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-user-password">Temporary Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="create-user-password"
+                    value={newUserData.password}
+                    onChange={(e) => setNewUserData(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="Enter password"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={generateRandomPassword}
+                    title="Generate random password"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                  </Button>
+                  {newUserData.password && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(newUserData.password);
+                        toast.success('Password copied to clipboard');
+                      }}
+                      title="Copy password"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-user-role">Role</Label>
+                <Select
+                  value={newUserData.role}
+                  onValueChange={(value: 'admin' | 'user' | 'hr') => setNewUserData(prev => ({ ...prev, role: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="hr">HR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="bg-muted/50 border rounded-lg p-3 text-sm text-muted-foreground">
+                <p>The user will receive an email with their login credentials and will be required to change their password on first login.</p>
+              </div>
+              <Button 
+                onClick={handleCreateUserWithPassword} 
+                className="w-full" 
+                disabled={!newUserData.email || !newUserData.password || !newUserData.name || isCreatingUser}
+              >
+                {isCreatingUser ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Create User
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>
