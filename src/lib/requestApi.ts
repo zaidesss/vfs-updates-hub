@@ -206,6 +206,39 @@ export async function rejectRequest(requestId: string): Promise<ApiResponse<{ ok
   }
 }
 
+// Delete an article request (for admins)
+export async function deleteArticleRequest(requestId: string): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    // First delete associated approvals
+    const { error: approvalsError } = await supabase
+      .from('request_approvals')
+      .delete()
+      .eq('request_id', requestId);
+
+    if (approvalsError) {
+      console.error('Error deleting approvals:', approvalsError);
+      // Continue anyway - approvals might not exist
+    }
+
+    // Then delete the request
+    const { error } = await supabase
+      .from('article_requests')
+      .delete()
+      .eq('id', requestId);
+
+    if (error) {
+      console.error('Error deleting request:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to delete article request:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
 // Find similar updates using AI
 export async function findSimilarUpdates(params: {
   title?: string;

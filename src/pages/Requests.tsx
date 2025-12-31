@@ -11,11 +11,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORIES, getCategoryLabel } from '@/lib/categories';
 import { PRE_APPROVERS, FINAL_APPROVER, isPreApprover, isFinalApprover } from '@/lib/approvers';
-import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates } from '@/lib/requestApi';
+import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates, deleteArticleRequest } from '@/lib/requestApi';
 import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
-import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink } from 'lucide-react';
+import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 interface SimilarUpdate {
   id: string;
@@ -33,7 +34,7 @@ interface SimilarUpdate {
 }
 
 export default function Requests() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const [requests, setRequests] = useState<ArticleRequestWithApprovals[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,6 +42,7 @@ export default function Requests() {
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [finalNotes, setFinalNotes] = useState<Record<string, string>>({});
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [deletingRequest, setDeletingRequest] = useState<string | null>(null);
   const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
   const [showSimilarResults, setShowSimilarResults] = useState(false);
   const [similarUpdates, setSimilarUpdates] = useState<SimilarUpdate[]>([]);
@@ -157,6 +159,18 @@ export default function Requests() {
       loadRequests();
     }
     setProcessingRequest(null);
+  };
+
+  const handleDeleteRequest = async (requestId: string) => {
+    setDeletingRequest(requestId);
+    const result = await deleteArticleRequest(requestId);
+    if (result.error) {
+      toast({ title: 'Error', description: result.error, variant: 'destructive' });
+    } else {
+      toast({ title: 'Deleted', description: 'Request has been deleted.' });
+      loadRequests();
+    }
+    setDeletingRequest(null);
   };
 
   const getStatusBadge = (status: string) => {
@@ -328,7 +342,36 @@ export default function Requests() {
                         {request.category && <Badge variant="secondary">{getCategoryLabel(request.category)}</Badge>}
                         <Badge variant={request.priority === 'urgent' ? 'destructive' : request.priority === 'high' ? 'default' : 'outline'}>{request.priority}</Badge>
                       </div>
-                      <span className="text-sm text-muted-foreground">{format(new Date(request.submitted_at), 'PPp')}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">{format(new Date(request.submitted_at), 'PPp')}</span>
+                        {isAdmin && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Request</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this request? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteRequest(request.id)}
+                                  disabled={deletingRequest === request.id}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  {deletingRequest === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
