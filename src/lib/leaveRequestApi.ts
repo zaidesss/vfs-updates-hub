@@ -323,12 +323,23 @@ export async function fetchAllLeaveRequests(): Promise<ApiResponse<LeaveRequest[
   }
 }
 
-export async function fetchCalendarRequests(startDate: string, endDate: string): Promise<ApiResponse<LeaveRequest[]>> {
+// Calendar-specific type with limited fields for privacy
+export interface CalendarLeaveRequest {
+  id: string;
+  agent_name: string;
+  client_name: string;
+  start_date: string;
+  end_date: string;
+  status: 'pending' | 'approved';
+}
+
+export async function fetchCalendarRequests(startDate: string, endDate: string): Promise<ApiResponse<CalendarLeaveRequest[]>> {
   try {
+    // Only select limited fields for calendar view (privacy protection)
     const { data, error } = await supabase
       .from('leave_requests')
-      .select('*')
-      .not('status', 'in', '("declined","canceled")')
+      .select('id, agent_name, client_name, start_date, end_date, status')
+      .in('status', ['pending', 'approved'])
       .or(`start_date.lte.${endDate},end_date.gte.${startDate}`)
       .order('start_date', { ascending: true });
     
@@ -337,7 +348,7 @@ export async function fetchCalendarRequests(startDate: string, endDate: string):
       return { data: null, error: error.message };
     }
     
-    return { data: data as LeaveRequest[], error: null };
+    return { data: data as CalendarLeaveRequest[], error: null };
   } catch (err) {
     console.error('Error fetching calendar requests:', err);
     return { data: null, error: 'Failed to fetch calendar requests' };
