@@ -63,7 +63,7 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
     }
   };
 
-  const isValid = formData.title && formData.summary && formData.body && formData.posted_by && formData.deadline_at;
+  const isValid = formData.title && formData.summary && formData.body && formData.posted_by && formData.deadline_at && formData.category;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -151,13 +151,13 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-category">Category</Label>
+              <Label htmlFor="edit-category">Category <span className="text-destructive">*</span></Label>
               <Select
                 value={formData.category}
                 onValueChange={(value: UpdateCategory) => setFormData(prev => ({ ...prev, category: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select category (required)" />
                 </SelectTrigger>
                 <SelectContent>
                   {CATEGORIES.map(cat => (

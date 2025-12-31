@@ -29,10 +29,12 @@ import {
   UserPlus,
   Pencil,
   Search,
-  Sparkles
+  Sparkles,
+  MessageSquare,
+  ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { Update } from '@/types';
+import { Update, UpdateQuestion } from '@/types';
 import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
@@ -41,6 +43,7 @@ import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 import { SimilarUpdatesModal } from '@/components/SimilarUpdatesModal';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Admin() {
   const { isAdmin, isHR, user } = useAuth();
@@ -60,6 +63,7 @@ export default function Admin() {
   const [editingUpdate, setEditingUpdate] = useState<Update | null>(null);
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [deletingUpdateId, setDeletingUpdateId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string; reference_number?: string })[]>([]);
   const [newUpdate, setNewUpdate] = useState({
     title: '',
     summary: '',
@@ -88,6 +92,7 @@ export default function Admin() {
   useEffect(() => {
     loadAdmins();
     loadUsers();
+    loadQuestions();
   }, []);
 
   const loadAdmins = async () => {
@@ -103,6 +108,39 @@ export default function Admin() {
       setUsers(data);
     }
   };
+
+  const loadQuestions = async () => {
+    const { data: questionsData, error } = await supabase
+      .from('update_questions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error loading questions:', error);
+      return;
+    }
+
+    // Enrich with update titles
+    const enrichedQuestions = await Promise.all(
+      (questionsData || []).map(async (q) => {
+        const update = updates.find(u => u.id === q.update_id);
+        return {
+          ...q,
+          update_title: update?.title || 'Unknown Update',
+          reference_number: (q as any).reference_number || null,
+        };
+      })
+    );
+    
+    setQuestions(enrichedQuestions);
+  };
+
+  // Reload questions when updates change
+  useEffect(() => {
+    if (updates.length > 0) {
+      loadQuestions();
+    }
+  }, [updates]);
 
   const handleAddAdmin = async () => {
     if (!newAdminEmail.trim()) return;
@@ -204,7 +242,7 @@ export default function Admin() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([refreshData(), loadAdmins(), loadUsers()]);
+    await Promise.all([refreshData(), loadAdmins(), loadUsers(), loadQuestions()]);
     setIsRefreshing(false);
   };
 
@@ -422,13 +460,13 @@ Supports **markdown** formatting:
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="category">Category</Label>
+                      <Label htmlFor="category">Category <span className="text-destructive">*</span></Label>
                       <Select
                         value={newUpdate.category}
                         onValueChange={(value: UpdateCategory) => setNewUpdate(prev => ({ ...prev, category: value }))}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
+                          <SelectValue placeholder="Select category (required)" />
                         </SelectTrigger>
                         <SelectContent>
                           {CATEGORIES.map(cat => (
@@ -456,7 +494,7 @@ Supports **markdown** formatting:
                       </Select>
                     </div>
                   </div>
-                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at}>
+                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at || !newUpdate.category}>
                     Create Update
                   </Button>
                 </div>
@@ -856,6 +894,62 @@ Supports **markdown** formatting:
                 })}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+
+        {/* Questions Tab - For Admins and HR */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              <CardTitle>Agent Questions</CardTitle>
+            </div>
+            <CardDescription>Questions submitted by agents about updates</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {questions.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">No questions submitted yet</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ref #</TableHead>
+                    <TableHead>Update</TableHead>
+                    <TableHead>Asked By</TableHead>
+                    <TableHead>Question</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {questions.map(q => (
+                    <TableRow key={q.id}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {q.reference_number || '-'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <p className="truncate font-medium" title={q.update_title}>
+                          {q.update_title}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium">{getNameByEmail(q.user_email)}</p>
+                          <p className="text-xs text-muted-foreground">{q.user_email}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[300px]">
+                        <p className="truncate" title={q.question}>{q.question}</p>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {format(new Date(q.created_at), 'MMM d, yyyy h:mm a')}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
