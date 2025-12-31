@@ -16,7 +16,10 @@ export interface LeaveRequest {
   daily_hours: number | null;
   outage_reason: string;
   attachment_url: string | null;
-  status: 'pending' | 'approved' | 'declined' | 'canceled';
+  status: 'pending' | 'approved' | 'declined' | 'canceled' | 'pending_override';
+  override_reason?: string | null;
+  conflicting_agents?: string | null;
+  reference_number?: string | null;
   remarks: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
