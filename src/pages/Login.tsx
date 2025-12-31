@@ -29,7 +29,11 @@ export default function Login() {
     const result = await login(email, password);
     
     if (result.success) {
-      navigate('/updates');
+      if (result.mustChangePassword) {
+        navigate('/change-password');
+      } else {
+        navigate('/updates');
+      }
     } else {
       setError(result.error || 'Login failed');
     }

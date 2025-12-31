@@ -8,6 +8,7 @@ const corsHeaders = {
 
 interface LeaveDecisionPayload {
   requestId: string;
+  referenceNumber?: string;
   agentName: string;
   agentEmail: string;
   clientName: string;
@@ -90,6 +91,10 @@ serve(async (req: Request): Promise<Response> => {
 
     const config = decisionConfig[payload.decision];
 
+    const refBadge = payload.referenceNumber 
+      ? `<span style="background-color: ${config.color}22; color: ${config.color}; padding: 4px 10px; border-radius: 4px; font-family: monospace; font-size: 13px; margin-left: 10px;">${payload.referenceNumber}</span>` 
+      : '';
+
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -101,7 +106,7 @@ serve(async (req: Request): Promise<Response> => {
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, ${config.color}22 0%, ${config.color}11 100%); border-left: 4px solid ${config.color}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
           <h1 style="margin: 0; color: ${config.color}; font-size: 24px;">
-            ${config.emoji} Leave Request ${config.label}
+            ${config.emoji} Leave Request ${config.label} ${refBadge}
           </h1>
         </div>
         
@@ -164,7 +169,7 @@ serve(async (req: Request): Promise<Response> => {
     const emailPayload: Record<string, unknown> = {
       from: "VFS Agent Portal <notifications@resend.dev>",
       to: [payload.agentEmail],
-      subject: `${config.emoji} Leave Request ${config.label}: ${payload.agentName} - ${payload.outageReason}`,
+      subject: `${config.emoji} ${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request ${config.label}: ${payload.agentName} - ${payload.outageReason}`,
       html: emailHtml,
     };
 

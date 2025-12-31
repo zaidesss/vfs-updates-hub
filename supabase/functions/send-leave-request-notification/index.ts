@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 interface LeaveRequestNotificationPayload {
+  referenceNumber?: string;
   agentName: string;
   agentEmail: string;
   clientName: string;
@@ -92,6 +93,8 @@ serve(async (req: Request): Promise<Response> => {
         </tr>`
       : "";
 
+    const refDisplay = payload.referenceNumber ? `<span style="background-color: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px;">${payload.referenceNumber}</span>` : '';
+
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -104,13 +107,13 @@ serve(async (req: Request): Promise<Response> => {
     <div style="background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
       <!-- Header -->
       <div style="background-color: #1a1a2e; padding: 24px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">New Leave Request</h1>
+        <h1 style="color: white; margin: 0; font-size: 24px;">New Leave Request ${payload.referenceNumber || ''}</h1>
       </div>
       
       <!-- Content -->
       <div style="padding: 24px;">
         <p style="color: #333; font-size: 16px; margin-bottom: 20px;">
-          A new leave request has been submitted and requires your review.
+          A new leave request ${refDisplay} has been submitted and requires your review.
         </p>
         
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
@@ -181,7 +184,7 @@ serve(async (req: Request): Promise<Response> => {
         from: "VFS Updates Hub <onboarding@resend.dev>",
         to: adminEmails,
         cc: [payload.agentEmail],
-        subject: `Leave Request: ${payload.agentName} - ${payload.outageReason}`,
+        subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request: ${payload.agentName} - ${payload.outageReason}`,
         html: emailHtml,
       }),
     });
