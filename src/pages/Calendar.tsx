@@ -4,9 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ChevronLeft, ChevronRight, Clock, CheckCircle2 } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Clock, CheckCircle2, Building2 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, parseISO, isSameDay, isWithinInterval } from 'date-fns';
-import { fetchCalendarRequests, LeaveRequest } from '@/lib/leaveRequestApi';
+import { fetchCalendarRequests, CalendarLeaveRequest } from '@/lib/leaveRequestApi';
 import { cn } from '@/lib/utils';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -23,7 +23,7 @@ export default function Calendar() {
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<CalendarLeaveRequest[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const monthStart = startOfMonth(currentDate);
@@ -64,7 +64,7 @@ export default function Calendar() {
     return [...paddedDays, ...daysInMonth];
   }, [monthStart, monthEnd]);
 
-  const getRequestsForDay = (date: Date): LeaveRequest[] => {
+  const getRequestsForDay = (date: Date): CalendarLeaveRequest[] => {
     return requests.filter(req => {
       const startDate = parseISO(req.start_date);
       const endDate = parseISO(req.end_date);
@@ -215,13 +215,16 @@ export default function Calendar() {
               ) : selectedDayRequests.length === 0 ? (
                 <p className="text-muted-foreground text-sm">No outages scheduled for this day.</p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {selectedDayRequests.map(req => (
                     <div key={req.id} className="p-3 border rounded-lg space-y-2">
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="font-medium">{req.agent_name}</p>
-                          <p className="text-sm text-muted-foreground">{req.role}</p>
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {req.client_name}
+                          </p>
                         </div>
                         <Badge variant="outline" className={cn(
                           "flex items-center gap-1",
@@ -234,35 +237,10 @@ export default function Calendar() {
                         </Badge>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Client</p>
-                          <p>{req.client_name}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Team Lead</p>
-                          <p>{req.team_lead_name}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Dates</p>
-                          <p>{format(parseISO(req.start_date), 'MMM d')} - {format(parseISO(req.end_date), 'MMM d')}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Time</p>
-                          <p>{req.start_time} - {req.end_time}</p>
-                        </div>
-                      </div>
-                      
                       <div className="text-sm">
-                        <p className="text-muted-foreground">Reason</p>
-                        <p>{req.outage_reason}</p>
+                        <p className="text-muted-foreground">Dates</p>
+                        <p>{format(parseISO(req.start_date), 'MMM d')} - {format(parseISO(req.end_date), 'MMM d, yyyy')}</p>
                       </div>
-                      
-                      {req.outage_duration_hours && (
-                        <div className="text-xs text-muted-foreground pt-1 border-t">
-                          Total: {req.outage_duration_hours}h ({req.total_days} days × {req.daily_hours}h/day)
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
