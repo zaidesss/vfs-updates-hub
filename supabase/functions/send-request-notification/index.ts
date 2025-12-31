@@ -7,6 +7,7 @@ const corsHeaders = {
 
 interface RequestNotificationPayload {
   requestId: string;
+  referenceNumber?: string;
   submittedBy: string;
   description: string;
   category: string | null;
@@ -34,6 +35,10 @@ serve(async (req) => {
 
     console.log("Sending request notifications to approvers:", payload.approverEmails);
 
+    const refBadge = payload.referenceNumber 
+      ? `<span style="background-color: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${payload.referenceNumber}</span>` 
+      : '';
+
     const emailPromises = payload.approverEmails.map(email =>
       fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -44,12 +49,18 @@ serve(async (req) => {
         body: JSON.stringify({
           from: "VFS Updates Hub <onboarding@resend.dev>",
           to: [email],
-          subject: `New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
+          subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
           html: `
-            <h2>New Article Request Submitted</h2>
+            <h2>New Article Request ${refBadge}</h2>
             <p>A new request requires your approval.</p>
             
             <table style="border-collapse: collapse; margin: 20px 0;">
+              ${payload.referenceNumber ? `
+              <tr>
+                <td style="padding: 8px; font-weight: bold;">Reference:</td>
+                <td style="padding: 8px;"><code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">${payload.referenceNumber}</code></td>
+              </tr>
+              ` : ''}
               <tr>
                 <td style="padding: 8px; font-weight: bold;">Submitted By:</td>
                 <td style="padding: 8px;">${payload.submittedBy}</td>

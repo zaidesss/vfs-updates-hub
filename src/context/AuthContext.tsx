@@ -8,10 +8,12 @@ import { supabase } from '@/integrations/supabase/client';
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  mustChangePassword: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }>;
   logout: () => void;
   isAdmin: boolean;
   isHR: boolean;
+  clearMustChangePassword: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [adminEmails, setAdminEmails] = useState<string[]>(fallbackAdminEmails);
   const [hrStatus, setHrStatus] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   const loadAdminEmails = async () => {
     const result = await fetchAdminEmails();
@@ -79,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
     // Check if email is in the allowlist (user_roles table)
@@ -118,20 +121,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: error.message };
     }
 
-    return { success: true };
+    // Check if user must change password
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('must_change_password')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    const needsPasswordChange = (roleData as any)?.must_change_password === true;
+    setMustChangePassword(needsPasswordChange);
+
+    return { success: true, mustChangePassword: needsPasswordChange };
+  };
+
+  const clearMustChangePassword = () => {
+    setMustChangePassword(false);
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setHrStatus(false);
+    setMustChangePassword(false);
   };
 
   const isAdmin = user?.role === 'admin' && !hrStatus;
   const isHR = hrStatus;
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAdmin, isHR }}>
+    <AuthContext.Provider value={{ user, isLoading, mustChangePassword, login, logout, isAdmin, isHR, clearMustChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UpdatesProvider } from "@/context/UpdatesContext";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import ChangePassword from "./pages/ChangePassword";
 import Updates from "./pages/Updates";
 import UpdateDetail from "./pages/UpdateDetail";
 import Activity from "./pages/Activity";
@@ -51,6 +52,14 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/updates" replace /> : <Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute>
+            <ChangePassword />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/" element={<Navigate to="/updates" replace />} />
       <Route
         path="/updates"
