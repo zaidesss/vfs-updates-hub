@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Bell, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Bell, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -19,14 +20,12 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setIsLoading(true);
 
-    const result = await login(email);
+    const result = await login(email, password);
     
     if (result.success) {
-      // Show success message for magic link
-      setSuccess(result.error || 'Check your email for the login link.');
+      navigate('/updates');
     } else {
       setError(result.error || 'Login failed');
     }
@@ -48,7 +47,7 @@ export default function Login() {
         <Card className="shadow-lg border-border/50">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-xl">Welcome back</CardTitle>
-            <CardDescription>Enter your email to receive a secure login link</CardDescription>
+            <CardDescription>Enter your credentials to sign in</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -56,15 +55,6 @@ export default function Login() {
                 <Alert variant="destructive" className="animate-scale-in">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              {success && (
-                <Alert className="animate-scale-in border-green-500 bg-green-50 dark:bg-green-950">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800 dark:text-green-200">
-                    {success}
-                  </AlertDescription>
                 </Alert>
               )}
               
@@ -79,31 +69,51 @@ export default function Login() {
                   required
                   className="h-11"
                   autoComplete="email"
-                  disabled={!!success}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="h-11 pr-10"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button
                 type="submit"
                 className="w-full h-11 font-medium"
-                disabled={isLoading || !!success}
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending login link...
+                    Signing in...
                   </>
-                ) : success ? (
-                  'Check your email'
                 ) : (
-                  'Send login link'
+                  'Sign In'
                 )}
               </Button>
             </form>
 
             <div className="mt-6 pt-6 border-t border-border">
               <p className="text-xs text-center text-muted-foreground">
-                Can't find your email? Contact your administrator to be added to the system.
+                Don't have an account? Contact your administrator to be added to the system.
               </p>
             </div>
           </CardContent>

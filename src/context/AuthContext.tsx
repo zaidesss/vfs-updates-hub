@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
   isHR: boolean;
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = email.toLowerCase().trim();
     
     // Check if email is in the allowlist (user_roles table)
@@ -101,28 +101,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Unable to verify email. Please try again.' };
     }
 
-    // Use Supabase Auth magic link
-    const { error } = await supabase.auth.signInWithOtp({
+    // Use Supabase Auth with email/password
+    const { error } = await supabase.auth.signInWithPassword({
       email: normalizedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/updates`,
-        shouldCreateUser: true, // Auto-create user if in allowlist
-      }
+      password: password,
     });
     
     if (error) {
       console.error('Login error:', error);
-      // If user doesn't exist in Supabase, create them first
-      if (error.message.includes('Signups not allowed')) {
-        return { success: false, error: 'Account not set up. Please contact your administrator.' };
+      if (error.message.includes('Invalid login credentials')) {
+        return { success: false, error: 'Invalid email or password. Please try again.' };
+      }
+      if (error.message.includes('Email not confirmed')) {
+        return { success: false, error: 'Please verify your email before logging in.' };
       }
       return { success: false, error: error.message };
     }
 
-    return { 
-      success: true, 
-      error: 'Check your email for the login link. It may take a few moments to arrive.' 
-    };
+    return { success: true };
   };
 
   const logout = async () => {
