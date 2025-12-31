@@ -29,7 +29,22 @@ import {
   LeaveRequestHistory
 } from '@/lib/leaveRequestApi';
 import { supabase } from '@/integrations/supabase/client';
-import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS } from '@/lib/agentDirectory';
+import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS, AGENT_DIRECTORY } from '@/lib/agentDirectory';
+
+// Get all agents for dropdown
+const ALL_AGENTS = Object.entries(AGENT_DIRECTORY).map(([email, info]) => ({
+  email,
+  name: info.name,
+  position: info.position,
+  teamLead: info.teamLead,
+  clients: info.clients
+})).sort((a, b) => a.name.localeCompare(b.name));
+
+// Get unique team leads
+const TEAM_LEADS = [...new Set(Object.values(AGENT_DIRECTORY).map(a => a.teamLead).filter(Boolean))].sort();
+
+// Get unique roles/positions
+const ROLES = [...new Set(Object.values(AGENT_DIRECTORY).map(a => a.position))].sort();
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -148,6 +163,24 @@ export default function LeaveRequest() {
 
   const handleInputChange = (field: keyof LeaveRequestInput, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setConflictWarning(null);
+  };
+
+  // Handle agent selection for admin - auto-populate other fields
+  const handleAgentSelect = (agentName: string) => {
+    const agent = ALL_AGENTS.find(a => a.name === agentName);
+    if (agent) {
+      setFormData(prev => ({
+        ...prev,
+        agent_name: agent.name,
+        team_lead_name: agent.teamLead,
+        role: agent.position,
+        client_name: agent.clients.length === 1 ? agent.clients[0] : prev.client_name
+      }));
+      setAgentClients(agent.clients);
+    } else {
+      setFormData(prev => ({ ...prev, agent_name: agentName }));
+    }
     setConflictWarning(null);
   };
 
@@ -534,12 +567,30 @@ export default function LeaveRequest() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="agent_name">Agent Name *</Label>
-                  <Input
-                    id="agent_name"
-                    value={formData.agent_name}
-                    onChange={(e) => handleInputChange('agent_name', e.target.value)}
-                    placeholder="Your name"
-                  />
+                  {isAdmin ? (
+                    <Select
+                      value={formData.agent_name}
+                      onValueChange={handleAgentSelect}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_AGENTS.map(agent => (
+                          <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="agent_name"
+                      value={formData.agent_name}
+                      onChange={(e) => handleInputChange('agent_name', e.target.value)}
+                      placeholder="Your name"
+                      disabled={isDirectoryUser}
+                      className={isDirectoryUser ? 'bg-muted' : ''}
+                    />
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -552,7 +603,7 @@ export default function LeaveRequest() {
                       <SelectValue placeholder="Select client" />
                     </SelectTrigger>
                     <SelectContent>
-                      {agentClients.map(client => (
+                      {(isAdmin ? CLIENT_OPTIONS : agentClients).map(client => (
                         <SelectItem key={client} value={client}>{client}</SelectItem>
                       ))}
                     </SelectContent>
@@ -561,26 +612,58 @@ export default function LeaveRequest() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="team_lead_name">Team Lead Name *</Label>
-                  <Input
-                    id="team_lead_name"
-                    value={formData.team_lead_name}
-                    onChange={(e) => handleInputChange('team_lead_name', e.target.value)}
-                    placeholder="Team lead name"
-                    disabled={isDirectoryUser && !isAdminEditing}
-                    className={isDirectoryUser && !isAdminEditing ? 'bg-muted' : ''}
-                  />
+                  {isAdmin ? (
+                    <Select
+                      value={formData.team_lead_name}
+                      onValueChange={(value) => handleInputChange('team_lead_name', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select team lead" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TEAM_LEADS.map(lead => (
+                          <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="team_lead_name"
+                      value={formData.team_lead_name}
+                      onChange={(e) => handleInputChange('team_lead_name', e.target.value)}
+                      placeholder="Team lead name"
+                      disabled={isDirectoryUser}
+                      className={isDirectoryUser ? 'bg-muted' : ''}
+                    />
+                  )}
                 </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="role">Role *</Label>
-                  <Input
-                    id="role"
-                    value={formData.role}
-                    onChange={(e) => handleInputChange('role', e.target.value)}
-                    placeholder="Your role"
-                    disabled={isDirectoryUser && !isAdminEditing}
-                    className={isDirectoryUser && !isAdminEditing ? 'bg-muted' : ''}
-                  />
+                  {isAdmin ? (
+                    <Select
+                      value={formData.role}
+                      onValueChange={(value) => handleInputChange('role', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map(role => (
+                          <SelectItem key={role} value={role}>{role}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="role"
+                      value={formData.role}
+                      onChange={(e) => handleInputChange('role', e.target.value)}
+                      placeholder="Your role"
+                      disabled={isDirectoryUser}
+                      className={isDirectoryUser ? 'bg-muted' : ''}
+                    />
+                  )}
                 </div>
                 
                 <div className="space-y-2">
