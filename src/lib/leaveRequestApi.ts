@@ -37,9 +37,88 @@ export interface LeaveRequestInput {
   attachment_url?: string;
 }
 
+export interface LeaveRequestHistory {
+  id: string;
+  leave_request_id: string;
+  changed_by: string;
+  changed_at: string;
+  changes: Record<string, { old: unknown; new: unknown }>;
+}
+
 interface ApiResponse<T> {
   data: T | null;
   error: string | null;
+}
+
+// Helper to log changes to history
+async function logLeaveRequestChange(
+  leaveRequestId: string,
+  changedBy: string,
+  oldData: Partial<LeaveRequest>,
+  newData: Partial<LeaveRequest>
+): Promise<void> {
+  const changes: Record<string, { old: unknown; new: unknown }> = {};
+  
+  const fieldsToTrack = [
+    'agent_name', 'client_name', 'team_lead_name', 'role',
+    'start_date', 'end_date', 'start_time', 'end_time',
+    'outage_reason', 'attachment_url', 'status', 'remarks'
+  ];
+  
+  for (const field of fieldsToTrack) {
+    const oldVal = oldData[field as keyof LeaveRequest];
+    const newVal = newData[field as keyof LeaveRequest];
+    if (oldVal !== newVal) {
+      changes[field] = { old: oldVal, new: newVal };
+    }
+  }
+  
+  if (Object.keys(changes).length > 0) {
+    // Direct insert - cast to bypass type checking for new table
+    const { error } = await (supabase as unknown as { from: (table: string) => { insert: (data: unknown) => Promise<{ error: unknown }> } })
+      .from('leave_request_history')
+      .insert({
+        leave_request_id: leaveRequestId,
+        changed_by: changedBy,
+        changes
+      });
+    
+    if (error) {
+      console.error('Error logging history:', error);
+    }
+  }
+}
+
+// Fetch leave request history
+export async function fetchLeaveRequestHistory(
+  leaveRequestId: string
+): Promise<ApiResponse<LeaveRequestHistory[]>> {
+  try {
+    // Cast to bypass type checking for new table
+    const result = await (supabase as unknown as { 
+      from: (table: string) => { 
+        select: (cols: string) => { 
+          eq: (col: string, val: string) => { 
+            order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: { message: string } | null }> 
+          } 
+        } 
+      } 
+    })
+      .from('leave_request_history')
+      .select('*')
+      .eq('leave_request_id', leaveRequestId)
+      .order('changed_at', { ascending: false });
+    
+    if (result.error) {
+      console.error('Error fetching history:', result.error);
+      return { data: null, error: result.error.message };
+    }
+    
+    return { data: result.data as LeaveRequestHistory[], error: null };
+  } catch (err) {
+    console.error('Error fetching history:', err);
+    return { data: null, error: 'Failed to fetch history' };
+  }
 }
 
 // Calculate duration, days, and daily hours
@@ -195,6 +274,13 @@ export async function updateLeaveRequest(
   resetToPending: boolean = false
 ): Promise<ApiResponse<LeaveRequest>> {
   try {
+    // First fetch the old data for history logging
+    const { data: oldData } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const durations = calculateDurations(input.start_date, input.end_date, input.start_time, input.end_time);
     
     const updateData: Record<string, unknown> = {
@@ -220,21 +306,26 @@ export async function updateLeaveRequest(
     }
 
     // For agent edits - always require their email match
-  const { data, error } = await supabase
-    .from('leave_requests')
-    .update(updateData)
-    .eq('id', id)
-    .eq('agent_email', agentEmail.toLowerCase())
-    .select()
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .update(updateData)
+      .eq('id', id)
+      .eq('agent_email', agentEmail.toLowerCase())
+      .select()
+      .maybeSingle();
 
-  if (!data && !error) {
-    return { data: null, error: 'Request not found or you do not have permission to update it' };
-  }
+    if (!data && !error) {
+      return { data: null, error: 'Request not found or you do not have permission to update it' };
+    }
     
     if (error) {
       console.error('Error updating leave request:', error);
       return { data: null, error: error.message };
+    }
+
+    // Log the change to history
+    if (oldData && data) {
+      await logLeaveRequestChange(id, agentEmail, oldData as LeaveRequest, data as LeaveRequest);
     }
     
     return { data: data as LeaveRequest, error: null };
@@ -247,9 +338,17 @@ export async function updateLeaveRequest(
 // Admin update - no agent_email restriction, always resets to pending
 export async function adminUpdateLeaveRequest(
   id: string,
-  input: LeaveRequestInput
+  input: LeaveRequestInput,
+  adminEmail: string
 ): Promise<ApiResponse<LeaveRequest>> {
   try {
+    // First fetch the old data for history logging
+    const { data: oldData } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const durations = calculateDurations(input.start_date, input.end_date, input.start_time, input.end_time);
     
     const updateData: Record<string, unknown> = {
@@ -281,6 +380,11 @@ export async function adminUpdateLeaveRequest(
     if (error) {
       console.error('Error updating leave request (admin):', error);
       return { data: null, error: error.message };
+    }
+
+    // Log the change to history
+    if (oldData && data) {
+      await logLeaveRequestChange(id, adminEmail, oldData as LeaveRequest, data as LeaveRequest);
     }
     
     return { data: data as LeaveRequest, error: null };
@@ -367,6 +471,13 @@ export async function updateLeaveRequestStatus(
   remarks?: string
 ): Promise<ApiResponse<LeaveRequest>> {
   try {
+    // First fetch the old data for history logging
+    const { data: oldData } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const updateData: Record<string, unknown> = {
       status,
       reviewed_by: reviewedBy,
@@ -387,6 +498,11 @@ export async function updateLeaveRequestStatus(
     if (error) {
       console.error('Error updating leave request:', error);
       return { data: null, error: error.message };
+    }
+
+    // Log the change to history
+    if (oldData && data) {
+      await logLeaveRequestChange(id, reviewedBy, oldData as LeaveRequest, data as LeaveRequest);
     }
 
     // Send decision notification
