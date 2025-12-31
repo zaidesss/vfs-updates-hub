@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History, Trash2 } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History, Trash2, ShieldAlert } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
@@ -61,6 +63,7 @@ const OUTAGE_REASONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-warning/10 text-warning border-warning/20',
+  pending_override: 'bg-orange-100 text-orange-700 border-orange-200',
   approved: 'bg-success/10 text-success border-success/20',
   declined: 'bg-destructive/10 text-destructive border-destructive/20',
   canceled: 'bg-muted text-muted-foreground border-muted'
@@ -68,13 +71,14 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3" />,
+  pending_override: <ShieldAlert className="h-3 w-3" />,
   approved: <CheckCircle2 className="h-3 w-3" />,
   declined: <XCircle className="h-3 w-3" />,
   canceled: <Ban className="h-3 w-3" />
 };
 
 export default function LeaveRequest() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isHR } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -83,10 +87,16 @@ export default function LeaveRequest() {
   const [isUploading, setIsUploading] = useState(false);
   const [requests, setRequests] = useState<LeaveRequestType[]>([]);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+  const [conflictingAgents, setConflictingAgents] = useState<string[]>([]);
+  const [showOverrideOption, setShowOverrideOption] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const [agentClients, setAgentClients] = useState<string[]>(CLIENT_OPTIONS);
   const [isDirectoryUser, setIsDirectoryUser] = useState(false);
   const [editingRequest, setEditingRequest] = useState<LeaveRequestType | null>(null);
   const [isAdminEditing, setIsAdminEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('all');
+  const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   
   // Decision dialog state
   const [decisionDialog, setDecisionDialog] = useState<{
@@ -120,6 +130,8 @@ export default function LeaveRequest() {
     outage_reason: '',
     attachment_url: ''
   });
+
+  const canBulkDelete = isAdmin || isHR;
 
   useEffect(() => {
     if (user?.email) {
@@ -166,6 +178,8 @@ export default function LeaveRequest() {
   const handleInputChange = (field: keyof LeaveRequestInput, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setConflictWarning(null);
+    setShowOverrideOption(false);
+    setConflictingAgents([]);
   };
 
   // Handle agent selection for admin - auto-populate other fields
@@ -184,6 +198,8 @@ export default function LeaveRequest() {
       setFormData(prev => ({ ...prev, agent_name: agentName }));
     }
     setConflictWarning(null);
+    setShowOverrideOption(false);
+    setConflictingAgents([]);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -268,14 +284,64 @@ export default function LeaveRequest() {
       return;
     }
     
-    if (conflictResult.data?.hasConflict) {
+    if (conflictResult.data?.hasConflict && !showOverrideOption) {
       const agents = conflictResult.data.conflictingAgents.join(', ');
-      setConflictWarning(`⚠ Conflict detected with: ${agents}. Cannot submit request.`);
-      toast({
-        title: 'Conflict Detected',
-        description: `Your request conflicts with existing requests from: ${agents}`,
-        variant: 'destructive'
-      });
+      setConflictingAgents(conflictResult.data.conflictingAgents);
+      setConflictWarning(`Conflict detected with: ${agents}. This time slot overlaps with an existing approved request.`);
+      setShowOverrideOption(true);
+      setIsSubmitting(false);
+      return;
+    }
+    
+    // If override is being requested
+    if (showOverrideOption && overrideReason.trim()) {
+      // Submit with pending_override status
+      const result = await createLeaveRequest({
+        ...formData,
+        override_reason: overrideReason,
+        conflicting_agents: conflictingAgents.join(', '),
+        status: 'pending_override'
+      } as any, user.email);
+      
+      if (result.error) {
+        toast({
+          title: 'Error',
+          description: result.error,
+          variant: 'destructive'
+        });
+      } else {
+        // Send override notification
+        try {
+          await supabase.functions.invoke('send-override-request-notification', {
+            body: {
+              referenceNumber: (result.data as any)?.reference_number || 'LR-0000',
+              agentName: formData.agent_name,
+              agentEmail: user.email,
+              clientName: formData.client_name,
+              teamLeadName: formData.team_lead_name,
+              role: formData.role,
+              startDate: formData.start_date,
+              endDate: formData.end_date,
+              startTime: formData.start_time,
+              endTime: formData.end_time,
+              outageReason: formData.outage_reason,
+              overrideReason: overrideReason,
+              conflictingAgents: conflictingAgents.join(', '),
+              totalDays: (result.data as any)?.total_days,
+              outageDurationHours: (result.data as any)?.outage_duration_hours
+            }
+          });
+        } catch (notifyErr) {
+          console.error('Failed to send override notification:', notifyErr);
+        }
+        
+        toast({
+          title: 'Override Request Submitted',
+          description: 'Admins have been notified and will review your request.'
+        });
+        resetForm();
+        loadRequests();
+      }
       setIsSubmitting(false);
       return;
     }
@@ -284,14 +350,11 @@ export default function LeaveRequest() {
     
     if (editingRequest) {
       if (isAdminEditing) {
-        // Admin editing any request
         result = await adminUpdateLeaveRequest(editingRequest.id, formData, user.email);
       } else {
-        // Agent editing their own request - always reset to pending
         const isEditOfNonPending = editingRequest.status !== 'pending';
         result = await updateLeaveRequest(editingRequest.id, formData, user.email, isEditOfNonPending);
         
-        // If editing non-pending request, send notification as updated request
         if (result.data && isEditOfNonPending) {
           try {
             await supabase.functions.invoke('send-leave-request-notification', {
@@ -318,10 +381,8 @@ export default function LeaveRequest() {
         }
       }
     } else {
-      // Create new request and send notification
       result = await createLeaveRequest(formData, user.email);
       
-      // Send notification for new requests
       if (result.data) {
         try {
           await supabase.functions.invoke('send-leave-request-notification', {
@@ -358,69 +419,21 @@ export default function LeaveRequest() {
         title: 'Success',
         description: editingRequest ? 'Leave request updated successfully' : 'Leave request submitted successfully'
       });
-      setEditingRequest(null);
-      setIsAdminEditing(false);
-      // Reset form - preserve directory data
-      const agentInfo = getAgentInfoByEmail(user.email);
-      if (agentInfo) {
-        setFormData({
-          agent_name: agentInfo.name,
-          client_name: agentInfo.clients.length === 1 ? agentInfo.clients[0] : '',
-          team_lead_name: agentInfo.teamLead,
-          role: agentInfo.position,
-          start_date: '',
-          end_date: '',
-          start_time: '09:00',
-          end_time: '17:00',
-          outage_reason: '',
-          attachment_url: ''
-        });
-      } else {
-        setFormData({
-          agent_name: user.name,
-          client_name: '',
-          team_lead_name: '',
-          role: '',
-          start_date: '',
-          end_date: '',
-          start_time: '09:00',
-          end_time: '17:00',
-          outage_reason: '',
-          attachment_url: ''
-        });
-      }
-      setConflictWarning(null);
+      resetForm();
       loadRequests();
     }
     
     setIsSubmitting(false);
   };
-  
-  const handleEdit = (req: LeaveRequestType, adminEdit: boolean = false) => {
-    setEditingRequest(req);
-    setIsAdminEditing(adminEdit);
-    setFormData({
-      agent_name: req.agent_name,
-      client_name: req.client_name,
-      team_lead_name: req.team_lead_name,
-      role: req.role,
-      start_date: req.start_date,
-      end_date: req.end_date,
-      start_time: req.start_time,
-      end_time: req.end_time,
-      outage_reason: req.outage_reason,
-      attachment_url: req.attachment_url || ''
-    });
-    setConflictWarning(null);
-    // Scroll to form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-  
-  const handleCancelEdit = () => {
+
+  const resetForm = () => {
     setEditingRequest(null);
     setIsAdminEditing(false);
     setConflictWarning(null);
-    // Reset form
+    setShowOverrideOption(false);
+    setConflictingAgents([]);
+    setOverrideReason('');
+    
     const agentInfo = user?.email ? getAgentInfoByEmail(user.email) : null;
     if (agentInfo) {
       setFormData({
@@ -449,6 +462,30 @@ export default function LeaveRequest() {
         attachment_url: ''
       });
     }
+  };
+  
+  const handleEdit = (req: LeaveRequestType, adminEdit: boolean = false) => {
+    setEditingRequest(req);
+    setIsAdminEditing(adminEdit);
+    setFormData({
+      agent_name: req.agent_name,
+      client_name: req.client_name,
+      team_lead_name: req.team_lead_name,
+      role: req.role,
+      start_date: req.start_date,
+      end_date: req.end_date,
+      start_time: req.start_time,
+      end_time: req.end_time,
+      outage_reason: req.outage_reason,
+      attachment_url: req.attachment_url || ''
+    });
+    setConflictWarning(null);
+    setShowOverrideOption(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  const handleCancelEdit = () => {
+    resetForm();
   };
 
   const openDecisionDialog = (requestId: string, decision: 'approved' | 'declined' | 'canceled', agentName: string) => {
@@ -484,6 +521,28 @@ export default function LeaveRequest() {
     setIsProcessingDecision(false);
     setDecisionDialog(null);
     setDecisionRemarks('');
+  };
+
+  const handleApproveOverride = async (requestId: string) => {
+    if (!user?.email) return;
+    
+    setIsProcessingDecision(true);
+    const result = await updateLeaveRequestStatus(requestId, 'approved', user.email, 'Override approved by admin');
+    
+    if (result.error) {
+      toast({
+        title: 'Error',
+        description: result.error,
+        variant: 'destructive'
+      });
+    } else {
+      toast({
+        title: 'Success',
+        description: 'Override request approved'
+      });
+      loadRequests();
+    }
+    setIsProcessingDecision(false);
   };
 
   const openHistoryDialog = async (requestId: string, agentName: string) => {
@@ -551,6 +610,63 @@ export default function LeaveRequest() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedRequests.length === 0) return;
+    
+    setIsDeletingBulk(true);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const id of selectedRequests) {
+      const result = await deleteLeaveRequest(id);
+      if (result.error) {
+        errorCount++;
+      } else {
+        successCount++;
+      }
+    }
+    
+    setIsDeletingBulk(false);
+    setSelectedRequests([]);
+    
+    if (errorCount > 0) {
+      toast({
+        title: 'Partial Success',
+        description: `Deleted ${successCount} requests. ${errorCount} failed.`,
+        variant: 'destructive'
+      });
+    } else {
+      toast({
+        title: 'Success',
+        description: `Deleted ${successCount} requests`
+      });
+    }
+    
+    loadRequests();
+  };
+
+  const toggleSelectRequest = (id: string) => {
+    setSelectedRequests(prev => 
+      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = (requests: LeaveRequestType[]) => {
+    if (selectedRequests.length === requests.length) {
+      setSelectedRequests([]);
+    } else {
+      setSelectedRequests(requests.map(r => r.id));
+    }
+  };
+
+
+  const overrideCount = requests.filter(r => (r.status as string) === 'pending_override').length;
+
+  // Filter requests based on active tab
+  const filteredRequests = activeTab === 'override' 
+    ? requests.filter(r => (r.status as string) === 'pending_override')
+    : requests;
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
@@ -578,9 +694,25 @@ export default function LeaveRequest() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {conflictWarning && (
-                <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                  <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                  <span className="text-sm">{conflictWarning}</span>
+                <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
+                  <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">{conflictWarning}</span>
+                    {showOverrideOption && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          You can request an override approval from admins. Please provide a reason:
+                        </p>
+                        <Textarea
+                          placeholder="Explain why this request should be approved despite the conflict..."
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          rows={2}
+                          className="bg-background"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               
@@ -801,14 +933,18 @@ export default function LeaveRequest() {
               </div>
               
               <div className="flex gap-2">
-                <Button type="submit" disabled={isSubmitting || isUploading} className="w-full md:w-auto">
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting || isUploading} 
+                  className="w-full md:w-auto"
+                >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      {editingRequest ? 'Updating...' : 'Submitting...'}
+                      {editingRequest ? 'Updating...' : showOverrideOption ? 'Submitting Override...' : 'Submitting...'}
                     </>
                   ) : (
-                    editingRequest ? 'Update Request' : 'Submit Request'
+                    showOverrideOption ? 'Submit for Override Approval' : (editingRequest ? 'Update Request' : 'Submit Request')
                   )}
                 </Button>
                 {editingRequest && (
@@ -824,23 +960,85 @@ export default function LeaveRequest() {
         {/* Requests Table */}
         <Card>
           <CardHeader>
-            <CardTitle>{isAdmin ? 'All Leave Requests' : 'My Leave Requests'}</CardTitle>
-            <CardDescription>
-              {isAdmin ? 'Review and approve/decline leave requests' : 'View the status of your leave requests'}
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>{isAdmin ? 'All Leave Requests' : 'My Leave Requests'}</CardTitle>
+                <CardDescription>
+                  {isAdmin ? 'Review and approve/decline leave requests' : 'View the status of your leave requests'}
+                </CardDescription>
+              </div>
+              {canBulkDelete && selectedRequests.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={isDeletingBulk}>
+                      {isDeletingBulk ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 mr-2" />
+                      )}
+                      Delete Selected ({selectedRequests.length})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Selected Requests</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete {selectedRequests.length} leave request(s)? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleBulkDelete}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Delete All
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
+            {isAdmin && (
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+                <TabsList>
+                  <TabsTrigger value="all">All Requests</TabsTrigger>
+                  <TabsTrigger value="override" className="relative">
+                    Override Requests
+                    {overrideCount > 0 && (
+                      <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                        {overrideCount}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+            
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : requests.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No leave requests found</p>
+            ) : filteredRequests.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                {activeTab === 'override' ? 'No override requests pending' : 'No leave requests found'}
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {canBulkDelete && (
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={selectedRequests.length === filteredRequests.length && filteredRequests.length > 0}
+                            onCheckedChange={() => toggleSelectAll(filteredRequests)}
+                          />
+                        </TableHead>
+                      )}
+                      <TableHead>Ref #</TableHead>
                       <TableHead>Agent</TableHead>
                       <TableHead>Client</TableHead>
                       <TableHead>Dates</TableHead>
@@ -852,8 +1050,21 @@ export default function LeaveRequest() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {requests.map((req) => (
+                    {filteredRequests.map((req) => (
                       <TableRow key={req.id}>
+                        {canBulkDelete && (
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedRequests.includes(req.id)}
+                              onCheckedChange={() => toggleSelectRequest(req.id)}
+                            />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {(req as any).reference_number || '-'}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{req.agent_name}</p>
@@ -899,12 +1110,17 @@ export default function LeaveRequest() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={STATUS_COLORS[req.status]}>
+                          <Badge variant="outline" className={STATUS_COLORS[req.status] || ''}>
                             <span className="flex items-center gap-1">
                               {STATUS_ICONS[req.status]}
-                              {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                              {req.status === 'pending_override' ? 'Override Pending' : req.status.charAt(0).toUpperCase() + req.status.slice(1)}
                             </span>
                           </Badge>
+                          {req.status === 'pending_override' && (req as any).override_reason && (
+                            <p className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate" title={(req as any).override_reason}>
+                              Reason: {(req as any).override_reason}
+                            </p>
+                          )}
                         </TableCell>
                         {isAdmin && (
                           <TableCell>
@@ -915,6 +1131,27 @@ export default function LeaveRequest() {
                         )}
                         <TableCell>
                           <div className="flex gap-2 flex-wrap">
+                            {isAdmin && req.status === 'pending_override' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-success hover:text-success"
+                                  onClick={() => handleApproveOverride(req.id)}
+                                  disabled={isProcessingDecision}
+                                >
+                                  {isProcessingDecision ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Approve Override'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => openDecisionDialog(req.id, 'declined', req.agent_name)}
+                                >
+                                  Decline
+                                </Button>
+                              </>
+                            )}
                             {isAdmin && req.status === 'pending' && (
                               <Button
                                 size="sm"
