@@ -465,6 +465,7 @@ export type Database = {
           client_name: string | null
           end_date: string | null
           id: string | null
+          outage_reason: string | null
           start_date: string | null
           status: string | null
         }
@@ -473,6 +474,7 @@ export type Database = {
           client_name?: string | null
           end_date?: string | null
           id?: string | null
+          outage_reason?: string | null
           start_date?: string | null
           status?: string | null
         }
@@ -481,6 +483,7 @@ export type Database = {
           client_name?: string | null
           end_date?: string | null
           id?: string | null
+          outage_reason?: string | null
           start_date?: string | null
           status?: string | null
         }

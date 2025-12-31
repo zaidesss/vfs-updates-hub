@@ -440,6 +440,7 @@ export interface CalendarLeaveRequest {
   start_date: string;
   end_date: string;
   status: 'pending' | 'approved';
+  outage_reason: string;
 }
 
 export async function fetchCalendarRequests(startDate: string, endDate: string): Promise<ApiResponse<CalendarLeaveRequest[]>> {
@@ -447,7 +448,7 @@ export async function fetchCalendarRequests(startDate: string, endDate: string):
     // Only select limited fields for calendar view (privacy protection)
     const { data, error } = await supabase
       .from('leave_requests')
-      .select('id, agent_name, client_name, start_date, end_date, status')
+      .select('id, agent_name, client_name, start_date, end_date, status, outage_reason')
       .in('status', ['pending', 'approved'])
       .or(`start_date.lte.${endDate},end_date.gte.${startDate}`)
       .order('start_date', { ascending: true });
