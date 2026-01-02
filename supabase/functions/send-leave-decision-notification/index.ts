@@ -165,6 +165,22 @@ serve(async (req: Request): Promise<Response> => {
       </html>
     `;
 
+    // Create in-app notification for the agent FIRST (before email attempt)
+    // This ensures notification is created even if email fails
+    try {
+      await supabase.from('notifications').insert({
+        user_email: payload.agentEmail.toLowerCase(),
+        title: `${config.emoji} Leave Request ${config.label}`,
+        message: `Your leave request${payload.referenceNumber ? ` (${payload.referenceNumber})` : ''} for ${payload.outageReason} has been ${payload.decision}`,
+        type: 'leave_decision',
+        reference_id: payload.requestId,
+        reference_type: 'leave_request',
+      });
+      console.log("In-app notification created for leave decision");
+    } catch (notifError) {
+      console.error("Error creating in-app notification:", notifError);
+    }
+
     // Send email to agent with admins in CC
     const emailPayload: Record<string, unknown> = {
       from: "VFS Agent Portal <notifications@resend.dev>",
@@ -191,29 +207,15 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!emailResponse.ok) {
       console.error("Failed to send email:", emailResult);
+      // Return success since notification was created, but note email failure
       return new Response(
-        JSON.stringify({ error: "Failed to send email", details: emailResult }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: true, notificationCreated: true, emailFailed: true, details: emailResult }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create in-app notification for the agent
-    try {
-      await supabase.from('notifications').insert({
-        user_email: payload.agentEmail.toLowerCase(),
-        title: `${config.emoji} Leave Request ${config.label}`,
-        message: `Your leave request${payload.referenceNumber ? ` (${payload.referenceNumber})` : ''} for ${payload.outageReason} has been ${payload.decision}`,
-        type: 'leave_decision',
-        reference_id: payload.requestId,
-        reference_type: 'leave_request',
-      });
-      console.log("In-app notification created for leave decision");
-    } catch (notifError) {
-      console.error("Error creating in-app notification:", notifError);
-    }
-
     return new Response(
-      JSON.stringify({ success: true, emailId: emailResult.id }),
+      JSON.stringify({ success: true, emailId: emailResult.id, notificationCreated: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
