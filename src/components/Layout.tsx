@@ -13,7 +13,7 @@ import {
   CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
+import { NotificationBell } from '@/components/NotificationBell';
 interface LayoutProps {
   children: ReactNode;
 }
@@ -183,6 +183,7 @@ export function Layout({ children }: LayoutProps) {
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
+            <NotificationBell />
             <Link to="/change-password">
               <Button
                 variant="ghost"
