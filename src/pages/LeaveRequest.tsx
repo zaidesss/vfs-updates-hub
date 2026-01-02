@@ -399,7 +399,8 @@ export default function LeaveRequest() {
               outageReason: formData.outage_reason,
               attachmentUrl: formData.attachment_url,
               totalDays: result.data.total_days,
-              outageDurationHours: result.data.outage_duration_hours
+              outageDurationHours: result.data.outage_duration_hours,
+              referenceNumber: result.data.reference_number
             }
           });
         } catch (notifyErr) {

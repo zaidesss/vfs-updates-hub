@@ -29,7 +29,8 @@ import {
   MessageCircleQuestion,
   History,
   ChevronDown,
-  Loader2
+  Loader2,
+  Hash
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -182,6 +183,12 @@ export default function UpdateDetail() {
                     </Badge>
                   )}
                 </div>
+                {update.reference_number && (
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground font-mono mb-1">
+                    <Hash className="h-4 w-4" />
+                    <span>{update.reference_number}</span>
+                  </div>
+                )}
                 <h1 className="text-2xl font-bold text-foreground">{update.title}</h1>
                 <p className="text-muted-foreground mt-2">{update.summary}</p>
               </div>

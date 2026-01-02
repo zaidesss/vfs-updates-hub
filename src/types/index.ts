@@ -19,6 +19,7 @@ export interface Update {
   deadline_at: string | null;
   status: 'draft' | 'published' | 'archived' | 'obsolete';
   category?: UpdateCategory | null;
+  reference_number?: string | null;
 }
 
 export interface Acknowledgement {

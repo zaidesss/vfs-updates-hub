@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Calendar, Clock, CheckCircle2, Circle, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, Circle, ExternalLink, AlertTriangle, Hash } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
@@ -76,6 +76,12 @@ export function UpdateCard({ update }: UpdateCardProps) {
         
         <CardContent className="pt-0">
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            {update.reference_number && (
+              <div className="flex items-center gap-1 font-mono">
+                <Hash className="h-3.5 w-3.5" />
+                <span>{update.reference_number}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
               <span>Posted {format(new Date(update.posted_at), 'MMM d, yyyy')}</span>

@@ -240,6 +240,8 @@ export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
       posted_at: row.posted_at,
       deadline_at: row.deadline_at,
       status: row.status as 'draft' | 'published' | 'archived' | 'obsolete',
+      category: row.category,
+      reference_number: row.reference_number,
     }));
 
     return { data: updates, error: null };
@@ -343,13 +345,15 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
       posted_at: data.posted_at,
       deadline_at: data.deadline_at,
       status: data.status as 'draft' | 'published' | 'archived' | 'obsolete',
+      category: data.category,
+      reference_number: data.reference_number,
     };
 
     // If update is published, send notifications
     if (update.status === 'published') {
       try {
         await supabase.functions.invoke('send-notifications', {
-          body: { updateTitle: update.title }
+          body: { updateTitle: update.title, referenceNumber: data.reference_number }
         });
         console.log('Notifications sent for new update');
       } catch (notifyError) {
@@ -430,6 +434,8 @@ export async function editUpdate(
       posted_at: data.posted_at,
       deadline_at: data.deadline_at,
       status: data.status as 'draft' | 'published' | 'archived' | 'obsolete',
+      category: data.category,
+      reference_number: data.reference_number,
     };
 
     // Track changes in change history
@@ -463,7 +469,7 @@ export async function editUpdate(
     // Send notification for edit
     try {
       await supabase.functions.invoke('send-notifications', {
-        body: { updateTitle: update.title || editedUpdate.title, isEdit: true }
+        body: { updateTitle: update.title || editedUpdate.title, isEdit: true, referenceNumber: data.reference_number }
       });
       console.log('Notifications sent for edited update');
     } catch (notifyError) {

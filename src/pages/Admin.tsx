@@ -68,6 +68,7 @@ export default function Admin() {
   const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string; reference_number?: string })[]>([]);
   const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isCreatingUpdate, setIsCreatingUpdate] = useState(false);
   const [newUserData, setNewUserData] = useState({
     email: '',
     name: '',
@@ -293,22 +294,27 @@ export default function Admin() {
   };
 
   const handleCreateUpdate = async () => {
-    const updateData = {
-      ...newUpdate,
-      category: newUpdate.category || null,
-    };
-    await createUpdate(updateData);
-    setNewUpdate({
-      title: '',
-      summary: '',
-      body: '',
-      help_center_url: '',
-      posted_by: user?.email || '',
-      deadline_at: getDefaultDeadline(),
-      status: 'draft',
-      category: '',
-    });
-    setIsCreateDialogOpen(false);
+    setIsCreatingUpdate(true);
+    try {
+      const updateData = {
+        ...newUpdate,
+        category: newUpdate.category || null,
+      };
+      await createUpdate(updateData);
+      setNewUpdate({
+        title: '',
+        summary: '',
+        body: '',
+        help_center_url: '',
+        posted_by: user?.email || '',
+        deadline_at: getDefaultDeadline(),
+        status: 'draft',
+        category: '',
+      });
+      setIsCreateDialogOpen(false);
+    } finally {
+      setIsCreatingUpdate(false);
+    }
   };
 
   const handleEditUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
@@ -535,13 +541,19 @@ Supports **markdown** formatting:
                         <SelectContent>
                           <SelectItem value="draft">Draft</SelectItem>
                           <SelectItem value="published">Published</SelectItem>
-                          <SelectItem value="obsolete">Obsolete</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button onClick={handleCreateUpdate} className="w-full" disabled={!newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at || !newUpdate.category}>
-                    Create Update
+                  <Button onClick={handleCreateUpdate} className="w-full" disabled={isCreatingUpdate || !newUpdate.title || !newUpdate.summary || !newUpdate.body || !newUpdate.posted_by || !newUpdate.deadline_at || !newUpdate.category}>
+                    {isCreatingUpdate ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Create Update'
+                    )}
                   </Button>
                 </div>
               </DialogContent>
