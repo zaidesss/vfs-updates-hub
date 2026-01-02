@@ -35,6 +35,10 @@ export interface UpdateQuestion {
   user_email: string;
   question: string;
   created_at: string;
+  reference_number?: string | null;
+  reply?: string | null;
+  replied_by?: string | null;
+  replied_at?: string | null;
 }
 
 export interface UpdateChangeHistory {
