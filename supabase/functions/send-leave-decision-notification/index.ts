@@ -197,6 +197,21 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Create in-app notification for the agent
+    try {
+      await supabase.from('notifications').insert({
+        user_email: payload.agentEmail.toLowerCase(),
+        title: `${config.emoji} Leave Request ${config.label}`,
+        message: `Your leave request${payload.referenceNumber ? ` (${payload.referenceNumber})` : ''} for ${payload.outageReason} has been ${payload.decision}`,
+        type: 'leave_decision',
+        reference_id: payload.requestId,
+        reference_type: 'leave_request',
+      });
+      console.log("In-app notification created for leave decision");
+    } catch (notifError) {
+      console.error("Error creating in-app notification:", notifError);
+    }
+
     return new Response(
       JSON.stringify({ success: true, emailId: emailResult.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -114,6 +114,35 @@ serve(async (req) => {
       console.log('No Resend API key configured or no users to notify');
     }
 
+    // Create in-app notifications for all users
+    if (emails.length > 0) {
+      try {
+        const notificationType = isEdit ? 'Updated' : 'New';
+        const notificationRecords = emails.map(email => ({
+          user_email: email.toLowerCase(),
+          title: `${notificationType} Update: ${updateTitle}`,
+          message: referenceNumber 
+            ? `[${referenceNumber}] ${isEdit ? 'An update has been modified' : 'A new update has been posted'}. Please review and acknowledge.`
+            : `${isEdit ? 'An update has been modified' : 'A new update has been posted'}. Please review and acknowledge.`,
+          type: 'new_update',
+          reference_id: referenceNumber || null,
+          reference_type: 'update',
+        }));
+
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert(notificationRecords);
+
+        if (notifError) {
+          console.error('Error creating in-app notifications:', notifError);
+        } else {
+          console.log(`Created ${notificationRecords.length} in-app notifications`);
+        }
+      } catch (notifError) {
+        console.error('Error creating in-app notifications:', notifError);
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       results,
