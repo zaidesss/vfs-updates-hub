@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown 
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -47,6 +47,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/updates', label: 'Updates', icon: FileText },
         { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
         { href: '/requests', label: 'Update Requests', icon: FileQuestion },
+        { href: '/user-guide', label: 'User Guide', icon: HelpCircle },
       ],
     });
 
@@ -184,6 +185,16 @@ export function Layout({ children }: LayoutProps) {
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
             <NotificationBell />
+            <Link to="/user-guide">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground"
+                title="User Guide"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+            </Link>
             <Link to="/change-password">
               <Button
                 variant="ghost"
