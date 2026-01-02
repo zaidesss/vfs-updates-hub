@@ -266,6 +266,41 @@ export type Database = {
         }
         Relationships: []
       }
+      question_replies: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          question_id: string
+          user_email: string
+          user_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          question_id: string
+          user_email: string
+          user_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          question_id?: string
+          user_email?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "question_replies_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "update_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reminder_logs: {
         Row: {
           id: string

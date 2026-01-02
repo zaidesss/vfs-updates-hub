@@ -4,6 +4,7 @@ import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
 import { UpdateCard } from '@/components/UpdateCard';
 import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
+import { QuestionThreadDialog } from '@/components/QuestionThreadDialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,17 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, Reply, CheckCircle2 } from 'lucide-react';
+import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, MessageCircle, CheckCircle2 } from 'lucide-react';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { UpdateQuestion } from '@/types';
-import { replyToQuestion } from '@/lib/api';
-import { toast } from 'sonner';
 
 type FilterTab = 'unread' | 'read' | 'all';
 
@@ -38,11 +35,9 @@ export default function Updates() {
   const [categoryFilter, setCategoryFilter] = useState<UpdateCategory | 'all'>('all');
   const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string })[]>([]);
   
-  // Reply dialog state
-  const [replyDialogOpen, setReplyDialogOpen] = useState(false);
+  // Thread dialog state
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState<(UpdateQuestion & { update_title?: string }) | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
   const loadQuestions = async () => {
     const { data: questionsData } = await supabase
@@ -111,44 +106,14 @@ export default function Updates() {
     setIsRefreshing(false);
   };
 
-  const handleOpenReplyDialog = (question: UpdateQuestion & { update_title?: string }) => {
+  const handleOpenThreadDialog = (question: UpdateQuestion & { update_title?: string }) => {
     setSelectedQuestion(question);
-    setReplyText(question.reply || '');
-    setReplyDialogOpen(true);
+    setThreadDialogOpen(true);
   };
 
-  const handleSubmitReply = async () => {
-    if (!selectedQuestion || !replyText.trim() || !user) return;
-    
-    setIsSubmittingReply(true);
-    try {
-      const { error } = await replyToQuestion(
-        selectedQuestion.id,
-        selectedQuestion.update_id,
-        selectedQuestion.update_title || 'Update',
-        replyText.trim(),
-        user.name || user.email,
-        selectedQuestion.user_email,
-        selectedQuestion.reference_number
-      );
-      
-      if (error) {
-        toast.error('Failed to submit reply: ' + error);
-      } else {
-        toast.success('Reply submitted successfully');
-        setReplyDialogOpen(false);
-        setReplyText('');
-        setSelectedQuestion(null);
-        await loadQuestions();
-      }
-    } catch (err) {
-      toast.error('An error occurred while submitting the reply');
-    } finally {
-      setIsSubmittingReply(false);
-    }
+  const handleThreadReplySubmitted = () => {
+    loadQuestions();
   };
-
-  const canReply = isAdmin || isHR;
 
   if (isLoading) {
     return (
@@ -288,7 +253,7 @@ export default function Updates() {
                     <TableHead>Question</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Date</TableHead>
-                    {canReply && <TableHead>Action</TableHead>}
+                    <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -309,17 +274,7 @@ export default function Updates() {
                         </div>
                       </TableCell>
                       <TableCell className="max-w-[200px]">
-                        <div>
-                          <p className="truncate" title={q.question}>{q.question}</p>
-                          {q.reply && (
-                            <div className="mt-1 p-2 bg-muted rounded text-sm">
-                              <p className="text-xs text-muted-foreground mb-1">
-                                Reply by {q.replied_by} • {q.replied_at && format(new Date(q.replied_at), 'MMM d, h:mm a')}
-                              </p>
-                              <p className="text-foreground">{q.reply}</p>
-                            </div>
-                          )}
-                        </div>
+                        <p className="truncate" title={q.question}>{q.question}</p>
                       </TableCell>
                       <TableCell>
                         {q.reply ? (
@@ -336,18 +291,16 @@ export default function Updates() {
                       <TableCell className="text-muted-foreground text-sm">
                         {format(new Date(q.created_at), 'MMM d, yyyy h:mm a')}
                       </TableCell>
-                      {canReply && (
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenReplyDialog(q)}
-                          >
-                            <Reply className="h-4 w-4 mr-1" />
-                            {q.reply ? 'Edit' : 'Reply'}
-                          </Button>
-                        </TableCell>
-                      )}
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenThreadDialog(q)}
+                        >
+                          <MessageCircle className="h-4 w-4 mr-1" />
+                          View Thread
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -356,50 +309,13 @@ export default function Updates() {
           </Card>
         )}
 
-        {/* Reply Dialog */}
-        <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Reply to Question</DialogTitle>
-              <DialogDescription>
-                Replying to question from {selectedQuestion && (getKnownNameByEmail(selectedQuestion.user_email) || selectedQuestion.user_email)}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm font-medium mb-1">Question:</p>
-                <p className="text-sm text-muted-foreground">{selectedQuestion?.question}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Your Reply</label>
-                <Textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Type your reply here..."
-                  rows={4}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleSubmitReply} 
-                disabled={!replyText.trim() || isSubmittingReply}
-              >
-                {isSubmittingReply ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Reply'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Question Thread Dialog */}
+        <QuestionThreadDialog
+          open={threadDialogOpen}
+          onOpenChange={setThreadDialogOpen}
+          question={selectedQuestion}
+          onReplySubmitted={handleThreadReplySubmitted}
+        />
       </div>
     </Layout>
   );
