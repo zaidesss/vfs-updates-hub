@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, Check, MessageSquare, FileText, Calendar, CheckCircle } from 'lucide-react';
+import { Bell, Check, MessageSquare, FileText, Calendar, CheckCircle, Settings, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -10,9 +10,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { useUpdates } from '@/context/UpdatesContext';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 interface Notification {
   id: string;
@@ -27,6 +29,7 @@ interface Notification {
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const { getUpdateById } = useUpdates();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -119,17 +122,42 @@ export function NotificationBell() {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
+    // Always mark as read when clicked
     if (!notification.read_at) {
       await markAsRead(notification.id);
     }
 
     // Navigate based on reference type
     if (notification.reference_type === 'update' && notification.reference_id) {
+      // Check if update still exists
+      const update = getUpdateById(notification.reference_id);
+      if (!update) {
+        toast.info('This update is no longer available', {
+          description: 'It may have been removed or archived.',
+        });
+        setOpen(false);
+        return;
+      }
       navigate(`/updates/${notification.reference_id}`);
     } else if (notification.reference_type === 'question' && notification.reference_id) {
+      // Check if the update for this question exists
+      const update = getUpdateById(notification.reference_id);
+      if (!update) {
+        toast.info('This update is no longer available', {
+          description: 'It may have been removed or archived.',
+        });
+        setOpen(false);
+        return;
+      }
       navigate('/updates');
     } else if (notification.reference_type === 'leave_request') {
       navigate('/leave-request');
+    } else if (notification.reference_type === 'request') {
+      navigate('/requests');
+    } else if (notification.reference_type === 'failed_emails') {
+      // System notification about failed emails - just close
+      setOpen(false);
+      return;
     }
 
     setOpen(false);
@@ -138,13 +166,18 @@ export function NotificationBell() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'question_reply':
+      case 'question_status':
         return <MessageSquare className="h-4 w-4 text-blue-500" />;
       case 'new_update':
         return <FileText className="h-4 w-4 text-primary" />;
       case 'leave_decision':
         return <Calendar className="h-4 w-4 text-green-500" />;
       case 'request_approval':
+      case 'request_status':
+      case 'request_pending':
         return <CheckCircle className="h-4 w-4 text-amber-500" />;
+      case 'system':
+        return <AlertTriangle className="h-4 w-4 text-destructive" />;
       default:
         return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
@@ -172,17 +205,30 @@ export function NotificationBell() {
       <PopoverContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between border-b p-3">
           <h4 className="font-semibold text-sm">Notifications</h4>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-1">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7"
+                onClick={markAllAsRead}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                Mark all read
+              </Button>
+            )}
             <Button
               variant="ghost"
-              size="sm"
-              className="text-xs h-7"
-              onClick={markAllAsRead}
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => {
+                setOpen(false);
+                navigate('/notification-settings');
+              }}
             >
-              <Check className="h-3 w-3 mr-1" />
-              Mark all read
+              <Settings className="h-3 w-3" />
             </Button>
-          )}
+          </div>
         </div>
         <ScrollArea className="h-[300px]">
           {loading ? (
