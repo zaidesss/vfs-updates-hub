@@ -16,6 +16,7 @@ interface ReplyNotificationRequest {
   replyText: string;
   repliedBy: string;
   userEmail: string;
+  referenceNumber?: string;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -27,9 +28,9 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { questionId, updateId, updateTitle, replyText, repliedBy, userEmail }: ReplyNotificationRequest = await req.json();
+    const { questionId, updateId, updateTitle, replyText, repliedBy, userEmail, referenceNumber }: ReplyNotificationRequest = await req.json();
     
-    console.log(`Processing reply notification for question ${questionId}`);
+    console.log(`Processing reply notification for question ${questionId} (${referenceNumber || 'no ref'})`);
     console.log(`Update: ${updateTitle}, Replied by: ${repliedBy}, User: ${userEmail}`);
 
     if (!userEmail) {
@@ -41,13 +42,15 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Send email notification
+    const refDisplay = referenceNumber ? `[${referenceNumber}] ` : '';
     const emailResponse = await resend.emails.send({
       from: "VFS Agent Portal <onboarding@resend.dev>",
       to: [userEmail],
-      subject: `Your question about "${updateTitle}" has been answered`,
+      subject: `${refDisplay}Your question about "${updateTitle}" has been answered`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #333;">Your Question Has Been Answered</h2>
+          ${referenceNumber ? `<p style="color: #666; font-size: 14px; margin-bottom: 10px;">Reference: <strong>${referenceNumber}</strong></p>` : ''}
           <p>Hi,</p>
           <p>Your question about the update <strong>"${updateTitle}"</strong> has received a reply from <strong>${repliedBy}</strong>.</p>
           

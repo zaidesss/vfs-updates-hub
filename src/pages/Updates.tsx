@@ -128,7 +128,8 @@ export default function Updates() {
         selectedQuestion.update_title || 'Update',
         replyText.trim(),
         user.name || user.email,
-        selectedQuestion.user_email
+        selectedQuestion.user_email,
+        selectedQuestion.reference_number
       );
       
       if (error) {

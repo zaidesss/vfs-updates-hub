@@ -630,7 +630,8 @@ export async function replyToQuestion(
   updateTitle: string,
   replyText: string,
   repliedBy: string,
-  userEmail: string
+  userEmail: string,
+  referenceNumber?: string
 ): Promise<ApiResponse<{ ok: boolean }>> {
   try {
     // Update the question with the reply
@@ -651,7 +652,7 @@ export async function replyToQuestion(
     // Send notification to the user who asked the question
     try {
       await supabase.functions.invoke('send-question-reply-notification', {
-        body: { questionId, updateId, updateTitle, replyText, repliedBy, userEmail }
+        body: { questionId, updateId, updateTitle, replyText, repliedBy, userEmail, referenceNumber }
       });
       console.log('Reply notification sent');
     } catch (notifyError) {
