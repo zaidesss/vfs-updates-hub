@@ -35,7 +35,6 @@ export default function Updates() {
   const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string; reference_number?: string | null })[]>([]);
 
   const loadQuestions = async () => {
-    if (!isAdmin) return;
     const { data: questionsData } = await supabase
       .from('update_questions')
       .select('*')
@@ -49,10 +48,10 @@ export default function Updates() {
   };
 
   useEffect(() => {
-    if (isAdmin && updates.length > 0) {
+    if (updates.length > 0) {
       loadQuestions();
     }
-  }, [isAdmin, updates]);
+  }, [updates]);
 
   const publishedUpdates = updates.filter(u => u.status === 'published');
 
@@ -213,8 +212,8 @@ export default function Updates() {
           </div>
         )}
 
-        {/* Agent Questions - Admin only */}
-        {isAdmin && questions.length > 0 && (
+        {/* Agent Questions - Visible to all users */}
+        {questions.length > 0 && (
           <Card className="mt-8">
             <CardHeader>
               <div className="flex items-center gap-2">

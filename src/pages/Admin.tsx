@@ -504,7 +504,7 @@ export default function Admin() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="help_center_url">Help Center URL (add if applicable)</Label>
+                    <Label htmlFor="help_center_url">URL (add if applicable)</Label>
                     <Input
                       id="help_center_url"
                       value={newUpdate.help_center_url}
