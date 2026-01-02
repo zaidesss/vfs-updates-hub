@@ -2,29 +2,125 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users, BookOpen, KeyRound } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { 
+  FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown 
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
+// Define menu groups
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+interface NavGroup {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavItem[];
+}
+
 export function Layout({ children }: LayoutProps) {
   const { user, logout, isAdmin, isHR } = useAuth();
   const location = useLocation();
 
-  const navItems = [
-    ...(!isAdmin ? [{ href: '/profile', label: 'Bio', icon: User }] : []),
-    { href: '/updates', label: 'Upd', icon: FileText },
-    { href: '/knowledge-base', label: 'KB', icon: BookOpen },
-    { href: '/requests', label: 'Upd Req', icon: FileQuestion },
-    { href: '/leave-request', label: 'Out Req', icon: Clock },
-    { href: '/calendar', label: 'Out Cal', icon: CalendarDays },
-    ...(!isAdmin ? [{ href: '/outage-report', label: 'Out Rep', icon: User }] : []),
-    ...(isAdmin ? [{ href: '/outage-stats', label: 'Out Stats', icon: BarChart3 }] : []),
-    ...((isAdmin || isHR) ? [{ href: '/manage-profiles', label: 'All Bios', icon: Users }] : []),
-    ...((isAdmin || isHR) ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
-  ];
+  // Define grouped navigation
+  const getNavGroups = (): NavGroup[] => {
+    const groups: NavGroup[] = [];
+
+    // Updates Group
+    groups.push({
+      label: 'Updates',
+      icon: FileText,
+      items: [
+        { href: '/updates', label: 'Updates', icon: FileText },
+        { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
+        { href: '/requests', label: 'Update Requests', icon: FileQuestion },
+      ],
+    });
+
+    // Outages Group
+    const outageItems: NavItem[] = [
+      { href: '/leave-request', label: 'Outage Requests', icon: Clock },
+      { href: '/calendar', label: 'Outage Calendar', icon: CalendarDays },
+    ];
+    if (!isAdmin) {
+      outageItems.push({ href: '/outage-report', label: 'My Outage Report', icon: User });
+    }
+    if (isAdmin) {
+      outageItems.push({ href: '/outage-stats', label: 'Outage Statistics', icon: BarChart3 });
+    }
+    groups.push({
+      label: 'Outages',
+      icon: Clock,
+      items: outageItems,
+    });
+
+    // People Group
+    const peopleItems: NavItem[] = [];
+    if (!isAdmin) {
+      peopleItems.push({ href: '/profile', label: 'My Bio', icon: User });
+    }
+    if (isAdmin || isHR) {
+      peopleItems.push({ href: '/manage-profiles', label: 'All Bios', icon: Users });
+    }
+    if (peopleItems.length > 0) {
+      groups.push({
+        label: 'People',
+        icon: Users,
+        items: peopleItems,
+      });
+    }
+
+    // Admin Group (only for admin/HR)
+    if (isAdmin || isHR) {
+      groups.push({
+        label: 'Admin',
+        icon: Settings,
+        items: [
+          { href: '/admin', label: 'Admin Panel', icon: Settings },
+        ],
+      });
+    }
+
+    return groups;
+  };
+
+  const navGroups = getNavGroups();
+
+  // Check if any item in a group is active
+  const isGroupActive = (group: NavGroup) => {
+    return group.items.some(item => location.pathname === item.href);
+  };
+
+  // Flat nav items for mobile
+  const getMobileNavItems = (): NavItem[] => {
+    const items: NavItem[] = [
+      { href: '/updates', label: 'Upd', icon: FileText },
+      { href: '/leave-request', label: 'Out', icon: Clock },
+      { href: '/calendar', label: 'Cal', icon: CalendarDays },
+    ];
+    if (!isAdmin) {
+      items.push({ href: '/profile', label: 'Bio', icon: User });
+    }
+    if (isAdmin || isHR) {
+      items.push({ href: '/admin', label: 'Admin', icon: Settings });
+    }
+    return items;
+  };
+
+  const mobileNavItems = getMobileNavItems();
 
   return (
     <div className="min-h-screen bg-background">
@@ -39,21 +135,45 @@ export function Layout({ children }: LayoutProps) {
               <span className="text-lg font-semibold">VFS Agent Portal</span>
             </Link>
 
+            {/* Desktop Navigation with Dropdowns */}
             <nav className="hidden md:flex items-center gap-1">
-              {navItems.map(item => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={cn(
-                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    location.pathname === item.href
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
+              {navGroups.map((group) => (
+                <DropdownMenu key={group.label}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
+                        isGroupActive(group)
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <group.icon className="h-4 w-4" />
+                      {group.label}
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent 
+                    align="start" 
+                    className="w-48 bg-popover border border-border shadow-lg z-50"
+                  >
+                    {group.items.map((item) => (
+                      <DropdownMenuItem key={item.href} asChild>
+                        <Link
+                          to={item.href}
+                          className={cn(
+                            'flex items-center gap-2 w-full cursor-pointer',
+                            location.pathname === item.href && 'bg-accent'
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {item.label}
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ))}
             </nav>
           </div>
@@ -88,7 +208,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Mobile Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur">
         <div className="flex justify-around py-2">
-          {navItems.map(item => (
+          {mobileNavItems.map(item => (
             <Link
               key={item.href}
               to={item.href}

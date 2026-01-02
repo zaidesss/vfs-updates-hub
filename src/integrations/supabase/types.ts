@@ -380,6 +380,9 @@ export type Database = {
           id: string
           question: string
           reference_number: string | null
+          replied_at: string | null
+          replied_by: string | null
+          reply: string | null
           update_id: string
           user_email: string
         }
@@ -388,6 +391,9 @@ export type Database = {
           id?: string
           question: string
           reference_number?: string | null
+          replied_at?: string | null
+          replied_by?: string | null
+          reply?: string | null
           update_id: string
           user_email: string
         }
@@ -396,6 +402,9 @@ export type Database = {
           id?: string
           question?: string
           reference_number?: string | null
+          replied_at?: string | null
+          replied_by?: string | null
+          reply?: string | null
           update_id?: string
           user_email?: string
         }

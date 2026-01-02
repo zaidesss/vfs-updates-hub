@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.send-password-reset-notification]
 verify_jwt = false
+
+[functions.send-question-reply-notification]
+verify_jwt = false

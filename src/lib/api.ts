@@ -622,3 +622,47 @@ export async function forcePasswordReset(email: string, userName?: string): Prom
     return { data: null, error: errorMessage };
   }
 }
+
+// Reply to a question about an update
+export async function replyToQuestion(
+  questionId: string,
+  updateId: string,
+  updateTitle: string,
+  replyText: string,
+  repliedBy: string,
+  userEmail: string
+): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    // Update the question with the reply
+    const { error } = await supabase
+      .from('update_questions')
+      .update({
+        reply: replyText,
+        replied_by: repliedBy,
+        replied_at: new Date().toISOString()
+      })
+      .eq('id', questionId);
+
+    if (error) {
+      console.error('Error replying to question:', error);
+      return { data: null, error: error.message };
+    }
+
+    // Send notification to the user who asked the question
+    try {
+      await supabase.functions.invoke('send-question-reply-notification', {
+        body: { questionId, updateId, updateTitle, replyText, repliedBy, userEmail }
+      });
+      console.log('Reply notification sent');
+    } catch (notifyError) {
+      console.error('Failed to send reply notification:', notifyError);
+      // Don't fail the operation if notification fails
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to reply to question:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
