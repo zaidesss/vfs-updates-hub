@@ -122,9 +122,10 @@ serve(async (req) => {
           body: JSON.stringify({
             from: "VFS Updates Hub <onboarding@resend.dev>",
             to: [HR_EMAIL],
-            subject: `[${statusLabel}] Article Request: ${decisionLabels[decision]}`,
+            subject: `[${statusLabel}]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${decisionLabels[decision]}`,
             html: `
               <h2>Article Request ${statusLabel}</h2>
+              ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
               <p>Patrick has completed the final review for the following request.</p>
               <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
               ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
@@ -159,9 +160,10 @@ serve(async (req) => {
           body: JSON.stringify({
             from: "VFS Updates Hub <onboarding@resend.dev>",
             to: [request.submitted_by],
-            subject: `Your Article Request has been ${statusLabel}`,
+            subject: `Your Article Request${request.reference_number ? ` (${request.reference_number})` : ''} has been ${statusLabel}`,
             html: `
               <h2>Your Request has been ${statusLabel}</h2>
+              ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
               <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
               ${notes ? `<p><strong>Reviewer Notes:</strong> ${notes}</p>` : ''}
               <hr style="margin: 20px 0;">

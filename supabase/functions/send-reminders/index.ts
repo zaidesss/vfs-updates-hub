@@ -26,7 +26,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Get all published updates
     const { data: updates, error: updatesError } = await supabase
       .from("updates")
-      .select("id, title")
+      .select("id, title, reference_number")
       .eq("status", "published");
 
     if (updatesError) {
@@ -55,7 +55,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Find users with unread updates
-    const usersWithUnread: { email: string; unreadCount: number; unreadTitles: string[] }[] = [];
+    const usersWithUnread: { email: string; unreadCount: number; unreadUpdates: { title: string; reference_number: string | null }[] }[] = [];
 
     for (const user of users || []) {
       const userAcks = acknowledgements?.filter(a => a.agent_email.toLowerCase() === user.email.toLowerCase()) || [];
@@ -67,7 +67,7 @@ const handler = async (req: Request): Promise<Response> => {
         usersWithUnread.push({
           email: user.email,
           unreadCount: unreadUpdates.length,
-          unreadTitles: unreadUpdates.map(u => u.title),
+          unreadUpdates: unreadUpdates.map(u => ({ title: u.title, reference_number: u.reference_number })),
         });
       }
     }
@@ -95,7 +95,7 @@ const handler = async (req: Request): Promise<Response> => {
               <p>You have <strong>${user.unreadCount}</strong> unread update${user.unreadCount > 1 ? 's' : ''} waiting for your acknowledgement:</p>
               
               <ul style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; list-style: none;">
-                ${user.unreadTitles.map(title => `<li style="padding: 8px 0; border-bottom: 1px solid #ddd;">📌 ${title}</li>`).join('')}
+                ${user.unreadUpdates.map(u => `<li style="padding: 8px 0; border-bottom: 1px solid #ddd;">📌 ${u.reference_number ? `<strong>${u.reference_number}</strong> - ` : ''}${u.title}</li>`).join('')}
               </ul>
               
               <p>Please log in to the VFS Updates Hub to review and acknowledge these updates.</p>

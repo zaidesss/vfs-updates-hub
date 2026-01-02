@@ -70,9 +70,10 @@ serve(async (req) => {
       // Send reminders to pending active approvers
       for (const approval of pendingApprovals) {
         const isFinalReview = approval.stage === 2;
+        const refLabel = request.reference_number ? ` (${request.reference_number})` : '';
         const subject = isFinalReview 
-          ? `[Final Review Reminder] Article Request Awaiting Your Decision`
-          : `⏰ Reminder: Article Request Awaiting Your Approval`;
+          ? `[Final Review Reminder]${refLabel} Article Request Awaiting Your Decision`
+          : `⏰ Reminder:${refLabel} Article Request Awaiting Your Approval`;
 
         try {
           const emailResponse = await fetch('https://api.resend.com/emails', {
@@ -91,6 +92,10 @@ serve(async (req) => {
                 <p>This is a reminder that the following article request is waiting for your ${isFinalReview ? 'final decision' : 'approval'}.</p>
                 
                 <table style="border-collapse: collapse; margin: 20px 0;">
+                  ${request.reference_number ? `<tr>
+                    <td style="padding: 8px; font-weight: bold;">Reference:</td>
+                    <td style="padding: 8px;"><strong>${request.reference_number}</strong></td>
+                  </tr>` : ''}
                   <tr>
                     <td style="padding: 8px; font-weight: bold;">Submitted By:</td>
                     <td style="padding: 8px;">${request.submitted_by}</td>
