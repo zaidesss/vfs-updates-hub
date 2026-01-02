@@ -592,7 +592,7 @@ export async function changeUserEmail(
 }
 
 // Force password reset for a user
-export async function forcePasswordReset(email: string): Promise<ApiResponse<{ ok: boolean }>> {
+export async function forcePasswordReset(email: string, userName?: string): Promise<ApiResponse<{ ok: boolean }>> {
   try {
     const { error } = await supabase
       .from('user_roles')
@@ -602,6 +602,17 @@ export async function forcePasswordReset(email: string): Promise<ApiResponse<{ o
     if (error) {
       console.error('Error setting password reset flag:', error);
       return { data: null, error: error.message };
+    }
+
+    // Send notification email to user
+    try {
+      await supabase.functions.invoke('send-password-reset-notification', {
+        body: { email: email.toLowerCase(), userName }
+      });
+      console.log('Password reset notification sent');
+    } catch (notifyError) {
+      console.error('Failed to send password reset notification:', notifyError);
+      // Don't fail the operation if notification fails
     }
 
     return { data: { ok: true }, error: null };

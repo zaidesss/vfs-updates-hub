@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.delete-user]
 verify_jwt = false
+
+[functions.send-password-reset-notification]
+verify_jwt = false
