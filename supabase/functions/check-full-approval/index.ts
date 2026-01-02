@@ -123,9 +123,10 @@ serve(async (req) => {
             body: JSON.stringify({
               from: "VFS Updates Hub <onboarding@resend.dev>",
               to: [FINAL_APPROVER.email],
-              subject: `[Final Review Required] Article Request Ready for Decision`,
+              subject: `[Final Review Required]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request Ready for Decision`,
               html: `
                 <h2>Article Request Ready for Final Review</h2>
+                ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
                 <p>All pre-approvers have approved the following request. Your final decision is needed.</p>
                 <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
                 <p><strong>Type:</strong> ${request.request_type}</p>
@@ -186,9 +187,10 @@ serve(async (req) => {
             body: JSON.stringify({
               from: "VFS Updates Hub <onboarding@resend.dev>",
               to: [HR_EMAIL],
-              subject: `[Approved] Article Request: ${request.request_type}`,
+              subject: `[Approved]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${request.request_type}`,
               html: `
                 <h2>Article Request Fully Approved</h2>
+                ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
                 <p>The following request has been fully approved and is ready for action.</p>
                 <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
                 <p><strong>Type:</strong> ${request.request_type}</p>
