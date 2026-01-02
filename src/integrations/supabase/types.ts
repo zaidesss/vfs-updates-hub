@@ -146,6 +146,45 @@ export type Database = {
         }
         Relationships: []
       }
+      failed_emails: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          function_name: string
+          id: string
+          last_retry_at: string | null
+          payload: Json | null
+          recipient_email: string
+          resolved_at: string | null
+          retry_count: number | null
+          subject: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          function_name: string
+          id?: string
+          last_retry_at?: string | null
+          payload?: Json | null
+          recipient_email: string
+          resolved_at?: string | null
+          retry_count?: number | null
+          subject?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          function_name?: string
+          id?: string
+          last_retry_at?: string | null
+          payload?: Json | null
+          recipient_email?: string
+          resolved_at?: string | null
+          retry_count?: number | null
+          subject?: string | null
+        }
+        Relationships: []
+      }
       leave_request_history: {
         Row: {
           changed_at: string
@@ -263,6 +302,45 @@ export type Database = {
           team_lead_name?: string
           total_days?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      notification_settings: {
+        Row: {
+          created_at: string
+          email_notifications: boolean | null
+          id: string
+          in_app_notifications: boolean | null
+          leave_notifications: boolean | null
+          question_notifications: boolean | null
+          request_notifications: boolean | null
+          updated_at: string
+          updates_notifications: boolean | null
+          user_email: string
+        }
+        Insert: {
+          created_at?: string
+          email_notifications?: boolean | null
+          id?: string
+          in_app_notifications?: boolean | null
+          leave_notifications?: boolean | null
+          question_notifications?: boolean | null
+          request_notifications?: boolean | null
+          updated_at?: string
+          updates_notifications?: boolean | null
+          user_email: string
+        }
+        Update: {
+          created_at?: string
+          email_notifications?: boolean | null
+          id?: string
+          in_app_notifications?: boolean | null
+          leave_notifications?: boolean | null
+          question_notifications?: boolean | null
+          request_notifications?: boolean | null
+          updated_at?: string
+          updates_notifications?: boolean | null
+          user_email?: string
         }
         Relationships: []
       }

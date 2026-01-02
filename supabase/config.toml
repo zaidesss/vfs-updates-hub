@@ -53,3 +53,12 @@ verify_jwt = false
 
 [functions.send-question-reply-notification]
 verify_jwt = false
+
+[functions.send-status-change-notification]
+verify_jwt = false
+
+[functions.send-failed-emails-digest]
+verify_jwt = false
+
+[functions.send-request-stage-notification]
+verify_jwt = false

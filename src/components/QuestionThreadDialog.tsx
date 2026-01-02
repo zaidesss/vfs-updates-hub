@@ -151,7 +151,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
   };
 
   const updateStatus = async (newStatus: QuestionStatus, showToast = true) => {
-    if (!question) return;
+    if (!question || !user) return;
 
     try {
       const { error } = await supabase
@@ -174,14 +174,23 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
         toast.success(`Status updated to ${statusLabels[newStatus]}`);
       }
 
-      // Send notifications based on status change
-      if (newStatus === 'answered' && !isQuestionAsker) {
-        // HR marked as answered, notify user
-        // This will be handled by existing notification system
-      } else if (newStatus === 'answered' && isQuestionAsker) {
-        // User marked as answered, notify HR
-        // Create in-app notification for HR
-        console.log('User marked question as answered - HR notification would go here');
+      // Send status change notification
+      try {
+        await supabase.functions.invoke('send-status-change-notification', {
+          body: {
+            questionId: question.id,
+            updateId: question.update_id,
+            updateTitle: question.update_title || 'Update',
+            referenceNumber: question.reference_number,
+            questionAskerEmail: question.user_email,
+            questionAskerName: getKnownNameByEmail(question.user_email) || question.user_email,
+            newStatus,
+            changedBy: user.name || user.email,
+            changedByEmail: user.email,
+          }
+        });
+      } catch (notifErr) {
+        console.error('Failed to send status notification:', notifErr);
       }
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -433,9 +442,16 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
           </p>
         )}
 
+        {/* Helper text for users */}
+        {isQuestionAsker && currentStatus !== 'closed' && currentStatus !== 'answered' && (
+          <p className="text-xs text-muted-foreground text-center py-2 px-4 bg-muted/50 rounded-md">
+            💡 If you think your question has been answered and have no follow-up questions, feel free to mark the status as "Answered" to close this thread.
+          </p>
+        )}
+
         {/* Status action buttons */}
         {currentStatus !== 'closed' && (
-          <div className="flex items-center gap-2 pt-2 border-t">
+          <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
             {/* User can mark as answered or reopen */}
             {isQuestionAsker && currentStatus !== 'answered' && (
               <Button
@@ -457,6 +473,19 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
               >
                 <RotateCcw className="h-4 w-4 mr-1" />
                 Re-open Question
+              </Button>
+            )}
+
+            {/* Admin/HR can also mark as answered */}
+            {(isAdmin || isHR) && !isQuestionAsker && currentStatus !== 'answered' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMarkAnswered}
+                className="text-green-600 hover:text-green-700"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                Mark as Answered
               </Button>
             )}
 

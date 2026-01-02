@@ -81,11 +81,18 @@ export default function UpdateDetail() {
     return (
       <Layout>
         <div className="text-center py-12">
-          <h2 className="text-xl font-semibold">Update not found</h2>
-          <Button variant="ghost" onClick={() => navigate('/updates')} className="mt-4">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Updates
-          </Button>
+          <div className="bg-muted/50 rounded-lg p-8 max-w-md mx-auto">
+            <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Update No Longer Available</h2>
+            <p className="text-muted-foreground mb-6">
+              This update may have been removed or is no longer accessible. 
+              Please check the Updates page for the latest content.
+            </p>
+            <Button onClick={() => navigate('/updates')}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Updates
+            </Button>
+          </div>
         </div>
       </Layout>
     );

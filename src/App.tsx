@@ -23,6 +23,7 @@ import ManageProfiles from "./pages/ManageProfiles";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
+import NotificationSettings from "./pages/NotificationSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -178,6 +179,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PlaybookArticle />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notification-settings"
+        element={
+          <ProtectedRoute>
+            <NotificationSettings />
           </ProtectedRoute>
         }
       />
