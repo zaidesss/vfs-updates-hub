@@ -29,6 +29,8 @@ export interface Acknowledgement {
   acknowledged_at: string;
 }
 
+export type QuestionStatus = 'pending' | 'on_going' | 'answered' | 'closed';
+
 export interface UpdateQuestion {
   id: string;
   update_id: string;
@@ -39,6 +41,7 @@ export interface UpdateQuestion {
   reply?: string | null;
   replied_by?: string | null;
   replied_at?: string | null;
+  status?: QuestionStatus;
 }
 
 export interface UpdateChangeHistory {

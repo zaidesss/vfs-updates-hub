@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, MessageCircle, CheckCircle2 } from 'lucide-react';
+import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, MessageCircle, CheckCircle2, Lock, Clock } from 'lucide-react';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -53,6 +53,7 @@ export default function Updates() {
         reply: q.reply || null,
         replied_by: q.replied_by || null,
         replied_at: q.replied_at || null,
+        status: (q.status as 'pending' | 'on_going' | 'answered' | 'closed') || 'pending',
       };
     });
     setQuestions(enrichedQuestions);
@@ -277,13 +278,24 @@ export default function Updates() {
                         <p className="truncate" title={q.question}>{q.question}</p>
                       </TableCell>
                       <TableCell>
-                        {q.reply ? (
+                        {q.status === 'closed' ? (
+                          <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                            <Lock className="h-3 w-3 mr-1" />
+                            Closed
+                          </Badge>
+                        ) : q.status === 'answered' ? (
                           <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Answered
                           </Badge>
+                        ) : q.status === 'on_going' ? (
+                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            <MessageCircle className="h-3 w-3 mr-1" />
+                            On-Going
+                          </Badge>
                         ) : (
-                          <Badge variant="secondary">
+                          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                            <Clock className="h-3 w-3 mr-1" />
                             Pending
                           </Badge>
                         )}
