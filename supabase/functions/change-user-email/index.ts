@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +24,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
     const { oldEmail, newEmail }: ChangeEmailRequest = await req.json();
 
@@ -141,6 +144,28 @@ serve(async (req) => {
       console.error("Error updating agent_profiles:", profilesError);
     } else {
       console.log("Updated agent_profiles");
+    }
+
+    // 8. Send email notification to new email address
+    try {
+      const emailResponse = await resend.emails.send({
+        from: "VFS Agent Portal <onboarding@resend.dev>",
+        to: [normalizedNewEmail],
+        subject: "Your Email Address Has Been Changed",
+        html: `
+          <h2>Email Address Changed</h2>
+          <p>Hello,</p>
+          <p>Your email address for VFS Agent Portal has been changed from <strong>${normalizedOldEmail}</strong> to <strong>${normalizedNewEmail}</strong>.</p>
+          <p><strong>Important:</strong> Please log out and log back in with your new email address to continue using the portal.</p>
+          <p>If you did not request this change, please contact your administrator immediately.</p>
+          <br>
+          <p>Best regards,<br>VFS Agent Portal Team</p>
+        `,
+      });
+      console.log("Email notification sent:", emailResponse);
+    } catch (emailError) {
+      console.error("Failed to send email notification:", emailError);
+      // Don't fail the whole operation if email fails
     }
 
     console.log("Email change completed successfully");
