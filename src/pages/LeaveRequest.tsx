@@ -158,10 +158,12 @@ export default function LeaveRequest() {
   }, [user]);
 
   const loadRequests = async () => {
+    if (!user?.email) return;
+    
     setIsLoading(true);
     const result = isAdmin 
       ? await fetchAllLeaveRequests()
-      : await fetchMyLeaveRequests();
+      : await fetchMyLeaveRequests(user.email);
     
     if (result.data) {
       setRequests(result.data);

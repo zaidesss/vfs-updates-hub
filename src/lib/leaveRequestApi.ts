@@ -397,11 +397,12 @@ export async function adminUpdateLeaveRequest(
   }
 }
 
-export async function fetchMyLeaveRequests(): Promise<ApiResponse<LeaveRequest[]>> {
+export async function fetchMyLeaveRequests(agentEmail: string): Promise<ApiResponse<LeaveRequest[]>> {
   try {
     const { data, error } = await supabase
       .from('leave_requests')
       .select('*')
+      .eq('agent_email', agentEmail.toLowerCase())
       .order('created_at', { ascending: false });
     
     if (error) {

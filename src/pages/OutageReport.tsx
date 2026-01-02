@@ -85,10 +85,12 @@ export default function OutageReport() {
   }, [isAdmin]);
 
   const loadRequests = async () => {
+    if (!user?.email) return;
+    
     setIsLoading(true);
     const result = isAdmin 
       ? await fetchAllLeaveRequests()
-      : await fetchMyLeaveRequests();
+      : await fetchMyLeaveRequests(user.email);
     
     if (result.data) {
       // Only include approved/pending requests (not declined/canceled)
