@@ -454,6 +454,7 @@ export type Database = {
           replied_at: string | null
           replied_by: string | null
           reply: string | null
+          status: string
           update_id: string
           user_email: string
         }
@@ -465,6 +466,7 @@ export type Database = {
           replied_at?: string | null
           replied_by?: string | null
           reply?: string | null
+          status?: string
           update_id: string
           user_email: string
         }
@@ -476,6 +478,7 @@ export type Database = {
           replied_at?: string | null
           replied_by?: string | null
           reply?: string | null
+          status?: string
           update_id?: string
           user_email?: string
         }

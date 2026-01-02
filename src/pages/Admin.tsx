@@ -146,6 +146,7 @@ export default function Admin() {
           ...q,
           update_title: update?.title || 'Unknown Update',
           reference_number: (q as any).reference_number || null,
+          status: (q.status as 'pending' | 'on_going' | 'answered' | 'closed') || 'pending',
         };
       })
     );

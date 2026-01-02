@@ -4,13 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Send, User } from 'lucide-react';
+import { Loader2, Send, User, CheckCircle2, RotateCcw, Lock, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+type QuestionStatus = 'pending' | 'on_going' | 'answered' | 'closed';
 
 interface QuestionReply {
   id: string;
@@ -32,6 +34,7 @@ interface QuestionData {
   reply?: string | null;
   replied_by?: string | null;
   replied_at?: string | null;
+  status?: QuestionStatus;
 }
 
 interface QuestionThreadDialogProps {
@@ -47,10 +50,19 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
   const [replyText, setReplyText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<QuestionStatus>('pending');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Check if user can reply (admin, HR, or the question asker)
-  const canReply = isAdmin || isHR || (user?.email?.toLowerCase() === question?.user_email?.toLowerCase());
+  const isQuestionAsker = user?.email?.toLowerCase() === question?.user_email?.toLowerCase();
+  const canReply = (isAdmin || isHR || isQuestionAsker) && currentStatus !== 'closed';
+  
+  // Update current status when question changes
+  useEffect(() => {
+    if (question) {
+      setCurrentStatus(question.status || 'pending');
+    }
+  }, [question]);
 
   useEffect(() => {
     if (open && question) {
@@ -102,12 +114,14 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
 
       if (error) throw error;
 
+      // Auto-update status to 'on_going' if it was 'pending'
+      if (currentStatus === 'pending') {
+        await updateStatus('on_going', false);
+      }
+
       // Send notification to the other party
-      const isQuestionAsker = user.email.toLowerCase() === question.user_email.toLowerCase();
-      
       if (isQuestionAsker) {
         // Notify admins/HR that there's a follow-up
-        // For now, we'll skip this as there's no specific admin email list
         console.log('Follow-up from question asker - admin notification would go here');
       } else {
         // Notify the question asker that admin/HR replied
@@ -136,6 +150,49 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
     }
   };
 
+  const updateStatus = async (newStatus: QuestionStatus, showToast = true) => {
+    if (!question) return;
+
+    try {
+      const { error } = await supabase
+        .from('update_questions')
+        .update({ status: newStatus })
+        .eq('id', question.id);
+
+      if (error) throw error;
+
+      setCurrentStatus(newStatus);
+      onReplySubmitted?.();
+      
+      if (showToast) {
+        const statusLabels: Record<QuestionStatus, string> = {
+          pending: 'Pending',
+          on_going: 'On-Going',
+          answered: 'Answered',
+          closed: 'Closed'
+        };
+        toast.success(`Status updated to ${statusLabels[newStatus]}`);
+      }
+
+      // Send notifications based on status change
+      if (newStatus === 'answered' && !isQuestionAsker) {
+        // HR marked as answered, notify user
+        // This will be handled by existing notification system
+      } else if (newStatus === 'answered' && isQuestionAsker) {
+        // User marked as answered, notify HR
+        // Create in-app notification for HR
+        console.log('User marked question as answered - HR notification would go here');
+      }
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleMarkAnswered = () => updateStatus('answered');
+  const handleReopen = () => updateStatus('pending');
+  const handleCloseThread = () => updateStatus('closed');
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -146,6 +203,39 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
   if (!question) return null;
 
   const questionAskerName = getKnownNameByEmail(question.user_email) || question.user_email;
+
+  const getStatusBadge = () => {
+    const statusConfig: Record<QuestionStatus, { label: string; className: string; icon: React.ReactNode }> = {
+      pending: { 
+        label: 'Pending', 
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+        icon: <MessageCircle className="h-3 w-3 mr-1" />
+      },
+      on_going: { 
+        label: 'On-Going', 
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        icon: <MessageCircle className="h-3 w-3 mr-1" />
+      },
+      answered: { 
+        label: 'Answered', 
+        className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+        icon: <CheckCircle2 className="h-3 w-3 mr-1" />
+      },
+      closed: { 
+        label: 'Closed', 
+        className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+        icon: <Lock className="h-3 w-3 mr-1" />
+      }
+    };
+    
+    const config = statusConfig[currentStatus];
+    return (
+      <Badge className={config.className}>
+        {config.icon}
+        {config.label}
+      </Badge>
+    );
+  };
 
   // Build conversation with original question + legacy reply + new replies
   const conversationItems: Array<{ type: 'question' | 'legacy' | 'reply'; data: any }> = [
@@ -180,6 +270,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                 {question.reference_number}
               </Badge>
             )}
+            {getStatusBadge()}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
             About: <span className="font-medium">{question.update_title}</span>
@@ -329,10 +420,59 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
           </div>
         )}
 
-        {!canReply && (
+        {currentStatus === 'closed' && (
+          <div className="text-sm text-muted-foreground text-center py-2 border-t flex items-center justify-center gap-2">
+            <Lock className="h-4 w-4" />
+            This thread has been closed and cannot receive new replies.
+          </div>
+        )}
+
+        {!canReply && currentStatus !== 'closed' && (
           <p className="text-sm text-muted-foreground text-center py-2 border-t">
             Only admins, HR, or the question asker can reply to this thread.
           </p>
+        )}
+
+        {/* Status action buttons */}
+        {currentStatus !== 'closed' && (
+          <div className="flex items-center gap-2 pt-2 border-t">
+            {/* User can mark as answered or reopen */}
+            {isQuestionAsker && currentStatus !== 'answered' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMarkAnswered}
+                className="text-green-600 hover:text-green-700"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                Mark as Answered
+              </Button>
+            )}
+            
+            {isQuestionAsker && currentStatus === 'answered' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReopen}
+              >
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Re-open Question
+              </Button>
+            )}
+
+            {/* Admin can close thread permanently */}
+            {(isAdmin || isHR) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCloseThread}
+                className="text-destructive hover:text-destructive ml-auto"
+              >
+                <Lock className="h-4 w-4 mr-1" />
+                Close Thread
+              </Button>
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>
