@@ -171,18 +171,20 @@ export async function addUser(email: string, name?: string): Promise<ApiResponse
   }
 }
 
-// Remove a user
+// Remove a user (via edge function to also delete from Auth)
 export async function removeUser(email: string): Promise<ApiResponse<{ ok: boolean }>> {
   try {
-    const { error } = await supabase
-      .from('user_roles')
-      .delete()
-      .eq('email', email.toLowerCase())
-      .eq('role', 'user');
+    const { data, error } = await supabase.functions.invoke('delete-user', {
+      body: { email: email.toLowerCase() }
+    });
 
     if (error) {
       console.error('Error removing user:', error);
       return { data: null, error: error.message };
+    }
+
+    if (data?.error) {
+      return { data: null, error: data.error };
     }
 
     return { data: { ok: true }, error: null };
@@ -326,6 +328,7 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
         posted_by: update.posted_by,
         deadline_at: update.deadline_at || null,
         status: update.status,
+        category: update.category || null,
       }] as any)
       .select()
       .single();
@@ -557,6 +560,54 @@ export async function createUserWithPassword(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to create user with password:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Change user email via edge function
+export async function changeUserEmail(
+  oldEmail: string,
+  newEmail: string
+): Promise<ApiResponse<{ success: boolean }>> {
+  try {
+    const { data, error } = await supabase.functions.invoke('change-user-email', {
+      body: { oldEmail, newEmail }
+    });
+
+    if (error) {
+      console.error('Error changing user email:', error);
+      return { data: null, error: error.message };
+    }
+
+    if (data?.error) {
+      return { data: null, error: data.error };
+    }
+
+    return { data: { success: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to change user email:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Force password reset for a user
+export async function forcePasswordReset(email: string): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    const { error } = await supabase
+      .from('user_roles')
+      .update({ must_change_password: true } as any)
+      .eq('email', email.toLowerCase());
+
+    if (error) {
+      console.error('Error setting password reset flag:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to set password reset flag:', errorMessage);
     return { data: null, error: errorMessage };
   }
 }
