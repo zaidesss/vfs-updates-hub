@@ -20,10 +20,11 @@ serve(async (req) => {
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
 
-    const { updateTitle, isEdit } = await req.json();
+    const { updateTitle, isEdit, referenceNumber } = await req.json();
 
     const notificationType = isEdit ? 'Updated' : 'New';
-    console.log(`Sending notifications for ${notificationType.toLowerCase()} update: ${updateTitle}`);
+    const refDisplay = referenceNumber ? ` (${referenceNumber})` : '';
+    console.log(`Sending notifications for ${notificationType.toLowerCase()} update: ${updateTitle}${refDisplay}`);
 
     // Get all users (admins and regular users) from user_roles
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -53,7 +54,7 @@ serve(async (req) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: `${emoji} *${notificationType} Update: ${updateTitle}*\n\nThere's ${isEdit ? 'an updated' : 'a new'} update. Go to ${APP_URL} to ${isEdit ? 'review the changes and' : ''} acknowledge the update.`,
+            text: `${emoji} *${notificationType} Update${refDisplay}: ${updateTitle}*\n\nThere's ${isEdit ? 'an updated' : 'a new'} update. Go to ${APP_URL} to ${isEdit ? 'review the changes and' : ''} acknowledge the update.`,
           }),
         });
 
@@ -81,10 +82,11 @@ serve(async (req) => {
         const emailResponse = await resend.emails.send({
           from: 'VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>',
           to: emails,
-          subject: `${notificationType} Update: ${updateTitle}`,
+          subject: `${notificationType} Update${refDisplay}: ${updateTitle}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h1 style="color: #333;">${emoji} ${notificationType} Update Available</h1>
+              ${referenceNumber ? `<p style="color: #888; font-family: monospace; font-size: 14px; margin-bottom: 8px;">${referenceNumber}</p>` : ''}
               <h2 style="color: #555;">${updateTitle}</h2>
               <p style="color: #666; font-size: 16px;">
                 ${isEdit 
