@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users, BookOpen } from 'lucide-react';
+import { FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, CalendarDays, Clock, Users, BookOpen, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -63,6 +63,16 @@ export function Layout({ children }: LayoutProps) {
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
+            <Link to="/change-password">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground"
+                title="Change Password"
+              >
+                <KeyRound className="h-4 w-4" />
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               size="icon"

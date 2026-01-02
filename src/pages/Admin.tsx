@@ -33,11 +33,13 @@ import {
   MessageSquare,
   ExternalLink,
   KeyRound,
-  Copy
+  Copy,
+  Mail,
+  RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update, UpdateQuestion } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
@@ -69,6 +71,11 @@ export default function Admin() {
   const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isCreatingUpdate, setIsCreatingUpdate] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'obsolete'>('all');
+  const [isChangeEmailDialogOpen, setIsChangeEmailDialogOpen] = useState(false);
+  const [changeEmailData, setChangeEmailData] = useState({ oldEmail: '', newEmail: '' });
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string | null>(null);
   const [newUserData, setNewUserData] = useState({
     email: '',
     name: '',
@@ -259,6 +266,41 @@ export default function Admin() {
 
     setUsers(prev => prev.filter(u => u.email.toLowerCase() !== email.toLowerCase()));
     toast.success('User removed successfully');
+  };
+
+  const handleChangeEmail = async () => {
+    if (!changeEmailData.oldEmail.trim() || !changeEmailData.newEmail.trim()) return;
+    
+    setIsChangingEmail(true);
+    const { error } = await changeUserEmail(changeEmailData.oldEmail.trim(), changeEmailData.newEmail.trim());
+    setIsChangingEmail(false);
+
+    if (error) {
+      toast.error('Failed to change email', { description: error });
+      return;
+    }
+
+    setChangeEmailData({ oldEmail: '', newEmail: '' });
+    setIsChangeEmailDialogOpen(false);
+    await Promise.all([loadUsers(), loadAdmins()]);
+    toast.success('Email changed successfully', {
+      description: 'All acknowledgements and data have been transferred to the new email.'
+    });
+  };
+
+  const handleResetPassword = async (email: string) => {
+    setResettingPasswordEmail(email);
+    const { error } = await forcePasswordReset(email);
+    setResettingPasswordEmail(null);
+
+    if (error) {
+      toast.error('Failed to reset password flag', { description: error });
+      return;
+    }
+
+    toast.success('Password reset required', {
+      description: 'User will be prompted to change their password on next login.'
+    });
   };
 
   // HR can only see updates list and delete, not admin/user management
@@ -457,19 +499,12 @@ export default function Admin() {
                     <MarkdownEditor
                       value={newUpdate.body}
                       onChange={(value) => setNewUpdate(prev => ({ ...prev, body: value }))}
-                      placeholder="Write your article content here...
-
-Supports **markdown** formatting:
-- # Heading 1
-- ## Heading 2  
-- **bold** and *italic*
-- Lists, tables, code blocks
-- > Blockquotes for messaging templates"
+                      placeholder="Paste your update here, then click 'AI Format' to make it look nice. After that, click 'Preview' to see how it will look."
                       minHeight={300}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="help_center_url">Help Center URL</Label>
+                    <Label htmlFor="help_center_url">Help Center URL (add if applicable)</Label>
                     <Input
                       id="help_center_url"
                       value={newUpdate.help_center_url}
@@ -773,6 +808,27 @@ Supports **markdown** formatting:
                 Create a user with a temporary password. They will receive an email with credentials and be required to change their password on first login.
               </p>
             </div>
+            {/* Change Email */}
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Change User Email</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsChangeEmailDialogOpen(true)}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Change Email
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Change a user's email address. All acknowledgements and data will be transferred to the new email.
+              </p>
+            </div>
+
             <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
               {users.map((userItem) => (
                 <div key={userItem.id} className="flex items-center justify-between p-3">
@@ -787,19 +843,34 @@ Supports **markdown** formatting:
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => handleRemoveUser(userItem.email)}
-                    disabled={removingUserEmail === userItem.email}
-                  >
-                    {removingUserEmail === userItem.email ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Force password reset"
+                      onClick={() => handleResetPassword(userItem.email)}
+                      disabled={resettingPasswordEmail === userItem.email}
+                    >
+                      {resettingPasswordEmail === userItem.email ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleRemoveUser(userItem.email)}
+                      disabled={removingUserEmail === userItem.email}
+                    >
+                      {removingUserEmail === userItem.email ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ))}
               {users.length === 0 && (
@@ -921,10 +992,73 @@ Supports **markdown** formatting:
           </DialogContent>
         </Dialog>
 
+        {/* Change Email Dialog */}
+        <Dialog open={isChangeEmailDialogOpen} onOpenChange={setIsChangeEmailDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Change User Email</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="old-email">Current Email</Label>
+                <Input
+                  id="old-email"
+                  type="email"
+                  value={changeEmailData.oldEmail}
+                  onChange={(e) => setChangeEmailData(prev => ({ ...prev, oldEmail: e.target.value }))}
+                  placeholder="current@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-email">New Email</Label>
+                <Input
+                  id="new-email"
+                  type="email"
+                  value={changeEmailData.newEmail}
+                  onChange={(e) => setChangeEmailData(prev => ({ ...prev, newEmail: e.target.value }))}
+                  placeholder="new@example.com"
+                />
+              </div>
+              <div className="bg-muted/50 border rounded-lg p-3 text-sm text-muted-foreground">
+                <p>This will update the email and transfer all acknowledgements, questions, leave requests, and profile data to the new email.</p>
+              </div>
+              <Button 
+                onClick={handleChangeEmail} 
+                className="w-full" 
+                disabled={!changeEmailData.oldEmail || !changeEmailData.newEmail || isChangingEmail}
+              >
+                {isChangingEmail ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Changing Email...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Change Email
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Card>
           <CardHeader>
-            <CardTitle>All Updates</CardTitle>
-            <CardDescription>Click on an update to view acknowledgement details</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>All Updates</CardTitle>
+                <CardDescription>Click on an update to view acknowledgement details</CardDescription>
+              </div>
+              <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+                <TabsList>
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="published">Published</TabsTrigger>
+                  <TabsTrigger value="draft">Drafts</TabsTrigger>
+                  <TabsTrigger value="obsolete">Obsolete</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -938,7 +1072,9 @@ Supports **markdown** formatting:
                 </TableRow>
               </TableHeader>
               <TableBody>
-              {updates.map(update => {
+              {updates
+                .filter(u => statusFilter === 'all' || u.status === statusFilter)
+                .map(update => {
                   const ackCount = getAcknowledgementCount(update.id);
                   const completionPercent = totalUsers > 0 
                     ? Math.round((ackCount / totalUsers) * 100)
@@ -1072,62 +1208,6 @@ Supports **markdown** formatting:
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-
-        {/* Questions Tab - For Admins and HR */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-primary" />
-              <CardTitle>Agent Questions</CardTitle>
-            </div>
-            <CardDescription>Questions submitted by agents about updates</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {questions.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">No questions submitted yet</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ref #</TableHead>
-                    <TableHead>Update</TableHead>
-                    <TableHead>Asked By</TableHead>
-                    <TableHead>Question</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {questions.map(q => (
-                    <TableRow key={q.id}>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono text-xs">
-                          {q.reference_number || '-'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[200px]">
-                        <p className="truncate font-medium" title={q.update_title}>
-                          {q.update_title}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium">{getNameByEmail(q.user_email)}</p>
-                          <p className="text-xs text-muted-foreground">{q.user_email}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[300px]">
-                        <p className="truncate" title={q.question}>{q.question}</p>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {format(new Date(q.created_at), 'MMM d, yyyy h:mm a')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
           </CardContent>
         </Card>
 

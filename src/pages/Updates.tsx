@@ -8,9 +8,16 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, FileText, RefreshCw, Loader2, Filter } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare } from 'lucide-react';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+import { getKnownNameByEmail } from '@/lib/nameDirectory';
+import { UpdateQuestion } from '@/types';
 
 type FilterTab = 'unread' | 'read' | 'all';
 
@@ -25,6 +32,27 @@ export default function Updates() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<UpdateCategory | 'all'>('all');
+  const [questions, setQuestions] = useState<(UpdateQuestion & { update_title?: string; reference_number?: string | null })[]>([]);
+
+  const loadQuestions = async () => {
+    if (!isAdmin) return;
+    const { data: questionsData } = await supabase
+      .from('update_questions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    const enrichedQuestions = (questionsData || []).map((q) => {
+      const update = updates.find(u => u.id === q.update_id);
+      return { ...q, update_title: update?.title || 'Unknown Update' };
+    });
+    setQuestions(enrichedQuestions);
+  };
+
+  useEffect(() => {
+    if (isAdmin && updates.length > 0) {
+      loadQuestions();
+    }
+  }, [isAdmin, updates]);
 
   const publishedUpdates = updates.filter(u => u.status === 'published');
 
@@ -183,6 +211,58 @@ export default function Updates() {
             <h2 className="text-xl font-semibold text-foreground mb-4">Team Acknowledgement Overview</h2>
             <UserAcknowledgementDashboard updates={updates} acknowledgements={acknowledgements} />
           </div>
+        )}
+
+        {/* Agent Questions - Admin only */}
+        {isAdmin && questions.length > 0 && (
+          <Card className="mt-8">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                <CardTitle>Agent Questions</CardTitle>
+              </div>
+              <CardDescription>Questions submitted by agents about updates</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ref #</TableHead>
+                    <TableHead>Update</TableHead>
+                    <TableHead>Asked By</TableHead>
+                    <TableHead>Question</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {questions.map(q => (
+                    <TableRow key={q.id}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {q.reference_number || '-'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <p className="truncate font-medium" title={q.update_title}>{q.update_title}</p>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium">{getKnownNameByEmail(q.user_email) || q.user_email}</p>
+                          <p className="text-xs text-muted-foreground">{q.user_email}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[300px]">
+                        <p className="truncate" title={q.question}>{q.question}</p>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {format(new Date(q.created_at), 'MMM d, yyyy h:mm a')}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
     </Layout>
