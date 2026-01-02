@@ -33,8 +33,31 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`Processing reply notification for question ${questionId} (${referenceNumber || 'no ref'})`);
     console.log(`Update: ${updateTitle}, Replied by: ${repliedBy}, User: ${userEmail}`);
 
+    // Create in-app notification
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    if (supabaseUrl && supabaseServiceKey && userEmail) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const refDisplay = referenceNumber ? `[${referenceNumber}] ` : '';
+        await supabase.from('notifications').insert({
+          user_email: userEmail.toLowerCase(),
+          title: `${refDisplay}Question Answered`,
+          message: `${repliedBy} replied to your question about "${updateTitle}"`,
+          type: 'question_reply',
+          reference_id: updateId,
+          reference_type: 'question',
+        });
+        console.log("In-app notification created");
+      } catch (notifError) {
+        console.error("Error creating in-app notification:", notifError);
+      }
+    }
+
     if (!userEmail) {
-      console.log("No user email provided, skipping notification");
+      console.log("No user email provided, skipping email notification");
       return new Response(
         JSON.stringify({ success: true, message: "No email to notify" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
