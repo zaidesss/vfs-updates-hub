@@ -24,6 +24,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
+import UserGuide from "./pages/UserGuide";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -187,6 +188,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <NotificationSettings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user-guide"
+        element={
+          <ProtectedRoute>
+            <UserGuide />
           </ProtectedRoute>
         }
       />
