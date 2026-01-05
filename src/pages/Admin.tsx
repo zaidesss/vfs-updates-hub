@@ -35,11 +35,13 @@ import {
   KeyRound,
   Copy,
   Mail,
-  RotateCcw
+  RotateCcw,
+  History,
+  UserCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update, UpdateQuestion } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset, changeUserRole } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset, changeUserRole, isProtectedAccount, fetchDeletedUsers, restoreUser, DeletedUser } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
@@ -82,6 +84,14 @@ export default function Admin() {
   const [userToDelete, setUserToDelete] = useState<{ email: string; name: string } | null>(null);
   const [deleteUpdateModalOpen, setDeleteUpdateModalOpen] = useState(false);
   const [updateToDelete, setUpdateToDelete] = useState<Update | null>(null);
+  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
+  const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
+  const [userToRestore, setUserToRestore] = useState<DeletedUser | null>(null);
+  const [isRestoringUser, setIsRestoringUser] = useState(false);
+  const [restoreUserData, setRestoreUserData] = useState({
+    password: '',
+    role: 'user' as 'super_admin' | 'admin' | 'user' | 'hr',
+  });
   const [newUserData, setNewUserData] = useState({
     email: '',
     name: '',
@@ -117,7 +127,10 @@ export default function Admin() {
     loadAdmins();
     loadUsers();
     loadQuestions();
-  }, []);
+    if (isSuperAdmin) {
+      loadDeletedUsers();
+    }
+  }, [isSuperAdmin]);
 
   const loadAdmins = async () => {
     const { data } = await fetchAdmins();
@@ -130,6 +143,13 @@ export default function Admin() {
     const { data } = await fetchUsers();
     if (data) {
       setUsers(data);
+    }
+  };
+
+  const loadDeletedUsers = async () => {
+    const { data } = await fetchDeletedUsers();
+    if (data) {
+      setDeletedUsers(data);
     }
   };
 
@@ -263,7 +283,7 @@ export default function Admin() {
 
   const handleRemoveUser = async (email: string) => {
     setRemovingUserEmail(email);
-    const { error } = await removeUser(email);
+    const { error } = await removeUser(email, user?.email);
     setRemovingUserEmail(null);
 
     if (error) {
@@ -272,12 +292,18 @@ export default function Admin() {
     }
 
     setUsers(prev => prev.filter(u => u.email.toLowerCase() !== email.toLowerCase()));
+    await loadDeletedUsers(); // Refresh deleted users list
     toast.success('User deleted successfully', { 
-      description: 'All user data has been permanently removed.' 
+      description: 'All user data has been permanently removed. You can restore this user from Deleted Users.' 
     });
   };
 
   const openDeleteUserModal = (email: string, name: string) => {
+    // Block deletion of protected account
+    if (isProtectedAccount(email)) {
+      toast.error('This account is protected', { description: 'This account cannot be deleted.' });
+      return;
+    }
     setUserToDelete({ email, name });
     setDeleteUserModalOpen(true);
   };
@@ -285,6 +311,50 @@ export default function Admin() {
   const openDeleteUpdateModal = (update: Update) => {
     setUpdateToDelete(update);
     setDeleteUpdateModalOpen(true);
+  };
+
+  const openRestoreDialog = (deletedUser: DeletedUser) => {
+    setUserToRestore(deletedUser);
+    setRestoreUserData({
+      password: '',
+      role: deletedUser.original_role as 'super_admin' | 'admin' | 'user' | 'hr',
+    });
+    setIsRestoreDialogOpen(true);
+  };
+
+  const handleRestoreUser = async () => {
+    if (!userToRestore || !restoreUserData.password) return;
+
+    setIsRestoringUser(true);
+    const { error } = await restoreUser(
+      userToRestore.id,
+      userToRestore.email,
+      userToRestore.name || userToRestore.email.split('@')[0],
+      restoreUserData.password,
+      restoreUserData.role
+    );
+    setIsRestoringUser(false);
+
+    if (error) {
+      toast.error('Failed to restore user', { description: error });
+      return;
+    }
+
+    setIsRestoreDialogOpen(false);
+    setUserToRestore(null);
+    await Promise.all([loadUsers(), loadDeletedUsers()]);
+    toast.success('User restored successfully', { 
+      description: 'The user can now log in with the new password.' 
+    });
+  };
+
+  const generateRestorePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setRestoreUserData(prev => ({ ...prev, password }));
   };
 
   const handleChangeEmail = async () => {
@@ -875,6 +945,7 @@ export default function Admin() {
                   userItem.role === 'admin' ? 'secondary' : 
                   userItem.role === 'hr' ? 'outline' : 'outline';
                 const isCurrentUser = user?.email?.toLowerCase() === userItem.email.toLowerCase();
+                const isProtected = isProtectedAccount(userItem.email);
                 
                 return (
                   <div key={userItem.id} className="flex items-center justify-between p-3">
@@ -889,6 +960,7 @@ export default function Admin() {
                             {userItem.role === 'super_admin' ? 'Super Admin' : userItem.role.toUpperCase()}
                           </Badge>
                           {isCurrentUser && <Badge variant="outline" className="text-xs">You</Badge>}
+                          {isProtected && <Badge variant="destructive" className="text-xs">Protected</Badge>}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
@@ -896,7 +968,7 @@ export default function Admin() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {isSuperAdmin && (
+                      {isSuperAdmin && !isProtected && (
                         <Select
                           value={userItem.role}
                           onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => handleChangeRole(userItem.email, value)}
@@ -930,20 +1002,22 @@ export default function Admin() {
                           <RotateCcw className="h-4 w-4" />
                         )}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => openDeleteUserModal(userItem.email, getNameByEmail(userItem.email))}
-                        disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
-                        title="Delete user permanently"
-                      >
-                        {removingUserEmail === userItem.email ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
+                      {!isProtected && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => openDeleteUserModal(userItem.email, getNameByEmail(userItem.email))}
+                          disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
+                          title="Delete user permanently"
+                        >
+                          {removingUserEmail === userItem.email ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
@@ -956,6 +1030,53 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+        )}
+
+        {/* Deleted Users Section - Super Admin Only */}
+        {isSuperAdmin && deletedUsers.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <CardTitle>Deleted Users</CardTitle>
+                  <CardDescription>Users that have been deleted and can be restored</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                {deletedUsers.map((deletedUser) => (
+                  <div key={deletedUser.id} className="flex items-center justify-between p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{deletedUser.name || deletedUser.email}</p>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {deletedUser.original_role === 'super_admin' ? 'Super Admin' : deletedUser.original_role.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {deletedUser.email} • Deleted {format(new Date(deletedUser.deleted_at), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openRestoreDialog(deletedUser)}
+                    >
+                      <UserCheck className="h-4 w-4 mr-1" />
+                      Restore
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Edit Update Dialog */}
@@ -1116,6 +1237,94 @@ export default function Admin() {
                 )}
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Restore User Dialog */}
+        <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Restore User</DialogTitle>
+            </DialogHeader>
+            {userToRestore && (
+              <div className="space-y-4 py-4">
+                <div className="bg-muted/50 border rounded-lg p-3">
+                  <p className="text-sm font-medium">{userToRestore.name || userToRestore.email}</p>
+                  <p className="text-xs text-muted-foreground">{userToRestore.email}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Original role: {userToRestore.original_role === 'super_admin' ? 'Super Admin' : userToRestore.original_role.toUpperCase()}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="restore-password">New Password</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="restore-password"
+                      value={restoreUserData.password}
+                      onChange={(e) => setRestoreUserData(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="Enter password"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={generateRestorePassword}
+                      title="Generate random password"
+                    >
+                      <KeyRound className="h-4 w-4" />
+                    </Button>
+                    {restoreUserData.password && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(restoreUserData.password);
+                          toast.success('Password copied to clipboard');
+                        }}
+                        title="Copy password"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="restore-role">Role</Label>
+                  <Select
+                    value={restoreUserData.role}
+                    onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => setRestoreUserData(prev => ({ ...prev, role: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="hr">HR</SelectItem>
+                      <SelectItem value="super_admin">Super Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button 
+                  onClick={handleRestoreUser} 
+                  className="w-full" 
+                  disabled={!restoreUserData.password || isRestoringUser}
+                >
+                  {isRestoringUser ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Restoring...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="mr-2 h-4 w-4" />
+                      Restore User
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 

@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.send-request-stage-notification]
 verify_jwt = false
+
+[functions.restore-user]
+verify_jwt = false

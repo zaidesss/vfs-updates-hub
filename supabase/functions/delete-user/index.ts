@@ -6,8 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// The protected "god" account that cannot be deleted or modified
+const PROTECTED_EMAIL = "hr@virtualfreelancesolutions.com";
+
 interface DeleteUserRequest {
   email: string;
+  deletedBy: string;
 }
 
 serve(async (req) => {
@@ -22,7 +26,7 @@ serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const { email }: DeleteUserRequest = await req.json();
+    const { email, deletedBy }: DeleteUserRequest = await req.json();
 
     if (!email) {
       return new Response(
@@ -32,21 +36,49 @@ serve(async (req) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    
+    // CRITICAL: Block deletion of the protected "god" account
+    if (normalizedEmail === PROTECTED_EMAIL.toLowerCase()) {
+      console.log(`Attempted to delete protected account: ${normalizedEmail}`);
+      return new Response(
+        JSON.stringify({ error: "This account is protected and cannot be deleted" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     console.log(`Starting comprehensive deletion for user: ${normalizedEmail}`);
 
     const deletionResults: Record<string, { success: boolean; error?: string; count?: number }> = {};
 
-    // First, get the user's name from user_roles for the "deleted user" label
+    // First, get the user's name and role from user_roles for the "deleted user" label and backup
     const { data: userRoleData } = await supabaseAdmin
       .from("user_roles")
-      .select("name, email")
+      .select("name, email, role")
       .eq("email", normalizedEmail)
       .maybeSingle();
 
     // Create the deleted user label (e.g., "blakeducati_deleted user")
     const userName = userRoleData?.name || normalizedEmail.split('@')[0];
     const deletedUserLabel = `${userName}_deleted user`;
+    const userRole = userRoleData?.role || 'user';
     console.log(`Will mark updates as posted by: ${deletedUserLabel}`);
+
+    // Save to deleted_users table BEFORE deleting (for restore capability)
+    const { error: saveDeletedError } = await supabaseAdmin
+      .from("deleted_users")
+      .insert({
+        email: normalizedEmail,
+        name: userName,
+        original_role: userRole,
+        deleted_by: deletedBy || 'unknown'
+      });
+    
+    if (saveDeletedError) {
+      console.error("Error saving to deleted_users:", saveDeletedError);
+      // Non-critical, continue with deletion
+    } else {
+      console.log("Saved user info to deleted_users for potential restore");
+    }
 
     // 1. Update updates posted_by to "username_deleted user" (for admins who posted updates)
     const { data: updatedUpdates, error: updatePostedByError } = await supabaseAdmin

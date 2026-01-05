@@ -192,11 +192,24 @@ export async function addUser(email: string, name?: string): Promise<ApiResponse
   }
 }
 
+// The protected "god" account that cannot be deleted or modified
+const PROTECTED_EMAIL = "hr@virtualfreelancesolutions.com";
+
+// Check if an email is the protected account
+export function isProtectedAccount(email: string): boolean {
+  return email.toLowerCase() === PROTECTED_EMAIL.toLowerCase();
+}
+
 // Remove a user (via edge function to also delete from Auth)
-export async function removeUser(email: string): Promise<ApiResponse<{ ok: boolean }>> {
+export async function removeUser(email: string, deletedBy?: string): Promise<ApiResponse<{ ok: boolean }>> {
   try {
+    // Block deletion of protected account on client side too
+    if (isProtectedAccount(email)) {
+      return { data: null, error: 'This account is protected and cannot be deleted' };
+    }
+
     const { data, error } = await supabase.functions.invoke('delete-user', {
-      body: { email: email.toLowerCase() }
+      body: { email: email.toLowerCase(), deletedBy: deletedBy || 'unknown' }
     });
 
     if (error) {
@@ -212,6 +225,74 @@ export async function removeUser(email: string): Promise<ApiResponse<{ ok: boole
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to remove user:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Fetch deleted users for restore capability
+export interface DeletedUser {
+  id: string;
+  email: string;
+  name: string | null;
+  original_role: string;
+  deleted_at: string;
+  deleted_by: string;
+  restored_at: string | null;
+}
+
+export async function fetchDeletedUsers(): Promise<ApiResponse<DeletedUser[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('deleted_users')
+      .select('*')
+      .is('restored_at', null)
+      .order('deleted_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching deleted users:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as DeletedUser[], error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch deleted users:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
+}
+
+// Restore a deleted user
+export async function restoreUser(
+  deletedUserId: string,
+  email: string,
+  name: string,
+  password: string,
+  role: 'super_admin' | 'admin' | 'user' | 'hr'
+): Promise<ApiResponse<{ success: boolean }>> {
+  try {
+    const { data, error } = await supabase.functions.invoke('restore-user', {
+      body: { 
+        deletedUserId,
+        email: email.toLowerCase(), 
+        name, 
+        password, 
+        role 
+      }
+    });
+
+    if (error) {
+      console.error('Error restoring user:', error);
+      return { data: null, error: error.message };
+    }
+
+    if (data?.error) {
+      return { data: null, error: data.error };
+    }
+
+    return { data: { success: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to restore user:', errorMessage);
     return { data: null, error: errorMessage };
   }
 }
