@@ -673,6 +673,7 @@ export type Database = {
       }
     }
     Functions: {
+      get_super_admin_count: { Args: never; Returns: number }
       has_role: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
@@ -686,6 +687,7 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: { _email: string }; Returns: boolean }
+      is_super_admin: { Args: { _email: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user" | "hr" | "super_admin"

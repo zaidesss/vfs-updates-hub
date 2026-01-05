@@ -41,7 +41,8 @@ export function UserManagementSection() {
           "Create User with Password dialog for full setup.",
           "Bulk Import section for multiple emails.",
           "Change User Email button.",
-          "Users table with all accounts.",
+          "Change Role dropdown (Super Admin only).",
+          "Users table with all accounts and role badges.",
         ]} />
 
         <h3 className="font-semibold mb-2 mt-4">Add User (Simple)</h3>
@@ -59,7 +60,7 @@ export function UserManagementSection() {
             ['Email', 'Yes', 'User\'s email address.'],
             ['Full Name', 'Yes', 'User\'s display name.'],
             ['Password', 'Yes', 'Can use auto-generate button.'],
-            ['Role', 'Yes', 'User, Admin, or HR.'],
+            ['Role', 'Yes', 'User, Admin, HR, or Super Admin (if you are Super Admin).'],
           ]}
         />
 
@@ -75,9 +76,10 @@ export function UserManagementSection() {
         <QuickTable 
           headers={['Column', 'Description']}
           rows={[
-            ['Email', 'User\'s email address.'],
-            ['Role', 'Badge showing User/Admin/HR.'],
+            ['Email', 'User\'s email address with role badge.'],
+            ['Role', 'Badge showing User/Admin/HR/Super Admin.'],
             ['Created', 'Account creation date.'],
+            ['Role Dropdown', 'Change role (Super Admin only).'],
             ['Actions', 'Reset Password and Delete buttons.'],
           ]}
         />
@@ -86,6 +88,7 @@ export function UserManagementSection() {
         <QuickTable 
           headers={['Action', 'What It Does']}
           rows={[
+            ['Change Role', 'Updates user\'s role (Super Admin only). Cannot demote last Super Admin.'],
             ['Reset Password', 'Sends password reset email to user.'],
             ['Delete', 'Permanently removes the user account.'],
             ['Change Email', 'Updates user\'s email address (separate dialog).'],

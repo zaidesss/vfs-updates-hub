@@ -13,7 +13,7 @@ export interface ApiResponse<T> {
 export interface AdminRole {
   id: string;
   email: string;
-  role: 'admin' | 'user';
+  role: 'super_admin' | 'admin' | 'user' | 'hr';
   created_at: string;
   name?: string;
 }
@@ -40,14 +40,14 @@ export async function fetchAdminEmails(): Promise<ApiResponse<string[]>> {
   }
 }
 
-// Check if an email is an admin
+// Check if an email is an admin (includes super_admin)
 export async function checkIsAdmin(email: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
       .eq('email', email.toLowerCase())
-      .eq('role', 'admin')
+      .in('role', ['admin', 'super_admin'])
       .maybeSingle();
 
     if (error) {
@@ -58,6 +58,28 @@ export async function checkIsAdmin(email: string): Promise<boolean> {
     return !!data;
   } catch (err) {
     console.error('Failed to check admin status:', err);
+    return false;
+  }
+}
+
+// Check if an email is a super_admin
+export async function checkIsSuperAdmin(email: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('email', email.toLowerCase())
+      .eq('role', 'super_admin')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking super admin status:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (err) {
+    console.error('Failed to check super admin status:', err);
     return false;
   }
 }
@@ -127,13 +149,12 @@ export async function fetchAdmins(): Promise<ApiResponse<AdminRole[]>> {
   }
 }
 
-// Fetch all users (non-admin)
+// Fetch all users (all roles)
 export async function fetchUsers(): Promise<ApiResponse<AdminRole[]>> {
   try {
     const { data, error } = await supabase
       .from('user_roles')
       .select('*')
-      .eq('role', 'user')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -212,6 +233,59 @@ export async function bulkAddUsers(emails: string[]): Promise<ApiResponse<{ adde
   }
   
   return { data: results, error: null };
+}
+
+// Change user role
+export async function changeUserRole(
+  email: string, 
+  newRole: 'super_admin' | 'admin' | 'user' | 'hr'
+): Promise<ApiResponse<{ ok: boolean }>> {
+  try {
+    // If demoting from super_admin, check if this is the last one
+    const { data: currentUser, error: fetchError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error fetching current role:', fetchError);
+      return { data: null, error: fetchError.message };
+    }
+
+    if (currentUser?.role === 'super_admin' && newRole !== 'super_admin') {
+      // Count super admins
+      const { count, error: countError } = await supabase
+        .from('user_roles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'super_admin');
+
+      if (countError) {
+        console.error('Error counting super admins:', countError);
+        return { data: null, error: countError.message };
+      }
+
+      if (count && count <= 1) {
+        return { data: null, error: 'Cannot demote the last super admin. Promote another user first.' };
+      }
+    }
+
+    const { error } = await supabase
+      .from('user_roles')
+      .update({ role: newRole })
+      .eq('email', email.toLowerCase());
+
+    if (error) {
+      console.error('Error changing user role:', error);
+      return { data: null, error: error.message };
+    }
+
+    return { data: { ok: true }, error: null };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to change user role:', errorMessage);
+    return { data: null, error: errorMessage };
+  }
 }
 
 // Fetch updates directly from the database
@@ -540,7 +614,7 @@ export async function createUserWithPassword(
   email: string,
   password: string,
   name: string,
-  role: 'admin' | 'user' | 'hr'
+  role: 'super_admin' | 'admin' | 'user' | 'hr'
 ): Promise<ApiResponse<{ success: boolean; userId?: string }>> {
   try {
     const { data, error } = await supabase.functions.invoke('create-user-with-password', {

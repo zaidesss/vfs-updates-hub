@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Update, UpdateQuestion } from '@/types';
-import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset } from '@/lib/api';
+import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset, changeUserRole } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
@@ -50,7 +50,7 @@ import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function Admin() {
-  const { isAdmin, isHR, user } = useAuth();
+  const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
   const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -76,11 +76,12 @@ export default function Admin() {
   const [changeEmailData, setChangeEmailData] = useState({ oldEmail: '', newEmail: '' });
   const [isChangingEmail, setIsChangingEmail] = useState(false);
   const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string | null>(null);
+  const [changingRoleEmail, setChangingRoleEmail] = useState<string | null>(null);
   const [newUserData, setNewUserData] = useState({
     email: '',
     name: '',
     password: '',
-    role: 'user' as 'admin' | 'user' | 'hr',
+    role: 'user' as 'super_admin' | 'admin' | 'user' | 'hr',
   });
   const [newUpdate, setNewUpdate] = useState({
     title: '',
@@ -302,6 +303,26 @@ export default function Admin() {
     toast.success('Password reset required', {
       description: 'User will be prompted to change their password on next login.'
     });
+  };
+
+  const handleChangeRole = async (email: string, newRole: 'super_admin' | 'admin' | 'user' | 'hr') => {
+    // Prevent self-demotion from super_admin
+    if (user?.email?.toLowerCase() === email.toLowerCase() && isSuperAdmin && newRole !== 'super_admin') {
+      toast.error('Cannot demote yourself', { description: 'Ask another super admin to change your role.' });
+      return;
+    }
+
+    setChangingRoleEmail(email);
+    const { error } = await changeUserRole(email, newRole);
+    setChangingRoleEmail(null);
+
+    if (error) {
+      toast.error('Failed to change role', { description: error });
+      return;
+    }
+
+    await loadUsers();
+    toast.success('Role updated successfully');
   };
 
   // HR can only see updates list and delete, not admin/user management
@@ -830,50 +851,84 @@ export default function Admin() {
               </p>
             </div>
 
-            <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
-              {users.map((userItem) => (
-                <div key={userItem.id} className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                      <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
+              {users.map((userItem) => {
+                const roleBadgeVariant = userItem.role === 'super_admin' ? 'default' : 
+                  userItem.role === 'admin' ? 'secondary' : 
+                  userItem.role === 'hr' ? 'outline' : 'outline';
+                const isCurrentUser = user?.email?.toLowerCase() === userItem.email.toLowerCase();
+                
+                return (
+                  <div key={userItem.id} className="flex items-center justify-between p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{getNameByEmail(userItem.email)}</p>
+                          <Badge variant={roleBadgeVariant} className="text-xs capitalize">
+                            {userItem.role === 'super_admin' ? 'Super Admin' : userItem.role.toUpperCase()}
+                          </Badge>
+                          {isCurrentUser && <Badge variant="outline" className="text-xs">You</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{getNameByEmail(userItem.email)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      {isSuperAdmin && (
+                        <Select
+                          value={userItem.role}
+                          onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => handleChangeRole(userItem.email, value)}
+                          disabled={changingRoleEmail === userItem.email}
+                        >
+                          <SelectTrigger className="w-[130px] h-8 text-xs">
+                            {changingRoleEmail === userItem.email ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <SelectValue />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="super_admin">Super Admin</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="hr">HR</SelectItem>
+                            <SelectItem value="user">User</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Force password reset"
+                        onClick={() => handleResetPassword(userItem.email)}
+                        disabled={resettingPasswordEmail === userItem.email}
+                      >
+                        {resettingPasswordEmail === userItem.email ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleRemoveUser(userItem.email)}
+                        disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
+                      >
+                        {removingUserEmail === userItem.email ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Force password reset"
-                      onClick={() => handleResetPassword(userItem.email)}
-                      disabled={resettingPasswordEmail === userItem.email}
-                    >
-                      {resettingPasswordEmail === userItem.email ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RotateCcw className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemoveUser(userItem.email)}
-                      disabled={removingUserEmail === userItem.email}
-                    >
-                      {removingUserEmail === userItem.email ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {users.length === 0 && (
                 <div className="p-6 text-center text-muted-foreground">
                   No users configured
@@ -957,7 +1012,7 @@ export default function Admin() {
                 <Label htmlFor="create-user-role">Role</Label>
                 <Select
                   value={newUserData.role}
-                  onValueChange={(value: 'admin' | 'user' | 'hr') => setNewUserData(prev => ({ ...prev, role: value }))}
+                  onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => setNewUserData(prev => ({ ...prev, role: value }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -966,6 +1021,7 @@ export default function Admin() {
                     <SelectItem value="user">User</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="hr">HR</SelectItem>
+                    {isSuperAdmin && <SelectItem value="super_admin">Super Admin</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
