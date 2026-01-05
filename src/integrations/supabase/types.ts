@@ -146,6 +146,36 @@ export type Database = {
         }
         Relationships: []
       }
+      deleted_users: {
+        Row: {
+          deleted_at: string
+          deleted_by: string
+          email: string
+          id: string
+          name: string | null
+          original_role: string
+          restored_at: string | null
+        }
+        Insert: {
+          deleted_at?: string
+          deleted_by: string
+          email: string
+          id?: string
+          name?: string | null
+          original_role: string
+          restored_at?: string | null
+        }
+        Update: {
+          deleted_at?: string
+          deleted_by?: string
+          email?: string
+          id?: string
+          name?: string | null
+          original_role?: string
+          restored_at?: string | null
+        }
+        Relationships: []
+      }
       failed_emails: {
         Row: {
           created_at: string
