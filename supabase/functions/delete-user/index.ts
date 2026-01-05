@@ -34,9 +34,47 @@ serve(async (req) => {
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`Starting comprehensive deletion for user: ${normalizedEmail}`);
 
-    const deletionResults: Record<string, { success: boolean; error?: string }> = {};
+    const deletionResults: Record<string, { success: boolean; error?: string; count?: number }> = {};
 
-    // 1. Delete from question_replies (references update_questions)
+    // First, get the user's name from user_roles for the "deleted user" label
+    const { data: userRoleData } = await supabaseAdmin
+      .from("user_roles")
+      .select("name, email")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    // Create the deleted user label (e.g., "blakeducati_deleted user")
+    const userName = userRoleData?.name || normalizedEmail.split('@')[0];
+    const deletedUserLabel = `${userName}_deleted user`;
+    console.log(`Will mark updates as posted by: ${deletedUserLabel}`);
+
+    // 1. Update updates posted_by to "username_deleted user" (for admins who posted updates)
+    const { data: updatedUpdates, error: updatePostedByError } = await supabaseAdmin
+      .from("updates")
+      .update({ posted_by: deletedUserLabel })
+      .eq("posted_by", normalizedEmail)
+      .select("id");
+    deletionResults.updates_posted_by = { 
+      success: !updatePostedByError, 
+      error: updatePostedByError?.message,
+      count: updatedUpdates?.length || 0
+    };
+    console.log(`updates.posted_by: ${updatePostedByError ? 'Error - ' + updatePostedByError.message : `Updated ${updatedUpdates?.length || 0} records`}`);
+
+    // 2. Update update_change_history changed_by
+    const { data: updatedHistory, error: historyChangedByError } = await supabaseAdmin
+      .from("update_change_history")
+      .update({ changed_by: deletedUserLabel })
+      .eq("changed_by", normalizedEmail)
+      .select("id");
+    deletionResults.update_change_history = { 
+      success: !historyChangedByError, 
+      error: historyChangedByError?.message,
+      count: updatedHistory?.length || 0
+    };
+    console.log(`update_change_history.changed_by: ${historyChangedByError ? 'Error - ' + historyChangedByError.message : `Updated ${updatedHistory?.length || 0} records`}`);
+
+    // 3. Delete from question_replies (references update_questions)
     const { error: repliesError } = await supabaseAdmin
       .from("question_replies")
       .delete()
@@ -44,7 +82,7 @@ serve(async (req) => {
     deletionResults.question_replies = { success: !repliesError, error: repliesError?.message };
     console.log(`question_replies: ${repliesError ? 'Error - ' + repliesError.message : 'Deleted'}`);
 
-    // 2. Delete from update_questions
+    // 4. Delete from update_questions
     const { error: questionsError } = await supabaseAdmin
       .from("update_questions")
       .delete()
@@ -52,8 +90,7 @@ serve(async (req) => {
     deletionResults.update_questions = { success: !questionsError, error: questionsError?.message };
     console.log(`update_questions: ${questionsError ? 'Error - ' + questionsError.message : 'Deleted'}`);
 
-    // 3. Delete from leave_request_history (references leave_requests by request_id)
-    // First get the user's leave request IDs
+    // 5. Delete from leave_request_history (references leave_requests by request_id)
     const { data: leaveRequests } = await supabaseAdmin
       .from("leave_requests")
       .select("id")
@@ -64,7 +101,7 @@ serve(async (req) => {
       const { error: historyError } = await supabaseAdmin
         .from("leave_request_history")
         .delete()
-        .in("request_id", requestIds);
+        .in("leave_request_id", requestIds);
       deletionResults.leave_request_history = { success: !historyError, error: historyError?.message };
       console.log(`leave_request_history: ${historyError ? 'Error - ' + historyError.message : 'Deleted'}`);
     } else {
@@ -72,7 +109,7 @@ serve(async (req) => {
       console.log(`leave_request_history: No records to delete`);
     }
 
-    // 4. Delete from leave_requests
+    // 6. Delete from leave_requests
     const { error: leaveError } = await supabaseAdmin
       .from("leave_requests")
       .delete()
@@ -80,7 +117,7 @@ serve(async (req) => {
     deletionResults.leave_requests = { success: !leaveError, error: leaveError?.message };
     console.log(`leave_requests: ${leaveError ? 'Error - ' + leaveError.message : 'Deleted'}`);
 
-    // 5. Delete from acknowledgements
+    // 7. Delete from acknowledgements
     const { error: ackError } = await supabaseAdmin
       .from("acknowledgements")
       .delete()
@@ -88,7 +125,7 @@ serve(async (req) => {
     deletionResults.acknowledgements = { success: !ackError, error: ackError?.message };
     console.log(`acknowledgements: ${ackError ? 'Error - ' + ackError.message : 'Deleted'}`);
 
-    // 6. Delete from notifications
+    // 8. Delete from notifications
     const { error: notifError } = await supabaseAdmin
       .from("notifications")
       .delete()
@@ -96,7 +133,7 @@ serve(async (req) => {
     deletionResults.notifications = { success: !notifError, error: notifError?.message };
     console.log(`notifications: ${notifError ? 'Error - ' + notifError.message : 'Deleted'}`);
 
-    // 7. Delete from notification_settings
+    // 9. Delete from notification_settings
     const { error: settingsError } = await supabaseAdmin
       .from("notification_settings")
       .delete()
@@ -104,7 +141,7 @@ serve(async (req) => {
     deletionResults.notification_settings = { success: !settingsError, error: settingsError?.message };
     console.log(`notification_settings: ${settingsError ? 'Error - ' + settingsError.message : 'Deleted'}`);
 
-    // 8. Delete from reminder_logs
+    // 10. Delete from reminder_logs
     const { error: reminderError } = await supabaseAdmin
       .from("reminder_logs")
       .delete()
@@ -112,7 +149,31 @@ serve(async (req) => {
     deletionResults.reminder_logs = { success: !reminderError, error: reminderError?.message };
     console.log(`reminder_logs: ${reminderError ? 'Error - ' + reminderError.message : 'Deleted'}`);
 
-    // 9. Delete from agent_profiles
+    // 11. Delete from failed_emails
+    const { error: failedEmailsError } = await supabaseAdmin
+      .from("failed_emails")
+      .delete()
+      .eq("recipient_email", normalizedEmail);
+    deletionResults.failed_emails = { success: !failedEmailsError, error: failedEmailsError?.message };
+    console.log(`failed_emails: ${failedEmailsError ? 'Error - ' + failedEmailsError.message : 'Deleted'}`);
+
+    // 12. Delete request_approvals where user is the approver
+    const { error: approvalsError } = await supabaseAdmin
+      .from("request_approvals")
+      .delete()
+      .eq("approver_email", normalizedEmail);
+    deletionResults.request_approvals = { success: !approvalsError, error: approvalsError?.message };
+    console.log(`request_approvals: ${approvalsError ? 'Error - ' + approvalsError.message : 'Deleted'}`);
+
+    // 13. Delete article_requests submitted by user
+    const { error: articleRequestsError } = await supabaseAdmin
+      .from("article_requests")
+      .delete()
+      .eq("submitted_by", normalizedEmail);
+    deletionResults.article_requests = { success: !articleRequestsError, error: articleRequestsError?.message };
+    console.log(`article_requests: ${articleRequestsError ? 'Error - ' + articleRequestsError.message : 'Deleted'}`);
+
+    // 14. Delete from agent_profiles
     const { error: profileError } = await supabaseAdmin
       .from("agent_profiles")
       .delete()
@@ -120,7 +181,7 @@ serve(async (req) => {
     deletionResults.agent_profiles = { success: !profileError, error: profileError?.message };
     console.log(`agent_profiles: ${profileError ? 'Error - ' + profileError.message : 'Deleted'}`);
 
-    // 10. Delete from auth.users
+    // 15. Delete from auth.users
     const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
     const authUser = userData?.users.find(u => u.email?.toLowerCase() === normalizedEmail);
 
@@ -133,7 +194,7 @@ serve(async (req) => {
       console.log(`auth.users: User not found (may not have registered)`);
     }
 
-    // 11. Delete from user_roles
+    // 16. Delete from user_roles (do this last)
     const { error: rolesError } = await supabaseAdmin
       .from("user_roles")
       .delete()
@@ -162,6 +223,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: "User deleted successfully from all tables",
+        deletedUserLabel,
         details: deletionResults 
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }

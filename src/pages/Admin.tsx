@@ -46,6 +46,7 @@ import { getDefaultDeadline } from '@/lib/dateUtils';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 import { SimilarUpdatesModal } from '@/components/SimilarUpdatesModal';
+import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -77,6 +78,10 @@ export default function Admin() {
   const [isChangingEmail, setIsChangingEmail] = useState(false);
   const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string | null>(null);
   const [changingRoleEmail, setChangingRoleEmail] = useState<string | null>(null);
+  const [deleteUserModalOpen, setDeleteUserModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<{ email: string; name: string } | null>(null);
+  const [deleteUpdateModalOpen, setDeleteUpdateModalOpen] = useState(false);
+  const [updateToDelete, setUpdateToDelete] = useState<Update | null>(null);
   const [newUserData, setNewUserData] = useState({
     email: '',
     name: '',
@@ -267,7 +272,19 @@ export default function Admin() {
     }
 
     setUsers(prev => prev.filter(u => u.email.toLowerCase() !== email.toLowerCase()));
-    toast.success('User removed successfully');
+    toast.success('User deleted successfully', { 
+      description: 'All user data has been permanently removed.' 
+    });
+  };
+
+  const openDeleteUserModal = (email: string, name: string) => {
+    setUserToDelete({ email, name });
+    setDeleteUserModalOpen(true);
+  };
+
+  const openDeleteUpdateModal = (update: Update) => {
+    setUpdateToDelete(update);
+    setDeleteUpdateModalOpen(true);
   };
 
   const handleChangeEmail = async () => {
@@ -347,7 +364,8 @@ export default function Admin() {
       return;
     }
     
-    toast.success('Update deleted successfully');
+    toast.success('Update deleted permanently');
+    setUpdateToDelete(null);
     refreshData();
   };
 
@@ -916,8 +934,9 @@ export default function Admin() {
                         variant="ghost"
                         size="sm"
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleRemoveUser(userItem.email)}
+                        onClick={() => openDeleteUserModal(userItem.email, getNameByEmail(userItem.email))}
                         disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
+                        title="Delete user permanently"
                       >
                         {removingUserEmail === userItem.email ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1164,8 +1183,9 @@ export default function Admin() {
                               variant="ghost"
                               size="sm"
                               className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteUpdate(update.id)}
+                              onClick={() => openDeleteUpdateModal(update)}
                               disabled={deletingUpdateId === update.id}
+                              title="Delete update permanently"
                             >
                               {deletingUpdateId === update.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1241,13 +1261,14 @@ export default function Admin() {
                                   <SelectItem value="obsolete">Obsolete</SelectItem>
                                 </SelectContent>
                               </Select>
-                              {user?.email?.toLowerCase() === 'hr@virtualfreelancesolutions.com' && (
+                              {isSuperAdmin && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => handleDeleteUpdate(update.id)}
+                                  onClick={() => openDeleteUpdateModal(update)}
                                   disabled={deletingUpdateId === update.id}
+                                  title="Delete update permanently"
                                 >
                                   {deletingUpdateId === update.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1282,6 +1303,40 @@ export default function Admin() {
               setIsCreateDialogOpen(false);
             }
           }}
+        />
+
+        {/* Delete User Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteUserModalOpen}
+          onOpenChange={(open) => {
+            setDeleteUserModalOpen(open);
+            if (!open) setUserToDelete(null);
+          }}
+          onConfirm={async () => {
+            if (userToDelete) {
+              await handleRemoveUser(userToDelete.email);
+            }
+          }}
+          title="Delete User Permanently"
+          description="This action cannot be undone. This will permanently delete the user account and remove all their data including:"
+          itemName={userToDelete ? `• Acknowledgements\n• Questions & replies\n• Leave requests\n• Profile data\n• Notifications\n\nUser: ${userToDelete.name} (${userToDelete.email})` : undefined}
+        />
+
+        {/* Delete Update Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteUpdateModalOpen}
+          onOpenChange={(open) => {
+            setDeleteUpdateModalOpen(open);
+            if (!open) setUpdateToDelete(null);
+          }}
+          onConfirm={async () => {
+            if (updateToDelete) {
+              await handleDeleteUpdate(updateToDelete.id);
+            }
+          }}
+          title="Delete Update Permanently"
+          description="This action cannot be undone. This will permanently delete the update and all associated acknowledgements and questions."
+          itemName={updateToDelete ? `"${updateToDelete.title}"` : undefined}
         />
       </div>
     </Layout>
