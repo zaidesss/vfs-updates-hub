@@ -549,6 +549,18 @@ export async function createUserWithPassword(
 
     if (error) {
       console.error('Error creating user with password:', error);
+      // Try to extract a user-friendly message from the error context
+      const errorContext = (error as any)?.context;
+      if (errorContext?.body) {
+        try {
+          const parsedBody = JSON.parse(errorContext.body);
+          if (parsedBody?.error) {
+            return { data: null, error: parsedBody.error };
+          }
+        } catch {
+          // Parsing failed, use original error message
+        }
+      }
       return { data: null, error: error.message };
     }
 
