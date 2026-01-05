@@ -38,6 +38,17 @@ serve(async (req: Request): Promise<Response> => {
 
     if (authError) {
       console.error("Error creating auth user:", authError);
+      
+      // Handle specific error cases with appropriate status codes
+      if (authError.message?.includes("already been registered")) {
+        return new Response(JSON.stringify({ 
+          error: "A user with this email address already exists. Please use a different email." 
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
       throw authError;
     }
 
