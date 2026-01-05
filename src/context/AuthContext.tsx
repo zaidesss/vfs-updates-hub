@@ -34,52 +34,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const init = async () => {
-      await loadAdminEmails();
+    let mounted = true;
+    
+    // Load admin emails
+    loadAdminEmails();
 
-      // Set up auth state listener FIRST
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log('Auth state changed:', event, session?.user?.email);
-          
-          if (session?.user?.email) {
-            // Defer admin check to avoid Supabase deadlock
-            setTimeout(async () => {
-              const isAdminUser = await checkIsAdmin(session.user.email || '');
-              const isHRUser = await checkIsHR(session.user.email || '');
-              setHrStatus(isHRUser);
-              setUser({
-                email: session.user.email || '',
-                name: session.user.user_metadata?.name || session.user.email || '',
-                role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent' // HR gets admin-level access to view updates
-              });
-            }, 0);
-          } else {
-            setUser(null);
-            setHrStatus(false);
-          }
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
+        
+        if (session?.user?.email) {
+          // Defer admin check to avoid Supabase deadlock
+          setTimeout(async () => {
+            if (!mounted) return;
+            const isAdminUser = await checkIsAdmin(session.user.email || '');
+            const isHRUser = await checkIsHR(session.user.email || '');
+            if (!mounted) return;
+            setHrStatus(isHRUser);
+            setUser({
+              email: session.user.email || '',
+              name: session.user.user_metadata?.name || session.user.email || '',
+              role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
+            });
+          }, 0);
+        } else {
+          setUser(null);
+          setHrStatus(false);
         }
-      );
-
-      // THEN check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.email) {
-        const isAdminUser = await checkIsAdmin(session.user.email);
-        const isHRUser = await checkIsHR(session.user.email);
-        setHrStatus(isHRUser);
-        setUser({
-          email: session.user.email,
-          name: session.user.user_metadata?.name || session.user.email,
-          role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
-        });
       }
-      
-      setIsLoading(false);
+    );
 
-      return () => subscription.unsubscribe();
+    // THEN check for existing session
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!mounted) return;
+        
+        if (session?.user?.email) {
+          const isAdminUser = await checkIsAdmin(session.user.email);
+          const isHRUser = await checkIsHR(session.user.email);
+          if (!mounted) return;
+          setHrStatus(isHRUser);
+          setUser({
+            email: session.user.email,
+            name: session.user.user_metadata?.name || session.user.email,
+            role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
+          });
+        }
+      } catch (err) {
+        console.error('Error checking session:', err);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
     };
+    
+    checkSession();
 
-    init();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }> => {
