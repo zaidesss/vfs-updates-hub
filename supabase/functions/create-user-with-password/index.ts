@@ -11,7 +11,7 @@ interface CreateUserPayload {
   email: string;
   password: string;
   name: string;
-  role: "admin" | "user" | "hr";
+  role: "super_admin" | "admin" | "user" | "hr";
 }
 
 serve(async (req: Request): Promise<Response> => {

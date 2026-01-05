@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuthUser } from '@/types';
-import { checkIsAdmin, fetchAdminEmails } from '@/lib/api';
+import { checkIsAdmin, checkIsSuperAdmin, fetchAdminEmails } from '@/lib/api';
 import { checkIsHR } from '@/lib/requestApi';
 import { adminEmails as fallbackAdminEmails } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => void;
   isAdmin: boolean;
   isHR: boolean;
+  isSuperAdmin: boolean;
   clearMustChangePassword: () => void;
 }
 
@@ -23,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [adminEmails, setAdminEmails] = useState<string[]>(fallbackAdminEmails);
   const [hrStatus, setHrStatus] = useState(false);
+  const [superAdminStatus, setSuperAdminStatus] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
 
   const loadAdminEmails = async () => {
@@ -48,19 +50,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Defer admin check to avoid Supabase deadlock
           setTimeout(async () => {
             if (!mounted) return;
+            const isSuperAdminUser = await checkIsSuperAdmin(session.user.email || '');
             const isAdminUser = await checkIsAdmin(session.user.email || '');
             const isHRUser = await checkIsHR(session.user.email || '');
             if (!mounted) return;
+            setSuperAdminStatus(isSuperAdminUser);
             setHrStatus(isHRUser);
             setUser({
               email: session.user.email || '',
               name: session.user.user_metadata?.name || session.user.email || '',
-              role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
+              role: isSuperAdminUser ? 'admin' : isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
             });
           }, 0);
         } else {
           setUser(null);
           setHrStatus(false);
+          setSuperAdminStatus(false);
         }
       }
     );
@@ -72,14 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         
         if (session?.user?.email) {
+          const isSuperAdminUser = await checkIsSuperAdmin(session.user.email);
           const isAdminUser = await checkIsAdmin(session.user.email);
           const isHRUser = await checkIsHR(session.user.email);
           if (!mounted) return;
+          setSuperAdminStatus(isSuperAdminUser);
           setHrStatus(isHRUser);
           setUser({
             email: session.user.email,
             name: session.user.user_metadata?.name || session.user.email,
-            role: isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
+            role: isSuperAdminUser ? 'admin' : isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
           });
         }
       } catch (err) {
@@ -159,14 +166,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setHrStatus(false);
+    setSuperAdminStatus(false);
     setMustChangePassword(false);
   };
 
-  const isAdmin = user?.role === 'admin' && !hrStatus;
-  const isHR = hrStatus;
+  const isAdmin = (user?.role === 'admin' && !hrStatus) || superAdminStatus;
+  const isHR = hrStatus || superAdminStatus;
+  const isSuperAdmin = superAdminStatus;
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, mustChangePassword, login, logout, isAdmin, isHR, clearMustChangePassword }}>
+    <AuthContext.Provider value={{ user, isLoading, mustChangePassword, login, logout, isAdmin, isHR, isSuperAdmin, clearMustChangePassword }}>
       {children}
     </AuthContext.Provider>
   );
