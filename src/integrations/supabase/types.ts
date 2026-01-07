@@ -215,6 +215,63 @@ export type Database = {
         }
         Relationships: []
       }
+      improvements: {
+        Row: {
+          assignee_email: string | null
+          assignee_name: string | null
+          category: string
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          notes: string | null
+          priority: Database["public"]["Enums"]["improvement_priority"]
+          requested_by_email: string
+          requested_by_name: string | null
+          sort_order: number
+          status: Database["public"]["Enums"]["improvement_status"]
+          task: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_email?: string | null
+          assignee_name?: string | null
+          category: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          priority?: Database["public"]["Enums"]["improvement_priority"]
+          requested_by_email: string
+          requested_by_name?: string | null
+          sort_order?: number
+          status?: Database["public"]["Enums"]["improvement_status"]
+          task: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_email?: string | null
+          assignee_name?: string | null
+          category?: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          priority?: Database["public"]["Enums"]["improvement_priority"]
+          requested_by_email?: string
+          requested_by_name?: string | null
+          sort_order?: number
+          status?: Database["public"]["Enums"]["improvement_status"]
+          task?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leave_request_history: {
         Row: {
           changed_at: string
@@ -721,6 +778,12 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "hr" | "super_admin"
+      improvement_priority: "low" | "medium" | "high"
+      improvement_status:
+        | "not_started"
+        | "in_progress"
+        | "on_hold"
+        | "completed"
       request_status:
         | "pending"
         | "approved"
@@ -867,6 +930,13 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "hr", "super_admin"],
+      improvement_priority: ["low", "medium", "high"],
+      improvement_status: [
+        "not_started",
+        "in_progress",
+        "on_hold",
+        "completed",
+      ],
       request_status: [
         "pending",
         "approved",
