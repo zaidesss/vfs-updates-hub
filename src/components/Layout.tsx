@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -10,10 +10,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle 
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
+import ImprovementsTracker from '@/components/ImprovementsTracker';
 interface LayoutProps {
   children: ReactNode;
 }
@@ -32,8 +33,9 @@ interface NavGroup {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { user, logout, isAdmin, isHR } = useAuth();
+  const { user, logout, isAdmin, isHR, isSuperAdmin } = useAuth();
   const location = useLocation();
+  const [showImprovements, setShowImprovements] = useState(false);
 
   // Define grouped navigation
   const getNavGroups = (): NavGroup[] => {
@@ -173,6 +175,16 @@ export function Layout({ children }: LayoutProps) {
                         </Link>
                       </DropdownMenuItem>
                     ))}
+                    {/* Improvements Tracker - Admin menu only */}
+                    {group.label === 'Admin' && (isAdmin || isHR) && (
+                      <DropdownMenuItem 
+                        onClick={() => setShowImprovements(true)}
+                        className="flex items-center gap-2 w-full cursor-pointer"
+                      >
+                        <Lightbulb className="h-4 w-4" />
+                        Improvements
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ))}
@@ -242,6 +254,15 @@ export function Layout({ children }: LayoutProps) {
       <main className="container py-6 pb-20 md:pb-6">
         {children}
       </main>
+
+      {/* Improvements Tracker Dialog */}
+      <ImprovementsTracker
+        isOpen={showImprovements}
+        onOpenChange={setShowImprovements}
+        isSuperAdmin={isSuperAdmin}
+        currentUserEmail={user?.email || ''}
+        currentUserName={user?.name || ''}
+      />
     </div>
   );
 }
