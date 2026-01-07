@@ -27,28 +27,49 @@ serve(async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload: CreateUserPayload = await req.json();
-    console.log("Creating user with email:", payload.email);
+    const emailLower = payload.email.toLowerCase();
+    console.log("Creating user with email:", emailLower);
+
+    // Check if user exists in user_roles (active user)
+    const { data: existingRole } = await supabase
+      .from("user_roles")
+      .select("email")
+      .eq("email", emailLower)
+      .maybeSingle();
+
+    if (existingRole) {
+      console.log("User already exists in user_roles");
+      return new Response(JSON.stringify({ 
+        error: "A user with this email address already exists in the system." 
+      }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check if orphaned auth user exists (in auth.users but not in user_roles)
+    const { data: listData } = await supabase.auth.admin.listUsers();
+    const orphanedUser = listData?.users?.find(u => u.email?.toLowerCase() === emailLower);
+    
+    if (orphanedUser) {
+      console.log("Found orphaned auth user, deleting:", orphanedUser.id);
+      const { error: deleteError } = await supabase.auth.admin.deleteUser(orphanedUser.id);
+      if (deleteError) {
+        console.error("Error deleting orphaned user:", deleteError);
+        throw deleteError;
+      }
+      console.log("Orphaned auth user deleted successfully");
+    }
 
     // Create the user with Supabase Admin API
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: payload.email,
+      email: emailLower,
       password: payload.password,
       email_confirm: true, // Auto-confirm the email
     });
 
     if (authError) {
       console.error("Error creating auth user:", authError);
-      
-      // Handle specific error cases with appropriate status codes
-      if (authError.message?.includes("already been registered")) {
-        return new Response(JSON.stringify({ 
-          error: "A user with this email address already exists. Please use a different email." 
-        }), {
-          status: 422,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
       throw authError;
     }
 
@@ -58,7 +79,7 @@ serve(async (req: Request): Promise<Response> => {
     const { error: roleError } = await supabase
       .from("user_roles")
       .insert({
-        email: payload.email.toLowerCase(),
+        email: emailLower,
         name: payload.name,
         role: payload.role,
         must_change_password: true,
