@@ -200,13 +200,14 @@ const ImprovementsTracker = ({
 
     setIsSaving(true);
     try {
-      const assignee = users.find(u => u.email === formData.assignee_email);
+      const isUnassigned = !formData.assignee_email || formData.assignee_email === "__unassigned__";
+      const assignee = isUnassigned ? null : users.find(u => u.email === formData.assignee_email);
       
       const payload = {
         category,
         task,
         description: formData.description || null,
-        assignee_email: formData.assignee_email || null,
+        assignee_email: isUnassigned ? null : formData.assignee_email,
         assignee_name: assignee?.name || null,
         due_date: formData.due_date || null,
         priority: formData.priority,
@@ -475,7 +476,7 @@ const ImprovementsTracker = ({
                           <SelectValue placeholder="Select assignee" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Unassigned</SelectItem>
+                          <SelectItem value="__unassigned__">Unassigned</SelectItem>
                           {users.map(user => (
                             <SelectItem key={user.email} value={user.email}>
                               {user.name || user.email}
