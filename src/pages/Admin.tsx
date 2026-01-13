@@ -766,269 +766,212 @@ export default function Admin() {
           </Card>
         </div>
 
-        {/* Admin Management - Only visible to admins, not HR */}
-        {isAdmin && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              <CardTitle>Admin Management</CardTitle>
-            </div>
-            <CardDescription>Add or remove administrators who can manage updates</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter email address"
-                type="email"
-                value={newAdminEmail}
-                onChange={(e) => setNewAdminEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddAdmin()}
-              />
-              <Button onClick={handleAddAdmin} disabled={isAddingAdmin || !newAdminEmail.trim()}>
-                {isAddingAdmin ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add Admin
-                  </>
-                )}
-              </Button>
-            </div>
-            <div className="border rounded-lg divide-y">
-              {admins.map((admin) => (
-                <div key={admin.id} className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Shield className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{getNameByEmail(admin.email)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {admin.email} • Added {format(new Date(admin.created_at), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => handleRemoveAdmin(admin.email)}
-                    disabled={removingAdminEmail === admin.email || user?.email?.toLowerCase() === admin.email.toLowerCase()}
-                  >
-                    {removingAdminEmail === admin.email ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              ))}
-              {admins.length === 0 && (
-                <div className="p-6 text-center text-muted-foreground">
-                  No admins configured
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        )}
-
         {/* User Management - Only visible to admins, not HR */}
         {isAdmin && (
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <CardTitle>User Management</CardTitle>
-            </div>
-            <CardDescription>Add or remove users who can log in to the system</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Single user add */}
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter email address"
-                type="email"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddUser()}
-              />
-              <Button onClick={handleAddUser} disabled={isAddingUser || !newUserEmail.trim()}>
-                {isAddingUser ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add User
-                  </>
-                )}
-              </Button>
-            </div>
-            
-            {/* Bulk import */}
-            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Bulk Import Users</span>
-              </div>
-              <Textarea
-                placeholder="Enter multiple email addresses (one per line, or separated by commas)"
-                value={bulkEmails}
-                onChange={(e) => setBulkEmails(e.target.value)}
-                rows={3}
-                className="bg-background"
-              />
-              <Button 
-                onClick={handleBulkImport} 
-                disabled={isBulkImporting || !bulkEmails.trim()}
-                variant="secondary"
-                className="w-full"
-              >
-                {isBulkImporting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Import Users
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {/* Create User with Password */}
-            <div className="border rounded-lg p-4 bg-primary/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">Create User with Password</span>
+                <Users className="h-5 w-5 text-primary" />
+                <div>
+                  <CardTitle>User Management</CardTitle>
+                  <CardDescription>Manage all users, admins, and roles</CardDescription>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => setIsCreateUserDialogOpen(true)}
-                >
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Create User
-                </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Create a user with a temporary password. They will receive an email with credentials and be required to change their password on first login.
-              </p>
-            </div>
-            {/* Change Email */}
-            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Change User Email</span>
-                </div>
+              <div className="flex items-center gap-2">
                 <Button
-                  size="sm"
                   variant="outline"
+                  size="sm"
                   onClick={() => setIsChangeEmailDialogOpen(true)}
                 >
                   <Mail className="h-4 w-4 mr-2" />
                   Change Email
                 </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsCreateUserDialogOpen(true)}
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Create with Password
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Change a user's email address. All acknowledgements and data will be transferred to the new email.
-              </p>
             </div>
-
-            <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
-              {users.map((userItem) => {
-                const roleBadgeVariant = userItem.role === 'super_admin' ? 'default' : 
-                  userItem.role === 'admin' ? 'secondary' : 
-                  userItem.role === 'hr' ? 'outline' : 'outline';
-                const isCurrentUser = user?.email?.toLowerCase() === userItem.email.toLowerCase();
-                const isProtected = isProtectedAccount(userItem.email);
-                
-                return (
-                  <div key={userItem.id} className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{getNameByEmail(userItem.email)}</p>
-                          <Badge variant={roleBadgeVariant} className="text-xs capitalize">
-                            {userItem.role === 'super_admin' ? 'Super Admin' : userItem.role.toUpperCase()}
-                          </Badge>
-                          {isCurrentUser && <Badge variant="outline" className="text-xs">You</Badge>}
-                          {isProtected && <Badge variant="destructive" className="text-xs">Protected</Badge>}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isSuperAdmin && !isProtected && (
-                        <Select
-                          value={userItem.role}
-                          onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => handleChangeRole(userItem.email, value)}
-                          disabled={changingRoleEmail === userItem.email}
-                        >
-                          <SelectTrigger className="w-[130px] h-8 text-xs">
-                            {changingRoleEmail === userItem.email ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Tabs defaultValue="users" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="users">All Users ({users.length})</TabsTrigger>
+                <TabsTrigger value="add">Quick Add</TabsTrigger>
+                <TabsTrigger value="bulk">Bulk Import</TabsTrigger>
+              </TabsList>
+              
+              {/* All Users Tab */}
+              <TabsContent value="users" className="mt-4">
+                <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
+                  {users.map((userItem) => {
+                    const isProtected = isProtectedAccount(userItem.email);
+                    const roleColors: Record<string, string> = {
+                      super_admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+                      admin: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+                      hr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+                      user: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+                    };
+                    return (
+                      <div key={userItem.id} className="flex items-center justify-between p-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                            userItem.role === 'super_admin' || userItem.role === 'admin' 
+                              ? 'bg-primary/10' 
+                              : userItem.role === 'hr' 
+                                ? 'bg-green-100 dark:bg-green-900' 
+                                : 'bg-muted'
+                          }`}>
+                            {userItem.role === 'super_admin' || userItem.role === 'admin' ? (
+                              <Shield className="h-4 w-4 text-primary" />
+                            ) : userItem.role === 'hr' ? (
+                              <UserCheck className="h-4 w-4 text-green-600" />
                             ) : (
-                              <SelectValue />
+                              <Users className="h-4 w-4 text-muted-foreground" />
                             )}
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="super_admin">Super Admin</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="hr">HR</SelectItem>
-                            <SelectItem value="user">User</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Force password reset"
-                        onClick={() => handleResetPassword(userItem.email)}
-                        disabled={resettingPasswordEmail === userItem.email}
-                      >
-                        {resettingPasswordEmail === userItem.email ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-4 w-4" />
-                        )}
-                      </Button>
-                      {!isProtected && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => openDeleteUserModal(userItem.email, getNameByEmail(userItem.email))}
-                          disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
-                          title="Delete user permanently"
-                        >
-                          {removingUserEmail === userItem.email ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium">{getNameByEmail(userItem.email)}</p>
+                              <Badge className={`text-xs ${roleColors[userItem.role] || roleColors.user}`}>
+                                {userItem.role === 'super_admin' ? 'Super Admin' : userItem.role.toUpperCase()}
+                              </Badge>
+                              {isProtected && (
+                                <Badge variant="outline" className="text-xs">Protected</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {/* Role dropdown - only for super admins */}
+                          {isSuperAdmin && !isProtected && (
+                            <Select
+                              value={userItem.role}
+                              onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'hr') => handleChangeRole(userItem.email, value)}
+                              disabled={changingRoleEmail === userItem.email}
+                            >
+                              <SelectTrigger className="h-8 w-28 text-xs">
+                                {changingRoleEmail === userItem.email ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <SelectValue />
+                                )}
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="user">User</SelectItem>
+                                <SelectItem value="hr">HR</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="super_admin">Super Admin</SelectItem>
+                              </SelectContent>
+                            </Select>
                           )}
-                        </Button>
-                      )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResetPassword(userItem.email)}
+                            disabled={resettingPasswordEmail === userItem.email}
+                            title="Reset password"
+                          >
+                            {resettingPasswordEmail === userItem.email ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                          </Button>
+                          {!isProtected && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => openDeleteUserModal(userItem.email, getNameByEmail(userItem.email))}
+                              disabled={removingUserEmail === userItem.email || (userItem.role === 'super_admin' && !isSuperAdmin)}
+                              title="Delete user permanently"
+                            >
+                              {removingUserEmail === userItem.email ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {users.length === 0 && (
+                    <div className="p-6 text-center text-muted-foreground">
+                      No users configured
                     </div>
-                  </div>
-                );
-              })}
-              {users.length === 0 && (
-                <div className="p-6 text-center text-muted-foreground">
-                  No users configured
+                  )}
                 </div>
-              )}
-            </div>
+              </TabsContent>
+              
+              {/* Quick Add Tab */}
+              <TabsContent value="add" className="mt-4 space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter email address"
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddUser()}
+                  />
+                  <Button onClick={handleAddUser} disabled={isAddingUser || !newUserEmail.trim()}>
+                    {isAddingUser ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Add User
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Quick add creates a user account. They will receive a welcome email to set their password.
+                </p>
+              </TabsContent>
+              
+              {/* Bulk Import Tab */}
+              <TabsContent value="bulk" className="mt-4 space-y-4">
+                <div className="space-y-3">
+                  <Textarea
+                    placeholder="Enter multiple email addresses (one per line, or separated by commas)"
+                    value={bulkEmails}
+                    onChange={(e) => setBulkEmails(e.target.value)}
+                    rows={4}
+                    className="bg-background"
+                  />
+                  <Button 
+                    onClick={handleBulkImport} 
+                    disabled={isBulkImporting || !bulkEmails.trim()}
+                    className="w-full"
+                  >
+                    {isBulkImporting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Import Users
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Users will be created with default "User" role. They will receive welcome emails to set their passwords.
+                </p>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
         )}
