@@ -26,9 +26,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
-import UserGuide from "./pages/UserGuide";
-import Announcements from "./pages/Announcements";
-import Changelog from "./pages/Changelog";
+import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -196,29 +194,17 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/user-guide"
+        path="/help-center"
         element={
           <ProtectedRoute>
-            <UserGuide />
+            <HelpCenter />
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/announcements"
-        element={
-          <ProtectedRoute>
-            <Announcements />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/changelog"
-        element={
-          <ProtectedRoute>
-            <Changelog />
-          </ProtectedRoute>
-        }
-      />
+      {/* Redirects for old routes */}
+      <Route path="/user-guide" element={<Navigate to="/help-center" replace />} />
+      <Route path="/announcements" element={<Navigate to="/help-center" replace />} />
+      <Route path="/changelog" element={<Navigate to="/help-center" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
