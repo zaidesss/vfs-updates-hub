@@ -20,6 +20,26 @@ export interface AgentProfile {
   clients: string | null;
   hourly_rate: number | null;
   rate_history: RateHistoryEntry[] | null;
+  // New connectivity fields
+  primary_internet_provider: string | null;
+  primary_internet_speed: string | null;
+  backup_internet_provider: string | null;
+  backup_internet_speed: string | null;
+  backup_internet_type: string | null;
+  // New banking fields
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_holder: string | null;
+  // New freelance fields
+  upwork_profile_url: string | null;
+  upwork_username: string | null;
+  // Equipment
+  headset_model: string | null;
+  // Work setup (Super Admin only)
+  work_schedule: string | null;
+  employment_status: string | null;
+  payment_frequency: string | null;
+  // Timestamps
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +58,41 @@ export interface AgentProfileInput {
   clients?: string;
   hourly_rate?: number | null;
   rate_history?: RateHistoryEntry[];
+  // New connectivity fields
+  primary_internet_provider?: string;
+  primary_internet_speed?: string;
+  backup_internet_provider?: string;
+  backup_internet_speed?: string;
+  backup_internet_type?: string;
+  // New banking fields
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_account_holder?: string;
+  // New freelance fields
+  upwork_profile_url?: string;
+  upwork_username?: string;
+  // Equipment
+  headset_model?: string;
+  // Work setup (Super Admin only)
+  work_schedule?: string;
+  employment_status?: string;
+  payment_frequency?: string;
+}
+
+export interface ProfileChangeRequest {
+  id: string;
+  reference_number: string | null;
+  requested_by_email: string;
+  requested_by_name: string | null;
+  target_email: string;
+  field_name: string;
+  current_value: string | null;
+  requested_value: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
 }
 
 function transformProfile(data: any): AgentProfile | null {
@@ -125,4 +180,104 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
   }
 
   return { data: transformProfile(result.data), error: null };
+}
+
+// Profile Change Requests API
+
+export async function createProfileChangeRequest(
+  targetEmail: string,
+  fieldName: string,
+  currentValue: string | null,
+  requestedValue: string,
+  reason: string
+): Promise<{ data: ProfileChangeRequest | null; error: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) {
+    return { data: null, error: 'Not authenticated' };
+  }
+
+  const { data, error } = await supabase
+    .from('profile_change_requests')
+    .insert({
+      requested_by_email: user.email.toLowerCase(),
+      requested_by_name: user.user_metadata?.name || user.email,
+      target_email: targetEmail.toLowerCase(),
+      field_name: fieldName,
+      current_value: currentValue,
+      requested_value: requestedValue,
+      reason: reason
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: data as ProfileChangeRequest, error: null };
+}
+
+export async function fetchMyChangeRequests(): Promise<{ data: ProfileChangeRequest[] | null; error: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) {
+    return { data: null, error: 'Not authenticated' };
+  }
+
+  const { data, error } = await supabase
+    .from('profile_change_requests')
+    .select('*')
+    .eq('requested_by_email', user.email.toLowerCase())
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: data as ProfileChangeRequest[], error: null };
+}
+
+export async function fetchAllChangeRequests(): Promise<{ data: ProfileChangeRequest[] | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('profile_change_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: data as ProfileChangeRequest[], error: null };
+}
+
+export async function updateChangeRequestStatus(
+  requestId: string,
+  status: 'approved' | 'rejected',
+  reviewerEmail: string
+): Promise<{ data: ProfileChangeRequest | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('profile_change_requests')
+    .update({
+      status,
+      reviewed_by: reviewerEmail,
+      reviewed_at: new Date().toISOString()
+    })
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: data as ProfileChangeRequest, error: null };
+}
+
+// Utility function to calculate days employed
+export function calculateDaysEmployed(startDate: string | null): number {
+  if (!startDate) return 0;
+  const start = new Date(startDate);
+  const today = new Date();
+  const diffTime = Math.abs(today.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
 }

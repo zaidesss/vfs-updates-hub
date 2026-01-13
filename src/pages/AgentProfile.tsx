@@ -6,14 +6,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, User } from 'lucide-react';
-import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry } from '@/lib/agentProfileApi';
-import { DollarSign } from 'lucide-react';
+import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
+import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed } from '@/lib/agentProfileApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
+import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
+import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+
+const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
+const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
+const BACKUP_INTERNET_TYPES = ['Mobile Data', 'Neighbor\'s WiFi', 'Backup Fiber', 'Pocket WiFi', 'Other'];
 
 export default function AgentProfilePage() {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(true);
@@ -33,10 +41,31 @@ export default function AgentProfilePage() {
     team_lead: '',
     clients: '',
     hourly_rate: null,
-    rate_history: []
+    rate_history: [],
+    // New fields
+    primary_internet_provider: '',
+    primary_internet_speed: '',
+    backup_internet_provider: '',
+    backup_internet_speed: '',
+    backup_internet_type: '',
+    bank_name: '',
+    bank_account_number: '',
+    bank_account_holder: '',
+    upwork_profile_url: '',
+    upwork_username: '',
+    headset_model: '',
+    work_schedule: '',
+    employment_status: 'Active',
+    payment_frequency: ''
   });
   
   const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>(emptyRateHistory);
+  const [changeRequestDialog, setChangeRequestDialog] = useState<{
+    isOpen: boolean;
+    fieldName: string;
+    fieldLabel: string;
+    currentValue: string | null;
+  }>({ isOpen: false, fieldName: '', fieldLabel: '', currentValue: null });
 
   useEffect(() => {
     loadProfile();
@@ -62,10 +91,24 @@ export default function AgentProfilePage() {
         team_lead: result.data.team_lead || '',
         clients: result.data.clients || '',
         hourly_rate: result.data.hourly_rate,
-        rate_history: result.data.rate_history || []
+        rate_history: result.data.rate_history || [],
+        // New fields
+        primary_internet_provider: result.data.primary_internet_provider || '',
+        primary_internet_speed: result.data.primary_internet_speed || '',
+        backup_internet_provider: result.data.backup_internet_provider || '',
+        backup_internet_speed: result.data.backup_internet_speed || '',
+        backup_internet_type: result.data.backup_internet_type || '',
+        bank_name: result.data.bank_name || '',
+        bank_account_number: result.data.bank_account_number || '',
+        bank_account_holder: result.data.bank_account_holder || '',
+        upwork_profile_url: result.data.upwork_profile_url || '',
+        upwork_username: result.data.upwork_username || '',
+        headset_model: result.data.headset_model || '',
+        work_schedule: result.data.work_schedule || '',
+        employment_status: result.data.employment_status || 'Active',
+        payment_frequency: result.data.payment_frequency || ''
       });
       
-      // Populate rate history UI
       const existingHistory = result.data.rate_history || [];
       const historyUI = Array(6).fill(null).map((_, i) => ({
         date: existingHistory[i]?.date || '',
@@ -88,7 +131,21 @@ export default function AgentProfilePage() {
         team_lead: agentInfo?.teamLead || '',
         clients: agentInfo?.clients.join(', ') || '',
         hourly_rate: null,
-        rate_history: []
+        rate_history: [],
+        primary_internet_provider: '',
+        primary_internet_speed: '',
+        backup_internet_provider: '',
+        backup_internet_speed: '',
+        backup_internet_type: '',
+        bank_name: '',
+        bank_account_number: '',
+        bank_account_holder: '',
+        upwork_profile_url: '',
+        upwork_username: '',
+        headset_model: '',
+        work_schedule: '',
+        employment_status: 'Active',
+        payment_frequency: ''
       });
       setRateHistoryUI(Array(6).fill(null).map(() => ({ date: '', rate: '' })));
     }
@@ -112,7 +169,6 @@ export default function AgentProfilePage() {
     
     setIsSaving(true);
     
-    // Convert rate history UI to proper format (filter out empty entries)
     const rateHistory: RateHistoryEntry[] = rateHistoryUI
       .filter(entry => entry.date && entry.rate)
       .map(entry => ({
@@ -141,6 +197,17 @@ export default function AgentProfilePage() {
     setIsSaving(false);
   };
 
+  const openChangeRequestDialog = (fieldName: string, fieldLabel: string, currentValue: string | null) => {
+    setChangeRequestDialog({
+      isOpen: true,
+      fieldName,
+      fieldLabel,
+      currentValue
+    });
+  };
+
+  const daysEmployed = calculateDaysEmployed(profile.start_date || null);
+
   if (isLoading) {
     return (
       <Layout>
@@ -153,10 +220,10 @@ export default function AgentProfilePage() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+      <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
-          <p className="text-muted-foreground">Manage your personal information</p>
+          <p className="text-muted-foreground">Manage your personal and work information</p>
         </div>
 
         <Card>
@@ -171,10 +238,11 @@ export default function AgentProfilePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Personal Information */}
+          <CardContent className="space-y-8">
+            
+            {/* Section 1: Personal Information */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Personal Information</h3>
+              <ProfileSectionHeader title="Personal Information" badge="user" />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -206,16 +274,6 @@ export default function AgentProfilePage() {
                     onChange={(e) => handleInputChange('birthday', e.target.value)}
                   />
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="start_date">Start Date (Employment)</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    value={profile.start_date}
-                    onChange={(e) => handleInputChange('start_date', e.target.value)}
-                  />
-                </div>
               </div>
               
               <div className="space-y-2">
@@ -230,9 +288,11 @@ export default function AgentProfilePage() {
               </div>
             </div>
 
-            {/* Emergency Contact */}
+            <Separator />
+
+            {/* Section 2: Emergency Contact */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Emergency Contact</h3>
+              <ProfileSectionHeader title="Emergency Contact" badge="user" />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -257,9 +317,169 @@ export default function AgentProfilePage() {
               </div>
             </div>
 
-            {/* Work Information */}
+            <Separator />
+
+            {/* Section 3: Connectivity & Technical Setup */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Work Information</h3>
+              <ProfileSectionHeader title="Connectivity & Technical Setup" badge="user" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="primary_internet_provider">Primary Internet Provider</Label>
+                  <Input
+                    id="primary_internet_provider"
+                    value={profile.primary_internet_provider}
+                    onChange={(e) => handleInputChange('primary_internet_provider', e.target.value)}
+                    placeholder="e.g., PLDT, Globe, Converge"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="primary_internet_speed">Primary Internet Speed</Label>
+                  <Input
+                    id="primary_internet_speed"
+                    value={profile.primary_internet_speed}
+                    onChange={(e) => handleInputChange('primary_internet_speed', e.target.value)}
+                    placeholder="e.g., 100 Mbps"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="backup_internet_provider">Backup Internet Provider</Label>
+                  <Input
+                    id="backup_internet_provider"
+                    value={profile.backup_internet_provider}
+                    onChange={(e) => handleInputChange('backup_internet_provider', e.target.value)}
+                    placeholder="e.g., Globe Mobile, Smart"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="backup_internet_speed">Backup Internet Speed</Label>
+                  <Input
+                    id="backup_internet_speed"
+                    value={profile.backup_internet_speed}
+                    onChange={(e) => handleInputChange('backup_internet_speed', e.target.value)}
+                    placeholder="e.g., 50 Mbps"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="backup_internet_type">Backup Internet Type</Label>
+                  <Select
+                    value={profile.backup_internet_type}
+                    onValueChange={(value) => handleInputChange('backup_internet_type', value)}
+                  >
+                    <SelectTrigger id="backup_internet_type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BACKUP_INTERNET_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="headset_model">Headset Model (for hybrid agents)</Label>
+                  <Input
+                    id="headset_model"
+                    value={profile.headset_model}
+                    onChange={(e) => handleInputChange('headset_model', e.target.value)}
+                    placeholder="e.g., Jabra Evolve2 40"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Section 4: Banking Information */}
+            <div className="space-y-4">
+              <ProfileSectionHeader title="Banking Information" badge="user" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bank_name">Bank Name</Label>
+                  <Input
+                    id="bank_name"
+                    value={profile.bank_name}
+                    onChange={(e) => handleInputChange('bank_name', e.target.value)}
+                    placeholder="e.g., BDO, BPI, Metrobank"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="bank_account_holder">Account Holder Name</Label>
+                  <Input
+                    id="bank_account_holder"
+                    value={profile.bank_account_holder}
+                    onChange={(e) => handleInputChange('bank_account_holder', e.target.value)}
+                    placeholder="Name as it appears on account"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="bank_account_number">Account Number</Label>
+                <Input
+                  id="bank_account_number"
+                  value={profile.bank_account_number}
+                  onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
+                  placeholder="Your bank account number"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Section 5: Freelance Profiles */}
+            <div className="space-y-4">
+              <ProfileSectionHeader title="Freelance Profiles" badge="user" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="upwork_username">Upwork Username</Label>
+                  <Input
+                    id="upwork_username"
+                    value={profile.upwork_username}
+                    onChange={(e) => handleInputChange('upwork_username', e.target.value)}
+                    placeholder="Your Upwork username"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="upwork_profile_url">Upwork Profile URL</Label>
+                  <Input
+                    id="upwork_profile_url"
+                    value={profile.upwork_profile_url}
+                    onChange={(e) => handleInputChange('upwork_profile_url', e.target.value)}
+                    placeholder="https://www.upwork.com/freelancers/~..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Section 6: Work Information (Super Admin only) */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <ProfileSectionHeader title="Work Information" badge="hr" locked={!isSuperAdmin} />
+                {!isSuperAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openChangeRequestDialog('work_info', 'Work Information', null)}
+                  >
+                    <FileEdit className="h-4 w-4 mr-2" />
+                    Request Change
+                  </Button>
+                )}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -269,6 +489,8 @@ export default function AgentProfilePage() {
                     value={profile.position}
                     onChange={(e) => handleInputChange('position', e.target.value)}
                     placeholder="e.g., Customer Service Agent"
+                    disabled={!isSuperAdmin}
+                    className={!isSuperAdmin ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -279,38 +501,130 @@ export default function AgentProfilePage() {
                     value={profile.team_lead}
                     onChange={(e) => handleInputChange('team_lead', e.target.value)}
                     placeholder="Name of your team lead"
+                    disabled={!isSuperAdmin}
+                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="clients">Client(s)</Label>
+                  <Input
+                    id="clients"
+                    value={profile.clients}
+                    onChange={(e) => handleInputChange('clients', e.target.value)}
+                    placeholder="e.g., VFS Global, Other Client"
+                    disabled={!isSuperAdmin}
+                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="work_schedule">Work Schedule</Label>
+                  <Input
+                    id="work_schedule"
+                    value={profile.work_schedule}
+                    onChange={(e) => handleInputChange('work_schedule', e.target.value)}
+                    placeholder="e.g., Mon-Fri 9AM-6PM EST"
+                    disabled={!isSuperAdmin}
+                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="employment_status">Employment Status</Label>
+                  <Select
+                    value={profile.employment_status}
+                    onValueChange={(value) => handleInputChange('employment_status', value)}
+                    disabled={!isSuperAdmin}
+                  >
+                    <SelectTrigger id="employment_status" className={!isSuperAdmin ? 'bg-muted' : ''}>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EMPLOYMENT_STATUS_OPTIONS.map((status) => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="start_date">Start Date (Employment)</Label>
+                  <Input
+                    id="start_date"
+                    type="date"
+                    value={profile.start_date}
+                    onChange={(e) => handleInputChange('start_date', e.target.value)}
+                    disabled={!isSuperAdmin}
+                    className={!isSuperAdmin ? 'bg-muted' : ''}
                   />
                 </div>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="clients">Client(s)</Label>
-                <Input
-                  id="clients"
-                  value={profile.clients}
-                  onChange={(e) => handleInputChange('clients', e.target.value)}
-                  placeholder="e.g., VFS Global, Other Client"
-                />
-              </div>
+
+              {/* Days Employed Display */}
+              {profile.start_date && (
+                <div className="bg-muted/50 rounded-lg p-4 flex items-center gap-4">
+                  <Briefcase className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Days Employed</p>
+                    <p className="text-2xl font-bold text-primary">{daysEmployed.toLocaleString()} days</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Compensation */}
+            <Separator />
+
+            {/* Section 7: Compensation (Super Admin only) */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Compensation</h3>
+              <div className="flex items-center justify-between">
+                <ProfileSectionHeader title="Compensation" badge="hr" locked={!isSuperAdmin} />
+                {!isSuperAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openChangeRequestDialog('compensation', 'Compensation', null)}
+                  >
+                    <FileEdit className="h-4 w-4 mr-2" />
+                    Request Change
+                  </Button>
+                )}
+              </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="hourly_rate">Current Hourly Rate ($)</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="hourly_rate"
-                    type="number"
-                    step="0.01"
-                    className="pl-9"
-                    value={profile.hourly_rate ?? ''}
-                    onChange={(e) => handleInputChange('hourly_rate', e.target.value ? parseFloat(e.target.value) : null)}
-                    placeholder="0.00"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payment_frequency">Payment Frequency</Label>
+                  <Select
+                    value={profile.payment_frequency}
+                    onValueChange={(value) => handleInputChange('payment_frequency', value)}
+                    disabled={!isSuperAdmin}
+                  >
+                    <SelectTrigger id="payment_frequency" className={!isSuperAdmin ? 'bg-muted' : ''}>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_FREQUENCY_OPTIONS.map((freq) => (
+                        <SelectItem key={freq} value={freq}>{freq}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="hourly_rate">Current Hourly Rate ($)</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="hourly_rate"
+                      type="number"
+                      step="0.01"
+                      className={`pl-9 ${!isSuperAdmin ? 'bg-muted' : ''}`}
+                      value={profile.hourly_rate ?? ''}
+                      onChange={(e) => handleInputChange('hourly_rate', e.target.value ? parseFloat(e.target.value) : null)}
+                      placeholder="0.00"
+                      disabled={!isSuperAdmin}
+                    />
+                  </div>
                 </div>
               </div>
               
@@ -323,17 +637,19 @@ export default function AgentProfilePage() {
                         type="date"
                         value={entry.date}
                         onChange={(e) => handleRateHistoryChange(index, 'date', e.target.value)}
-                        placeholder="Date"
+                        disabled={!isSuperAdmin}
+                        className={!isSuperAdmin ? 'bg-muted' : ''}
                       />
                       <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="number"
                           step="0.01"
-                          className="pl-9"
+                          className={`pl-9 ${!isSuperAdmin ? 'bg-muted' : ''}`}
                           value={entry.rate}
                           onChange={(e) => handleRateHistoryChange(index, 'rate', e.target.value)}
                           placeholder="0.00"
+                          disabled={!isSuperAdmin}
                         />
                       </div>
                     </div>
@@ -359,6 +675,15 @@ export default function AgentProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <ProfileChangeRequestDialog
+        isOpen={changeRequestDialog.isOpen}
+        onClose={() => setChangeRequestDialog({ ...changeRequestDialog, isOpen: false })}
+        targetEmail={user?.email || ''}
+        fieldName={changeRequestDialog.fieldName}
+        fieldLabel={changeRequestDialog.fieldLabel}
+        currentValue={changeRequestDialog.currentValue}
+      />
     </Layout>
   );
 }
