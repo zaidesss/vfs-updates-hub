@@ -51,6 +51,7 @@ import { SimilarUpdatesModal } from '@/components/SimilarUpdatesModal';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
+import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
 
 export default function Admin() {
   const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
@@ -1030,6 +1031,11 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+        )}
+
+        {/* Changelog Management - Super Admin Only */}
+        {isSuperAdmin && (
+          <ChangelogManagement currentUserEmail={user?.email || ''} />
         )}
 
         {/* Deleted Users Section - Super Admin Only */}

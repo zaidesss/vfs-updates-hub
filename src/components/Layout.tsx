@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, Megaphone
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, Megaphone, History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -53,6 +53,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/requests', label: 'Update Requests', icon: FileQuestion },
         { href: '/announcements', label: 'Announcements', icon: Megaphone },
         { href: '/user-guide', label: 'User Guide', icon: HelpCircle },
+        { href: '/changelog', label: 'What\'s New', icon: History },
       ],
     });
 

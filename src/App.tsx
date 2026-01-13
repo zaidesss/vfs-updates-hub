@@ -28,6 +28,7 @@ import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
 import UserGuide from "./pages/UserGuide";
 import Announcements from "./pages/Announcements";
+import Changelog from "./pages/Changelog";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -207,6 +208,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Announcements />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/changelog"
+        element={
+          <ProtectedRoute>
+            <Changelog />
           </ProtectedRoute>
         }
       />
