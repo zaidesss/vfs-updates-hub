@@ -68,6 +68,12 @@ export default function Admin() {
   const [removingUserEmail, setRemovingUserEmail] = useState<string | null>(null);
   const [bulkEmails, setBulkEmails] = useState('');
   const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [bulkImportRole, setBulkImportRole] = useState<'user' | 'hr' | 'admin' | 'super_admin'>('user');
+  const [bulkPasswordType, setBulkPasswordType] = useState<'single' | 'generated'>('generated');
+  const [bulkSinglePassword, setBulkSinglePassword] = useState('');
+  const [requirePasswordChange, setRequirePasswordChange] = useState(true);
+  const [showBulkPreview, setShowBulkPreview] = useState(false);
+  const [bulkPreviewData, setBulkPreviewData] = useState<{ email: string; password: string }[]>([]);
   const [editingUpdate, setEditingUpdate] = useState<Update | null>(null);
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [deletingUpdateId, setDeletingUpdateId] = useState<string | null>(null);
@@ -475,30 +481,85 @@ export default function Admin() {
     setEditingUpdate(null);
   };
 
-  const handleBulkImport = async () => {
+  const generateBulkPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+
+  const handleBulkPreview = () => {
     if (!bulkEmails.trim()) return;
     
-    setIsBulkImporting(true);
-    const emails = bulkEmails.split(/[\n,;]+/).map(e => e.trim()).filter(e => e);
+    const emails = bulkEmails.split(/[\n,;]+/).map(e => e.trim().toLowerCase()).filter(e => e && e.includes('@'));
     
-    const { data, error } = await bulkAddUsers(emails);
-    setIsBulkImporting(false);
-    
-    if (error) {
-      toast.error('Bulk import failed');
+    if (emails.length === 0) {
+      toast.error('No valid email addresses found');
       return;
     }
+
+    // Check for duplicates
+    const uniqueEmails = [...new Set(emails)];
+    if (uniqueEmails.length !== emails.length) {
+      toast.warning(`Removed ${emails.length - uniqueEmails.length} duplicate emails`);
+    }
+
+    // Generate preview data with passwords
+    const previewData = uniqueEmails.map(email => ({
+      email,
+      password: bulkPasswordType === 'single' ? bulkSinglePassword : generateBulkPassword(),
+    }));
+
+    setBulkPreviewData(previewData);
+    setShowBulkPreview(true);
+  };
+
+  const handleBulkImport = async () => {
+    if (bulkPreviewData.length === 0) return;
     
-    if (data) {
-      await loadUsers();
-      setBulkEmails('');
+    setIsBulkImporting(true);
+    
+    let added = 0;
+    const failed: string[] = [];
+    
+    for (const userData of bulkPreviewData) {
+      const { error } = await createUserWithPassword(
+        userData.email,
+        userData.password,
+        userData.email.split('@')[0], // Use email prefix as name
+        bulkImportRole,
+        requirePasswordChange
+      );
       
-      if (data.failed.length > 0) {
-        toast.warning(`Added ${data.added} users. ${data.failed.length} failed (may already exist).`);
+      if (error) {
+        failed.push(userData.email);
       } else {
-        toast.success(`Successfully added ${data.added} users`);
+        added++;
       }
     }
+    
+    setIsBulkImporting(false);
+    
+    await loadUsers();
+    setBulkEmails('');
+    setBulkPreviewData([]);
+    setShowBulkPreview(false);
+    setBulkSinglePassword('');
+    
+    if (failed.length > 0) {
+      toast.warning(`Added ${added} users. ${failed.length} failed (may already exist).`, {
+        description: failed.slice(0, 3).join(', ') + (failed.length > 3 ? '...' : ''),
+      });
+    } else {
+      toast.success(`Successfully added ${added} users with ${bulkImportRole.replace('_', ' ')} role`);
+    }
+  };
+
+  const cancelBulkPreview = () => {
+    setShowBulkPreview(false);
+    setBulkPreviewData([]);
   };
 
   const exportAcknowledgements = (update: Update) => {
@@ -941,35 +1002,171 @@ export default function Admin() {
               
               {/* Bulk Import Tab */}
               <TabsContent value="bulk" className="mt-4 space-y-4">
-                <div className="space-y-3">
-                  <Textarea
-                    placeholder="Enter multiple email addresses (one per line, or separated by commas)"
-                    value={bulkEmails}
-                    onChange={(e) => setBulkEmails(e.target.value)}
-                    rows={4}
-                    className="bg-background"
-                  />
-                  <Button 
-                    onClick={handleBulkImport} 
-                    disabled={isBulkImporting || !bulkEmails.trim()}
-                    className="w-full"
-                  >
-                    {isBulkImporting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Importing...
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Import Users
-                      </>
+                {!showBulkPreview ? (
+                  <div className="space-y-4">
+                    {/* Email Input */}
+                    <div className="space-y-2">
+                      <Label>Email Addresses</Label>
+                      <Textarea
+                        placeholder="Enter multiple email addresses (one per line, or separated by commas)"
+                        value={bulkEmails}
+                        onChange={(e) => setBulkEmails(e.target.value)}
+                        rows={4}
+                        className="bg-background"
+                      />
+                    </div>
+
+                    {/* Role Selection - Only super admin can assign admin roles */}
+                    <div className="space-y-2">
+                      <Label>Role for All Users</Label>
+                      <Select
+                        value={bulkImportRole}
+                        onValueChange={(value: 'user' | 'hr' | 'admin' | 'super_admin') => setBulkImportRole(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="hr">HR</SelectItem>
+                          {isSuperAdmin && (
+                            <>
+                              <SelectItem value="admin">Admin</SelectItem>
+                              <SelectItem value="super_admin">Super Admin</SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Password Options */}
+                    <div className="space-y-2">
+                      <Label>Password Option</Label>
+                      <Select
+                        value={bulkPasswordType}
+                        onValueChange={(value: 'single' | 'generated') => setBulkPasswordType(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="generated">Auto-generate unique password per user</SelectItem>
+                          <SelectItem value="single">Same password for all users</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Single Password Input */}
+                    {bulkPasswordType === 'single' && (
+                      <div className="space-y-2">
+                        <Label>Temporary Password</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            value={bulkSinglePassword}
+                            onChange={(e) => setBulkSinglePassword(e.target.value)}
+                            placeholder="Enter password for all users"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setBulkSinglePassword(generateBulkPassword())}
+                          >
+                            Generate
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                  </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Users will be created with default "User" role. They will receive welcome emails to set their passwords.
-                </p>
+
+                    {/* Require Password Change */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="requirePasswordChange"
+                        checked={requirePasswordChange}
+                        onChange={(e) => setRequirePasswordChange(e.target.checked)}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <Label htmlFor="requirePasswordChange" className="text-sm font-normal cursor-pointer">
+                        Require password change on first login
+                      </Label>
+                    </div>
+
+                    <Button 
+                      onClick={handleBulkPreview} 
+                      disabled={!bulkEmails.trim() || (bulkPasswordType === 'single' && !bulkSinglePassword.trim())}
+                      className="w-full"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Preview Import
+                    </Button>
+                  </div>
+                ) : (
+                  /* Preview Mode */
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">Preview Import</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {bulkPreviewData.length} users will be created as{' '}
+                          <Badge variant="outline" className="ml-1">
+                            {bulkImportRole === 'super_admin' ? 'Super Admin' : bulkImportRole.toUpperCase()}
+                          </Badge>
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={cancelBulkPreview}>
+                        Back to Edit
+                      </Button>
+                    </div>
+
+                    <div className="border rounded-lg max-h-60 overflow-y-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Temporary Password</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bulkPreviewData.map((item, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-mono text-sm">{item.email}</TableCell>
+                              <TableCell>
+                                <code className="bg-muted px-2 py-1 rounded text-sm">{item.password}</code>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {requirePasswordChange && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        ⚠️ Users will be required to change their password on first login.
+                      </p>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={handleBulkImport} 
+                        disabled={isBulkImporting}
+                        className="flex-1"
+                      >
+                        {isBulkImporting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Importing {bulkPreviewData.length} users...
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Confirm Import
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>

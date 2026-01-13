@@ -12,6 +12,7 @@ interface CreateUserPayload {
   password: string;
   name: string;
   role: "super_admin" | "admin" | "user" | "hr";
+  requirePasswordChange?: boolean;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -76,13 +77,14 @@ serve(async (req: Request): Promise<Response> => {
     console.log("Auth user created:", authData.user?.id);
 
     // Add to user_roles table with must_change_password flag
+    const mustChangePassword = payload.requirePasswordChange !== false; // Default to true
     const { error: roleError } = await supabase
       .from("user_roles")
       .insert({
         email: emailLower,
         name: payload.name,
         role: payload.role,
-        must_change_password: true,
+        must_change_password: mustChangePassword,
       });
 
     if (roleError) {
@@ -117,9 +119,11 @@ serve(async (req: Request): Promise<Response> => {
                 <p style="margin: 0;"><strong>Temporary Password:</strong> ${payload.password}</p>
               </div>
               
+              ${mustChangePassword ? `
               <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0;">
                 <p style="color: #92400e; margin: 0;"><strong>⚠️ Important:</strong> You will be required to change your password on first login.</p>
               </div>
+              ` : ''}
               
               <p>Please log in at <a href="https://vfs-updates-hub.lovable.app">VFS Updates Hub</a> to get started.</p>
               

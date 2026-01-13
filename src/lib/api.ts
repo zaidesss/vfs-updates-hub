@@ -695,11 +695,12 @@ export async function createUserWithPassword(
   email: string,
   password: string,
   name: string,
-  role: 'super_admin' | 'admin' | 'user' | 'hr'
+  role: 'super_admin' | 'admin' | 'user' | 'hr',
+  requirePasswordChange: boolean = true
 ): Promise<ApiResponse<{ success: boolean; userId?: string }>> {
   try {
     const { data, error } = await supabase.functions.invoke('create-user-with-password', {
-      body: { email, password, name, role }
+      body: { email, password, name, role, requirePasswordChange }
     });
 
     if (error) {
