@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.restore-user]
 verify_jwt = false
+
+[functions.send-rate-progression-reminders]
+verify_jwt = false
+
+[functions.send-profile-change-notification]
+verify_jwt = false
