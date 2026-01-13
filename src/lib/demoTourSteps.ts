@@ -21,8 +21,7 @@ From here you can access:
 • Updates - View and acknowledge important updates
 • Knowledge Base - Search articles by category
 • Update Requests - Submit requests for new articles
-• User Guide - Comprehensive documentation
-• What's New - See recent portal changes`,
+• Help Center - Guides, quick reference, and what's new`,
     target: '[data-tour="updates-menu"]',
     position: 'bottom',
   },
@@ -162,15 +161,16 @@ Password requirements:
     position: 'center',
   },
   {
-    title: '🆕 What\'s New (Changelog)',
-    content: `Check out recent portal updates!
+    title: '🆕 Help Center',
+    content: `Your one-stop destination for all portal help!
 
-Go to Updates → What's New to see:
-• New features and improvements
-• Changes relevant to your role
-• Links to new functionality
+Go to Help Center to find:
+• What's New - Latest features and changes
+• User Guide - Complete documentation
+• Admin Guide - Admin-specific docs
+• Quick Sheets - Downloadable role references
 
-Stay informed about portal enhancements!`,
+New items are highlighted with a badge!`,
     position: 'center',
   },
   {
@@ -179,8 +179,8 @@ Stay informed about portal enhancements!`,
 
 Options:
 • Click the ❓ icon in the header
-• Visit the User Guide page
-• Download guides from Announcements
+• Visit the Help Center page
+• Download quick sheets for your role
 • Check "What's New" for updates
 
 The ❓ button reopens this interactive tour anytime.`,
@@ -196,7 +196,7 @@ Quick reminders:
 ✓ Acknowledge updates promptly
 ✓ Use the calendar before requesting time off
 ✓ Ask questions when unclear
-✓ Check "What's New" for portal changes
+✓ Visit Help Center for guides and what's new
 
 Click "Finish" to start using the portal!`,
     position: 'center',
@@ -268,7 +268,7 @@ Protected fields (rate, position, etc.) require Super Admin approval. When editi
 Track requests in the Admin Panel.`,
     position: 'center',
   },
-  ...USER_TOUR_STEPS.slice(10, 14), // Include notification, password, changelog, and help steps
+  ...USER_TOUR_STEPS.slice(10, 14), // Include notification, password, help center, and help steps
   {
     title: '🎓 HR Guide Complete!',
     content: `You're ready to manage HR functions!
@@ -278,7 +278,7 @@ HR responsibilities:
 ✓ Keep profiles updated
 ✓ Monitor outage patterns
 ✓ Support agent questions
-✓ Check "What's New" for updates
+✓ Check Help Center for updates
 
 Click "Finish" to start working!`,
     position: 'center',
@@ -362,7 +362,7 @@ New features:
 Profile data helps with resource planning.`,
     position: 'center',
   },
-  ...USER_TOUR_STEPS.slice(10, 14), // Notification, password, changelog, help
+  ...USER_TOUR_STEPS.slice(10, 14), // Notification, password, help center, help
   {
     title: '🎓 Admin Guide Complete!',
     content: `You're ready to manage the portal!
@@ -372,7 +372,7 @@ Admin responsibilities:
 ✓ Answer questions promptly
 ✓ Process leave requests fairly
 ✓ Keep content current
-✓ Check "What's New" for updates
+✓ Check Help Center for updates
 
 Click "Finish" to start administering!`,
     position: 'center',
@@ -446,7 +446,7 @@ Keep the team focused on priorities.`,
   },
   {
     title: '📋 Changelog Management',
-    content: `Manage the "What's New" page!
+    content: `Manage the "What's New" section in Help Center!
 
 In Admin Panel, you can:
 • Add new changelog entries
@@ -477,7 +477,7 @@ Super Admin duties:
 ✓ Manage all users and roles
 ✓ Review profile change requests
 ✓ All Admin responsibilities
-✓ Update the changelog
+✓ Update the changelog in Help Center
 ✓ Security maintenance
 
 Click "Finish" to take command!`,
