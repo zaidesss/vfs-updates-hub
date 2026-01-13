@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
@@ -25,20 +41,25 @@ import {
   Calendar, 
   User, 
   AlertCircle,
-  ChevronDown,
-  ChevronRight,
   Edit2,
   Trash2,
   CheckCircle2,
   Clock,
   Pause,
-  Circle
+  Circle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Filter,
+  X
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 type Priority = "low" | "medium" | "high";
 type Status = "not_started" | "in_progress" | "on_hold" | "completed";
+type SortField = "created_at" | "description" | "category" | "assignee_name" | "priority" | "status" | "remarks";
+type SortDirection = "asc" | "desc";
 
 interface Improvement {
   id: string;
@@ -51,6 +72,7 @@ interface Improvement {
   priority: Priority;
   status: Status;
   notes: string | null;
+  remarks: string | null;
   requested_by_email: string;
   requested_by_name: string | null;
   sort_order: number;
@@ -74,16 +96,16 @@ interface ImprovementsTrackerProps {
 }
 
 const priorityConfig = {
-  low: { label: "Low", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Circle },
-  medium: { label: "Medium", color: "bg-amber-100 text-amber-700 border-amber-200", icon: AlertCircle },
-  high: { label: "High", color: "bg-red-100 text-red-700 border-red-200", icon: AlertCircle },
+  low: { label: "Low", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Circle, order: 1 },
+  medium: { label: "Medium", color: "bg-amber-100 text-amber-700 border-amber-200", icon: AlertCircle, order: 2 },
+  high: { label: "High", color: "bg-red-100 text-red-700 border-red-200", icon: AlertCircle, order: 3 },
 };
 
 const statusConfig = {
-  not_started: { label: "Not Started", color: "bg-slate-100 text-slate-600", icon: Circle },
-  in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Clock },
-  on_hold: { label: "On Hold", color: "bg-amber-100 text-amber-700", icon: Pause },
-  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle2 },
+  not_started: { label: "Not Started", color: "bg-slate-100 text-slate-600", icon: Circle, order: 1 },
+  in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Clock, order: 2 },
+  on_hold: { label: "On Hold", color: "bg-amber-100 text-amber-700", icon: Pause, order: 3 },
+  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle2, order: 4 },
 };
 
 const defaultCategories = [
@@ -97,6 +119,8 @@ const defaultCategories = [
   "Other",
 ];
 
+const ITEMS_PER_PAGE = 10;
+
 const ImprovementsTracker = ({ 
   isOpen, 
   onOpenChange, 
@@ -108,9 +132,22 @@ const ImprovementsTracker = ({
   const [isSaving, setIsSaving] = useState(false);
   const [improvements, setImprovements] = useState<Improvement[]>([]);
   const [users, setUsers] = useState<UserRole[]>([]);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Filters
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPriority, setFilterPriority] = useState<string>("all");
+  const [filterAssignee, setFilterAssignee] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Sorting
+  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -123,6 +160,7 @@ const ImprovementsTracker = ({
     priority: "medium" as Priority,
     status: "not_started" as Status,
     notes: "",
+    remarks: "",
   });
 
   const { toast } = useToast();
@@ -130,16 +168,14 @@ const ImprovementsTracker = ({
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch improvements
       const { data: improvementsData, error: improvementsError } = await supabase
         .from("improvements")
         .select("*")
-        .order("sort_order");
+        .order("created_at", { ascending: false });
 
       if (improvementsError) throw improvementsError;
-      setImprovements(improvementsData || []);
+      setImprovements((improvementsData as Improvement[]) || []);
 
-      // Fetch users for assignee dropdown
       const { data: usersData, error: usersError } = await supabase
         .from("user_roles")
         .select("email, name, role")
@@ -147,10 +183,6 @@ const ImprovementsTracker = ({
 
       if (usersError) throw usersError;
       setUsers(usersData || []);
-
-      // Expand all categories by default
-      const categories = new Set((improvementsData || []).map(i => i.category));
-      setExpandedCategories(categories);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch data";
       toast({
@@ -166,8 +198,113 @@ const ImprovementsTracker = ({
   useEffect(() => {
     if (isOpen) {
       fetchData();
+      setCurrentPage(1);
     }
   }, [isOpen]);
+
+  // Get unique categories and assignees for filters
+  const uniqueCategories = useMemo(() => 
+    [...new Set(improvements.map(i => i.category))].sort(),
+    [improvements]
+  );
+  
+  const uniqueAssignees = useMemo(() => 
+    [...new Set(improvements.filter(i => i.assignee_name).map(i => i.assignee_name!))].sort(),
+    [improvements]
+  );
+
+  // Filter and sort improvements
+  const filteredAndSortedImprovements = useMemo(() => {
+    let result = [...improvements];
+
+    // Apply filters
+    if (filterCategory !== "all") {
+      result = result.filter(i => i.category === filterCategory);
+    }
+    if (filterStatus !== "all") {
+      result = result.filter(i => i.status === filterStatus);
+    }
+    if (filterPriority !== "all") {
+      result = result.filter(i => i.priority === filterPriority);
+    }
+    if (filterAssignee !== "all") {
+      if (filterAssignee === "unassigned") {
+        result = result.filter(i => !i.assignee_name);
+      } else {
+        result = result.filter(i => i.assignee_name === filterAssignee);
+      }
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case "created_at":
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case "description":
+          comparison = (a.description || "").localeCompare(b.description || "");
+          break;
+        case "category":
+          comparison = a.category.localeCompare(b.category);
+          break;
+        case "assignee_name":
+          comparison = (a.assignee_name || "").localeCompare(b.assignee_name || "");
+          break;
+        case "priority":
+          comparison = priorityConfig[a.priority].order - priorityConfig[b.priority].order;
+          break;
+        case "status":
+          comparison = statusConfig[a.status].order - statusConfig[b.status].order;
+          break;
+        case "remarks":
+          comparison = (a.remarks || "").localeCompare(b.remarks || "");
+          break;
+      }
+      
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return result;
+  }, [improvements, filterCategory, filterStatus, filterPriority, filterAssignee, sortField, sortDirection]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAndSortedImprovements.length / ITEMS_PER_PAGE);
+  const paginatedImprovements = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAndSortedImprovements.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAndSortedImprovements, currentPage]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterCategory, filterStatus, filterPriority, filterAssignee]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    return sortDirection === "asc" 
+      ? <ArrowUp className="h-4 w-4 ml-1" />
+      : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
+
+  const clearFilters = () => {
+    setFilterCategory("all");
+    setFilterStatus("all");
+    setFilterPriority("all");
+    setFilterAssignee("all");
+  };
+
+  const hasActiveFilters = filterCategory !== "all" || filterStatus !== "all" || filterPriority !== "all" || filterAssignee !== "all";
 
   const resetForm = () => {
     setFormData({
@@ -180,10 +317,13 @@ const ImprovementsTracker = ({
       priority: "medium",
       status: "not_started",
       notes: "",
+      remarks: "",
     });
     setShowAddForm(false);
     setEditingId(null);
   };
+
+  const allCategories = [...new Set([...defaultCategories, ...uniqueCategories])];
 
   const handleSave = async () => {
     const category = formData.category === "custom" ? formData.customCategory.trim() : formData.category;
@@ -213,12 +353,12 @@ const ImprovementsTracker = ({
         priority: formData.priority,
         status: formData.status,
         notes: formData.notes || null,
+        remarks: formData.remarks || null,
         requested_by_email: currentUserEmail,
         requested_by_name: currentUserName,
       };
 
       if (editingId) {
-        // Update existing
         const { error } = await supabase
           .from("improvements")
           .update(payload)
@@ -227,7 +367,6 @@ const ImprovementsTracker = ({
         if (error) throw error;
         toast({ title: "Improvement updated", description: "Changes saved successfully." });
       } else {
-        // Create new
         const maxSortOrder = improvements.length > 0 
           ? Math.max(...improvements.map(i => i.sort_order)) + 1 
           : 0;
@@ -255,8 +394,7 @@ const ImprovementsTracker = ({
   };
 
   const handleEdit = (improvement: Improvement) => {
-    const existingCategories = [...new Set(improvements.map(i => i.category))];
-    const isExistingCategory = existingCategories.includes(improvement.category) || 
+    const isExistingCategory = uniqueCategories.includes(improvement.category) || 
                                defaultCategories.includes(improvement.category);
     
     setFormData({
@@ -269,6 +407,7 @@ const ImprovementsTracker = ({
       priority: improvement.priority,
       status: improvement.status,
       notes: improvement.notes || "",
+      remarks: improvement.remarks || "",
     });
     setEditingId(improvement.id);
     setShowAddForm(true);
@@ -323,44 +462,36 @@ const ImprovementsTracker = ({
     }
   };
 
-  const toggleCategory = (category: string) => {
-    setExpandedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-      return next;
-    });
-  };
+  const handleRemarksChange = async (id: string, remarks: string) => {
+    try {
+      const { error } = await supabase
+        .from("improvements")
+        .update({ remarks: remarks || null })
+        .eq("id", id);
 
-  // Get unique categories
-  const existingCategories = [...new Set(improvements.map(i => i.category))];
-  const allCategories = [...new Set([...defaultCategories, ...existingCategories])];
-
-  // Group improvements by category
-  const groupedImprovements = improvements.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
+      if (error) throw error;
+      
+      setImprovements(prev => 
+        prev.map(item => item.id === id ? { ...item, remarks } : item)
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update remarks";
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      });
     }
-    acc[item.category].push(item);
-    return acc;
-  }, {} as Record<string, Improvement[]>);
+  };
 
   // Stats
   const completedCount = improvements.filter(i => i.status === "completed").length;
   const inProgressCount = improvements.filter(i => i.status === "in_progress").length;
   const totalCount = improvements.length;
 
-  const isOverdue = (dueDate: string | null) => {
-    if (!dueDate) return false;
-    return new Date(dueDate) < new Date() && new Date(dueDate).toDateString() !== new Date().toDateString();
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Improvements Tracker</DialogTitle>
           <DialogDescription className="flex items-center gap-4 pt-2">
@@ -379,10 +510,10 @@ const ImprovementsTracker = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+        <div className="flex-1 overflow-hidden flex flex-col space-y-4">
           {/* Add/Edit Form - Super Admin Only */}
           {isSuperAdmin && (
-            <div className="border rounded-lg p-4 bg-muted/30">
+            <div className="border rounded-lg p-4 bg-muted/30 shrink-0">
               {!showAddForm ? (
                 <Button onClick={() => setShowAddForm(true)} className="w-full" variant="outline">
                   <Plus className="h-4 w-4 mr-2" />
@@ -399,7 +530,7 @@ const ImprovementsTracker = ({
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Category */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Category *</label>
@@ -444,27 +575,6 @@ const ImprovementsTracker = ({
                       </Select>
                     </div>
 
-                    {/* Task Name */}
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-sm font-medium">Task Name *</label>
-                      <Input
-                        placeholder="Brief description of the improvement"
-                        value={formData.task}
-                        onChange={(e) => setFormData(prev => ({ ...prev, task: e.target.value }))}
-                      />
-                    </div>
-
-                    {/* Description */}
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-sm font-medium">Detailed Description</label>
-                      <Textarea
-                        placeholder="Provide more details about this improvement..."
-                        value={formData.description}
-                        onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                        rows={2}
-                      />
-                    </div>
-
                     {/* Assignee */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Assigned To</label>
@@ -486,13 +596,13 @@ const ImprovementsTracker = ({
                       </Select>
                     </div>
 
-                    {/* Due Date */}
+                    {/* Task Name */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Due Date</label>
+                      <label className="text-sm font-medium">Task Name *</label>
                       <Input
-                        type="date"
-                        value={formData.due_date}
-                        onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
+                        placeholder="Brief description"
+                        value={formData.task}
+                        onChange={(e) => setFormData(prev => ({ ...prev, task: e.target.value }))}
                       />
                     </div>
 
@@ -515,13 +625,34 @@ const ImprovementsTracker = ({
                       </Select>
                     </div>
 
-                    {/* Notes */}
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-sm font-medium">Notes / Progress Updates</label>
+                    {/* Due Date */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Due Date</label>
+                      <Input
+                        type="date"
+                        value={formData.due_date}
+                        onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-2 md:col-span-3">
+                      <label className="text-sm font-medium">Detailed Description</label>
                       <Textarea
-                        placeholder="Add any notes, blockers, or progress updates..."
-                        value={formData.notes}
-                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Provide more details about this improvement..."
+                        value={formData.description}
+                        onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Remarks */}
+                    <div className="space-y-2 md:col-span-3">
+                      <label className="text-sm font-medium">Remarks</label>
+                      <Textarea
+                        placeholder="Add any remarks or notes..."
+                        value={formData.remarks}
+                        onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
                         rows={2}
                       />
                     </div>
@@ -547,167 +678,458 @@ const ImprovementsTracker = ({
             </div>
           )}
 
-          {/* Improvements List */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button 
+              variant={showFilters ? "secondary" : "outline"} 
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filters
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full">
+                  !
+                </Badge>
+              )}
+            </Button>
+            
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            )}
+
+            <span className="text-sm text-muted-foreground ml-auto">
+              Showing {paginatedImprovements.length} of {filteredAndSortedImprovements.length} improvements
+            </span>
+          </div>
+
+          {showFilters && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 border rounded-lg bg-muted/30 shrink-0">
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {uniqueCategories.map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="not_started">Not Started</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="on_hold">On Hold</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterPriority} onValueChange={setFilterPriority}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterAssignee} onValueChange={setFilterAssignee}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Assignees</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {uniqueAssignees.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          ) : improvements.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No improvements tracked yet.</p>
-              {isSuperAdmin && <p className="text-sm mt-1">Click "Add New Improvement" to get started.</p>}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {Object.entries(groupedImprovements).map(([category, items]) => (
-                <div key={category} className="border rounded-lg overflow-hidden">
-                  {/* Category Header */}
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/50 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {expandedCategories.has(category) ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                      <h3 className="font-semibold">{category}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {items.filter(i => i.status === "completed").length}/{items.length}
-                      </Badge>
-                    </div>
-                  </button>
+          )}
 
-                  {/* Items */}
-                  {expandedCategories.has(category) && (
-                    <div className="divide-y">
-                      {items.map((item) => {
-                        const StatusIcon = statusConfig[item.status].icon;
-                        return (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              "px-4 py-3 transition-colors",
-                              item.status === "completed" && "bg-green-50/50"
-                            )}
-                          >
-                            <div className="flex items-start gap-3">
-                              {/* Status Quick Toggle (Super Admin) */}
-                              {isSuperAdmin ? (
-                                <Select
-                                  value={item.status}
-                                  onValueChange={(v) => handleStatusChange(item.id, v as Status)}
-                                >
-                                  <SelectTrigger className="w-auto h-8 px-2">
-                                    <StatusIcon className={cn("h-4 w-4", 
-                                      item.status === "completed" && "text-green-600",
-                                      item.status === "in_progress" && "text-blue-600",
-                                      item.status === "on_hold" && "text-amber-600"
-                                    )} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="not_started">⚪ Not Started</SelectItem>
-                                    <SelectItem value="in_progress">🔵 In Progress</SelectItem>
-                                    <SelectItem value="on_hold">🟡 On Hold</SelectItem>
-                                    <SelectItem value="completed">🟢 Completed</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <div className={cn(
-                                  "flex items-center justify-center h-8 w-8 rounded",
-                                  statusConfig[item.status].color
-                                )}>
-                                  <StatusIcon className="h-4 w-4" />
-                                </div>
-                              )}
-
-                              {/* Content */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="space-y-1">
-                                    <p className={cn(
-                                      "font-medium",
-                                      item.status === "completed" && "line-through text-muted-foreground"
-                                    )}>
-                                      {item.task}
-                                    </p>
-                                    {item.description && (
-                                      <p className="text-sm text-muted-foreground line-clamp-2">
-                                        {item.description}
-                                      </p>
-                                    )}
-                                    
-                                    {/* Meta info */}
-                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                      {/* Priority */}
-                                      <Badge 
-                                        variant="outline" 
-                                        className={cn("text-xs", priorityConfig[item.priority].color)}
-                                      >
-                                        {priorityConfig[item.priority].label}
-                                      </Badge>
-
-                                      {/* Assignee */}
-                                      {item.assignee_name && (
-                                        <span className="flex items-center gap-1">
-                                          <User className="h-3 w-3" />
-                                          {item.assignee_name}
-                                        </span>
-                                      )}
-
-                                      {/* Due Date */}
-                                      {item.due_date && (
-                                        <span className={cn(
-                                          "flex items-center gap-1",
-                                          isOverdue(item.due_date) && item.status !== "completed" && "text-red-600 font-medium"
-                                        )}>
-                                          <Calendar className="h-3 w-3" />
-                                          {format(new Date(item.due_date), "MMM d, yyyy")}
-                                          {isOverdue(item.due_date) && item.status !== "completed" && " (Overdue)"}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* Notes */}
-                                    {item.notes && (
-                                      <div className="mt-2 p-2 bg-muted/50 rounded text-sm text-muted-foreground">
-                                        <strong className="text-foreground">Notes:</strong> {item.notes}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Actions (Super Admin) */}
-                                  {isSuperAdmin && (
-                                    <div className="flex items-center gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => handleEdit(item)}
-                                      >
-                                        <Edit2 className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-destructive hover:text-destructive"
-                                        onClick={() => handleDelete(item.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+          {/* Table/Cards Container */}
+          <div className="flex-1 overflow-auto min-h-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : improvements.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No improvements tracked yet.</p>
+                {isSuperAdmin && <p className="text-sm mt-1">Click "Add New Improvement" to get started.</p>}
+              </div>
+            ) : filteredAndSortedImprovements.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No improvements match your filters.</p>
+                <Button variant="link" onClick={clearFilters}>Clear filters</Button>
+              </div>
+            ) : (
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 w-[100px]"
+                          onClick={() => handleSort("created_at")}
+                        >
+                          <div className="flex items-center">
+                            Date
+                            {getSortIcon("created_at")}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 min-w-[200px]"
+                          onClick={() => handleSort("description")}
+                        >
+                          <div className="flex items-center">
+                            Description
+                            {getSortIcon("description")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 w-[120px]"
+                          onClick={() => handleSort("category")}
+                        >
+                          <div className="flex items-center">
+                            Category
+                            {getSortIcon("category")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 w-[120px]"
+                          onClick={() => handleSort("assignee_name")}
+                        >
+                          <div className="flex items-center">
+                            Assignee
+                            {getSortIcon("assignee_name")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 w-[100px]"
+                          onClick={() => handleSort("priority")}
+                        >
+                          <div className="flex items-center">
+                            Priority
+                            {getSortIcon("priority")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 w-[130px]"
+                          onClick={() => handleSort("status")}
+                        >
+                          <div className="flex items-center">
+                            Status
+                            {getSortIcon("status")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 min-w-[150px]"
+                          onClick={() => handleSort("remarks")}
+                        >
+                          <div className="flex items-center">
+                            Remarks
+                            {getSortIcon("remarks")}
+                          </div>
+                        </TableHead>
+                        {isSuperAdmin && (
+                          <TableHead className="w-[80px]">Actions</TableHead>
+                        )}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedImprovements.map((item) => (
+                        <TableRow key={item.id} className={cn(item.status === "completed" && "bg-green-50/50")}>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(item.created_at), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <p className={cn(
+                                "font-medium text-sm",
+                                item.status === "completed" && "line-through text-muted-foreground"
+                              )}>
+                                {item.task}
+                              </p>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {item.category}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {item.assignee_name ? (
+                              <span className="flex items-center gap-1 text-sm">
+                                <User className="h-3 w-3" />
+                                {item.assignee_name}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Unassigned</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant="outline" 
+                              className={cn("text-xs", priorityConfig[item.priority].color)}
+                            >
+                              {priorityConfig[item.priority].label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {isSuperAdmin ? (
+                              <Select
+                                value={item.status}
+                                onValueChange={(v) => handleStatusChange(item.id, v as Status)}
+                              >
+                                <SelectTrigger className="h-8 text-xs w-[120px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="not_started">⚪ Not Started</SelectItem>
+                                  <SelectItem value="in_progress">🔵 In Progress</SelectItem>
+                                  <SelectItem value="on_hold">🟡 On Hold</SelectItem>
+                                  <SelectItem value="completed">🟢 Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge className={cn("text-xs", statusConfig[item.status].color)}>
+                                {statusConfig[item.status].label}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {isSuperAdmin ? (
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Add remarks..."
+                                defaultValue={item.remarks || ""}
+                                onBlur={(e) => {
+                                  if (e.target.value !== (item.remarks || "")) {
+                                    handleRemarksChange(item.id, e.target.value);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                {item.remarks || "-"}
+                              </span>
+                            )}
+                          </TableCell>
+                          {isSuperAdmin && (
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => handleEdit(item)}
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:text-destructive"
+                                  onClick={() => handleDelete(item.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              ))}
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3">
+                  {paginatedImprovements.map((item) => {
+                    const StatusIcon = statusConfig[item.status].icon;
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "border rounded-lg p-4 space-y-3",
+                          item.status === "completed" && "bg-green-50/50"
+                        )}
+                      >
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1 flex-1">
+                            <p className={cn(
+                              "font-medium",
+                              item.status === "completed" && "line-through text-muted-foreground"
+                            )}>
+                              {item.task}
+                            </p>
+                            {item.description && (
+                              <p className="text-sm text-muted-foreground line-clamp-2">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                          {isSuperAdmin && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleEdit(item)}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive"
+                                onClick={() => handleDelete(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Meta Grid */}
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground text-xs">Date:</span>
+                            <p>{format(new Date(item.created_at), "MMM d, yyyy")}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">Category:</span>
+                            <p>{item.category}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">Assignee:</span>
+                            <p>{item.assignee_name || "Unassigned"}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-xs">Priority:</span>
+                            <Badge 
+                              variant="outline" 
+                              className={cn("text-xs", priorityConfig[item.priority].color)}
+                            >
+                              {priorityConfig[item.priority].label}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Status */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs">Status:</span>
+                          {isSuperAdmin ? (
+                            <Select
+                              value={item.status}
+                              onValueChange={(v) => handleStatusChange(item.id, v as Status)}
+                            >
+                              <SelectTrigger className="h-8 text-xs w-[140px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="not_started">⚪ Not Started</SelectItem>
+                                <SelectItem value="in_progress">🔵 In Progress</SelectItem>
+                                <SelectItem value="on_hold">🟡 On Hold</SelectItem>
+                                <SelectItem value="completed">🟢 Completed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge className={cn("text-xs", statusConfig[item.status].color)}>
+                              {statusConfig[item.status].label}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Remarks */}
+                        <div>
+                          <span className="text-muted-foreground text-xs">Remarks:</span>
+                          {isSuperAdmin ? (
+                            <Input
+                              className="h-8 text-sm mt-1"
+                              placeholder="Add remarks..."
+                              defaultValue={item.remarks || ""}
+                              onBlur={(e) => {
+                                if (e.target.value !== (item.remarks || "")) {
+                                  handleRemarksChange(item.id, e.target.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <p className="text-sm">{item.remarks || "-"}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="shrink-0 pt-2 border-t">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      className={cn(currentPage === 1 && "pointer-events-none opacity-50")}
+                    />
+                  </PaginationItem>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      // Show first, last, current, and pages around current
+                      return page === 1 || 
+                             page === totalPages || 
+                             Math.abs(page - currentPage) <= 1;
+                    })
+                    .map((page, idx, arr) => (
+                      <PaginationItem key={page}>
+                        {idx > 0 && arr[idx - 1] !== page - 1 && (
+                          <span className="px-2">...</span>
+                        )}
+                        <PaginationLink
+                          onClick={() => setCurrentPage(page)}
+                          isActive={currentPage === page}
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))
+                  }
+                  
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      className={cn(currentPage === totalPages && "pointer-events-none opacity-50")}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             </div>
           )}
         </div>
