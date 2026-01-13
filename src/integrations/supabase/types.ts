@@ -530,6 +530,45 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_changelog: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string
+          description: string
+          feature_link: string | null
+          id: string
+          reference_number: string | null
+          title: string
+          updated_at: string
+          visible_to_roles: string[]
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          created_by: string
+          description: string
+          feature_link?: string | null
+          id?: string
+          reference_number?: string | null
+          title: string
+          updated_at?: string
+          visible_to_roles?: string[]
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string
+          description?: string
+          feature_link?: string | null
+          id?: string
+          reference_number?: string | null
+          title?: string
+          updated_at?: string
+          visible_to_roles?: string[]
+        }
+        Relationships: []
+      }
       profile_change_requests: {
         Row: {
           created_at: string
