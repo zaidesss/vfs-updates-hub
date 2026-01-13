@@ -176,6 +176,27 @@ export type Database = {
         }
         Relationships: []
       }
+      demo_guide_views: {
+        Row: {
+          guide_version: number
+          id: string
+          seen_at: string
+          user_email: string
+        }
+        Insert: {
+          guide_version?: number
+          id?: string
+          seen_at?: string
+          user_email: string
+        }
+        Update: {
+          guide_version?: number
+          id?: string
+          seen_at?: string
+          user_email?: string
+        }
+        Relationships: []
+      }
       failed_emails: {
         Row: {
           created_at: string

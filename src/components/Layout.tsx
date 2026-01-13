@@ -1,6 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useDemoTour } from '@/context/DemoTourContext';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb 
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, Megaphone
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -34,6 +35,7 @@ interface NavGroup {
 
 export function Layout({ children }: LayoutProps) {
   const { user, logout, isAdmin, isHR, isSuperAdmin } = useAuth();
+  const { openTour } = useDemoTour();
   const location = useLocation();
   const [showImprovements, setShowImprovements] = useState(false);
 
@@ -49,6 +51,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/updates', label: 'Updates', icon: FileText },
         { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
         { href: '/requests', label: 'Update Requests', icon: FileQuestion },
+        { href: '/announcements', label: 'Announcements', icon: Megaphone },
         { href: '/user-guide', label: 'User Guide', icon: HelpCircle },
       ],
     });
@@ -145,6 +148,7 @@ export function Layout({ children }: LayoutProps) {
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
+                      data-tour={`${group.label.toLowerCase()}-menu`}
                       className={cn(
                         'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
                         isGroupActive(group)
@@ -197,16 +201,16 @@ export function Layout({ children }: LayoutProps) {
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
             <NotificationBell />
-            <Link to="/user-guide">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-foreground"
-                title="User Guide"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              data-tour="help-button"
+              onClick={openTour}
+              className="text-muted-foreground hover:text-foreground"
+              title="Open Demo Guide"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Button>
             <Link to="/change-password">
               <Button
                 variant="ghost"
