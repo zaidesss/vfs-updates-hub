@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -208,12 +209,12 @@ export default function UpdateDetail() {
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />
-                <span>{format(new Date(update.posted_at), 'MMMM d, yyyy')}</span>
+                <span>{formatDisplayDate(update.posted_at)}</span>
               </div>
               {update.deadline_at && (
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-4 w-4" />
-                  <span>Due {format(new Date(update.deadline_at), 'MMM d, h:mm a')}</span>
+                  <span>Due {formatDisplayDateTime(update.deadline_at)}</span>
                 </div>
               )}
             </div>
@@ -251,7 +252,7 @@ export default function UpdateDetail() {
                 <div>
                   <p className="font-medium text-foreground">You acknowledged this update</p>
                   <p className="text-sm text-muted-foreground">
-                    on {format(new Date(acknowledgement.acknowledged_at), 'MMMM d, yyyy at h:mm a')}
+                    on {formatDisplayDateTime(acknowledgement.acknowledged_at)}
                   </p>
                 </div>
               </div>
@@ -326,7 +327,7 @@ export default function UpdateDetail() {
                             {getKnownNameByEmail(entry.changed_by) || entry.changed_by}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(entry.changed_at), 'MMM d, yyyy at h:mm a')}
+                            {formatDisplayDateTime(entry.changed_at)}
                           </span>
                         </div>
                         <div className="space-y-2">

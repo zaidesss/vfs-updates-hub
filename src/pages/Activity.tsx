@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle2, Circle, Clock, FileText, TrendingUp } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDisplayDateTime } from '@/components/ui/date-picker';
 
 export default function Activity() {
   const { user } = useAuth();
@@ -156,7 +156,7 @@ export default function Activity() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-foreground truncate">{update.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        Acknowledged {update.acknowledgement && format(new Date(update.acknowledgement.acknowledged_at), 'MMM d, yyyy at h:mm a')}
+                        Acknowledged {update.acknowledgement && formatDisplayDateTime(update.acknowledgement.acknowledged_at)}
                       </p>
                     </div>
                     <Badge variant="secondary" className="shrink-0 text-xs">Read</Badge>

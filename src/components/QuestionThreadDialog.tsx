@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Send, User, CheckCircle2, RotateCcw, Lock, MessageCircle } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDisplayDateTime } from '@/components/ui/date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
@@ -315,7 +315,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium">{questionAskerName}</span>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(question.created_at), 'MMM d, h:mm a')}
+                            {formatDisplayDateTime(question.created_at)}
                           </span>
                         </div>
                         <div className={cn(
@@ -350,7 +350,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                           <span className="text-sm font-medium">{replierName}</span>
                           {item.data.created_at && (
                             <span className="text-xs text-muted-foreground">
-                              {format(new Date(item.data.created_at), 'MMM d, h:mm a')}
+                              {formatDisplayDateTime(item.data.created_at)}
                             </span>
                           )}
                         </div>
@@ -386,7 +386,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium">{replierName}</span>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(reply.created_at), 'MMM d, h:mm a')}
+                            {formatDisplayDateTime(reply.created_at)}
                           </span>
                         </div>
                         <div className={cn(

@@ -34,6 +34,7 @@ import {
 } from '@/lib/leaveRequestApi';
 import { supabase } from '@/integrations/supabase/client';
 import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS, AGENT_DIRECTORY } from '@/lib/agentDirectory';
+import { DatePicker } from '@/components/ui/date-picker';
 
 // Get all agents for dropdown
 const ALL_AGENTS = Object.entries(AGENT_DIRECTORY).map(([email, info]) => ({
@@ -823,21 +824,21 @@ export default function LeaveRequest() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="start_date">Start Date *</Label>
-                  <Input
+                  <DatePicker
                     id="start_date"
-                    type="date"
                     value={formData.start_date}
-                    onChange={(e) => handleInputChange('start_date', e.target.value)}
+                    onChange={(value) => handleInputChange('start_date', value)}
+                    placeholder="Select start date"
                   />
                 </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="end_date">End Date *</Label>
-                  <Input
+                  <DatePicker
                     id="end_date"
-                    type="date"
                     value={formData.end_date}
-                    onChange={(e) => handleInputChange('end_date', e.target.value)}
+                    onChange={(value) => handleInputChange('end_date', value)}
+                    placeholder="Select end date"
                   />
                 </div>
                 

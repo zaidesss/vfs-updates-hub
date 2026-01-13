@@ -15,6 +15,7 @@ import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader'
 import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { DatePicker } from '@/components/ui/date-picker';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -267,11 +268,11 @@ export default function AgentProfilePage() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="birthday">Birthday</Label>
-                  <Input
+                  <DatePicker
                     id="birthday"
-                    type="date"
                     value={profile.birthday}
-                    onChange={(e) => handleInputChange('birthday', e.target.value)}
+                    onChange={(value) => handleInputChange('birthday', value)}
+                    placeholder="Select birthday"
                   />
                 </div>
               </div>
@@ -550,11 +551,11 @@ export default function AgentProfilePage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="start_date">Start Date (Employment)</Label>
-                  <Input
+                  <DatePicker
                     id="start_date"
-                    type="date"
                     value={profile.start_date}
-                    onChange={(e) => handleInputChange('start_date', e.target.value)}
+                    onChange={(value) => handleInputChange('start_date', value)}
+                    placeholder="Select start date"
                     disabled={!isSuperAdmin}
                     className={!isSuperAdmin ? 'bg-muted' : ''}
                   />
@@ -633,10 +634,10 @@ export default function AgentProfilePage() {
                 <div className="space-y-2">
                   {rateHistoryUI.map((entry, index) => (
                     <div key={index} className="grid grid-cols-2 gap-3">
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={entry.date}
-                        onChange={(e) => handleRateHistoryChange(index, 'date', e.target.value)}
+                        onChange={(value) => handleRateHistoryChange(index, 'date', value)}
+                        placeholder="Select date"
                         disabled={!isSuperAdmin}
                         className={!isSuperAdmin ? 'bg-muted' : ''}
                       />
