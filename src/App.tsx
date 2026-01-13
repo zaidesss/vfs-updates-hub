@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UpdatesProvider } from "@/context/UpdatesContext";
+import { DemoTourProvider } from "@/context/DemoTourContext";
+import { DemoTourWrapper } from "@/components/DemoTourWrapper";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ChangePassword from "./pages/ChangePassword";
@@ -25,6 +27,7 @@ import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
 import UserGuide from "./pages/UserGuide";
+import Announcements from "./pages/Announcements";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -199,6 +202,14 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/announcements"
+        element={
+          <ProtectedRoute>
+            <Announcements />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -209,11 +220,14 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <UpdatesProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
+          <DemoTourProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppRoutes />
+              <DemoTourWrapper />
+            </BrowserRouter>
+          </DemoTourProvider>
         </UpdatesProvider>
       </AuthProvider>
     </TooltipProvider>
