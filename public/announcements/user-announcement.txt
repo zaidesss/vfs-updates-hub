@@ -686,7 +686,92 @@ SECURITY BEST PRACTICES:
 ✓ Log out when using shared devices
 
 ═══════════════════════════════════════════════════════════════════════════════
-📞 SECTION 18: NEED HELP?
+🆕 SECTION 18: WHAT'S NEW (CHANGELOG)
+═══════════════════════════════════════════════════════════════════════════════
+
+The portal now includes a "What's New" page to keep you informed about updates
+and improvements.
+
+─────────────────────────────────────────────────────────────────────────────
+ACCESSING THE CHANGELOG
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to the Updates menu
+STEP 2: Click on "What's New"
+STEP 3: View recent portal changes
+
+WHAT YOU'LL SEE:
+• Reference number (CL-XXXX)
+• Category of the change
+• Title and description
+• Date of the change
+• Link to the feature (if available)
+
+IMPORTANT:
+• Only changes relevant to YOUR role are shown
+• Admin-only features won't appear in your view
+• Check regularly for new features and improvements
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 19: PROFILE CHANGE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Some profile fields are protected and require Super Admin approval to change.
+
+─────────────────────────────────────────────────────────────────────────────
+PROTECTED FIELDS
+─────────────────────────────────────────────────────────────────────────────
+
+These fields require a change request:
+• Current Hourly Rate
+• Rate History / Rate Progression
+• Start Date
+• Position / Role
+• Banking Information
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO REQUEST A CHANGE
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to your profile (People → My Bio)
+STEP 2: Find the protected field
+STEP 3: Click "Request Change" button next to it
+STEP 4: Enter the new value you want
+STEP 5: Provide a reason for the change
+STEP 6: Submit the request
+STEP 7: Wait for Super Admin review
+STEP 8: You'll receive a notification when decided
+
+REQUEST STATUSES:
+• Pending - Awaiting Super Admin review
+• Approved - Request approved, field updated
+• Rejected - Request rejected with explanation
+
+─────────────────────────────────────────────────────────────────────────────
+NEW PROFILE FIELDS
+─────────────────────────────────────────────────────────────────────────────
+
+Your profile now includes additional fields:
+
+FREELANCE INFO:
+• Upwork Username
+• Upwork Profile URL
+
+EQUIPMENT:
+• Headset Model
+
+CONNECTIVITY:
+• Primary Internet Provider & Speed
+• Backup Internet Provider & Speed
+• Backup Internet Type
+
+BANKING (Protected):
+• Bank Name
+• Account Number
+• Account Holder Name
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 20: NEED HELP?
 ═══════════════════════════════════════════════════════════════════════════════
 
 If you have any questions or issues:

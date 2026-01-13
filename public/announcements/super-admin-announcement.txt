@@ -557,7 +557,108 @@ RECOMMENDATIONS:
 • Document handoff procedures
 
 ═══════════════════════════════════════════════════════════════════════════════
-📞 SECTION 15: GETTING HELP
+🆕 SECTION 15: CHANGELOG MANAGEMENT (SUPER ADMIN EXCLUSIVE)
+═══════════════════════════════════════════════════════════════════════════════
+
+You can manage the "What's New" page to keep users informed about portal changes.
+
+─────────────────────────────────────────────────────────────────────────────
+ACCESSING CHANGELOG MANAGEMENT
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Admin Panel
+STEP 2: Scroll to "Changelog Management" card
+STEP 3: Click "Add Entry" to create new entries
+
+─────────────────────────────────────────────────────────────────────────────
+CREATING ENTRIES
+─────────────────────────────────────────────────────────────────────────────
+
+FIELDS:
+• Title (required) - Brief description of change
+• Category (required) - Profile, Updates, Admin, etc.
+• Description (required) - Detailed explanation
+• Feature Link (optional) - Path like /profile, /admin
+• Visible To (required) - Select roles that see this entry
+
+ROLE VISIBILITY:
+✓ User - Standard agents see this
+✓ HR - HR team sees this
+✓ Admin - Administrators see this
+✓ Super Admin - Super admins see this
+
+BEST PRACTICES:
+• Add entries when deploying new features
+• Only show admin-only changes to Admin/Super Admin roles
+• Include feature links for easy navigation
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 16: PROFILE CHANGE REQUESTS (SUPER ADMIN EXCLUSIVE)
+═══════════════════════════════════════════════════════════════════════════════
+
+You review and approve/reject profile change requests for protected fields.
+
+─────────────────────────────────────────────────────────────────────────────
+PROTECTED FIELDS
+─────────────────────────────────────────────────────────────────────────────
+
+These fields require YOUR approval to change:
+• Current Hourly Rate
+• Rate History / Rate Progression
+• Start Date
+• Position / Role
+• Banking Information
+
+─────────────────────────────────────────────────────────────────────────────
+PROCESSING REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+WHERE TO FIND:
+• Requests appear in Admin Panel
+• Each has reference number (PCR-XXXX)
+
+REQUEST DETAILS SHOWN:
+• Requester email and name
+• Target agent (who the change is for)
+• Field being changed
+• Current value vs. Requested value
+• Reason for request
+
+ACTIONS:
+• APPROVE - Field is updated, user notified
+• REJECT - Add notes explaining why, user notified
+
+─────────────────────────────────────────────────────────────────────────────
+RATE PROGRESSION REMINDERS
+─────────────────────────────────────────────────────────────────────────────
+
+The system automatically sends you email reminders 7 days before an agent's
+rate progression is due (based on rate_history dates in their profile).
+
+─────────────────────────────────────────────────────────────────────────────
+NEW PROFILE FIELDS
+─────────────────────────────────────────────────────────────────────────────
+
+Agent profiles now include:
+
+FREELANCE:
+• Upwork Username
+• Upwork Profile URL
+
+EQUIPMENT:
+• Headset Model
+
+CONNECTIVITY:
+• Primary Internet Provider & Speed
+• Backup Internet Provider, Speed & Type
+
+BANKING (Protected):
+• Bank Name
+• Account Number
+• Account Holder Name
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 17: GETTING HELP
 ═══════════════════════════════════════════════════════════════════════════════
 
 As Super Admin, you're often the one helping others. But if you need help:

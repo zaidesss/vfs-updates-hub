@@ -481,7 +481,46 @@ SCENARIO 5: Override request submitted
 → Make consistent decisions
 
 ═══════════════════════════════════════════════════════════════════════════════
-📞 SECTION 15: GETTING HELP
+🆕 SECTION 15: WHAT'S NEW (CHANGELOG)
+═══════════════════════════════════════════════════════════════════════════════
+
+A "What's New" page keeps you informed about portal updates.
+
+ACCESS: Updates Menu → What's New
+
+FEATURES:
+• Reference numbers (CL-XXXX)
+• Categories and descriptions
+• Links to new features
+• Role-based visibility (you see HR-relevant changes)
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 16: PROFILE CHANGE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+As HR, you can request changes to protected profile fields on behalf of agents.
+
+PROTECTED FIELDS:
+• Current Hourly Rate
+• Rate History / Rate Progression
+• Start Date & Position
+• Banking Information
+
+HOW TO REQUEST:
+1. Go to People → All Bios
+2. Select agent's profile
+3. Click "Request Change" on protected field
+4. Enter new value and reason
+5. Submit - Super Admin reviews
+
+NEW PROFILE FIELDS:
+• Upwork Username & Profile URL
+• Headset Model
+• Primary/Backup Internet Provider & Speed
+• Banking Information (protected)
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 17: GETTING HELP
 ═══════════════════════════════════════════════════════════════════════════════
 
 FOR HR-SPECIFIC ISSUES:
