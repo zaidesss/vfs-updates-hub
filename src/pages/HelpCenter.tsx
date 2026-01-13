@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Printer, Download, User, Shield, FileText, Sparkles, HelpCircle } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 import { UserGuideContent } from '@/components/user-guide/UserGuideContent';
 import { AdminGuideContent } from '@/components/user-guide/AdminGuideContent';
@@ -12,7 +13,10 @@ import { QuickSheetsTab } from '@/components/help-center/QuickSheetsTab';
 import { WhatsNewTab } from '@/components/help-center/WhatsNewTab';
 
 export default function HelpCenter() {
-  const [activeTab, setActiveTab] = useState('whats-new'); // Default to What's New
+  const { isAdmin, isHR, isSuperAdmin } = useAuth();
+  const showAdminGuide = isAdmin || isHR || isSuperAdmin;
+  
+  const [activeTab, setActiveTab] = useState('whats-new');
   const [unreadCount, setUnreadCount] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -79,13 +83,15 @@ export default function HelpCenter() {
                   <User className="h-4 w-4" />
                   User Guide
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="admin" 
-                  className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
-                >
-                  <Shield className="h-4 w-4" />
-                  Admin Guide
-                </TabsTrigger>
+                {showAdminGuide && (
+                  <TabsTrigger 
+                    value="admin" 
+                    className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
+                  >
+                    <Shield className="h-4 w-4" />
+                    Admin Guide
+                  </TabsTrigger>
+                )}
                 <TabsTrigger 
                   value="quick-sheets" 
                   className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
@@ -110,11 +116,13 @@ export default function HelpCenter() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="admin" className="mt-0">
-                <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
-                  <AdminGuideContent />
-                </div>
-              </TabsContent>
+              {showAdminGuide && (
+                <TabsContent value="admin" className="mt-0">
+                  <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
+                    <AdminGuideContent />
+                  </div>
+                </TabsContent>
+              )}
 
               <TabsContent value="quick-sheets" className="mt-0">
                 <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
