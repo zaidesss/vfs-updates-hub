@@ -141,8 +141,15 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     return { data: null, error: 'Not authenticated' };
   }
 
-  const dbInput = {
+  // Convert empty strings to null for date fields to avoid PostgreSQL date parsing errors
+  const sanitizedInput = {
     ...input,
+    birthday: input.birthday?.trim() || null,
+    start_date: input.start_date?.trim() || null,
+  };
+
+  const dbInput = {
+    ...sanitizedInput,
     email: input.email.toLowerCase(),
     rate_history: input.rate_history ? JSON.parse(JSON.stringify(input.rate_history)) : []
   };
