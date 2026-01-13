@@ -1,0 +1,592 @@
+═══════════════════════════════════════════════════════════════════════════════
+                      VFS AGENT PORTAL - SUPER ADMIN GUIDE
+                   Complete Announcement for Super Administrators
+═══════════════════════════════════════════════════════════════════════════════
+
+Dear Super Administrator,
+
+Welcome to the VFS Agent Portal! As a Super Admin, you have COMPLETE access to
+every feature in the system, including user management, role assignments, and
+system configuration. This comprehensive guide covers all your powers and
+responsibilities as the highest-level administrator.
+
+═══════════════════════════════════════════════════════════════════════════════
+🔐 SECTION 1: YOUR LOGIN CREDENTIALS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have been assigned a SUPER ADMIN account with unrestricted access.
+Your credentials are highly sensitive.
+
+YOUR CREDENTIALS INCLUDE:
+• Your email address (username)
+• Your temporary password
+
+PORTAL URL: [System administrator provides this]
+
+YOUR SUPER ADMIN BADGE:
+• "Super Admin" badge appears next to your name
+• This indicates your highest-level privileges
+• You have access to EVERYTHING
+
+⚠️ SECURITY NOTE:
+• Your account has the most privileges
+• Protect your credentials carefully
+• Use a strong, unique password
+• Never share your login details
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 SECTION 2: FIRST LOGIN - WHAT TO EXPECT
+═══════════════════════════════════════════════════════════════════════════════
+
+When you log in for the FIRST TIME:
+
+STEP 1: Navigate to the portal
+STEP 2: Enter your email address
+STEP 3: Enter your temporary password
+STEP 4: Click "Sign In"
+STEP 5: A SUPER ADMIN-SPECIFIC DEMO GUIDE appears
+STEP 6: This guide covers ALL features including admin-only sections
+STEP 7: Follow each step, clicking "Next"
+STEP 8: Click "Finish" when complete
+
+THE SUPER ADMIN DEMO GUIDE COVERS:
+✓ Complete portal orientation
+✓ All user features
+✓ All HR features
+✓ All Admin features
+✓ User account management (create/delete)
+✓ Role management
+✓ Improvements tracker (full access)
+✓ System configuration
+✓ Security best practices
+✓ Super Admin responsibilities
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 3: ACCESSING THE GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+To review the Super Admin guide:
+→ Click ❓ (Question Mark) icon in header
+→ Complete guide reopens
+→ Go through at your pace
+
+Additional resources:
+→ User Guide page - includes all role sections
+→ Announcements page - downloadable guides
+→ Direct database access if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 SECTION 4: SUPER ADMIN NAVIGATION - COMPLETE ACCESS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have access to EVERY menu and feature:
+
+─────────────────────────────────────────────────────────────────────────────
+UPDATES MENU (Full Access)
+─────────────────────────────────────────────────────────────────────────────
+• Updates - View all
+• Knowledge Base - Full access
+• Update Requests - Full management
+• User Guide - Complete documentation
+
+─────────────────────────────────────────────────────────────────────────────
+OUTAGES MENU (Full Access)
+─────────────────────────────────────────────────────────────────────────────
+• Outage Requests - Full approval power
+• Outage Calendar - Complete view
+• Outage Stats - All statistics
+
+─────────────────────────────────────────────────────────────────────────────
+PEOPLE MENU (Full Access)
+─────────────────────────────────────────────────────────────────────────────
+• All Bios - Complete profile management
+
+─────────────────────────────────────────────────────────────────────────────
+ADMIN MENU (COMPLETE ACCESS)
+─────────────────────────────────────────────────────────────────────────────
+• Admin Panel - All tabs, all functions
+• Improvements - ⭐ SUPER ADMIN: Full control
+
+═══════════════════════════════════════════════════════════════════════════════
+👥 SECTION 5: USER MANAGEMENT (SUPER ADMIN EXCLUSIVE)
+═══════════════════════════════════════════════════════════════════════════════
+
+This is your EXCLUSIVE function as Super Admin.
+
+─────────────────────────────────────────────────────────────────────────────
+CREATING NEW USERS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Admin → Admin Panel
+STEP 2: Click on "Users" tab
+STEP 3: Click "Create User" or "Add New User"
+STEP 4: Fill in the form:
+        • Email address (required, must be unique)
+        • Name (required)
+        • Role (required):
+          - User (standard agent)
+          - HR (HR team member)
+          - Admin (administrator)
+          - Super Admin (full access)
+        • Set temporary password
+        • "Must change password" flag (recommended: ON)
+STEP 5: Click "Create"
+
+AFTER CREATION:
+• User appears in user list
+• User can log in immediately
+• If "must change password" is set, they'll be prompted
+• Add them to agent_profiles for profile data
+
+─────────────────────────────────────────────────────────────────────────────
+ROLES EXPLAINED
+─────────────────────────────────────────────────────────────────────────────
+
+USER (Agent):
+• View and acknowledge updates
+• Ask questions
+• Submit leave requests
+• View personal data
+• Standard access
+
+HR:
+• All User permissions PLUS:
+• Approve/reject leave requests
+• View all agent profiles
+• Access outage statistics
+• Limited admin panel access
+
+ADMIN:
+• All HR permissions PLUS:
+• Create/edit/delete updates
+• Reply to questions
+• Full admin panel access
+• Cannot manage users
+
+SUPER ADMIN:
+• ALL permissions
+• Create/delete users
+• Change user roles
+• Add improvements
+• System configuration
+
+─────────────────────────────────────────────────────────────────────────────
+EDITING USERS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Find user in the list
+STEP 2: Click "Edit"
+STEP 3: Modify:
+        • Name
+        • Role
+        • Must change password flag
+STEP 4: Save changes
+
+─────────────────────────────────────────────────────────────────────────────
+CHANGING USER EMAIL
+─────────────────────────────────────────────────────────────────────────────
+
+This is a special operation:
+STEP 1: Find the user
+STEP 2: Click "Change Email"
+STEP 3: Enter new email
+STEP 4: Confirm the change
+
+NOTE: This updates both auth and roles tables.
+
+─────────────────────────────────────────────────────────────────────────────
+DELETING USERS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Find the user
+STEP 2: Click "Delete"
+STEP 3: Confirm deletion
+
+⚠️ WARNINGS:
+• Deletion removes user from auth system
+• User data may be preserved for audit
+• Deleted users can be restored
+• Cannot delete the last Super Admin
+
+─────────────────────────────────────────────────────────────────────────────
+RESTORING DELETED USERS
+─────────────────────────────────────────────────────────────────────────────
+
+Deleted users are tracked:
+• View "Deleted Users" section
+• Click "Restore" to bring back
+• User regains original role
+• May need to reset password
+
+─────────────────────────────────────────────────────────────────────────────
+PROTECTION RULES
+─────────────────────────────────────────────────────────────────────────────
+
+SYSTEM PROTECTIONS:
+• Cannot delete the last Super Admin
+• Cannot demote the last Super Admin
+• System tracks Super Admin count
+• At least one Super Admin must exist
+
+═══════════════════════════════════════════════════════════════════════════════
+🛡️ SECTION 6: ROLE MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+PROMOTING USERS
+─────────────────────────────────────────────────────────────────────────────
+
+To give someone elevated access:
+STEP 1: Edit the user
+STEP 2: Change their role dropdown
+STEP 3: Save
+
+PROMOTION PATHS:
+• User → HR (give HR access)
+• User → Admin (give admin access)
+• HR → Admin (upgrade to full admin)
+• Any role → Super Admin (give full access)
+
+─────────────────────────────────────────────────────────────────────────────
+DEMOTING USERS
+─────────────────────────────────────────────────────────────────────────────
+
+To reduce someone's access:
+STEP 1: Edit the user
+STEP 2: Change their role to lower level
+STEP 3: Save
+
+CONSIDERATIONS:
+• Be sure this is appropriate
+• User loses higher-level functions immediately
+• Cannot demote last Super Admin
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING BY ROLE
+─────────────────────────────────────────────────────────────────────────────
+
+In Admin Panel:
+• "Users" tab shows all users with "user" role
+• "Admins" tab shows admins and super admins
+• Filter options available
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 7: IMPROVEMENTS TRACKER (FULL CONTROL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You have complete control over the improvements tracker.
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING IMPROVEMENTS
+─────────────────────────────────────────────────────────────────────────────
+
+Access via Admin menu → Improvements
+
+See all improvements with:
+• Task description
+• Category
+• Priority (Low, Medium, High)
+• Status (Not Started, In Progress, On Hold, Completed)
+• Assignee
+• Due date
+• Notes
+
+─────────────────────────────────────────────────────────────────────────────
+CREATING IMPROVEMENTS (SUPER ADMIN ONLY)
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click "Add Improvement"
+STEP 2: Fill in:
+        • Category - Type of improvement
+        • Task - What needs to be done
+        • Description - Details
+        • Priority - Low/Medium/High
+        • Assignee - Who will do it
+        • Due Date - When it's due
+STEP 3: Click "Create"
+
+─────────────────────────────────────────────────────────────────────────────
+MANAGING IMPROVEMENTS
+─────────────────────────────────────────────────────────────────────────────
+
+UPDATING STATUS:
+• Drag cards between columns OR
+• Click edit and change status
+
+EDITING DETAILS:
+• Click on improvement to edit
+• Modify any field
+• Save changes
+
+DELETING:
+• Click delete button
+• Confirm deletion
+
+ADDING NOTES:
+• Open the improvement
+• Add notes for progress tracking
+• Notes are timestamped
+
+─────────────────────────────────────────────────────────────────────────────
+ORGANIZING IMPROVEMENTS
+─────────────────────────────────────────────────────────────────────────────
+
+• Filter by category
+• Sort by priority
+• View by status
+• Search for specific items
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 8: ALL ADMIN FUNCTIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have all Admin functions. Quick reference:
+
+UPDATES MANAGEMENT:
+• Create new updates
+• Edit existing updates
+• Delete updates
+• Set deadlines
+• Change status (Draft/Published/Obsolete)
+
+QUESTIONS MANAGEMENT:
+• View all questions
+• Reply to questions
+• Follow up on threads
+
+LEAVE MANAGEMENT:
+• View all requests
+• Approve requests
+• Reject requests
+• View calendar
+• Access statistics
+
+PROFILE MANAGEMENT:
+• View all profiles
+• Edit any profile
+• Update any field
+
+═══════════════════════════════════════════════════════════════════════════════
+🔒 SECTION 9: SECURITY RESPONSIBILITIES
+═══════════════════════════════════════════════════════════════════════════════
+
+As Super Admin, you have security responsibilities:
+
+─────────────────────────────────────────────────────────────────────────────
+USER ACCOUNT SECURITY
+─────────────────────────────────────────────────────────────────────────────
+
+WHEN CREATING USERS:
+• Set strong temporary passwords
+• Enable "must change password"
+• Assign appropriate roles
+• Never give Super Admin unless necessary
+
+MONITORING:
+• Review user list periodically
+• Check for inactive accounts
+• Remove access when people leave
+
+─────────────────────────────────────────────────────────────────────────────
+YOUR OWN SECURITY
+─────────────────────────────────────────────────────────────────────────────
+
+PROTECT YOUR ACCOUNT:
+• Use a unique, strong password
+• Change it regularly
+• Never share credentials
+• Log out when done
+
+IF COMPROMISED:
+• Change password immediately
+• Review recent changes
+• Check for unauthorized users
+• Review access logs
+
+─────────────────────────────────────────────────────────────────────────────
+ROLE ASSIGNMENT BEST PRACTICES
+─────────────────────────────────────────────────────────────────────────────
+
+• Use principle of least privilege
+• Only give needed access levels
+• Regular role reviews
+• Document role changes
+
+═══════════════════════════════════════════════════════════════════════════════
+🎭 SECTION 10: SUPER ADMIN PERMISSIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ EVERYTHING - You have COMPLETE access:
+
+USER MANAGEMENT:
+→ Create new user accounts
+→ Delete user accounts
+→ Restore deleted users
+→ Change user roles
+→ Change user emails
+→ Reset user passwords
+
+CONTENT MANAGEMENT:
+→ Create/edit/delete updates
+→ Reply to all questions
+→ Full admin panel access
+
+HR FUNCTIONS:
+→ Approve/reject all leave requests
+→ View all outage statistics
+→ Manage all profiles
+
+SYSTEM:
+→ Add improvements
+→ Delete improvements
+→ Full improvements tracker control
+
+═══════════════════════════════════════════════════════════════════════════════
+📅 SECTION 11: SUPER ADMIN WORKFLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+DAILY TASKS:
+1. Check notifications
+2. Review pending user requests
+3. Handle urgent admin issues
+4. Support other admins
+
+WEEKLY TASKS:
+5. Review improvements progress
+6. Check user access list
+7. Review system health
+8. Support HR/Admin teams
+
+MONTHLY TASKS:
+9. Audit user roles
+10. Review inactive accounts
+11. Update improvements tracker
+12. System maintenance items
+
+AS NEEDED:
+• Create new users (onboarding)
+• Delete users (offboarding)
+• Role changes
+• Handle escalated issues
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 12: SUPER ADMIN BEST PRACTICES
+═══════════════════════════════════════════════════════════════════════════════
+
+USER MANAGEMENT:
+✓ Onboard users promptly
+✓ Use proper role assignment
+✓ Offboard terminated employees
+✓ Regular access reviews
+
+IMPROVEMENTS:
+✓ Keep tracker updated
+✓ Assign appropriate priorities
+✓ Track progress regularly
+✓ Complete items timely
+
+SECURITY:
+✓ Protect your credentials
+✓ Audit roles periodically
+✓ Review deleted users
+✓ Maintain at least 2 Super Admins
+
+DELEGATION:
+✓ Let Admins handle content
+✓ Let HR handle leave requests
+✓ Focus on user management
+✓ Be available for escalations
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ SECTION 13: COMMON SUPER ADMIN SCENARIOS
+═══════════════════════════════════════════════════════════════════════════════
+
+SCENARIO: New employee joining
+1. Create user account with appropriate role
+2. Set "must change password" flag
+3. Create agent profile
+4. Send credentials securely
+5. Verify they can log in
+
+SCENARIO: Employee leaving
+1. Delete or deactivate user account
+2. Note deletion in records
+3. User loses access immediately
+4. Can restore if needed later
+
+SCENARIO: Role change request
+1. Verify the request is appropriate
+2. Edit user role
+3. Notify the user
+4. They get new access immediately
+
+SCENARIO: Password reset needed
+1. Reset via admin tools
+2. Set temporary password
+3. Enable "must change password"
+4. Communicate securely
+
+SCENARIO: Someone needs Super Admin
+1. Consider carefully - is it necessary?
+2. Discuss responsibilities
+3. Only promote if truly needed
+4. Ensure backup Super Admin exists
+
+SCENARIO: Accidentally deleted user
+1. Go to deleted users section
+2. Find the user
+3. Click restore
+4. User regains access
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 SECTION 14: BACKUP SUPER ADMIN
+═══════════════════════════════════════════════════════════════════════════════
+
+IMPORTANT: Always maintain at least 2 Super Admins
+
+WHY:
+• System requires at least one Super Admin
+• If you're unavailable, another can act
+• Prevents lockout scenarios
+• Business continuity
+
+RECOMMENDATIONS:
+• Have a primary Super Admin
+• Have at least one backup
+• Both should know responsibilities
+• Document handoff procedures
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 15: GETTING HELP
+═══════════════════════════════════════════════════════════════════════════════
+
+As Super Admin, you're often the one helping others. But if you need help:
+
+TECHNICAL ISSUES:
+• Check documentation
+• Review this guide
+• Contact system developers
+
+POLICY QUESTIONS:
+• Consult HR policies
+• Check with management
+• Review company guidelines
+
+SYSTEM CONFIGURATION:
+• Database access may be needed
+• Work with technical team
+• Document all changes
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Welcome to your Super Admin role! You have complete control over the VFS Agent
+Portal. With great power comes great responsibility - use your access wisely
+to keep the system running smoothly for everyone.
+
+Remember: The demo guide is always available via the ❓ button.
+Keep at least one other Super Admin in the system at all times.
+
+Best regards,
+The VFS Technical Team
+
+═══════════════════════════════════════════════════════════════════════════════
