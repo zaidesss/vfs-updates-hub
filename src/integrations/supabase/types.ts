@@ -290,6 +290,7 @@ export type Database = {
           id: string
           notes: string | null
           priority: Database["public"]["Enums"]["improvement_priority"]
+          remarks: string | null
           requested_by_email: string
           requested_by_name: string | null
           sort_order: number
@@ -308,6 +309,7 @@ export type Database = {
           id?: string
           notes?: string | null
           priority?: Database["public"]["Enums"]["improvement_priority"]
+          remarks?: string | null
           requested_by_email: string
           requested_by_name?: string | null
           sort_order?: number
@@ -326,6 +328,7 @@ export type Database = {
           id?: string
           notes?: string | null
           priority?: Database["public"]["Enums"]["improvement_priority"]
+          remarks?: string | null
           requested_by_email?: string
           requested_by_name?: string | null
           sort_order?: number
