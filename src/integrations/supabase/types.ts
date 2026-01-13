@@ -37,58 +37,100 @@ export type Database = {
       }
       agent_profiles: {
         Row: {
+          backup_internet_provider: string | null
+          backup_internet_speed: string | null
+          backup_internet_type: string | null
+          bank_account_holder: string | null
+          bank_account_number: string | null
+          bank_name: string | null
           birthday: string | null
           clients: string | null
           created_at: string | null
           email: string
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
+          employment_status: string | null
           full_name: string | null
+          headset_model: string | null
           home_address: string | null
           hourly_rate: number | null
           id: string
+          payment_frequency: string | null
           phone_number: string | null
           position: string | null
+          primary_internet_provider: string | null
+          primary_internet_speed: string | null
           rate_history: Json | null
           start_date: string | null
           team_lead: string | null
           updated_at: string | null
+          upwork_profile_url: string | null
+          upwork_username: string | null
+          work_schedule: string | null
         }
         Insert: {
+          backup_internet_provider?: string | null
+          backup_internet_speed?: string | null
+          backup_internet_type?: string | null
+          bank_account_holder?: string | null
+          bank_account_number?: string | null
+          bank_name?: string | null
           birthday?: string | null
           clients?: string | null
           created_at?: string | null
           email: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
+          employment_status?: string | null
           full_name?: string | null
+          headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null
+          primary_internet_provider?: string | null
+          primary_internet_speed?: string | null
           rate_history?: Json | null
           start_date?: string | null
           team_lead?: string | null
           updated_at?: string | null
+          upwork_profile_url?: string | null
+          upwork_username?: string | null
+          work_schedule?: string | null
         }
         Update: {
+          backup_internet_provider?: string | null
+          backup_internet_speed?: string | null
+          backup_internet_type?: string | null
+          bank_account_holder?: string | null
+          bank_account_number?: string | null
+          bank_name?: string | null
           birthday?: string | null
           clients?: string | null
           created_at?: string | null
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
+          employment_status?: string | null
           full_name?: string | null
+          headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null
+          primary_internet_provider?: string | null
+          primary_internet_speed?: string | null
           rate_history?: Json | null
           start_date?: string | null
           team_lead?: string | null
           updated_at?: string | null
+          upwork_profile_url?: string | null
+          upwork_username?: string | null
+          work_schedule?: string | null
         }
         Relationships: []
       }
@@ -485,6 +527,54 @@ export type Database = {
           title?: string
           type?: string
           user_email?: string
+        }
+        Relationships: []
+      }
+      profile_change_requests: {
+        Row: {
+          created_at: string
+          current_value: string | null
+          field_name: string
+          id: string
+          reason: string | null
+          reference_number: string | null
+          requested_by_email: string
+          requested_by_name: string | null
+          requested_value: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_email: string
+        }
+        Insert: {
+          created_at?: string
+          current_value?: string | null
+          field_name: string
+          id?: string
+          reason?: string | null
+          reference_number?: string | null
+          requested_by_email: string
+          requested_by_name?: string | null
+          requested_value: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_email: string
+        }
+        Update: {
+          created_at?: string
+          current_value?: string | null
+          field_name?: string
+          id?: string
+          reason?: string | null
+          reference_number?: string | null
+          requested_by_email?: string
+          requested_by_name?: string | null
+          requested_value?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_email?: string
         }
         Relationships: []
       }
