@@ -2,103 +2,109 @@ import { GuideSection, CalloutBox, Checklist, QuickTable } from '../../GuideComp
 
 export function UserManagementSection() {
   return (
-    <>
-      <GuideSection letter="F" color="bg-orange-500" title="Admin Panel - Admins Tab">
-        <p className="text-muted-foreground mb-4">
-          The Admins tab allows you to manage administrator access to the system.
-        </p>
+    <GuideSection letter="F" color="bg-orange-500" title="Admin Panel - User Management">
+      <p className="text-muted-foreground mb-4">
+        The User Management section consolidates all user account management into a single, organized interface with three tabs: All Users, Quick Add, and Bulk Import.
+      </p>
 
-        <h3 className="font-semibold mb-2">Features</h3>
-        <Checklist items={[
-          "Add admin email input field.",
-          "Add Admin button to grant admin access.",
-          "List of current admins with remove button.",
-          "Cannot remove yourself as admin.",
-        ]} />
+      <h3 className="font-semibold mb-2">All Users Tab</h3>
+      <p className="text-sm text-muted-foreground mb-2">
+        View and manage all user accounts in a comprehensive table with role badges and actions.
+      </p>
+      <QuickTable 
+        headers={['Column', 'Description']}
+        rows={[
+          ['Email', 'User\'s email address.'],
+          ['Role', 'Badge showing User/Admin/HR/Super Admin.'],
+          ['Created', 'Account creation date.'],
+          ['Role Dropdown', 'Change role (Super Admin only).'],
+          ['Actions', 'Reset Password and Delete buttons.'],
+        ]}
+      />
 
-        <h3 className="font-semibold mb-2 mt-4">Adding an Admin</h3>
-        <Checklist items={[
-          "Enter the user's email address in the input field.",
-          "Click 'Add Admin' button.",
-          "User must already exist in the system.",
-          "User's role is changed to Admin.",
-        ]} />
+      <h3 className="font-semibold mb-2 mt-4">Header Actions</h3>
+      <Checklist items={[
+        "Change Email - Update a user's email address.",
+        "Create with Password - Create user with full setup and temporary password.",
+      ]} />
 
-        <CalloutBox variant="warning">
-          Admin users have full access to the system including user management, update creation, and data viewing. Only grant admin access to trusted team members.
-        </CalloutBox>
-      </GuideSection>
+      <h3 className="font-semibold mb-2 mt-4">Quick Add Tab</h3>
+      <p className="text-sm text-muted-foreground mb-2">
+        Add a single user by email. The user receives a welcome email to set up their account.
+      </p>
+      <QuickTable 
+        headers={['Field', 'Required', 'Notes']}
+        rows={[
+          ['Email', 'Yes', 'User receives welcome email to set password.'],
+        ]}
+      />
 
-      <GuideSection letter="G" color="bg-orange-400" title="Admin Panel - Users Tab">
-        <p className="text-muted-foreground mb-4">
-          The Users tab provides complete user account management capabilities.
-        </p>
+      <h3 className="font-semibold mb-2 mt-4">Bulk Import Tab</h3>
+      <p className="text-sm text-muted-foreground mb-2">
+        Import multiple users at once with enhanced options for role selection and password configuration.
+      </p>
+      
+      <h4 className="font-medium mb-2 mt-3">Step 1: Configure Import</h4>
+      <QuickTable 
+        headers={['Field', 'Required', 'Description']}
+        rows={[
+          ['Email Addresses', 'Yes', 'Paste emails one per line or comma-separated.'],
+          ['Role for New Users', 'Yes', 'Select role: User, HR, Admin (Super Admin only can select all roles).'],
+          ['Password Type', 'Yes', 'Single password for all OR auto-generate unique passwords.'],
+          ['Single Password', 'If Single', 'Enter or generate a temporary password.'],
+          ['Require Password Change', 'Optional', 'Force users to change password on first login (recommended).'],
+        ]}
+      />
 
-        <h3 className="font-semibold mb-2">Users Tab Features</h3>
-        <Checklist items={[
-          "Total users count displayed at the top.",
-          "Add User section for single email addition.",
-          "Create User with Password dialog for full setup.",
-          "Bulk Import section for multiple emails.",
-          "Change User Email button.",
-          "Change Role dropdown (Super Admin only).",
-          "Users table with all accounts and role badges.",
-        ]} />
+      <h4 className="font-medium mb-2 mt-3">Step 2: Preview</h4>
+      <Checklist items={[
+        "Click 'Preview Import' to see parsed emails and passwords.",
+        "Review the preview table showing each email and temporary password.",
+        "Invalid emails are automatically filtered out.",
+        "Adjust settings if needed before confirming.",
+      ]} />
 
-        <h3 className="font-semibold mb-2 mt-4">Add User (Simple)</h3>
-        <QuickTable 
-          headers={['Field', 'Required', 'Notes']}
-          rows={[
-            ['Email', 'Yes', 'User receives welcome email.'],
-          ]}
-        />
+      <h4 className="font-medium mb-2 mt-3">Step 3: Confirm Import</h4>
+      <Checklist items={[
+        "Click 'Confirm Import' to create all users.",
+        "Progress is displayed during import.",
+        "Success count shown after completion.",
+        "Users receive email notifications with their credentials.",
+      ]} />
 
-        <h3 className="font-semibold mb-2 mt-4">Create User with Password (Full Setup)</h3>
-        <QuickTable 
-          headers={['Field', 'Required', 'Notes']}
-          rows={[
-            ['Email', 'Yes', 'User\'s email address.'],
-            ['Full Name', 'Yes', 'User\'s display name.'],
-            ['Password', 'Yes', 'Can use auto-generate button.'],
-            ['Role', 'Yes', 'User, Admin, HR, or Super Admin (if you are Super Admin).'],
-          ]}
-        />
+      <h3 className="font-semibold mb-2 mt-4">Create User with Password Dialog</h3>
+      <p className="text-sm text-muted-foreground mb-2">
+        For creating individual users with full setup including name and temporary password.
+      </p>
+      <QuickTable 
+        headers={['Field', 'Required', 'Notes']}
+        rows={[
+          ['Email', 'Yes', 'User\'s email address.'],
+          ['Full Name', 'Yes', 'User\'s display name.'],
+          ['Password', 'Yes', 'Can use auto-generate button.'],
+          ['Role', 'Yes', 'User, HR, Admin, or Super Admin (if you are Super Admin).'],
+          ['Require Password Change', 'Optional', 'Force password change on first login.'],
+        ]}
+      />
 
-        <h3 className="font-semibold mb-2 mt-4">Bulk Import</h3>
-        <Checklist items={[
-          "Paste multiple email addresses (one per line).",
-          "Click 'Import' to add all users at once.",
-          "Invalid emails are skipped.",
-          "Success count displayed after import.",
-        ]} />
+      <h3 className="font-semibold mb-2 mt-4">User Actions</h3>
+      <QuickTable 
+        headers={['Action', 'What It Does']}
+        rows={[
+          ['Change Role', 'Updates user\'s role (Super Admin only). Cannot demote last Super Admin.'],
+          ['Reset Password', 'Sends password reset email to user.'],
+          ['Delete', 'Permanently removes the user account.'],
+          ['Change Email', 'Updates user\'s email address (header button).'],
+        ]}
+      />
 
-        <h3 className="font-semibold mb-2 mt-4">Users Table Columns</h3>
-        <QuickTable 
-          headers={['Column', 'Description']}
-          rows={[
-            ['Email', 'User\'s email address with role badge.'],
-            ['Role', 'Badge showing User/Admin/HR/Super Admin.'],
-            ['Created', 'Account creation date.'],
-            ['Role Dropdown', 'Change role (Super Admin only).'],
-            ['Actions', 'Reset Password and Delete buttons.'],
-          ]}
-        />
+      <CalloutBox variant="tip">
+        Use Bulk Import with "Auto-generate unique passwords" and "Require password change" enabled for the most secure onboarding of multiple users.
+      </CalloutBox>
 
-        <h3 className="font-semibold mb-2 mt-4">User Actions</h3>
-        <QuickTable 
-          headers={['Action', 'What It Does']}
-          rows={[
-            ['Change Role', 'Updates user\'s role (Super Admin only). Cannot demote last Super Admin.'],
-            ['Reset Password', 'Sends password reset email to user.'],
-            ['Delete', 'Permanently removes the user account.'],
-            ['Change Email', 'Updates user\'s email address (separate dialog).'],
-          ]}
-        />
-
-        <CalloutBox variant="warning" title="Deleting Users">
-          Deleting a user is permanent. All their acknowledgements and questions will be removed. Consider deactivating instead if you may need the data later.
-        </CalloutBox>
-      </GuideSection>
-    </>
+      <CalloutBox variant="warning" title="Deleting Users">
+        Deleting a user is permanent. All their acknowledgements and questions will be removed. Consider deactivating instead if you may need the data later.
+      </CalloutBox>
+    </GuideSection>
   );
 }
