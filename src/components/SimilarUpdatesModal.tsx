@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, FileText, ExternalLink } from 'lucide-react';
 import { findSimilarUpdates } from '@/lib/requestApi';
-import { format } from 'date-fns';
+import { formatDisplayDate } from '@/components/ui/date-picker';
 
 interface SimilarUpdate {
   id: string;
@@ -140,7 +140,7 @@ export function SimilarUpdatesModal({
                           <h4 className="font-medium">{similar.title}</h4>
                           {similar.update?.posted_at && (
                             <p className="text-xs text-muted-foreground">
-                              Posted: {format(new Date(similar.update.posted_at), 'MMM d, yyyy')}
+                              Posted: {formatDisplayDate(similar.update.posted_at)}
                             </p>
                           )}
                         </div>

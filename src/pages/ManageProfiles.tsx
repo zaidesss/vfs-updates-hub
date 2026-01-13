@@ -16,6 +16,7 @@ import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader'
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { DatePicker, formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -229,7 +230,7 @@ export default function ManageProfilesPage() {
                           <div className="flex items-center gap-2">
                             <Badge variant="outline">{request.reference_number}</Badge>
                             <span className="text-sm text-muted-foreground">
-                              {format(new Date(request.created_at), 'MMM d, yyyy h:mm a')}
+                              {formatDisplayDateTime(request.created_at)}
                             </span>
                           </div>
                           <div className="flex gap-2">
@@ -489,10 +490,10 @@ function ProfilesGrid({
                       </div>
                       <div className="space-y-2">
                         <Label>Birthday</Label>
-                        <Input
-                          type="date"
+                        <DatePicker
                           value={editData.birthday}
-                          onChange={(e) => handleInputChange('birthday', e.target.value)}
+                          onChange={(value) => handleInputChange('birthday', value)}
+                          placeholder="Select birthday"
                         />
                       </div>
                       <div className="space-y-2">
@@ -707,10 +708,10 @@ function ProfilesGrid({
                       </div>
                       <div className="space-y-2">
                         <Label>Start Date</Label>
-                        <Input
-                          type="date"
+                        <DatePicker
                           value={editData.start_date}
-                          onChange={(e) => handleInputChange('start_date', e.target.value)}
+                          onChange={(value) => handleInputChange('start_date', value)}
+                          placeholder="Select start date"
                           disabled={!canEditWorkInfo}
                           className={!canEditWorkInfo ? 'bg-muted' : ''}
                         />
@@ -774,10 +775,10 @@ function ProfilesGrid({
                       <div className="space-y-2">
                         {rateHistoryUI.map((entry, index) => (
                           <div key={index} className="grid grid-cols-2 gap-3">
-                            <Input
-                              type="date"
+                            <DatePicker
                               value={entry.date}
-                              onChange={(e) => handleRateHistoryChange(index, 'date', e.target.value)}
+                              onChange={(value) => handleRateHistoryChange(index, 'date', value)}
+                              placeholder="Select date"
                               disabled={!canEditWorkInfo}
                               className={!canEditWorkInfo ? 'bg-muted' : ''}
                             />

@@ -38,7 +38,6 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
   Plus, 
-  Calendar, 
   User, 
   AlertCircle,
   Edit2,
@@ -53,8 +52,8 @@ import {
   Filter,
   X
 } from "lucide-react";
-import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { DatePicker, formatDisplayDate } from "@/components/ui/date-picker";
 
 type Priority = "low" | "medium" | "high";
 type Status = "not_started" | "in_progress" | "on_hold" | "completed";
@@ -628,10 +627,10 @@ const ImprovementsTracker = ({
                     {/* Due Date */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Due Date</label>
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={formData.due_date}
-                        onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
+                        onChange={(value) => setFormData(prev => ({ ...prev, due_date: value }))}
+                        placeholder="Select due date"
                       />
                     </div>
 
@@ -855,7 +854,7 @@ const ImprovementsTracker = ({
                       {paginatedImprovements.map((item) => (
                         <TableRow key={item.id} className={cn(item.status === "completed" && "bg-green-50/50")}>
                           <TableCell className="text-sm text-muted-foreground">
-                            {format(new Date(item.created_at), "MMM d, yyyy")}
+                            {formatDisplayDate(item.created_at)}
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
@@ -1016,7 +1015,7 @@ const ImprovementsTracker = ({
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
                             <span className="text-muted-foreground text-xs">Date:</span>
-                            <p>{format(new Date(item.created_at), "MMM d, yyyy")}</p>
+                            <p>{formatDisplayDate(item.created_at)}</p>
                           </div>
                           <div>
                             <span className="text-muted-foreground text-xs">Category:</span>

@@ -5,7 +5,8 @@ import { useUpdates } from '@/context/UpdatesContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Calendar, Clock, CheckCircle2, Circle, ExternalLink, AlertTriangle, Hash } from 'lucide-react';
-import { format, isPast } from 'date-fns';
+import { isPast } from 'date-fns';
+import { formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { cn } from '@/lib/utils';
 import { getCategoryLabel, getCategoryColor } from '@/lib/categories';
 interface UpdateCardProps {
@@ -84,7 +85,7 @@ export function UpdateCard({ update }: UpdateCardProps) {
             )}
             <div className="flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
-              <span>Posted {format(new Date(update.posted_at), 'MMM d, yyyy')}</span>
+              <span>Posted {formatDisplayDate(update.posted_at)}</span>
             </div>
             
             {update.deadline_at && (
@@ -93,7 +94,7 @@ export function UpdateCard({ update }: UpdateCardProps) {
                 isOverdue && !isObsolete && 'text-destructive'
               )}>
                 <Clock className="h-3.5 w-3.5" />
-                <span>Due {format(new Date(update.deadline_at), 'MMM d, h:mm a')}</span>
+                <span>Due {formatDisplayDateTime(update.deadline_at)}</span>
               </div>
             )}
             

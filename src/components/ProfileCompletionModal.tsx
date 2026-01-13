@@ -10,6 +10,7 @@ import { useProfileCompletion } from '@/context/ProfileCompletionContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, User, Phone, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
 import { z } from 'zod';
+import { DatePicker } from '@/components/ui/date-picker';
 
 const profileSchema = z.object({
   full_name: z.string().trim().min(2, 'Full name must be at least 2 characters').max(100, 'Full name is too long'),
@@ -229,11 +230,11 @@ export function ProfileCompletionModal() {
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 Birthday <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <DatePicker
                 id="birthday"
-                type="date"
                 value={formData.birthday}
-                onChange={(e) => handleInputChange('birthday', e.target.value)}
+                onChange={(value) => handleInputChange('birthday', value)}
+                placeholder="Select your birthday"
                 className={errors.birthday ? 'border-destructive' : ''}
               />
               {errors.birthday && (

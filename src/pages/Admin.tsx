@@ -39,7 +39,7 @@ import {
   History,
   UserCheck
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { Update, UpdateQuestion } from '@/types';
 import { fetchAdmins, addAdmin, removeAdmin, fetchUsers, addUser, removeUser, bulkAddUsers, AdminRole, createUserWithPassword, changeUserEmail, forcePasswordReset, changeUserRole, isProtectedAccount, fetchDeletedUsers, restoreUser, DeletedUser } from '@/lib/api';
 import { deleteUpdate } from '@/lib/requestApi';
@@ -568,7 +568,7 @@ export default function Admin() {
     const rows = acks.map(ack => ({
       email: ack.agent_email,
       acknowledged: 'Yes',
-      acknowledged_at: format(new Date(ack.acknowledged_at), 'yyyy-MM-dd HH:mm'),
+      acknowledged_at: formatDisplayDateTime(ack.acknowledged_at),
     }));
 
     const csv = [
@@ -906,7 +906,7 @@ export default function Admin() {
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {userItem.email} • Added {format(new Date(userItem.created_at), 'MMM d, yyyy')}
+                              {userItem.email} • Added {formatDisplayDate(userItem.created_at)}
                             </p>
                           </div>
                         </div>
@@ -1206,7 +1206,7 @@ export default function Admin() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {deletedUser.email} • Deleted {format(new Date(deletedUser.deleted_at), 'MMM d, yyyy')}
+                          {deletedUser.email} • Deleted {formatDisplayDate(deletedUser.deleted_at)}
                         </p>
                       </div>
                     </div>
@@ -1520,7 +1520,7 @@ export default function Admin() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(new Date(update.posted_at), 'MMM d, yyyy')}
+                        {formatDisplayDate(update.posted_at)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -1589,7 +1589,7 @@ export default function Admin() {
                                             <div className="flex-1">
                                               <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
                                               <p className="text-xs text-muted-foreground">
-                                                {format(new Date(ack.acknowledged_at), 'MMM d, yyyy at h:mm a')}
+                                                {formatDisplayDateTime(ack.acknowledged_at)}
                                               </p>
                                             </div>
                                           </div>

@@ -18,7 +18,7 @@ import {
   Tag,
   ExternalLink
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDisplayDate } from '@/components/ui/date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
@@ -398,7 +398,7 @@ export function ChangelogManagement({ currentUserEmail }: ChangelogManagementPro
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(entry.created_at), 'MMM d, yyyy')}
+                      {formatDisplayDate(entry.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">

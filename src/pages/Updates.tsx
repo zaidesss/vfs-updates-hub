@@ -16,7 +16,7 @@ import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, MessageCir
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { formatDisplayDateTime } from '@/components/ui/date-picker';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { UpdateQuestion } from '@/types';
 
@@ -301,7 +301,7 @@ export default function Updates() {
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {format(new Date(q.created_at), 'MMM d, yyyy h:mm a')}
+                        {formatDisplayDateTime(q.created_at)}
                       </TableCell>
                       <TableCell>
                         <Button
