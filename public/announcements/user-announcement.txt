@@ -1,0 +1,729 @@
+═══════════════════════════════════════════════════════════════════════════════
+                         VFS AGENT PORTAL - USER GUIDE
+                      Complete Announcement for All Users
+═══════════════════════════════════════════════════════════════════════════════
+
+Dear Team Member,
+
+Welcome to the VFS Agent Portal! This comprehensive guide will help you navigate
+and use all the features available to you as a User. Please read through each
+section carefully.
+
+═══════════════════════════════════════════════════════════════════════════════
+🔐 SECTION 1: YOUR LOGIN CREDENTIALS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have been assigned a User account. Your login credentials will be sent to 
+you privately via email or direct message.
+
+YOUR CREDENTIALS INCLUDE:
+• Your email address (this is your username)
+• Your temporary password
+
+PORTAL URL: [Your administrator will provide the portal URL]
+
+IMPORTANT NOTES:
+✓ Only pre-approved email addresses can log in
+✓ Your email must be in the system's allowlist
+✓ Keep your credentials secure and do not share them
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 SECTION 2: FIRST LOGIN - WHAT TO EXPECT
+═══════════════════════════════════════════════════════════════════════════════
+
+When you log in for the FIRST TIME:
+
+STEP 1: Go to the portal login page
+STEP 2: Enter your email address in the "Email" field
+STEP 3: Enter your temporary password in the "Password" field
+STEP 4: Click the "Sign In" button
+STEP 5: A DEMO GUIDE will automatically appear
+STEP 6: Read each step carefully, then click "Next" to proceed
+STEP 7: After completing all steps, click "Finish" to close the guide
+
+THE DEMO GUIDE COVERS:
+✓ Welcome and introduction to the portal
+✓ Navigation menu overview
+✓ How to view and acknowledge updates
+✓ How to ask questions about updates
+✓ How to submit leave/outage requests
+✓ How to view the team calendar
+✓ How to access your outage report
+✓ How to view and edit your profile
+✓ How to access the Knowledge Base
+✓ Notification system explanation
+✓ Tips and best practices
+
+FIRST-TIME PASSWORD CHANGE:
+If your account has the "must change password" flag set:
+• You will be automatically redirected to the Change Password page
+• You MUST create a new password before accessing the portal
+• Follow the password requirements shown on the screen
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 3: NEED TO RE-READ THE GUIDE?
+═══════════════════════════════════════════════════════════════════════════════
+
+If you ever need to review the guide again:
+
+OPTION 1 - Demo Guide Button:
+→ Look for the ❓ (Question Mark) icon in the header area
+→ Click it to re-open the interactive demo guide
+→ Walk through all the steps again at your own pace
+
+OPTION 2 - User Guide Page:
+→ Click on "Updates" in the navigation menu
+→ Select "User Guide" from the dropdown
+→ This opens a comprehensive written guide
+→ You can print or save the guide as PDF
+
+OPTION 3 - Download Announcement:
+→ Go to the Announcements page
+→ Download the text file version for your role
+→ Keep it for offline reference
+
+═══════════════════════════════════════════════════════════════════════════════
+🔑 SECTION 4: FORGOT YOUR PASSWORD?
+═══════════════════════════════════════════════════════════════════════════════
+
+If you forget your password or want to reset it:
+
+STEP 1: Go to the login page
+STEP 2: Click the "Forgot password?" link below the login form
+STEP 3: Enter your email address
+STEP 4: Click "Send Reset Link"
+STEP 5: Check your email inbox (and spam folder)
+STEP 6: Click the password reset link in the email
+STEP 7: Enter your new password
+STEP 8: Confirm your new password
+STEP 9: Click "Reset Password"
+
+PASSWORD REQUIREMENTS:
+• At least 8 characters long
+• At least 1 uppercase letter (A-Z)
+• At least 1 lowercase letter (a-z)
+• At least 1 number (0-9)
+
+IMPORTANT: Password reset links expire after a limited time. If the link 
+expires, you must request a new one.
+
+═══════════════════════════════════════════════════════════════════════════════
+🔐 SECTION 5: CHANGING YOUR PASSWORD
+═══════════════════════════════════════════════════════════════════════════════
+
+To change your password at any time:
+
+STEP 1: Look for the 🔑 (Key) icon in the header
+STEP 2: Click the icon to open the Change Password page
+STEP 3: Enter your current password
+STEP 4: Enter your new password
+STEP 5: Confirm your new password
+STEP 6: Watch the checkmarks turn green as requirements are met
+STEP 7: Click "Change Password"
+
+LIVE VALIDATION:
+As you type your new password, you'll see checkmarks that indicate:
+☐ → ✓ At least 8 characters
+☐ → ✓ At least 1 uppercase letter
+☐ → ✓ At least 1 lowercase letter
+☐ → ✓ At least 1 number
+
+All checkmarks must be green before you can save.
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 SECTION 6: NAVIGATION - MAIN MENUS
+═══════════════════════════════════════════════════════════════════════════════
+
+The navigation is located at the top of the page with dropdown menus.
+
+─────────────────────────────────────────────────────────────────────────────
+UPDATES MENU (📄 Icon)
+─────────────────────────────────────────────────────────────────────────────
+
+1. UPDATES
+   • What it is: Main page showing all published updates
+   • What you can do:
+     - View all updates in card format
+     - Filter by category using tabs
+     - Search for specific updates
+     - Click on any update to read details
+     - Acknowledge updates you've read
+     - Ask questions about updates
+   • Status indicators:
+     - 🟢 Green checkmark = You have acknowledged
+     - 🟡 Yellow dot = Not yet acknowledged
+     - 📅 Deadline badge = Has an acknowledgement deadline
+
+2. KNOWLEDGE BASE
+   • What it is: Searchable library of all updates organized by category
+   • What you can do:
+     - Browse updates by category
+     - Search for specific topics
+     - Click categories to see related articles
+     - View detailed playbook-style articles
+   • Categories available:
+     - Orders & Transactions
+     - Payments & Billing
+     - Shipping & Tracking
+     - Delivery Issues
+     - International & Customs
+     - Product Issues
+     - Product Information
+     - Subscriptions
+     - Warehouse & Fulfillment
+     - Internal Operations
+
+3. UPDATE REQUESTS
+   • What it is: Submit requests for new articles or updates
+   • What you can do:
+     - Request a new Knowledge Base article
+     - Request updates to existing articles
+     - Submit general feedback
+     - Track your request status
+     - View request history
+
+4. USER GUIDE
+   • What it is: This comprehensive documentation
+   • What you can do:
+     - Read about all portal features
+     - Print the guide
+     - Save as PDF
+
+─────────────────────────────────────────────────────────────────────────────
+OUTAGES MENU (⏰ Icon)
+─────────────────────────────────────────────────────────────────────────────
+
+1. OUTAGE REQUESTS
+   • What it is: Page to submit and track leave/outage requests
+   • What you can do:
+     - Submit new outage requests
+     - View your request history
+     - Track pending requests
+     - See approval status
+     - Upload attachments if needed
+   • Request types:
+     - Planned Time Off
+     - Sick Leave
+     - Emergency
+     - Personal
+     - And more...
+
+2. OUTAGE CALENDAR
+   • What it is: Visual calendar showing all team outages
+   • What you can do:
+     - View pending outages (yellow)
+     - View approved outages (green)
+     - Click on dates to see details
+     - See who is out on any given day
+     - Plan around team absences
+
+3. MY OUTAGE REPORT
+   • What it is: Your personal outage statistics
+   • What you can do:
+     - View total outage hours
+     - See breakdown by outage reason
+     - Review your outage history
+     - Track patterns over time
+
+─────────────────────────────────────────────────────────────────────────────
+PEOPLE MENU (👥 Icon)
+─────────────────────────────────────────────────────────────────────────────
+
+1. MY BIO (Profile)
+   • What it is: Your personal information page
+   • What you can do:
+     - View your profile details
+     - Edit personal information
+     - Update emergency contacts
+     - See your work details
+   • Information displayed:
+     - Full name
+     - Email address
+     - Phone number
+     - Position
+     - Team Lead
+     - Start date
+     - Birthday
+     - Home address
+     - Emergency contact name
+     - Emergency contact phone
+     - Hourly rate (if applicable)
+     - Client assignments
+
+═══════════════════════════════════════════════════════════════════════════════
+🔔 SECTION 7: HEADER ICONS EXPLAINED
+═══════════════════════════════════════════════════════════════════════════════
+
+At the top right of the page, you'll find these elements:
+
+YOUR NAME & EMAIL
+   → Displays your logged-in identity
+   → Confirms you're in the right account
+
+🔔 NOTIFICATION BELL
+   → Shows your in-app notifications
+   → Red badge = Number of unread notifications
+   → Click to see recent notifications
+   → Click "Mark all as read" to clear all
+
+❓ HELP ICON
+   → Opens the demo guide
+   → Walk through the portal tour again
+   → Good for refreshing your memory
+
+🔑 KEY ICON
+   → Opens the Change Password page
+   → Change your password anytime
+
+🚪 LOGOUT ICON
+   → Signs you out of the portal
+   → Always logout when finished on shared devices
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 8: VIEWING AND ACKNOWLEDGING UPDATES
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO VIEW UPDATES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click "Updates" in the navigation
+STEP 2: You'll see update cards on the main page
+STEP 3: Each card shows:
+        • Title of the update
+        • Category badge
+        • Posted date
+        • Summary (first few lines)
+        • Acknowledgement status
+        • Deadline (if any)
+STEP 4: Click on any card to read the full update
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO FILTER UPDATES
+─────────────────────────────────────────────────────────────────────────────
+
+At the top of the Updates page, you'll find:
+
+TABS:
+• ALL - Shows all updates
+• By Category - Filter by specific categories
+
+SEARCH:
+• Type keywords to find specific updates
+• Search looks at title and content
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO ACKNOWLEDGE UPDATES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click on an update to open it
+STEP 2: Read the full content carefully
+STEP 3: Look for the "Acknowledge" button at the bottom
+STEP 4: Click "Acknowledge" to confirm you've read it
+STEP 5: A checkmark appears next to the update
+
+IMPORTANT NOTES:
+• Some updates have deadlines - acknowledge before the deadline
+• Acknowledgement is tracked for compliance
+• You cannot "un-acknowledge" an update
+• Admins can see who has/hasn't acknowledged
+
+─────────────────────────────────────────────────────────────────────────────
+UNDERSTANDING UPDATE STATUSES
+─────────────────────────────────────────────────────────────────────────────
+
+🟢 ACKNOWLEDGED (Green checkmark)
+   → You have read and acknowledged this update
+   → No further action needed
+
+🟡 NOT ACKNOWLEDGED (Yellow/Orange)
+   → You have not yet acknowledged this update
+   → Read it and click Acknowledge
+
+⏰ HAS DEADLINE (Date badge)
+   → This update requires acknowledgement by a specific date
+   → Make sure to acknowledge before the deadline
+
+📌 OBSOLETE
+   → This update is no longer current
+   → May have been replaced by a newer update
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 9: ASKING QUESTIONS ABOUT UPDATES
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO ASK A QUESTION
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Open the update you have a question about
+STEP 2: Scroll down to the Questions section
+STEP 3: Click "Ask a Question" button
+STEP 4: Type your question in the text area
+STEP 5: Click "Submit Question"
+STEP 6: Your question is sent to the admin team
+
+─────────────────────────────────────────────────────────────────────────────
+TRACKING YOUR QUESTIONS
+─────────────────────────────────────────────────────────────────────────────
+
+After submitting a question:
+• You'll see it listed under the update
+• Status shows as "Pending" until answered
+• You'll receive a notification when answered
+• Click on the question to see the reply
+
+QUESTION STATUSES:
+• 🟡 PENDING - Awaiting admin response
+• 🟢 REPLIED - Admin has answered
+• 🔵 FOLLOW-UP - Additional discussion
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING REPLIES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Check your notifications for reply alerts
+STEP 2: Click on the notification OR
+STEP 3: Go to the update and find your question
+STEP 4: The reply will be displayed below your question
+STEP 5: You can add follow-up questions if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+📅 SECTION 10: SUBMITTING OUTAGE/LEAVE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO SUBMIT A REQUEST
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Outages → Outage Requests
+STEP 2: Click "New Request" or "Submit Request" button
+STEP 3: Fill in the required fields:
+        • Start Date - When your outage begins
+        • End Date - When your outage ends
+        • Start Time - What time you'll be out
+        • End Time - What time you'll return
+        • Outage Reason - Select from dropdown:
+          - Planned Time Off
+          - Sick Leave
+          - Emergency
+          - Personal
+          - Training
+          - etc.
+        • Remarks - Additional details (optional)
+STEP 4: Attach any supporting documents (optional)
+STEP 5: Review your request details
+STEP 6: Click "Submit Request"
+
+─────────────────────────────────────────────────────────────────────────────
+UNDERSTANDING REQUEST STATUS
+─────────────────────────────────────────────────────────────────────────────
+
+🟡 PENDING
+   → Your request has been submitted
+   → Awaiting approval from HR/Admin
+   → You'll be notified of the decision
+
+🟢 APPROVED
+   → Your request has been approved
+   → Will appear on the calendar as approved
+   → You're confirmed for the outage dates
+
+🔴 REJECTED
+   → Your request was not approved
+   → Check the rejection reason in remarks
+   → You may submit a new request with changes
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING YOUR REQUEST HISTORY
+─────────────────────────────────────────────────────────────────────────────
+
+On the Outage Requests page:
+• See all your submitted requests
+• Filter by status (Pending, Approved, Rejected)
+• Click on any request to see details
+• View approval/rejection remarks
+
+═══════════════════════════════════════════════════════════════════════════════
+📆 SECTION 11: USING THE OUTAGE CALENDAR
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+UNDERSTANDING THE CALENDAR
+─────────────────────────────────────────────────────────────────────────────
+
+The calendar shows all team outages visually:
+
+🟡 YELLOW EVENTS
+   → Pending outages awaiting approval
+   → Not yet confirmed
+
+🟢 GREEN EVENTS
+   → Approved outages
+   → Confirmed time off
+
+─────────────────────────────────────────────────────────────────────────────
+NAVIGATING THE CALENDAR
+─────────────────────────────────────────────────────────────────────────────
+
+• Use arrows to go to previous/next month
+• Click on a date to see details
+• Hover over events to see quick info
+• Events span multiple days if applicable
+
+─────────────────────────────────────────────────────────────────────────────
+USING THE CALENDAR FOR PLANNING
+─────────────────────────────────────────────────────────────────────────────
+
+Before submitting your outage request:
+1. Check the calendar for existing outages
+2. Look for conflicts with your planned dates
+3. Consider team coverage needs
+4. Submit your request when coverage allows
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 SECTION 12: MY OUTAGE REPORT
+═══════════════════════════════════════════════════════════════════════════════
+
+The Outage Report page shows your personal outage statistics:
+
+WHAT YOU CAN SEE:
+• Total hours of outages
+• Breakdown by outage reason
+• Visual charts of your outage patterns
+• Historical data over time
+
+HOW TO ACCESS:
+1. Go to Outages menu
+2. Click "My Outage Report"
+3. View your statistics
+
+USE THIS TO:
+• Track your time off usage
+• Identify patterns
+• Plan future time off
+• Ensure compliance with policies
+
+═══════════════════════════════════════════════════════════════════════════════
+📚 SECTION 13: KNOWLEDGE BASE
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+BROWSING BY CATEGORY
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Updates → Knowledge Base
+STEP 2: See category cards displayed
+STEP 3: Each card shows:
+        • Category name
+        • Number of articles
+        • Brief description
+STEP 4: Click on a category to see all articles
+STEP 5: Click on an article to read it
+
+─────────────────────────────────────────────────────────────────────────────
+SEARCHING FOR CONTENT
+─────────────────────────────────────────────────────────────────────────────
+
+Use the search bar to find specific topics:
+• Type keywords related to what you need
+• Results show matching articles
+• Click on any result to read the full article
+
+─────────────────────────────────────────────────────────────────────────────
+CATEGORIES EXPLAINED
+─────────────────────────────────────────────────────────────────────────────
+
+1. ORDERS & TRANSACTIONS
+   Articles about order processing, modifications, cancellations
+
+2. PAYMENTS & BILLING
+   Articles about payment methods, refunds, billing issues
+
+3. SHIPPING & TRACKING
+   Articles about shipping options, tracking updates
+
+4. DELIVERY ISSUES
+   Articles about delivery problems, missing packages
+
+5. INTERNATIONAL & CUSTOMS
+   Articles about international shipping, customs procedures
+
+6. PRODUCT ISSUES
+   Articles about product defects, quality concerns
+
+7. PRODUCT INFORMATION
+   Articles about product specifications, features
+
+8. SUBSCRIPTIONS
+   Articles about recurring orders, subscription management
+
+9. WAREHOUSE & FULFILLMENT
+   Articles about inventory, fulfillment processes
+
+10. INTERNAL OPERATIONS
+    Articles about internal procedures, policies
+
+═══════════════════════════════════════════════════════════════════════════════
+👤 SECTION 14: YOUR PROFILE (MY BIO)
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING YOUR PROFILE
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to People menu
+STEP 2: Click "My Bio"
+STEP 3: View your profile information
+
+─────────────────────────────────────────────────────────────────────────────
+EDITING YOUR PROFILE
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: On your profile page, click "Edit"
+STEP 2: Update the fields you want to change:
+        • Phone number
+        • Home address
+        • Emergency contact name
+        • Emergency contact phone
+STEP 3: Click "Save" to update your profile
+
+NOTE: Some fields may be locked and require admin to change:
+• Email address
+• Position
+• Team Lead
+• Hourly rate
+• Client assignments
+
+═══════════════════════════════════════════════════════════════════════════════
+🔔 SECTION 15: NOTIFICATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+IN-APP NOTIFICATIONS
+─────────────────────────────────────────────────────────────────────────────
+
+HOW THEY WORK:
+• Notification bell shows in the header
+• Red badge = number of unread notifications
+• Click the bell to see all notifications
+• Notifications include:
+  - New updates posted
+  - Questions answered
+  - Leave request status changes
+  - Important announcements
+
+MANAGING NOTIFICATIONS:
+• Click "Mark all as read" to clear unread count
+• Click on a notification to go to related item
+• Old notifications are automatically removed
+
+─────────────────────────────────────────────────────────────────────────────
+EMAIL NOTIFICATIONS
+─────────────────────────────────────────────────────────────────────────────
+
+You may also receive email notifications for:
+• New important updates
+• Question replies
+• Leave request decisions
+• Password reset requests
+
+Email notification settings may be configurable in your profile settings.
+
+═══════════════════════════════════════════════════════════════════════════════
+🎭 SECTION 16: UNDERSTANDING YOUR ROLE
+═══════════════════════════════════════════════════════════════════════════════
+
+As a USER, you have access to:
+
+✅ WHAT YOU CAN DO:
+→ View all published updates
+→ Acknowledge updates
+→ Ask questions about updates
+→ Submit leave/outage requests
+→ View the team calendar
+→ View your outage report
+→ View and edit your profile
+→ Browse the Knowledge Base
+→ Submit update requests
+→ Receive notifications
+→ Change your password
+
+❌ WHAT YOU CANNOT DO:
+→ Create or edit updates (Admin only)
+→ Approve/reject leave requests (HR/Admin only)
+→ Manage other users (Admin only)
+→ View all user profiles (Admin/HR only)
+→ Access admin panel
+→ View outage statistics for all agents
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 17: TIPS FOR SUCCESS
+═══════════════════════════════════════════════════════════════════════════════
+
+DAILY HABITS:
+✓ Check for new updates every day
+✓ Acknowledge updates promptly
+✓ Review the notification bell regularly
+✓ Keep your profile information current
+
+BEFORE TAKING TIME OFF:
+✓ Check the calendar for team coverage
+✓ Submit requests in advance when possible
+✓ Provide clear reasons in your request
+✓ Attach documentation if required
+
+WHEN YOU HAVE QUESTIONS:
+✓ Search the Knowledge Base first
+✓ Check if the update answers your question
+✓ Submit clear, specific questions
+✓ Check back for replies
+
+SECURITY BEST PRACTICES:
+✓ Use a strong, unique password
+✓ Change password regularly
+✓ Never share your credentials
+✓ Log out when using shared devices
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 18: NEED HELP?
+═══════════════════════════════════════════════════════════════════════════════
+
+If you have any questions or issues:
+
+1. Click the ❓ Help button to re-open the demo guide
+2. Check the User Guide page for detailed documentation
+3. Ask a question on the relevant update
+4. Contact your Team Lead
+5. Reach out to an Admin or HR representative
+
+COMMON ISSUES AND SOLUTIONS:
+
+"I can't log in"
+→ Verify your email is spelled correctly
+→ Check caps lock for password
+→ Use "Forgot password?" to reset
+→ Contact admin if email not in system
+
+"I can't find an update"
+→ Use the search function
+→ Check the Knowledge Base
+→ Try different keywords
+→ Ask admin if it exists
+
+"My leave request was rejected"
+→ Check the rejection reason
+→ Verify date availability on calendar
+→ Submit a new request with adjustments
+→ Contact HR for clarification
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Welcome to the VFS Agent Portal! We hope this guide helps you navigate the
+system with confidence. Remember, the demo guide is always available via the
+❓ button if you need a refresher.
+
+Best regards,
+The VFS Team
+
+═══════════════════════════════════════════════════════════════════════════════

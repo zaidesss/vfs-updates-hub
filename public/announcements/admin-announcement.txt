@@ -1,0 +1,651 @@
+═══════════════════════════════════════════════════════════════════════════════
+                         VFS AGENT PORTAL - ADMIN GUIDE
+                      Complete Announcement for Admin Team
+═══════════════════════════════════════════════════════════════════════════════
+
+Dear Admin Team Member,
+
+Welcome to the VFS Agent Portal! As an Admin, you have extensive access to 
+manage updates, handle questions, oversee leave requests, and manage the 
+content that all agents see. This comprehensive guide covers all your 
+administrative powers and responsibilities.
+
+═══════════════════════════════════════════════════════════════════════════════
+🔐 SECTION 1: YOUR LOGIN CREDENTIALS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have been assigned an ADMIN account with full content management access.
+Your credentials will be sent privately.
+
+YOUR CREDENTIALS INCLUDE:
+• Your email address (username)
+• Your temporary password
+
+PORTAL URL: [Your administrator will provide the portal URL]
+
+YOUR ADMIN BADGE:
+• After login, you'll see an "Admin" badge next to your name
+• This indicates your elevated privileges
+• Badge is visible throughout the portal
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 SECTION 2: FIRST LOGIN - WHAT TO EXPECT
+═══════════════════════════════════════════════════════════════════════════════
+
+When you log in for the FIRST TIME:
+
+STEP 1: Navigate to the portal login page
+STEP 2: Enter your email address
+STEP 3: Enter your temporary password
+STEP 4: Click "Sign In"
+STEP 5: An ADMIN-SPECIFIC DEMO GUIDE will appear automatically
+STEP 6: This guide is tailored to your Admin role
+STEP 7: Follow each step, clicking "Next" to proceed
+STEP 8: Click "Finish" to complete the guide
+
+THE ADMIN DEMO GUIDE COVERS:
+✓ Welcome and Admin role introduction
+✓ All standard user features (you have these too)
+✓ Admin Panel overview
+✓ Creating and managing updates
+✓ Handling agent questions
+✓ Leave request management
+✓ User and profile management
+✓ Dashboard and acknowledgement tracking
+✓ Improvements tracker
+✓ Admin best practices
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 3: NEED TO RE-READ THE GUIDE?
+═══════════════════════════════════════════════════════════════════════════════
+
+To review the Admin guide anytime:
+→ Click the ❓ (Question Mark) icon in the header
+→ The complete Admin demo guide reopens
+→ Walk through at your own pace
+
+Additional resources:
+→ User Guide page (Updates → User Guide) - includes Admin section
+→ Announcements page for downloadable guides
+→ Contact Super Admin for admin-specific questions
+
+═══════════════════════════════════════════════════════════════════════════════
+🔑 SECTION 4: PASSWORD MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+Same as all users - see User Guide for details.
+
+Quick reference:
+• Forgot Password: Click link on login page → email reset
+• Change Password: Click 🔑 icon in header
+• Requirements: 8+ chars, uppercase, lowercase, number
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 SECTION 5: ADMIN NAVIGATION - FULL ACCESS
+═══════════════════════════════════════════════════════════════════════════════
+
+As Admin, you see ALL menus and features:
+
+─────────────────────────────────────────────────────────────────────────────
+UPDATES MENU
+─────────────────────────────────────────────────────────────────────────────
+• Updates - View all updates (same as users)
+• Knowledge Base - Browse all content
+• Update Requests - View and manage requests
+• User Guide - Full documentation
+
+─────────────────────────────────────────────────────────────────────────────
+OUTAGES MENU (Full Access)
+─────────────────────────────────────────────────────────────────────────────
+• Outage Requests - View ALL requests, approve/reject
+• Outage Calendar - Full calendar view
+• Outage Stats - ⭐ ADMIN: Complete statistics dashboard
+• NOTE: "My Outage Report" not shown for Admins (you see all stats)
+
+─────────────────────────────────────────────────────────────────────────────
+PEOPLE MENU (Full Access)
+─────────────────────────────────────────────────────────────────────────────
+• All Bios - ⭐ ADMIN: View and edit all agent profiles
+• NOTE: "My Bio" not shown (you access your profile via All Bios)
+
+─────────────────────────────────────────────────────────────────────────────
+ADMIN MENU (Your Primary Workspace)
+─────────────────────────────────────────────────────────────────────────────
+• Admin Panel - ⭐ ADMIN: Full access to all tabs
+• Improvements - ⭐ ADMIN: View and track improvements
+
+═══════════════════════════════════════════════════════════════════════════════
+🛡️ SECTION 6: ADMIN PANEL - YOUR COMMAND CENTER
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via Admin → Admin Panel
+
+The Admin Panel has multiple tabs:
+
+─────────────────────────────────────────────────────────────────────────────
+TAB 1: UPDATES
+─────────────────────────────────────────────────────────────────────────────
+
+This is where you create and manage all updates.
+
+WHAT YOU SEE:
+• List of all updates (Published, Draft, Obsolete)
+• Acknowledgement progress for each
+• Action buttons (Edit, Delete)
+• Create new update button
+
+COLUMNS IN THE TABLE:
+• Ref # - Reference number
+• Title - Update title
+• Category - Topic category
+• Status - Published/Draft/Obsolete
+• Posted By - Who created it
+• Posted At - When created
+• Deadline - Acknowledgement deadline
+• Actions - Edit/Delete buttons
+
+─────────────────────────────────────────────────────────────────────────────
+TAB 2: QUESTIONS
+─────────────────────────────────────────────────────────────────────────────
+
+View and respond to all questions from agents.
+
+WHAT YOU SEE:
+• All questions across all updates
+• Filter by status (Pending, Replied, All)
+• Question details and reply option
+
+HANDLING QUESTIONS:
+1. Click on a pending question
+2. Read the question carefully
+3. Type your reply
+4. Click "Send Reply"
+5. Agent receives notification
+
+─────────────────────────────────────────────────────────────────────────────
+TAB 3: ADMINS
+─────────────────────────────────────────────────────────────────────────────
+
+Manage admin user accounts.
+
+NOTE: Creating/deleting admins typically requires Super Admin.
+You can view the list of all admins.
+
+─────────────────────────────────────────────────────────────────────────────
+TAB 4: USERS
+─────────────────────────────────────────────────────────────────────────────
+
+View all user accounts in the system.
+
+WHAT YOU CAN DO:
+• View list of all users
+• See user roles
+• View user details
+• NOTE: Some actions may require Super Admin
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 7: CREATING UPDATES
+═══════════════════════════════════════════════════════════════════════════════
+
+This is one of your PRIMARY admin functions.
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO CREATE A NEW UPDATE
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Admin → Admin Panel
+STEP 2: Click on the "Updates" tab
+STEP 3: Click "Create Update" or "New Update" button
+STEP 4: Fill in the form:
+
+REQUIRED FIELDS:
+• Title - Clear, descriptive title
+• Category - Select from dropdown:
+  - Orders & Transactions
+  - Payments & Billing
+  - Shipping & Tracking
+  - Delivery Issues
+  - International & Customs
+  - Product Issues
+  - Product Information
+  - Subscriptions
+  - Warehouse & Fulfillment
+  - Internal Operations
+• Summary - Brief overview (shows in card view)
+• Body - Full content (supports markdown)
+
+OPTIONAL FIELDS:
+• Help Center URL - Link to related article
+• Deadline - Date by which agents must acknowledge
+• Status - Draft (not visible) or Published (visible to all)
+
+STEP 5: Preview your content
+STEP 6: Click "Save" or "Publish"
+
+─────────────────────────────────────────────────────────────────────────────
+USING THE MARKDOWN EDITOR
+─────────────────────────────────────────────────────────────────────────────
+
+The body field supports Markdown formatting:
+
+BASIC FORMATTING:
+• **bold text** → bold text
+• *italic text* → italic text
+• # Heading 1
+• ## Heading 2
+• ### Heading 3
+
+LISTS:
+• - Item 1 (bulleted list)
+• 1. Item 1 (numbered list)
+
+LINKS:
+• [Link Text](URL)
+
+IMPORTANT NOTES:
+• You can preview before publishing
+• Editor shows formatting in real-time
+• Keep formatting consistent
+
+─────────────────────────────────────────────────────────────────────────────
+UPDATE STATUSES EXPLAINED
+─────────────────────────────────────────────────────────────────────────────
+
+DRAFT:
+• Not visible to regular users
+• Use for work-in-progress
+• Publish when ready
+
+PUBLISHED:
+• Visible to all users
+• Appears in Updates page
+• Agents can acknowledge
+• Questions can be asked
+
+OBSOLETE:
+• Marked as outdated
+• May still be visible in Knowledge Base
+• No longer requires acknowledgement
+
+─────────────────────────────────────────────────────────────────────────────
+SIMILAR UPDATES CHECK (AI Feature)
+─────────────────────────────────────────────────────────────────────────────
+
+Before creating a new update:
+
+STEP 1: Click "Check Similar Updates"
+STEP 2: AI analyzes existing updates
+STEP 3: See similarity scores:
+        • HIGH similarity - Very similar exists
+        • MEDIUM similarity - Somewhat related
+        • LOW similarity - Different topic
+
+USE THIS TO:
+• Avoid duplicate content
+• Link related updates
+• Update existing content instead
+
+═══════════════════════════════════════════════════════════════════════════════
+✏️ SECTION 8: EDITING UPDATES
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO EDIT AN EXISTING UPDATE
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Admin → Admin Panel → Updates tab
+STEP 2: Find the update in the list
+STEP 3: Click "Edit" button in Actions column
+STEP 4: Modify any fields
+STEP 5: Click "Save" to apply changes
+
+WHAT CAN BE EDITED:
+• Title
+• Category
+• Summary
+• Body content
+• Help Center URL
+• Deadline
+• Status
+
+─────────────────────────────────────────────────────────────────────────────
+CHANGE HISTORY
+─────────────────────────────────────────────────────────────────────────────
+
+All changes are tracked:
+• Who made the change
+• When it was made
+• What was changed
+• Previous values
+
+This creates an audit trail for compliance.
+
+─────────────────────────────────────────────────────────────────────────────
+DELETING UPDATES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Find the update in Admin Panel
+STEP 2: Click "Delete" button
+STEP 3: Confirm the deletion
+
+⚠️ WARNING: Deletion is PERMANENT
+• Acknowledgements are lost
+• Questions are lost
+• This cannot be undone
+• Consider using "Obsolete" status instead
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 9: MANAGING QUESTIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+Agents can ask questions on any update. You manage these.
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING ALL QUESTIONS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Admin → Admin Panel
+STEP 2: Click "Questions" tab
+STEP 3: See all questions listed
+
+INFORMATION SHOWN:
+• Reference number
+• Update the question is about
+• Question text
+• Who asked (agent email)
+• When asked
+• Status (Pending/Replied)
+
+─────────────────────────────────────────────────────────────────────────────
+REPLYING TO QUESTIONS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click on a pending question
+STEP 2: Read the full question
+STEP 3: View the related update for context
+STEP 4: Type your reply
+STEP 5: Click "Send Reply"
+
+AFTER REPLYING:
+• Status changes to "Replied"
+• Agent receives notification
+• Reply is visible on the update
+
+─────────────────────────────────────────────────────────────────────────────
+THREADED DISCUSSIONS
+─────────────────────────────────────────────────────────────────────────────
+
+Questions can become threads:
+• Agent asks initial question
+• You reply
+• Agent can follow up
+• Conversation continues
+
+BEST PRACTICES:
+• Reply promptly (within 24 hours if possible)
+• Be clear and complete
+• Reference update content when helpful
+• Escalate complex questions if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+📅 SECTION 10: MANAGING LEAVE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+As Admin, you have the same leave management powers as HR.
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING ALL REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Outages → Outage Requests
+STEP 2: View ALL submitted requests
+STEP 3: Filter by status if needed
+
+─────────────────────────────────────────────────────────────────────────────
+APPROVING REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click on a pending request
+STEP 2: Review all details
+STEP 3: Check calendar for conflicts
+STEP 4: Click "Approve"
+STEP 5: Add remarks if needed
+STEP 6: Confirm
+
+─────────────────────────────────────────────────────────────────────────────
+REJECTING REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Click on the request
+STEP 2: Click "Reject"
+STEP 3: Provide a clear reason
+STEP 4: Confirm
+
+Always give a professional reason for rejections.
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 SECTION 11: OUTAGE STATISTICS
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via Outages → Outage Stats
+
+Full dashboard showing:
+• Total outage hours
+• Breakdown by reason
+• Agent comparisons
+• Trends over time
+• Weekly and monthly views
+
+USE FOR:
+• Planning coverage
+• Identifying patterns
+• Supporting HR decisions
+• Generating reports
+
+═══════════════════════════════════════════════════════════════════════════════
+👥 SECTION 12: MANAGING AGENT PROFILES
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via People → All Bios
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING PROFILES
+─────────────────────────────────────────────────────────────────────────────
+
+• See all agent profiles
+• Search for specific agents
+• View complete details
+• Access rate history
+
+─────────────────────────────────────────────────────────────────────────────
+EDITING PROFILES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Find the agent profile
+STEP 2: Click "Edit"
+STEP 3: Update fields
+STEP 4: Click "Save"
+
+You can edit:
+• Contact information
+• Position details
+• Emergency contacts
+• Work assignments
+• Hourly rates
+• Client assignments
+
+═══════════════════════════════════════════════════════════════════════════════
+📈 SECTION 13: DASHBOARD - ACKNOWLEDGEMENT TRACKING
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via the Dashboard page
+
+WHAT THE DASHBOARD SHOWS:
+• Overall acknowledgement rate
+• Per-update completion
+• Agents who haven't acknowledged
+• Deadline tracking
+
+USE FOR:
+• Monitoring compliance
+• Following up with agents
+• Tracking update effectiveness
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 14: IMPROVEMENTS TRACKER
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via Admin menu → Improvements
+
+WHAT IT SHOWS:
+• All improvement requests
+• Status of each (Not Started, In Progress, Completed)
+• Priority levels
+• Assignees
+
+YOUR ACCESS:
+• View all improvements
+• Track progress
+• NOTE: Adding new improvements may require Super Admin
+
+═══════════════════════════════════════════════════════════════════════════════
+🎭 SECTION 15: ADMIN ROLE PERMISSIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ WHAT YOU CAN DO (ADMIN):
+→ All standard user functions
+→ Create, edit, and publish updates
+→ Delete updates (careful!)
+→ Reply to all questions
+→ Approve/reject leave requests
+→ View outage statistics
+→ View and edit all profiles
+→ Access full Admin Panel
+→ View improvements tracker
+→ View all users
+
+❌ WHAT REQUIRES SUPER ADMIN:
+→ Create new user accounts
+→ Delete user accounts
+→ Change user roles
+→ Add new admin users
+→ Add new improvements
+→ System-wide configuration
+
+═══════════════════════════════════════════════════════════════════════════════
+📅 SECTION 16: ADMIN DAILY WORKFLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+RECOMMENDED DAILY ROUTINE:
+
+MORNING:
+1. Check notifications
+2. Review pending questions - reply promptly
+3. Check for pending leave requests
+4. Review acknowledgement dashboard
+
+CONTENT MANAGEMENT:
+5. Check if updates need creating
+6. Review existing updates for accuracy
+7. Handle any update requests
+
+END OF DAY:
+8. Clear notification queue
+9. Check question status
+10. Note any pending items
+
+WEEKLY:
+• Review outage statistics
+• Check acknowledgement rates
+• Update any stale content
+• Coordinate with Super Admin
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 17: ADMIN BEST PRACTICES
+═══════════════════════════════════════════════════════════════════════════════
+
+CREATING UPDATES:
+✓ Use clear, descriptive titles
+✓ Choose the correct category
+✓ Write concise summaries
+✓ Use formatting for readability
+✓ Set deadlines appropriately
+✓ Check for similar updates first
+✓ Preview before publishing
+
+ANSWERING QUESTIONS:
+✓ Reply within 24 hours
+✓ Be thorough but concise
+✓ Reference the update content
+✓ Follow up if needed
+✓ Escalate if unsure
+
+MANAGING REQUESTS:
+✓ Be consistent in decisions
+✓ Always provide reasons
+✓ Check calendar for conflicts
+✓ Process promptly
+
+GENERAL:
+✓ Keep content up to date
+✓ Mark obsolete updates
+✓ Monitor acknowledgements
+✓ Communicate with team
+✓ Escalate to Super Admin when needed
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ SECTION 18: COMMON ADMIN SCENARIOS
+═══════════════════════════════════════════════════════════════════════════════
+
+SCENARIO: Creating an urgent update
+→ Create with "Published" status immediately
+→ Set a short deadline if acknowledgement needed
+→ Consider email notifications
+
+SCENARIO: Question you can't answer
+→ Acknowledge receipt
+→ Escalate to appropriate person
+→ Follow up with complete answer
+
+SCENARIO: Conflicting leave requests
+→ Check calendar for coverage
+→ Apply consistent rules
+→ Communicate clearly
+
+SCENARIO: Update needs correction
+→ Edit promptly
+→ Consider noting the correction
+→ Check if re-acknowledgement needed
+
+SCENARIO: Agent not acknowledging updates
+→ Check dashboard for specifics
+→ Follow up appropriately
+→ Escalate if pattern continues
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 19: GETTING HELP
+═══════════════════════════════════════════════════════════════════════════════
+
+FOR ADMIN-SPECIFIC ISSUES:
+• Contact your Super Admin
+
+FOR SYSTEM ISSUES:
+• Use the improvements tracker
+• Document problems clearly
+
+FOR GUIDANCE:
+• Review this guide (❓ button)
+• Check User Guide page
+• Consult with other admins
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Welcome to your Admin role! Your work in creating updates, managing questions,
+and overseeing the portal is essential to keeping the team informed.
+
+Remember: The demo guide is always available via the ❓ button.
+
+Best regards,
+The VFS Team
+
+═══════════════════════════════════════════════════════════════════════════════

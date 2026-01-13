@@ -1,0 +1,511 @@
+═══════════════════════════════════════════════════════════════════════════════
+                         VFS AGENT PORTAL - HR GUIDE
+                       Complete Announcement for HR Team
+═══════════════════════════════════════════════════════════════════════════════
+
+Dear HR Team Member,
+
+Welcome to the VFS Agent Portal! As an HR user, you have extended access to
+manage leave requests, view all agent profiles, and access HR-specific 
+features. This comprehensive guide covers everything you need to know.
+
+═══════════════════════════════════════════════════════════════════════════════
+🔐 SECTION 1: YOUR LOGIN CREDENTIALS
+═══════════════════════════════════════════════════════════════════════════════
+
+You have been assigned an HR account with extended permissions. Your login 
+credentials will be sent to you privately.
+
+YOUR CREDENTIALS INCLUDE:
+• Your email address (this is your username)
+• Your temporary password
+
+PORTAL URL: [Your administrator will provide the portal URL]
+
+YOUR HR BADGE:
+• After logging in, you'll see an "HR" badge next to your name
+• This indicates your elevated access level
+• HR badge is visible to admins
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 SECTION 2: FIRST LOGIN - WHAT TO EXPECT
+═══════════════════════════════════════════════════════════════════════════════
+
+When you log in for the FIRST TIME:
+
+STEP 1: Go to the portal login page
+STEP 2: Enter your email address
+STEP 3: Enter your temporary password
+STEP 4: Click "Sign In"
+STEP 5: An HR-SPECIFIC DEMO GUIDE will automatically appear
+STEP 6: This guide is tailored to your HR role
+STEP 7: Read each step carefully, then click "Next"
+STEP 8: Click "Finish" when complete
+
+THE HR DEMO GUIDE COVERS:
+✓ Welcome and HR role introduction
+✓ All standard user features
+✓ Leave request management
+✓ Viewing all agent profiles
+✓ Outage statistics and reports
+✓ Admin panel access
+✓ HR-specific workflows
+✓ Best practices for HR
+
+═══════════════════════════════════════════════════════════════════════════════
+❓ SECTION 3: NEED TO RE-READ THE GUIDE?
+═══════════════════════════════════════════════════════════════════════════════
+
+To review the guide at any time:
+→ Click the ❓ (Question Mark) icon in the header
+→ The complete HR demo guide will re-open
+→ Walk through at your own pace
+
+Additional resources:
+→ User Guide page (Updates → User Guide)
+→ Announcements page for downloadable guides
+→ Contact Super Admin for HR-specific questions
+
+═══════════════════════════════════════════════════════════════════════════════
+🔑 SECTION 4: PASSWORD MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+FORGOT PASSWORD:
+1. Go to login page
+2. Click "Forgot password?"
+3. Enter your email
+4. Click "Send Reset Link"
+5. Check email for reset link
+6. Create new password meeting requirements
+
+CHANGE PASSWORD:
+1. Click 🔑 (Key icon) in header
+2. Enter current password
+3. Enter new password
+4. Confirm new password
+5. Click "Change Password"
+
+PASSWORD REQUIREMENTS:
+• At least 8 characters
+• At least 1 uppercase letter (A-Z)
+• At least 1 lowercase letter (a-z)
+• At least 1 number (0-9)
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 SECTION 5: HR NAVIGATION - EXTENDED MENUS
+═══════════════════════════════════════════════════════════════════════════════
+
+As HR, you see all standard menus PLUS additional options:
+
+─────────────────────────────────────────────────────────────────────────────
+UPDATES MENU (Same as Users)
+─────────────────────────────────────────────────────────────────────────────
+• Updates - View and acknowledge updates
+• Knowledge Base - Browse by category
+• Update Requests - Submit/view requests
+• User Guide - Documentation
+
+─────────────────────────────────────────────────────────────────────────────
+OUTAGES MENU (Extended for HR)
+─────────────────────────────────────────────────────────────────────────────
+• Outage Requests - View ALL agent requests (not just yours)
+• Outage Calendar - View all pending and approved outages
+• Outage Stats - ⭐ HR EXCLUSIVE: Full statistics for all agents
+• My Outage Report - Your personal outage data
+
+─────────────────────────────────────────────────────────────────────────────
+PEOPLE MENU (Extended for HR)
+─────────────────────────────────────────────────────────────────────────────
+• My Bio - Your profile
+• All Bios - ⭐ HR EXCLUSIVE: View and manage all agent profiles
+
+─────────────────────────────────────────────────────────────────────────────
+ADMIN MENU (HR Access)
+─────────────────────────────────────────────────────────────────────────────
+• Admin Panel - ⭐ HR ACCESS: Limited admin functions
+• Improvements - ⭐ View improvements tracker
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 6: MANAGING LEAVE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+This is one of your PRIMARY HR functions.
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING ALL LEAVE REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Outages → Outage Requests
+STEP 2: You can see ALL submitted requests (not just your own)
+STEP 3: Use filters to sort:
+        • All Requests
+        • Pending (awaiting decision)
+        • Approved
+        • Rejected
+STEP 4: Click on any request to see full details
+
+─────────────────────────────────────────────────────────────────────────────
+APPROVING A LEAVE REQUEST
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to Outages → Outage Requests
+STEP 2: Click on a "Pending" request
+STEP 3: Review the request details:
+        • Agent name and email
+        • Start date and time
+        • End date and time
+        • Outage reason
+        • Remarks provided
+        • Attachments (if any)
+STEP 4: Check the calendar for conflicts
+STEP 5: Click "Approve" button
+STEP 6: Optionally add approval remarks
+STEP 7: Confirm the approval
+
+AFTER APPROVAL:
+• Request status changes to "Approved"
+• Agent receives notification
+• Request appears green on calendar
+• History is logged
+
+─────────────────────────────────────────────────────────────────────────────
+REJECTING A LEAVE REQUEST
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Open the pending request
+STEP 2: Review the details
+STEP 3: Click "Reject" button
+STEP 4: Provide a rejection reason (IMPORTANT)
+STEP 5: Confirm the rejection
+
+BEST PRACTICES FOR REJECTION:
+• Always provide a clear reason
+• Be professional and constructive
+• Suggest alternatives if possible
+• Example: "Team coverage insufficient on requested dates. 
+  Please consider [alternative dates]."
+
+─────────────────────────────────────────────────────────────────────────────
+HANDLING CONFLICTS
+─────────────────────────────────────────────────────────────────────────────
+
+BEFORE APPROVING, CHECK:
+1. Calendar for existing approved outages
+2. Team coverage for the requested dates
+3. Conflicting requests from other agents
+4. Business-critical periods
+
+IF CONFLICTS EXIST:
+• System may show "Conflicting Agents" warning
+• Review who else is out on those dates
+• Consider team coverage requirements
+• May need to reject with explanation
+
+─────────────────────────────────────────────────────────────────────────────
+OVERRIDE REQUESTS
+─────────────────────────────────────────────────────────────────────────────
+
+Sometimes agents request to override a conflict:
+• You'll see the override reason provided
+• Evaluate if the override is justified
+• Check business impact
+• Approve or reject based on needs
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 SECTION 7: OUTAGE STATISTICS (HR EXCLUSIVE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via Outages → Outage Stats
+
+─────────────────────────────────────────────────────────────────────────────
+WHAT YOU CAN SEE
+─────────────────────────────────────────────────────────────────────────────
+
+OVERVIEW METRICS:
+• Total outage hours across all agents
+• Most common outage reasons
+• Trends over time
+• Agent comparison data
+
+BY AGENT:
+• Individual agent outage totals
+• Breakdown by reason per agent
+• Patterns and frequency
+• Repeat outage tracking
+
+BY REASON:
+• Total hours per outage type
+• Which reasons are most common
+• Seasonal patterns
+• Trend analysis
+
+─────────────────────────────────────────────────────────────────────────────
+USING OUTAGE STATS FOR HR DECISIONS
+─────────────────────────────────────────────────────────────────────────────
+
+USE THIS DATA TO:
+• Identify attendance patterns
+• Track policy compliance
+• Plan for coverage needs
+• Support performance discussions
+• Generate HR reports
+
+WEEKLY/MONTHLY VIEWS:
+• Toggle between Weekly and Monthly tabs
+• Compare different time periods
+• Identify trends
+
+═══════════════════════════════════════════════════════════════════════════════
+👥 SECTION 8: MANAGING ALL AGENT PROFILES
+═══════════════════════════════════════════════════════════════════════════════
+
+Access via People → All Bios
+
+─────────────────────────────────────────────────────────────────────────────
+VIEWING AGENT PROFILES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to People → All Bios
+STEP 2: See a list/grid of all agent profiles
+STEP 3: Search for specific agents
+STEP 4: Click on a profile to view details
+
+INFORMATION AVAILABLE:
+• Full name
+• Email address
+• Phone number
+• Position
+• Team Lead
+• Start date
+• Birthday
+• Home address
+• Emergency contacts
+• Hourly rate
+• Client assignments
+• Rate history
+
+─────────────────────────────────────────────────────────────────────────────
+EDITING AGENT PROFILES
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Open an agent's profile
+STEP 2: Click "Edit" button
+STEP 3: Update fields as needed:
+        • Contact information
+        • Position details
+        • Emergency contacts
+        • Work assignments
+STEP 4: Click "Save"
+
+FIELDS YOU CAN EDIT:
+• Full name
+• Phone number
+• Position
+• Team Lead
+• Birthday
+• Home address
+• Emergency contact name
+• Emergency contact phone
+• Clients
+• Hourly rate
+
+FIELDS REQUIRING ADMIN:
+• Email address changes
+• Creating new users
+• Deleting users
+
+═══════════════════════════════════════════════════════════════════════════════
+🛡️ SECTION 9: ADMIN PANEL ACCESS (LIMITED)
+═══════════════════════════════════════════════════════════════════════════════
+
+As HR, you have access to the Admin Panel with some limitations.
+
+─────────────────────────────────────────────────────────────────────────────
+WHAT YOU CAN ACCESS
+─────────────────────────────────────────────────────────────────────────────
+
+UPDATES TAB:
+• View all updates (published, draft, obsolete)
+• See acknowledgement statistics
+• View questions on updates
+• NOTE: Creating/editing updates may be Admin-only
+
+QUESTIONS TAB:
+• View all questions from agents
+• Reply to pending questions
+• Track question status
+
+─────────────────────────────────────────────────────────────────────────────
+WHAT REQUIRES ADMIN
+─────────────────────────────────────────────────────────────────────────────
+
+You may need an Admin or Super Admin for:
+• Creating new updates
+• Editing existing updates
+• Creating new user accounts
+• Deleting users
+• Changing user roles
+
+═══════════════════════════════════════════════════════════════════════════════
+🔔 SECTION 10: HR-SPECIFIC NOTIFICATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+You receive additional notifications as HR:
+
+LEAVE REQUEST NOTIFICATIONS:
+• When new requests are submitted
+• When requests need attention
+• When override requests are made
+
+AGENT NOTIFICATIONS:
+• Important profile changes
+• Compliance alerts
+• System announcements
+
+CHECK YOUR NOTIFICATIONS:
+• Click the bell icon regularly
+• Red badge shows unread count
+• Don't let requests pile up
+
+═══════════════════════════════════════════════════════════════════════════════
+🎭 SECTION 11: HR ROLE PERMISSIONS SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ WHAT YOU CAN DO (HR):
+→ All standard user functions
+→ View ALL leave requests (all agents)
+→ Approve/reject leave requests
+→ View outage statistics for everyone
+→ View and edit all agent profiles
+→ Access admin panel (limited)
+→ View improvements tracker
+→ Reply to questions
+
+❌ WHAT REQUIRES ADMIN:
+→ Create/edit updates
+→ Create new user accounts
+→ Delete users
+→ Change user roles
+→ Manage admin settings
+
+❌ WHAT REQUIRES SUPER ADMIN:
+→ Delete other admins
+→ Promote users to admin/HR
+→ System configuration
+
+═══════════════════════════════════════════════════════════════════════════════
+📅 SECTION 12: HR DAILY WORKFLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+RECOMMENDED DAILY ROUTINE:
+
+MORNING:
+1. Check notifications for new requests
+2. Review pending leave requests
+3. Check calendar for today's outages
+4. Process urgent requests
+
+THROUGHOUT DAY:
+5. Respond to new requests promptly
+6. Answer profile-related questions
+7. Check for conflicts in calendar
+
+END OF DAY:
+8. Clear pending notifications
+9. Review any remaining requests
+10. Note any follow-ups needed
+
+WEEKLY TASKS:
+• Review outage statistics
+• Check for patterns or concerns
+• Update agent profiles as needed
+• Coordinate with Admin team
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 SECTION 13: HR BEST PRACTICES
+═══════════════════════════════════════════════════════════════════════════════
+
+PROCESSING LEAVE REQUESTS:
+✓ Respond within 24-48 hours when possible
+✓ Always check calendar before approving
+✓ Provide clear reasons when rejecting
+✓ Be consistent in your decisions
+✓ Document unusual circumstances
+
+MANAGING PROFILES:
+✓ Keep information up to date
+✓ Verify changes when updating
+✓ Maintain confidentiality
+✓ Report suspicious changes
+
+USING OUTAGE STATS:
+✓ Review weekly for patterns
+✓ Flag concerning trends early
+✓ Use data for planning
+✓ Maintain employee privacy
+
+COMMUNICATION:
+✓ Be professional in rejections
+✓ Offer alternatives when possible
+✓ Respond to questions promptly
+✓ Escalate complex issues to Admin
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ SECTION 14: COMMON HR SCENARIOS
+═══════════════════════════════════════════════════════════════════════════════
+
+SCENARIO 1: Multiple requests for same dates
+→ Check team coverage needs
+→ Consider first-come-first-served
+→ Discuss with team lead if needed
+→ Be transparent in decisions
+
+SCENARIO 2: Last-minute sick leave
+→ Approve quickly for genuine cases
+→ Track patterns if frequent
+→ Request documentation if policy requires
+
+SCENARIO 3: Request conflicts with important event
+→ Explain the business need
+→ Suggest alternative dates
+→ Work with agent to find solution
+
+SCENARIO 4: Agent profile information incorrect
+→ Verify with the agent
+→ Update in the system
+→ Document the change
+
+SCENARIO 5: Override request submitted
+→ Read the override reason carefully
+→ Evaluate business impact
+→ Make consistent decisions
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 15: GETTING HELP
+═══════════════════════════════════════════════════════════════════════════════
+
+FOR HR-SPECIFIC ISSUES:
+• Contact your Admin team
+• Reach out to Super Admin for complex issues
+
+FOR SYSTEM ISSUES:
+• Report via improvements tracker
+• Document the problem clearly
+• Include screenshots if possible
+
+FOR GUIDANCE:
+• Review this guide anytime via ❓ button
+• Check User Guide page
+• Consult HR policy documents
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Welcome to your HR role in the VFS Agent Portal! Your work in managing leave
+requests and agent profiles is essential to the team's success.
+
+Remember: The demo guide is always available via the ❓ button.
+
+Best regards,
+The VFS Team
+
+═══════════════════════════════════════════════════════════════════════════════
