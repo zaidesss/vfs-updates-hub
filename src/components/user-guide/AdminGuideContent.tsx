@@ -3,6 +3,8 @@ import { QuestionsManagementSection } from './sections/admin/QuestionsManagement
 import { UserManagementSection } from './sections/admin/UserManagementSection';
 import { ArticleRequestsSection } from './sections/admin/ArticleRequestsSection';
 import { DashboardSection } from './sections/admin/DashboardSection';
+import { ChangelogManagementSection } from './sections/admin/ChangelogManagementSection';
+import { ProfileChangeRequestsSection } from './sections/admin/ProfileChangeRequestsSection';
 import { OutageStatsSection } from './sections/OutageStatsSection';
 import { RolesSection } from './sections/RolesSection';
 import { EmailNotificationsSection } from './sections/EmailNotificationsSection';
@@ -25,6 +27,12 @@ export function AdminGuideContent() {
       
       {/* Dashboard */}
       <DashboardSection />
+      
+      {/* Changelog Management (Super Admin) */}
+      <ChangelogManagementSection />
+      
+      {/* Profile Change Requests (Super Admin) */}
+      <ProfileChangeRequestsSection />
       
       {/* Outage Stats (shared with user guide but relevant for admins) */}
       <OutageStatsSection />

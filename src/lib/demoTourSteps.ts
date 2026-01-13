@@ -21,7 +21,8 @@ From here you can access:
 • Updates - View and acknowledge important updates
 • Knowledge Base - Search articles by category
 • Update Requests - Submit requests for new articles
-• User Guide - Comprehensive documentation`,
+• User Guide - Comprehensive documentation
+• What's New - See recent portal changes`,
     target: '[data-tour="updates-menu"]',
     position: 'bottom',
   },
@@ -107,13 +108,29 @@ You'll be notified when your request is reviewed.`,
     content: `Access your profile from the People menu → My Bio.
 
 You can view and update:
-• Contact information
-• Emergency contacts
-• Personal details
+• Contact information & emergency contacts
+• Work details (position, team lead, clients)
+• Internet connectivity info
+• Upwork & freelance details
 
-Some fields may require admin to change.`,
+Some fields require admin approval to change.`,
     target: '[data-tour="people-menu"]',
     position: 'bottom',
+  },
+  {
+    title: '📝 Profile Change Requests',
+    content: `Some profile fields are protected and require approval:
+• Hourly rate & rate history
+• Start date & position
+• Banking information
+
+To request a change:
+1. Click "Request Change" next to the field
+2. Enter the new value and reason
+3. Submit - Super Admins will review
+
+You'll be notified when approved/rejected.`,
+    position: 'center',
   },
   {
     title: '🔔 Notifications',
@@ -123,6 +140,7 @@ Click it to see:
 • New update alerts
 • Question replies
 • Leave request decisions
+• Profile change request updates
 
 Red badge = unread notifications
 Click "Mark all as read" to clear.`,
@@ -144,6 +162,18 @@ Password requirements:
     position: 'center',
   },
   {
+    title: '🆕 What\'s New (Changelog)',
+    content: `Check out recent portal updates!
+
+Go to Updates → What's New to see:
+• New features and improvements
+• Changes relevant to your role
+• Links to new functionality
+
+Stay informed about portal enhancements!`,
+    position: 'center',
+  },
+  {
     title: '❓ Need Help?',
     content: `You can always access this guide again!
 
@@ -151,6 +181,7 @@ Options:
 • Click the ❓ icon in the header
 • Visit the User Guide page
 • Download guides from Announcements
+• Check "What's New" for updates
 
 The ❓ button reopens this interactive tour anytime.`,
     target: '[data-tour="help-button"]',
@@ -165,6 +196,7 @@ Quick reminders:
 ✓ Acknowledge updates promptly
 ✓ Use the calendar before requesting time off
 ✓ Ask questions when unclear
+✓ Check "What's New" for portal changes
 
 Click "Finish" to start using the portal!`,
     position: 'center',
@@ -219,11 +251,24 @@ Go to People → All Bios to:
 • View complete profile details
 • Update contact information
 • Manage emergency contacts
+• View connectivity & freelance info
 
 Keep profiles accurate and up-to-date.`,
     position: 'center',
   },
-  ...USER_TOUR_STEPS.slice(9, 12), // Include notification and password steps
+  {
+    title: '📝 Profile Change Requests (HR)',
+    content: `You can submit change requests on behalf of agents!
+
+Protected fields (rate, position, etc.) require Super Admin approval. When editing agent profiles:
+1. Click "Request Change" for protected fields
+2. Enter the new value and reason
+3. Super Admin reviews and approves/rejects
+
+Track requests in the Admin Panel.`,
+    position: 'center',
+  },
+  ...USER_TOUR_STEPS.slice(10, 14), // Include notification, password, changelog, and help steps
   {
     title: '🎓 HR Guide Complete!',
     content: `You're ready to manage HR functions!
@@ -233,6 +278,7 @@ HR responsibilities:
 ✓ Keep profiles updated
 ✓ Monitor outage patterns
 ✓ Support agent questions
+✓ Check "What's New" for updates
 
 Click "Finish" to start working!`,
     position: 'center',
@@ -304,7 +350,19 @@ Same as HR:
 • Check calendar conflicts`,
     position: 'center',
   },
-  ...USER_TOUR_STEPS.slice(9, 12), // Notification and password
+  {
+    title: '👥 Profile Management',
+    content: `Access all agent profiles via People → All Bios.
+
+New features:
+• Enhanced profile fields (Upwork, connectivity, equipment)
+• Request changes to protected fields
+• Super Admin reviews change requests
+
+Profile data helps with resource planning.`,
+    position: 'center',
+  },
+  ...USER_TOUR_STEPS.slice(10, 14), // Notification, password, changelog, help
   {
     title: '🎓 Admin Guide Complete!',
     content: `You're ready to manage the portal!
@@ -314,6 +372,7 @@ Admin responsibilities:
 ✓ Answer questions promptly
 ✓ Process leave requests fairly
 ✓ Keep content current
+✓ Check "What's New" for updates
 
 Click "Finish" to start administering!`,
     position: 'center',
@@ -331,7 +390,7 @@ This guide covers all features including exclusive Super Admin capabilities.
 Let's explore your full powers!`,
     position: 'center',
   },
-  ...ADMIN_TOUR_STEPS.slice(1, 9), // Include all admin steps
+  ...ADMIN_TOUR_STEPS.slice(1, 10), // Include all admin steps
   {
     title: '👥 User Management (Super Admin)',
     content: `You can create and delete user accounts!
@@ -359,6 +418,19 @@ Use the principle of least privilege.`,
     position: 'center',
   },
   {
+    title: '📝 Profile Change Requests',
+    content: `You review and approve profile change requests!
+
+When agents/HR request changes to protected fields:
+1. Check Admin Panel for pending requests
+2. Review the current vs. requested value
+3. Approve or reject with notes
+4. User is notified of decision
+
+Rate reminders are sent 7 days before progressions.`,
+    position: 'center',
+  },
+  {
     title: '💡 Improvements Tracker',
     content: `Full control over the improvements tracker!
 
@@ -370,6 +442,19 @@ You can:
 • Delete completed items
 
 Keep the team focused on priorities.`,
+    position: 'center',
+  },
+  {
+    title: '📋 Changelog Management',
+    content: `Manage the "What's New" page!
+
+In Admin Panel, you can:
+• Add new changelog entries
+• Set which roles see each entry
+• Link entries to features
+• Edit or delete entries
+
+Keep users informed about portal changes!`,
     position: 'center',
   },
   {
@@ -390,8 +475,9 @@ Security best practices:
 
 Super Admin duties:
 ✓ Manage all users and roles
+✓ Review profile change requests
 ✓ All Admin responsibilities
-✓ System oversight
+✓ Update the changelog
 ✓ Security maintenance
 
 Click "Finish" to take command!`,

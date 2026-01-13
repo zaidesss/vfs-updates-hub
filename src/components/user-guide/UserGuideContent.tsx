@@ -12,6 +12,7 @@ import { NotificationsSection } from './sections/NotificationsSection';
 import { RolesSection } from './sections/RolesSection';
 import { EmailNotificationsSection } from './sections/EmailNotificationsSection';
 import { QuickReferenceSection } from './sections/QuickReferenceSection';
+import { ChangelogSection } from './sections/ChangelogSection';
 
 export function UserGuideContent() {
   return (
@@ -45,6 +46,9 @@ export function UserGuideContent() {
       
       {/* Profile */}
       <ProfileSection />
+      
+      {/* Changelog / What's New */}
+      <ChangelogSection />
       
       {/* Notifications */}
       <NotificationsSection />

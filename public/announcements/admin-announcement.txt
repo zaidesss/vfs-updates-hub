@@ -623,7 +623,63 @@ SCENARIO: Agent not acknowledging updates
 → Escalate if pattern continues
 
 ═══════════════════════════════════════════════════════════════════════════════
-📞 SECTION 19: GETTING HELP
+🆕 SECTION 19: WHAT'S NEW (CHANGELOG)
+═══════════════════════════════════════════════════════════════════════════════
+
+A "What's New" page is now available to keep everyone informed about portal
+updates. As an Admin, you can view this page but only Super Admins can add
+entries.
+
+ACCESS: Updates Menu → What's New
+
+WHAT YOU'LL SEE:
+• Reference number (CL-XXXX)
+• Category badge
+• Title and detailed description
+• Date of the change
+• Links to new features
+
+NOTE: You only see entries tagged for Admin or all roles.
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 SECTION 20: PROFILE CHANGE REQUESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+You can now request changes to protected profile fields on behalf of agents.
+
+─────────────────────────────────────────────────────────────────────────────
+PROTECTED FIELDS (Require Super Admin Approval)
+─────────────────────────────────────────────────────────────────────────────
+
+• Current Hourly Rate
+• Rate History / Rate Progression  
+• Start Date
+• Position / Role
+• Banking Information
+
+─────────────────────────────────────────────────────────────────────────────
+SUBMITTING REQUESTS FOR AGENTS
+─────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Go to People → All Bios
+STEP 2: Select the agent's profile
+STEP 3: Click "Request Change" on the protected field
+STEP 4: Enter the new value
+STEP 5: Provide the reason
+STEP 6: Submit - Super Admin will review
+
+─────────────────────────────────────────────────────────────────────────────
+NEW PROFILE FIELDS
+─────────────────────────────────────────────────────────────────────────────
+
+Agent profiles now include:
+• Upwork Username & Profile URL
+• Headset Model
+• Primary/Backup Internet Provider & Speed
+• Banking Information (protected)
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SECTION 21: GETTING HELP
 ═══════════════════════════════════════════════════════════════════════════════
 
 FOR ADMIN-SPECIFIC ISSUES:
