@@ -135,6 +135,52 @@ export async function fetchAllProfiles(): Promise<{ data: AgentProfile[] | null;
   return { data: (data || []).map(d => transformProfile(d)!) , error: null };
 }
 
+export interface UserWithProfile {
+  email: string;
+  name: string | null;
+  role: string;
+  created_at: string;
+  profile: AgentProfile | null;
+}
+
+export async function fetchAllUsersWithProfiles(): Promise<{ data: UserWithProfile[] | null; error: string | null }> {
+  // Fetch all users from user_roles
+  const { data: users, error: usersError } = await supabase
+    .from('user_roles')
+    .select('email, name, role, created_at')
+    .order('name', { ascending: true, nullsFirst: false });
+
+  if (usersError) {
+    return { data: null, error: usersError.message };
+  }
+
+  // Fetch all profiles
+  const { data: profiles, error: profilesError } = await supabase
+    .from('agent_profiles')
+    .select('*');
+
+  if (profilesError) {
+    return { data: null, error: profilesError.message };
+  }
+
+  // Create a map of profiles by email
+  const profileMap = new Map<string, AgentProfile>();
+  (profiles || []).forEach(p => {
+    profileMap.set(p.email.toLowerCase(), transformProfile(p)!);
+  });
+
+  // Merge users with their profiles
+  const usersWithProfiles: UserWithProfile[] = (users || []).map(user => ({
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    created_at: user.created_at,
+    profile: profileMap.get(user.email.toLowerCase()) || null
+  }));
+
+  return { data: usersWithProfiles, error: null };
+}
+
 export async function upsertProfile(input: AgentProfileInput): Promise<{ data: AgentProfile | null; error: string | null }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) {

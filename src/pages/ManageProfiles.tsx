@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, ChevronLeft, Search, Briefcase, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { fetchAllProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest } from '@/lib/agentProfileApi';
+import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile } from '@/lib/agentProfileApi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { Separator } from '@/components/ui/separator';
@@ -28,8 +28,8 @@ export default function ManageProfilesPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [profiles, setProfiles] = useState<AgentProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<AgentProfile | null>(null);
+  const [usersWithProfiles, setUsersWithProfiles] = useState<UserWithProfile[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [changeRequests, setChangeRequests] = useState<ProfileChangeRequest[]>([]);
   const [activeTab, setActiveTab] = useState('profiles');
@@ -43,13 +43,13 @@ export default function ManageProfilesPage() {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [profilesResult, requestsResult] = await Promise.all([
-      fetchAllProfiles(),
+    const [usersResult, requestsResult] = await Promise.all([
+      fetchAllUsersWithProfiles(),
       isSuperAdmin ? fetchAllChangeRequests() : Promise.resolve({ data: [], error: null })
     ]);
     
-    if (profilesResult.data) {
-      setProfiles(profilesResult.data);
+    if (usersResult.data) {
+      setUsersWithProfiles(usersResult.data);
     }
     if (requestsResult.data) {
       setChangeRequests(requestsResult.data);
@@ -57,39 +57,41 @@ export default function ManageProfilesPage() {
     setIsLoading(false);
   };
 
-  const handleSelectProfile = (profile: AgentProfile) => {
-    setSelectedProfile(profile);
+  const handleSelectUser = (userWithProfile: UserWithProfile) => {
+    setSelectedUser(userWithProfile);
+    const profile = userWithProfile.profile;
+    
     setEditData({
-      email: profile.email,
-      full_name: profile.full_name || '',
-      phone_number: profile.phone_number || '',
-      birthday: profile.birthday || '',
-      start_date: profile.start_date || '',
-      home_address: profile.home_address || '',
-      emergency_contact_name: profile.emergency_contact_name || '',
-      emergency_contact_phone: profile.emergency_contact_phone || '',
-      position: profile.position || '',
-      team_lead: profile.team_lead || '',
-      clients: profile.clients || '',
-      hourly_rate: profile.hourly_rate,
-      rate_history: profile.rate_history || [],
-      primary_internet_provider: profile.primary_internet_provider || '',
-      primary_internet_speed: profile.primary_internet_speed || '',
-      backup_internet_provider: profile.backup_internet_provider || '',
-      backup_internet_speed: profile.backup_internet_speed || '',
-      backup_internet_type: profile.backup_internet_type || '',
-      bank_name: profile.bank_name || '',
-      bank_account_number: profile.bank_account_number || '',
-      bank_account_holder: profile.bank_account_holder || '',
-      upwork_profile_url: profile.upwork_profile_url || '',
-      upwork_username: profile.upwork_username || '',
-      headset_model: profile.headset_model || '',
-      work_schedule: profile.work_schedule || '',
-      employment_status: profile.employment_status || 'Active',
-      payment_frequency: profile.payment_frequency || ''
+      email: userWithProfile.email,
+      full_name: profile?.full_name || userWithProfile.name || '',
+      phone_number: profile?.phone_number || '',
+      birthday: profile?.birthday || '',
+      start_date: profile?.start_date || '',
+      home_address: profile?.home_address || '',
+      emergency_contact_name: profile?.emergency_contact_name || '',
+      emergency_contact_phone: profile?.emergency_contact_phone || '',
+      position: profile?.position || '',
+      team_lead: profile?.team_lead || '',
+      clients: profile?.clients || '',
+      hourly_rate: profile?.hourly_rate,
+      rate_history: profile?.rate_history || [],
+      primary_internet_provider: profile?.primary_internet_provider || '',
+      primary_internet_speed: profile?.primary_internet_speed || '',
+      backup_internet_provider: profile?.backup_internet_provider || '',
+      backup_internet_speed: profile?.backup_internet_speed || '',
+      backup_internet_type: profile?.backup_internet_type || '',
+      bank_name: profile?.bank_name || '',
+      bank_account_number: profile?.bank_account_number || '',
+      bank_account_holder: profile?.bank_account_holder || '',
+      upwork_profile_url: profile?.upwork_profile_url || '',
+      upwork_username: profile?.upwork_username || '',
+      headset_model: profile?.headset_model || '',
+      work_schedule: profile?.work_schedule || '',
+      employment_status: profile?.employment_status || 'Active',
+      payment_frequency: profile?.payment_frequency || ''
     });
     
-    const existingHistory = profile.rate_history || [];
+    const existingHistory = profile?.rate_history || [];
     const historyUI = Array(6).fill(null).map((_, i) => ({
       date: existingHistory[i]?.date || '',
       rate: existingHistory[i]?.rate?.toString() || ''
@@ -111,7 +113,7 @@ export default function ManageProfilesPage() {
   };
 
   const handleSave = async () => {
-    if (!editData || !selectedProfile) return;
+    if (!editData || !selectedUser) return;
     
     setIsSaving(true);
     
@@ -132,8 +134,13 @@ export default function ManageProfilesPage() {
         title: 'Success',
         description: `Profile for ${editData.full_name || editData.email} saved successfully`
       });
-      setProfiles(prev => prev.map(p => p.id === selectedProfile.id ? result.data! : p));
-      setSelectedProfile(result.data);
+      // Update the usersWithProfiles state with the new profile
+      setUsersWithProfiles(prev => prev.map(u => 
+        u.email === selectedUser.email 
+          ? { ...u, profile: result.data! }
+          : u
+      ));
+      setSelectedUser(prev => prev ? { ...prev, profile: result.data! } : null);
     } else if (result.error) {
       toast({
         title: 'Error',
@@ -164,9 +171,10 @@ export default function ManageProfilesPage() {
     }
   };
 
-  const filteredProfiles = profiles.filter(p => 
-    (p.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    p.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = usersWithProfiles.filter(u => 
+    (u.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (u.profile?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const pendingRequests = changeRequests.filter(r => r.status === 'pending');
@@ -295,11 +303,11 @@ export default function ManageProfilesPage() {
 
             <TabsContent value="profiles" className="mt-6">
               <ProfilesGrid 
-                profiles={filteredProfiles}
+                users={filteredUsers}
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
-                selectedProfile={selectedProfile}
-                handleSelectProfile={handleSelectProfile}
+                selectedUser={selectedUser}
+                handleSelectUser={handleSelectUser}
                 editData={editData}
                 handleInputChange={handleInputChange}
                 handleRateHistoryChange={handleRateHistoryChange}
@@ -308,7 +316,7 @@ export default function ManageProfilesPage() {
                 isSaving={isSaving}
                 canEditWorkInfo={canEditWorkInfo}
                 daysEmployed={daysEmployed}
-                setSelectedProfile={setSelectedProfile}
+                setSelectedUser={setSelectedUser}
               />
             </TabsContent>
           </Tabs>
@@ -316,11 +324,11 @@ export default function ManageProfilesPage() {
 
         {(!isSuperAdmin || pendingRequests.length === 0) && (
           <ProfilesGrid 
-            profiles={filteredProfiles}
+            users={filteredUsers}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
-            selectedProfile={selectedProfile}
-            handleSelectProfile={handleSelectProfile}
+            selectedUser={selectedUser}
+            handleSelectUser={handleSelectUser}
             editData={editData}
             handleInputChange={handleInputChange}
             handleRateHistoryChange={handleRateHistoryChange}
@@ -329,7 +337,7 @@ export default function ManageProfilesPage() {
             isSaving={isSaving}
             canEditWorkInfo={canEditWorkInfo}
             daysEmployed={daysEmployed}
-            setSelectedProfile={setSelectedProfile}
+            setSelectedUser={setSelectedUser}
           />
         )}
       </div>
@@ -339,11 +347,11 @@ export default function ManageProfilesPage() {
 
 // Extracted ProfilesGrid component for reuse
 interface ProfilesGridProps {
-  profiles: AgentProfile[];
+  users: UserWithProfile[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  selectedProfile: AgentProfile | null;
-  handleSelectProfile: (profile: AgentProfile) => void;
+  selectedUser: UserWithProfile | null;
+  handleSelectUser: (user: UserWithProfile) => void;
   editData: AgentProfileInput | null;
   handleInputChange: (field: keyof AgentProfileInput, value: string | number | null) => void;
   handleRateHistoryChange: (index: number, field: 'date' | 'rate', value: string) => void;
@@ -352,15 +360,15 @@ interface ProfilesGridProps {
   isSaving: boolean;
   canEditWorkInfo: boolean;
   daysEmployed: number;
-  setSelectedProfile: (profile: AgentProfile | null) => void;
+  setSelectedUser: (user: UserWithProfile | null) => void;
 }
 
 function ProfilesGrid({
-  profiles,
+  users,
   searchQuery,
   setSearchQuery,
-  selectedProfile,
-  handleSelectProfile,
+  selectedUser,
+  handleSelectUser,
   editData,
   handleInputChange,
   handleRateHistoryChange,
@@ -369,14 +377,14 @@ function ProfilesGrid({
   isSaving,
   canEditWorkInfo,
   daysEmployed,
-  setSelectedProfile
+  setSelectedUser
 }: ProfilesGridProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Agent List */}
       <Card className="lg:col-span-1">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Agents ({profiles.length})</CardTitle>
+          <CardTitle className="text-lg">Agents ({users.length})</CardTitle>
           <div className="relative mt-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -390,52 +398,63 @@ function ProfilesGrid({
         <CardContent className="p-0">
           <ScrollArea className="h-[600px]">
             <div className="space-y-1 p-3">
-              {profiles.map((profile) => (
+              {users.map((user) => (
                 <button
-                  key={profile.id}
-                  onClick={() => handleSelectProfile(profile)}
+                  key={user.email}
+                  onClick={() => handleSelectUser(user)}
                   className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    selectedProfile?.id === profile.id
+                    selectedUser?.email === user.email
                       ? 'bg-primary text-primary-foreground'
                       : 'hover:bg-muted'
                   }`}
                 >
                   <div className="font-medium truncate">
-                    {profile.full_name || 'Unnamed Agent'}
+                    {user.profile?.full_name || user.name || 'Unnamed Agent'}
                   </div>
                   <div className={`text-sm truncate ${
-                    selectedProfile?.id === profile.id
+                    selectedUser?.email === user.email
                       ? 'text-primary-foreground/80'
                       : 'text-muted-foreground'
                   }`}>
-                    {profile.email}
+                    {user.email}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    {profile.employment_status && (
+                    {user.profile?.employment_status ? (
                       <Badge 
-                        variant={profile.employment_status === 'Active' ? 'default' : 'secondary'}
+                        variant={user.profile.employment_status === 'Active' ? 'default' : 'secondary'}
                         className={`text-xs ${
-                          selectedProfile?.id === profile.id
+                          selectedUser?.email === user.email
                             ? 'bg-primary-foreground/20 text-primary-foreground'
                             : ''
                         }`}
                       >
-                        {profile.employment_status}
+                        {user.profile.employment_status}
+                      </Badge>
+                    ) : (
+                      <Badge 
+                        variant="outline"
+                        className={`text-xs ${
+                          selectedUser?.email === user.email
+                            ? 'bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30'
+                            : ''
+                        }`}
+                      >
+                        No Profile
                       </Badge>
                     )}
-                    {profile.hourly_rate && (
+                    {user.profile?.hourly_rate && (
                       <span className={`text-xs ${
-                        selectedProfile?.id === profile.id
+                        selectedUser?.email === user.email
                           ? 'text-primary-foreground/70'
                           : 'text-muted-foreground'
                       }`}>
-                        ${profile.hourly_rate}/hr
+                        ${user.profile.hourly_rate}/hr
                       </span>
                     )}
                   </div>
                 </button>
               ))}
-              {profiles.length === 0 && (
+              {users.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">No agents found</p>
               )}
             </div>
@@ -445,7 +464,7 @@ function ProfilesGrid({
 
       {/* Profile Editor */}
       <Card className="lg:col-span-2">
-        {selectedProfile && editData ? (
+        {selectedUser && editData ? (
           <>
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -453,7 +472,7 @@ function ProfilesGrid({
                   variant="ghost"
                   size="icon"
                   className="lg:hidden"
-                  onClick={() => setSelectedProfile(null)}
+                  onClick={() => setSelectedUser(null)}
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </Button>
@@ -462,7 +481,7 @@ function ProfilesGrid({
                 </div>
                 <div>
                   <CardTitle>{editData.full_name || 'Agent'}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{selectedProfile.email}</p>
+                  <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
                 </div>
               </div>
             </CardHeader>
