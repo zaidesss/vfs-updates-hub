@@ -937,6 +937,7 @@ export type Database = {
         | "in_progress"
         | "on_hold"
         | "completed"
+        | "for_checking"
       request_status:
         | "pending"
         | "approved"
@@ -1089,6 +1090,7 @@ export const Constants = {
         "in_progress",
         "on_hold",
         "completed",
+        "for_checking",
       ],
       request_status: [
         "pending",
