@@ -50,13 +50,14 @@ import {
   ArrowUp,
   ArrowDown,
   Filter,
-  X
+  X,
+  Eye
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DatePicker, formatDisplayDate } from "@/components/ui/date-picker";
 
 type Priority = "low" | "medium" | "high";
-type Status = "not_started" | "in_progress" | "on_hold" | "completed";
+type Status = "not_started" | "in_progress" | "on_hold" | "for_checking" | "completed";
 type SortField = "created_at" | "description" | "category" | "assignee_name" | "priority" | "status" | "remarks";
 type SortDirection = "asc" | "desc";
 
@@ -104,7 +105,8 @@ const statusConfig = {
   not_started: { label: "Not Started", color: "bg-slate-100 text-slate-600", icon: Circle, order: 1 },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Clock, order: 2 },
   on_hold: { label: "On Hold", color: "bg-amber-100 text-amber-700", icon: Pause, order: 3 },
-  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle2, order: 4 },
+  for_checking: { label: "For Checking", color: "bg-yellow-100 text-yellow-700", icon: Eye, order: 4 },
+  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle2, order: 5 },
 };
 
 const defaultCategories = [
@@ -485,18 +487,23 @@ const ImprovementsTracker = ({
 
   // Stats
   const completedCount = improvements.filter(i => i.status === "completed").length;
+  const forCheckingCount = improvements.filter(i => i.status === "for_checking").length;
   const inProgressCount = improvements.filter(i => i.status === "in_progress").length;
-  const totalCount = improvements.length;
+  const pendingCount = improvements.filter(i => i.status === "not_started" || i.status === "on_hold").length;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Improvements Tracker</DialogTitle>
-          <DialogDescription className="flex items-center gap-4 pt-2">
+          <DialogDescription className="flex items-center gap-4 pt-2 flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
               {completedCount} Completed
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-yellow-500"></span>
+              {forCheckingCount} For Checking
             </span>
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
@@ -504,7 +511,7 @@ const ImprovementsTracker = ({
             </span>
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-slate-400"></span>
-              {totalCount - completedCount - inProgressCount} Pending
+              {pendingCount} Pending
             </span>
           </DialogDescription>
         </DialogHeader>
