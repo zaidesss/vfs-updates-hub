@@ -24,6 +24,7 @@ import OutageStats from "./pages/OutageStats";
 import Calendar from "./pages/Calendar";
 import AgentProfile from "./pages/AgentProfile";
 import ManageProfiles from "./pages/ManageProfiles";
+import MasterDirectory from "./pages/MasterDirectory";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
@@ -160,6 +161,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ManageProfiles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/master-directory"
+        element={
+          <ProtectedRoute>
+            <MasterDirectory />
           </ProtectedRoute>
         }
       />
