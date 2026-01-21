@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -79,6 +79,9 @@ export function Layout({ children }: LayoutProps) {
     }
     if (isAdmin || isHR) {
       peopleItems.push({ href: '/manage-profiles', label: 'All Bios', icon: Users });
+    }
+    if (isAdmin) {
+      peopleItems.push({ href: '/master-directory', label: 'Master Directory', icon: ClipboardList });
     }
     if (peopleItems.length > 0) {
       groups.push({

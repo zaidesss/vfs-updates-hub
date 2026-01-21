@@ -35,6 +35,113 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_directory: {
+        Row: {
+          agent_name: string | null
+          agent_tag: string | null
+          break_schedule: string | null
+          created_at: string
+          day_off: string[] | null
+          email: string
+          id: string
+          ot_total_hours: number | null
+          overall_total_hours: number | null
+          support_account: string | null
+          ticket_assignment_view_id: string | null
+          updated_at: string
+          views: string[] | null
+          wd_ticket_assign: string | null
+          we_ticket_assign: string | null
+          weekday_ot_schedule: string | null
+          weekday_schedule: string | null
+          weekday_total_hours: number | null
+          weekend_ot_schedule: string | null
+          weekend_schedule: string | null
+          weekend_total_hours: number | null
+          zendesk_instance: string | null
+        }
+        Insert: {
+          agent_name?: string | null
+          agent_tag?: string | null
+          break_schedule?: string | null
+          created_at?: string
+          day_off?: string[] | null
+          email: string
+          id?: string
+          ot_total_hours?: number | null
+          overall_total_hours?: number | null
+          support_account?: string | null
+          ticket_assignment_view_id?: string | null
+          updated_at?: string
+          views?: string[] | null
+          wd_ticket_assign?: string | null
+          we_ticket_assign?: string | null
+          weekday_ot_schedule?: string | null
+          weekday_schedule?: string | null
+          weekday_total_hours?: number | null
+          weekend_ot_schedule?: string | null
+          weekend_schedule?: string | null
+          weekend_total_hours?: number | null
+          zendesk_instance?: string | null
+        }
+        Update: {
+          agent_name?: string | null
+          agent_tag?: string | null
+          break_schedule?: string | null
+          created_at?: string
+          day_off?: string[] | null
+          email?: string
+          id?: string
+          ot_total_hours?: number | null
+          overall_total_hours?: number | null
+          support_account?: string | null
+          ticket_assignment_view_id?: string | null
+          updated_at?: string
+          views?: string[] | null
+          wd_ticket_assign?: string | null
+          we_ticket_assign?: string | null
+          weekday_ot_schedule?: string | null
+          weekday_schedule?: string | null
+          weekday_total_hours?: number | null
+          weekend_ot_schedule?: string | null
+          weekend_schedule?: string | null
+          weekend_total_hours?: number | null
+          zendesk_instance?: string | null
+        }
+        Relationships: []
+      }
+      agent_directory_history: {
+        Row: {
+          changed_at: string
+          changed_by: string
+          changes: Json
+          directory_entry_id: string
+          id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by: string
+          changes: Json
+          directory_entry_id: string
+          id?: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string
+          changes?: Json
+          directory_entry_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_directory_history_directory_entry_id_fkey"
+            columns: ["directory_entry_id"]
+            isOneToOne: false
+            referencedRelation: "agent_directory"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_profiles: {
         Row: {
           backup_internet_provider: string | null
