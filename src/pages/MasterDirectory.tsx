@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
   Table,
   TableBody,
@@ -19,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Popover,
@@ -35,10 +33,7 @@ import {
   bulkSaveEntries,
   validateScheduleFormat,
   calculateTotalHours,
-  ZENDESK_INSTANCES,
-  SUPPORT_ACCOUNTS,
-  VIEW_OPTIONS,
-  DAY_OFF_OPTIONS,
+  fetchAllDropdownOptions,
 } from '@/lib/masterDirectoryApi';
 
 export default function MasterDirectory() {
@@ -49,20 +44,63 @@ export default function MasterDirectory() {
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
+  
+  // Dynamic dropdown options
+  const [zendeskOptions, setZendeskOptions] = useState<string[]>([]);
+  const [supportAccountOptions, setSupportAccountOptions] = useState<string[]>([]);
+  const [viewOptions, setViewOptions] = useState<string[]>([]);
+  const [dayOffOptions, setDayOffOptions] = useState<string[]>([]);
+  
+  // Refs for synchronized scrolling
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const scrollbarRef = useRef<HTMLDivElement>(null);
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
-    return editedData.some((entry, idx) => {
+    return editedData.some((entry) => {
       const original = originalData.find((o) => o.email === entry.email);
       if (!original) return false;
       return JSON.stringify(entry) !== JSON.stringify(original);
     });
   }, [editedData, originalData]);
 
-  // Load data on mount
+  // Load data and dropdown options on mount
   useEffect(() => {
     loadData();
+    loadDropdownOptions();
   }, []);
+  
+  // Sync horizontal scroll between table and scrollbar
+  useEffect(() => {
+    const tableContainer = tableContainerRef.current;
+    const scrollbar = scrollbarRef.current;
+    
+    if (!tableContainer || !scrollbar) return;
+    
+    const syncTableToScrollbar = () => {
+      if (scrollbar) scrollbar.scrollLeft = tableContainer.scrollLeft;
+    };
+    
+    const syncScrollbarToTable = () => {
+      if (tableContainer) tableContainer.scrollLeft = scrollbar.scrollLeft;
+    };
+    
+    tableContainer.addEventListener('scroll', syncTableToScrollbar);
+    scrollbar.addEventListener('scroll', syncScrollbarToTable);
+    
+    return () => {
+      tableContainer.removeEventListener('scroll', syncTableToScrollbar);
+      scrollbar.removeEventListener('scroll', syncScrollbarToTable);
+    };
+  }, []);
+
+  const loadDropdownOptions = async () => {
+    const options = await fetchAllDropdownOptions();
+    setZendeskOptions(options.zendesk_instances);
+    setSupportAccountOptions(options.support_accounts);
+    setViewOptions(options.view_options);
+    setDayOffOptions(options.day_off_options);
+  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -245,38 +283,44 @@ export default function MasterDirectory() {
           />
         </div>
 
-        {/* Table */}
-        <div className="border rounded-lg">
-          <ScrollArea className="w-full">
-            <div className="min-w-[2200px]">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="min-w-[150px] sticky left-0 bg-muted/50 z-10">
-                      Full Name
-                    </TableHead>
-                    <TableHead className="min-w-[100px]">Position</TableHead>
-                    <TableHead className="min-w-[120px]">Team Lead</TableHead>
-                    <TableHead className="min-w-[100px]">Zendesk Instance</TableHead>
-                    <TableHead className="min-w-[100px]">Support Account</TableHead>
-                    <TableHead className="min-w-[120px]">Agent Name</TableHead>
-                    <TableHead className="min-w-[100px]">Agent Tag</TableHead>
-                    <TableHead className="min-w-[120px]">Views</TableHead>
-                    <TableHead className="min-w-[120px]">Ticket Assignment View ID</TableHead>
-                    <TableHead className="min-w-[140px]">Weekday Schedule</TableHead>
-                    <TableHead className="min-w-[80px]">Total Hours</TableHead>
-                    <TableHead className="min-w-[100px]">WD Ticket Assign</TableHead>
-                    <TableHead className="min-w-[140px]">Weekend Schedule</TableHead>
-                    <TableHead className="min-w-[80px]">Total Hours</TableHead>
-                    <TableHead className="min-w-[100px]">WE Ticket Assign</TableHead>
-                    <TableHead className="min-w-[130px]">Break Schedule</TableHead>
-                    <TableHead className="min-w-[140px]">Weekday OT Schedule</TableHead>
-                    <TableHead className="min-w-[140px]">Weekend OT Schedule</TableHead>
-                    <TableHead className="min-w-[80px]">Total OT Hours</TableHead>
-                    <TableHead className="min-w-[100px]">Overall Total Hours</TableHead>
-                    <TableHead className="min-w-[150px]">Day Off</TableHead>
-                  </TableRow>
-                </TableHeader>
+        {/* Table with sticky horizontal scrollbar */}
+        <div className="border rounded-lg sticky-scroll-container">
+          {/* Scrollable table area */}
+          <div className="table-scroll-wrapper">
+            <div 
+              ref={tableContainerRef}
+              className="overflow-x-auto"
+              style={{ overflowY: 'visible' }}
+            >
+              <div className="min-w-[2200px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="min-w-[150px] sticky left-0 bg-muted/50 z-10">
+                        Full Name
+                      </TableHead>
+                      <TableHead className="min-w-[100px]">Position</TableHead>
+                      <TableHead className="min-w-[120px]">Team Lead</TableHead>
+                      <TableHead className="min-w-[100px]">Zendesk Instance</TableHead>
+                      <TableHead className="min-w-[100px]">Support Account</TableHead>
+                      <TableHead className="min-w-[120px]">Agent Name</TableHead>
+                      <TableHead className="min-w-[100px]">Agent Tag</TableHead>
+                      <TableHead className="min-w-[120px]">Views</TableHead>
+                      <TableHead className="min-w-[120px]">Ticket Assignment View ID</TableHead>
+                      <TableHead className="min-w-[140px]">Weekday Schedule</TableHead>
+                      <TableHead className="min-w-[80px]">Total Hours</TableHead>
+                      <TableHead className="min-w-[100px]">WD Ticket Assign</TableHead>
+                      <TableHead className="min-w-[140px]">Weekend Schedule</TableHead>
+                      <TableHead className="min-w-[80px]">Total Hours</TableHead>
+                      <TableHead className="min-w-[100px]">WE Ticket Assign</TableHead>
+                      <TableHead className="min-w-[130px]">Break Schedule</TableHead>
+                      <TableHead className="min-w-[140px]">Weekday OT Schedule</TableHead>
+                      <TableHead className="min-w-[140px]">Weekend OT Schedule</TableHead>
+                      <TableHead className="min-w-[80px]">Total OT Hours</TableHead>
+                      <TableHead className="min-w-[100px]">Overall Total Hours</TableHead>
+                      <TableHead className="min-w-[150px]">Day Off</TableHead>
+                    </TableRow>
+                  </TableHeader>
                 <TableBody>
                   {filteredEntries.map((entry) => (
                     <TableRow key={entry.email}>
@@ -303,7 +347,7 @@ export default function MasterDirectory() {
                             <SelectValue placeholder="-" />
                           </SelectTrigger>
                           <SelectContent>
-                            {ZENDESK_INSTANCES.map((instance) => (
+                            {zendeskOptions.map((instance) => (
                               <SelectItem key={instance} value={instance}>
                                 {instance}
                               </SelectItem>
@@ -323,7 +367,7 @@ export default function MasterDirectory() {
                             <SelectValue placeholder="-" />
                           </SelectTrigger>
                           <SelectContent>
-                            {SUPPORT_ACCOUNTS.map((account) => (
+                            {supportAccountOptions.map((account) => (
                               <SelectItem key={account} value={account}>
                                 {account}
                               </SelectItem>
@@ -355,7 +399,7 @@ export default function MasterDirectory() {
                       {/* Multi-select: Views */}
                       <TableCell>
                         <MultiSelectDropdown
-                          options={VIEW_OPTIONS}
+                          options={viewOptions}
                           selected={entry.views || []}
                           onToggle={(value) =>
                             toggleArrayValue(entry.email, 'views', value)
@@ -477,7 +521,7 @@ export default function MasterDirectory() {
                       {/* Multi-select: Day Off */}
                       <TableCell>
                         <MultiSelectDropdown
-                          options={DAY_OFF_OPTIONS}
+                          options={dayOffOptions}
                           selected={entry.day_off || []}
                           onToggle={(value) =>
                             toggleArrayValue(entry.email, 'day_off', value)
@@ -489,8 +533,16 @@ export default function MasterDirectory() {
                 </TableBody>
               </Table>
             </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          </div>
+        </div>
+          
+          {/* Sticky horizontal scrollbar */}
+          <div 
+            ref={scrollbarRef}
+            className="horizontal-scroll"
+          >
+            <div style={{ width: '2200px', height: '1px' }} />
+          </div>
         </div>
 
         {filteredEntries.length === 0 && (

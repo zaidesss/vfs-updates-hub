@@ -346,6 +346,33 @@ export type Database = {
         }
         Relationships: []
       }
+      directory_dropdown_options: {
+        Row: {
+          category: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          value: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          value: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          value?: string
+        }
+        Relationships: []
+      }
       failed_emails: {
         Row: {
           created_at: string

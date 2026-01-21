@@ -142,6 +142,49 @@
   }
 }
 
+@layer components {
+  /* Sticky horizontal scrollbar for wide tables */
+  .sticky-scroll-container {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 220px);
+  }
+  
+  .sticky-scroll-container .table-scroll-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  
+  .sticky-scroll-container .horizontal-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: sticky;
+    bottom: 0;
+    background: hsl(var(--background));
+    border-top: 1px solid hsl(var(--border));
+    z-index: 10;
+  }
+  
+  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar {
+    height: 12px;
+  }
+  
+  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 6px;
+  }
+  
+  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 6px;
+  }
+  
+  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

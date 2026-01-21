@@ -36,14 +36,81 @@ export interface DirectoryHistoryEntry {
   changed_at: string;
 }
 
-// Configurable dropdown options
-export const ZENDESK_INSTANCES = ['ZD1', 'ZD2'];
-export const SUPPORT_ACCOUNTS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17'];
-export const VIEW_OPTIONS = ['Open', 'New', 'ALL'];
-export const DAY_OFF_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun'];
+// Default options (used as fallback if DB fetch fails)
+export const DEFAULT_ZENDESK_INSTANCES = ['ZD1', 'ZD2'];
+export const DEFAULT_SUPPORT_ACCOUNTS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+export const DEFAULT_VIEW_OPTIONS = ['Open', 'New', 'ALL'];
+export const DEFAULT_DAY_OFF_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // Schedule format validation regex: "8:00 AM-5:00 PM" or "8:00AM-5:00PM"
 const SCHEDULE_REGEX = /^(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i;
+
+// Fetch dropdown options from database
+export async function fetchDropdownOptions(category: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('directory_dropdown_options')
+      .select('value')
+      .eq('category', category)
+      .eq('is_active', true)
+      .order('display_order');
+    
+    if (error || !data || data.length === 0) {
+      // Return defaults based on category
+      switch (category) {
+        case 'zendesk_instance':
+          return DEFAULT_ZENDESK_INSTANCES;
+        case 'support_account':
+          return DEFAULT_SUPPORT_ACCOUNTS;
+        case 'views':
+          return DEFAULT_VIEW_OPTIONS;
+        case 'day_off':
+          return DEFAULT_DAY_OFF_OPTIONS;
+        default:
+          return [];
+      }
+    }
+    
+    return data.map((d: { value: string }) => d.value);
+  } catch (err) {
+    console.error('Error fetching dropdown options:', err);
+    // Return defaults based on category
+    switch (category) {
+      case 'zendesk_instance':
+        return DEFAULT_ZENDESK_INSTANCES;
+      case 'support_account':
+        return DEFAULT_SUPPORT_ACCOUNTS;
+      case 'views':
+        return DEFAULT_VIEW_OPTIONS;
+      case 'day_off':
+        return DEFAULT_DAY_OFF_OPTIONS;
+      default:
+        return [];
+    }
+  }
+}
+
+// Fetch all dropdown options at once for efficiency
+export async function fetchAllDropdownOptions(): Promise<{
+  zendesk_instances: string[];
+  support_accounts: string[];
+  view_options: string[];
+  day_off_options: string[];
+}> {
+  const [zendesk, support, views, dayOff] = await Promise.all([
+    fetchDropdownOptions('zendesk_instance'),
+    fetchDropdownOptions('support_account'),
+    fetchDropdownOptions('views'),
+    fetchDropdownOptions('day_off'),
+  ]);
+  
+  return {
+    zendesk_instances: zendesk,
+    support_accounts: support,
+    view_options: views,
+    day_off_options: dayOff,
+  };
+}
 
 export function validateScheduleFormat(schedule: string | null): boolean {
   if (!schedule || schedule.trim() === '') return true; // Empty is valid
