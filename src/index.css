@@ -143,45 +143,33 @@
 }
 
 @layer components {
-  /* Sticky horizontal scrollbar for wide tables */
-  .sticky-scroll-container {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 220px);
+  /* Styled scrollbars for data tables */
+  .data-table-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--muted));
   }
   
-  .sticky-scroll-container .table-scroll-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
+  .data-table-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
   }
   
-  .sticky-scroll-container .horizontal-scroll {
-    overflow-x: auto;
-    overflow-y: hidden;
-    position: sticky;
-    bottom: 0;
-    background: hsl(var(--background));
-    border-top: 1px solid hsl(var(--border));
-    z-index: 10;
-  }
-  
-  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar {
-    height: 12px;
-  }
-  
-  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-track {
+  .data-table-scroll::-webkit-scrollbar-track {
     background: hsl(var(--muted));
-    border-radius: 6px;
+    border-radius: 5px;
   }
   
-  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-thumb {
+  .data-table-scroll::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
-    border-radius: 6px;
+    border-radius: 5px;
   }
   
-  .sticky-scroll-container .horizontal-scroll::-webkit-scrollbar-thumb:hover {
+  .data-table-scroll::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
+  }
+  
+  .data-table-scroll::-webkit-scrollbar-corner {
+    background: hsl(var(--muted));
   }
 }
 
