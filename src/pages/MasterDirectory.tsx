@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -51,9 +51,6 @@ export default function MasterDirectory() {
   const [viewOptions, setViewOptions] = useState<string[]>([]);
   const [dayOffOptions, setDayOffOptions] = useState<string[]>([]);
   
-  // Refs for synchronized scrolling
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-  const scrollbarRef = useRef<HTMLDivElement>(null);
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -70,29 +67,6 @@ export default function MasterDirectory() {
     loadDropdownOptions();
   }, []);
   
-  // Sync horizontal scroll between table and scrollbar
-  useEffect(() => {
-    const tableContainer = tableContainerRef.current;
-    const scrollbar = scrollbarRef.current;
-    
-    if (!tableContainer || !scrollbar) return;
-    
-    const syncTableToScrollbar = () => {
-      if (scrollbar) scrollbar.scrollLeft = tableContainer.scrollLeft;
-    };
-    
-    const syncScrollbarToTable = () => {
-      if (tableContainer) tableContainer.scrollLeft = scrollbar.scrollLeft;
-    };
-    
-    tableContainer.addEventListener('scroll', syncTableToScrollbar);
-    scrollbar.addEventListener('scroll', syncScrollbarToTable);
-    
-    return () => {
-      tableContainer.removeEventListener('scroll', syncTableToScrollbar);
-      scrollbar.removeEventListener('scroll', syncScrollbarToTable);
-    };
-  }, []);
 
   const loadDropdownOptions = async () => {
     const options = await fetchAllDropdownOptions();
@@ -283,22 +257,18 @@ export default function MasterDirectory() {
           />
         </div>
 
-        {/* Table with sticky horizontal scrollbar */}
-        <div className="border rounded-lg sticky-scroll-container">
-          {/* Scrollable table area */}
-          <div className="table-scroll-wrapper">
-            <div 
-              ref={tableContainerRef}
-              className="overflow-x-auto"
-              style={{ overflowY: 'visible' }}
-            >
-              <div className="min-w-[2200px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="min-w-[150px] sticky left-0 bg-muted/50 z-10">
-                        Full Name
-                      </TableHead>
+        {/* Table with sticky header and frozen first column */}
+        <div 
+          className="border rounded-lg overflow-auto data-table-scroll"
+          style={{ maxHeight: 'calc(100vh - 220px)' }}
+        >
+          <div className="min-w-[2200px]">
+            <Table>
+              <TableHeader className="sticky top-0 z-20">
+                <TableRow className="bg-muted">
+                  <TableHead className="min-w-[150px] sticky left-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
+                    Full Name
+                  </TableHead>
                       <TableHead className="min-w-[100px]">Position</TableHead>
                       <TableHead className="min-w-[120px]">Team Lead</TableHead>
                       <TableHead className="min-w-[100px]">Zendesk Instance</TableHead>
@@ -321,13 +291,13 @@ export default function MasterDirectory() {
                       <TableHead className="min-w-[150px]">Day Off</TableHead>
                     </TableRow>
                   </TableHeader>
-                <TableBody>
-                  {filteredEntries.map((entry) => (
-                    <TableRow key={entry.email}>
-                      {/* Read-only columns from agent_profiles */}
-                      <TableCell className="font-medium sticky left-0 bg-background z-10 border-r">
-                        {entry.full_name || '-'}
-                      </TableCell>
+              <TableBody>
+                {filteredEntries.map((entry) => (
+                  <TableRow key={entry.email}>
+                    {/* Read-only columns from agent_profiles */}
+                    <TableCell className="font-medium sticky left-0 z-10 bg-background shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
+                      {entry.full_name || '-'}
+                    </TableCell>
                       <TableCell className="text-muted-foreground">
                         {entry.position || '-'}
                       </TableCell>
@@ -528,20 +498,10 @@ export default function MasterDirectory() {
                           }
                         />
                       </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        </div>
-          
-          {/* Sticky horizontal scrollbar */}
-          <div 
-            ref={scrollbarRef}
-            className="horizontal-scroll"
-          >
-            <div style={{ width: '2200px', height: '1px' }} />
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
 
