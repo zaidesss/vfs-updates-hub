@@ -46,30 +46,31 @@ serve(async (req: Request): Promise<Response> => {
     const payload: LeaveRequestNotificationPayload = await req.json();
     console.log("Received leave request notification payload:", payload);
 
-    // Fetch all admin emails
-    const { data: admins, error: adminError } = await supabase
+    // Fetch all super admins, admins, and HR emails
+    const { data: recipients, error: recipientError } = await supabase
       .from("user_roles")
-      .select("email, name")
-      .eq("role", "admin");
+      .select("email, name, role")
+      .in("role", ["super_admin", "admin", "hr"]);
 
-    if (adminError) {
-      console.error("Error fetching admin emails:", adminError);
+    if (recipientError) {
+      console.error("Error fetching recipient emails:", recipientError);
       return new Response(
-        JSON.stringify({ error: "Failed to fetch admin emails" }),
+        JSON.stringify({ error: "Failed to fetch recipient emails" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    if (!admins || admins.length === 0) {
-      console.log("No admins found to notify");
+    if (!recipients || recipients.length === 0) {
+      console.log("No recipients found to notify");
       return new Response(
-        JSON.stringify({ message: "No admins to notify" }),
+        JSON.stringify({ message: "No recipients to notify" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    const adminEmails = admins.map((a) => a.email);
-    console.log("Admin emails:", adminEmails);
+    // Get unique emails (in case someone has multiple roles)
+    const recipientEmails = [...new Set(recipients.map((r) => r.email))];
+    console.log("Recipient emails (super admins, admins, hr):", recipientEmails);
 
     // Format dates nicely
     const formatDate = (dateStr: string) => {
@@ -182,7 +183,7 @@ serve(async (req: Request): Promise<Response> => {
       },
       body: JSON.stringify({
         from: "VFS Updates Hub <onboarding@resend.dev>",
-        to: adminEmails,
+        to: recipientEmails,
         cc: [payload.agentEmail],
         subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request: ${payload.agentName} - ${payload.outageReason}`,
         html: emailHtml,
