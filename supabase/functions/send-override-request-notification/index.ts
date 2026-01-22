@@ -47,27 +47,28 @@ serve(async (req: Request): Promise<Response> => {
     const payload: OverrideRequestPayload = await req.json();
     console.log("Processing override request notification for:", payload.referenceNumber);
 
-    // Get all admin emails
-    const { data: admins, error: adminError } = await supabase
+    // Get all super admin, admin, and HR emails
+    const { data: recipients, error: recipientError } = await supabase
       .from("user_roles")
       .select("email")
-      .eq("role", "admin");
+      .in("role", ["super_admin", "admin", "hr"]);
 
-    if (adminError) {
-      console.error("Error fetching admins:", adminError);
-      throw adminError;
+    if (recipientError) {
+      console.error("Error fetching recipients:", recipientError);
+      throw recipientError;
     }
 
-    const adminEmails = admins?.map(a => a.email) || [];
+    // Get unique emails
+    const recipientEmails = [...new Set(recipients?.map(r => r.email) || [])];
     
-    if (adminEmails.length === 0) {
-      console.log("No admin emails found");
-      return new Response(JSON.stringify({ success: true, message: "No admins to notify" }), {
+    if (recipientEmails.length === 0) {
+      console.log("No recipient emails found");
+      return new Response(JSON.stringify({ success: true, message: "No recipients to notify" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`Sending override request to ${adminEmails.length} admins, CC: ${payload.agentEmail}`);
+    console.log(`Sending override request to ${recipientEmails.length} recipients (super admins, admins, hr), CC: ${payload.agentEmail}`);
 
     const formatDate = (dateStr: string) => {
       const date = new Date(dateStr);
@@ -76,7 +77,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const emailResponse = await resend.emails.send({
       from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>",
-      to: adminEmails,
+      to: recipientEmails,
       cc: [payload.agentEmail],
       subject: `🚨 Override Approval Needed - ${payload.referenceNumber}`,
       html: `

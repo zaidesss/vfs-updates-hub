@@ -58,18 +58,19 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log("Sending decision notification for:", payload);
 
-    // Get admin emails for CC
-    const { data: adminUsers, error: adminError } = await supabase
+    // Get super admin, admin, and HR emails for CC
+    const { data: recipientUsers, error: recipientError } = await supabase
       .from("user_roles")
       .select("email")
-      .eq("role", "admin");
+      .in("role", ["super_admin", "admin", "hr"]);
 
-    if (adminError) {
-      console.error("Error fetching admin emails:", adminError);
+    if (recipientError) {
+      console.error("Error fetching recipient emails:", recipientError);
     }
 
-    const adminEmails = adminUsers?.map((u) => u.email).filter((e) => e !== payload.agentEmail) || [];
-    console.log("Admin emails for CC:", adminEmails);
+    // Get unique emails and exclude the agent's email
+    const recipientEmails = [...new Set(recipientUsers?.map((u) => u.email) || [])].filter((e) => e !== payload.agentEmail);
+    console.log("Recipient emails for CC (super admins, admins, hr):", recipientEmails);
 
     // Format dates
     const formatDate = (dateStr: string) => {
@@ -189,8 +190,8 @@ serve(async (req: Request): Promise<Response> => {
       html: emailHtml,
     };
 
-    if (adminEmails.length > 0) {
-      emailPayload.cc = adminEmails;
+    if (recipientEmails.length > 0) {
+      emailPayload.cc = recipientEmails;
     }
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
