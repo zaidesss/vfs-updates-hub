@@ -40,6 +40,7 @@ export function OutageStatsSection() {
             ['Overview', 'High-level metrics and trends.', 'Quick snapshot of team outages.'],
             ['Breakdown', 'Detailed breakdown by agent.', 'Analyze individual agent patterns.'],
             ['Repeat Offenders', 'Agents exceeding monthly limits.', 'Identify policy violations.'],
+            ['Policy', 'Complete HR policy guidelines.', 'Reference thresholds and discipline process.'],
           ]}
         />
 
@@ -47,29 +48,64 @@ export function OutageStatsSection() {
         <Checklist items={[
           "Monthly Outages count",
           "Unique Agents count",
-          "Repeat Offenders count",
-          "Total Violations count",
+          "Needs Review count (agents at review threshold)",
+          "Action Required count (agents requiring formal action)",
           "Monthly Trend line chart (6 months)",
           "Reason distribution pie chart",
         ]} />
 
-        <h3 className="font-semibold mb-2 mt-4">Repeat Offender Thresholds</h3>
+        <h3 className="font-semibold mb-2 mt-4">3-Tier Threshold System (Per HR Policy)</h3>
+        <p className="text-muted-foreground mb-2">
+          The system uses three threshold levels based on the HR Policy for Remote Agent Attendance:
+        </p>
         <QuickTable 
-          headers={['Reason', 'Monthly Limit', 'Notes']}
+          headers={['Level', 'Description', 'Action']}
           rows={[
-            ['Power Outage', '2', 'Exceeding triggers violation.'],
-            ['Wi-Fi Issue', '2', 'Exceeding triggers violation.'],
-            ['Medical Leave', '3', 'Exceeding triggers violation.'],
-            ['Planned Leave', 'Unlimited', 'No violation threshold.'],
-            ['Equipment Issue', '2', 'Exceeding triggers violation.'],
-            ['Late Login', '3', 'Exceeding triggers violation.'],
-            ['Undertime', '3', 'Exceeding triggers violation.'],
-            ['Unplanned', '2', 'Exceeding triggers violation.'],
+            ['Acceptable', 'Within normal expectations.', 'Standard monitoring.'],
+            ['Needs Review', 'Early intervention stage.', 'Coaching, discussion, and guidance.'],
+            ['Action Required', 'Formal corrective stage.', 'NTE or written warning.'],
           ]}
         />
 
-        <CalloutBox variant="info" title="Repeat Offenders">
-          Agents who exceed the monthly limit for any reason type are listed in the Repeat Offenders tab. Use the "Export to CSV" button to download the data.
+        <h3 className="font-semibold mb-2 mt-4">Monthly Thresholds by Category</h3>
+        <QuickTable 
+          headers={['Reason', 'Acceptable', 'Needs Review', 'Action Required']}
+          rows={[
+            ['Power Outage', '≤1/mo', '2/mo', '≥3/mo'],
+            ['Wi-Fi Issue', '≤1/mo', '2/mo', '≥3/mo'],
+            ['Medical Leave', '≤2/mo', '3/mo', '≥4/mo'],
+            ['Planned Leave', '—', '—', 'No limit'],
+            ['Equipment Issue', '≤1/mo', '2/mo', '≥3/mo'],
+            ['Late Login', '≤1/mo', '2/mo', '≥4/mo'],
+            ['Undertime', '≤1/mo', '2/mo', '≥3/mo'],
+            ['Unplanned', '≤1/mo', '2/mo', '≥3/mo'],
+          ]}
+        />
+
+        <h3 className="font-semibold mb-2 mt-4">Repeat Offenders Tab Features</h3>
+        <Checklist items={[
+          "Collapsible HR Policy Guidelines section",
+          "Interactive threshold table with tooltips",
+          "Color-coded callout boxes explaining each level",
+          "Flagged agents table showing violations and status",
+          "Export to CSV button for reporting",
+        ]} />
+
+        <h3 className="font-semibold mb-2 mt-4">Policy Tab Contents</h3>
+        <Checklist items={[
+          "Acceptable Monthly Thresholds reference table",
+          "Intervention Levels comparison (Needs Review vs Action Required)",
+          "Progressive Discipline Matrix (4 stages)",
+          "Clearing Periods for warnings (60-90 days)",
+          "Agent and Leader Responsibilities checklists",
+        ]} />
+
+        <CalloutBox variant="info" title="Pattern Detection">
+          Patterns across multiple categories may trigger a review even if individual thresholds are not exceeded.
+        </CalloutBox>
+
+        <CalloutBox variant="warning" title="Progressive Discipline">
+          Repeated violations follow a progressive discipline path: Verbal Warning → Written Warning → Final Written Warning → Termination. Each stage has defined clearing periods (60-90 days).
         </CalloutBox>
       </GuideSection>
     </>

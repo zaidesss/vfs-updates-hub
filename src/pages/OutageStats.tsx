@@ -7,12 +7,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle, Zap, Wifi, Heart, Calendar, Wrench, Clock, Timer, HelpCircle } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle, Zap, Wifi, Heart, Calendar, Wrench, Clock, Timer, HelpCircle, ChevronDown, ChevronRight, Info, FileText, CheckCircle2, XCircle } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
 import { fetchAllLeaveRequests, LeaveRequest } from '@/lib/leaveRequestApi';
 import { useToast } from '@/hooks/use-toast';
 import { Navigate } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -36,16 +39,22 @@ const REASON_ICONS: Record<string, React.ReactNode> = {
   'Unplanned': <HelpCircle className="h-4 w-4" />
 };
 
-// Threshold configuration: max occurrences per month per reason
-const REASON_THRESHOLDS: Record<string, number> = {
-  'Power Outage': 2,
-  'Wi-Fi Issue': 2,
-  'Medical Leave': 3,
-  'Planned Leave': 4,
-  'Equipment Issue': 2,
-  'Late Login': 2,
-  'Undertime': 2,
-  'Unplanned': 1
+// 3-Tier Threshold configuration based on HR Policy
+interface ThresholdTier {
+  acceptable: number;
+  needsReview: number;
+  actionRequired: number;
+}
+
+const REASON_THRESHOLDS: Record<string, ThresholdTier | null> = {
+  'Power Outage': { acceptable: 1, needsReview: 2, actionRequired: 3 },
+  'Wi-Fi Issue': { acceptable: 1, needsReview: 2, actionRequired: 3 },
+  'Medical Leave': { acceptable: 2, needsReview: 3, actionRequired: 4 },
+  'Planned Leave': null, // No threshold - unlimited
+  'Equipment Issue': { acceptable: 1, needsReview: 2, actionRequired: 3 },
+  'Late Login': { acceptable: 1, needsReview: 2, actionRequired: 4 },
+  'Undertime': { acceptable: 1, needsReview: 2, actionRequired: 3 },
+  'Unplanned': { acceptable: 1, needsReview: 2, actionRequired: 3 }
 };
 
 const CHART_COLORS = [
@@ -59,11 +68,21 @@ const CHART_COLORS = [
   'hsl(340, 75%, 55%)'
 ];
 
+type OffenderStatus = 'acceptable' | 'needs_review' | 'action_required';
+
+interface ViolationDetail {
+  reason: string;
+  count: number;
+  thresholds: ThresholdTier;
+  status: OffenderStatus;
+}
+
 interface RepeatOffender {
   agentName: string;
   agentEmail: string;
-  violations: { reason: string; count: number; threshold: number }[];
-  totalViolations: number;
+  violations: ViolationDetail[];
+  worstStatus: OffenderStatus;
+  totalExceeded: number;
 }
 
 export default function OutageStats() {
@@ -75,6 +94,7 @@ export default function OutageStats() {
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('overview');
+  const [policyOpen, setPolicyOpen] = useState(false);
 
   // Generate months from Jan 2024 to Dec 2026
   const monthOptions = useMemo(() => {
@@ -197,7 +217,14 @@ export default function OutageStats() {
       .sort((a, b) => b.value - a.value);
   }, [filteredRequests]);
 
-  // Repeat offenders calculation
+  // Helper to determine status based on count and thresholds
+  const getStatus = (count: number, thresholds: ThresholdTier): OffenderStatus => {
+    if (count >= thresholds.actionRequired) return 'action_required';
+    if (count >= thresholds.needsReview) return 'needs_review';
+    return 'acceptable';
+  };
+
+  // Repeat offenders calculation with 3-tier system
   const repeatOffenders = useMemo((): RepeatOffender[] => {
     const agentStats: Record<string, Record<string, number>> = {};
 
@@ -212,12 +239,27 @@ export default function OutageStats() {
     const offenders: RepeatOffender[] = [];
 
     Object.entries(agentStats).forEach(([email, reasons]) => {
-      const violations: { reason: string; count: number; threshold: number }[] = [];
+      const violations: ViolationDetail[] = [];
+      let worstStatus: OffenderStatus = 'acceptable';
+      let totalExceeded = 0;
       
       Object.entries(reasons).forEach(([reason, count]) => {
-        const threshold = REASON_THRESHOLDS[reason] || 2;
-        if (count > threshold) {
-          violations.push({ reason, count, threshold });
+        const thresholds = REASON_THRESHOLDS[reason];
+        if (!thresholds) return; // Skip Planned Leave (no threshold)
+        
+        const status = getStatus(count, thresholds);
+        
+        if (status !== 'acceptable') {
+          violations.push({ reason, count, thresholds, status });
+          
+          // Track worst status
+          if (status === 'action_required') {
+            worstStatus = 'action_required';
+            totalExceeded += count - thresholds.actionRequired + 1;
+          } else if (status === 'needs_review' && worstStatus !== 'action_required') {
+            worstStatus = 'needs_review';
+            totalExceeded += count - thresholds.needsReview + 1;
+          }
         }
       });
 
@@ -227,28 +269,49 @@ export default function OutageStats() {
           agentName: req?.agent_name || email,
           agentEmail: email,
           violations,
-          totalViolations: violations.reduce((sum, v) => sum + (v.count - v.threshold), 0)
+          worstStatus,
+          totalExceeded
         });
       }
     });
 
-    return offenders.sort((a, b) => b.totalViolations - a.totalViolations);
+    // Sort: action_required first, then needs_review, then by total exceeded
+    return offenders.sort((a, b) => {
+      const statusOrder = { action_required: 0, needs_review: 1, acceptable: 2 };
+      if (statusOrder[a.worstStatus] !== statusOrder[b.worstStatus]) {
+        return statusOrder[a.worstStatus] - statusOrder[b.worstStatus];
+      }
+      return b.totalExceeded - a.totalExceeded;
+    });
   }, [filteredRequests]);
+
+  // Count by status
+  const offenderCounts = useMemo(() => {
+    return {
+      actionRequired: repeatOffenders.filter(o => o.worstStatus === 'action_required').length,
+      needsReview: repeatOffenders.filter(o => o.worstStatus === 'needs_review').length
+    };
+  }, [repeatOffenders]);
 
   // Export to CSV
   const exportToCSV = () => {
-    const headers = ['Agent Name', 'Email', 'Reason', 'Count', 'Threshold', 'Exceeded By'];
+    const headers = ['Agent Name', 'Email', 'Reason', 'Count', 'Needs Review At', 'Action Required At', 'Status', 'Exceeded By'];
     const rows: string[][] = [];
 
     repeatOffenders.forEach(offender => {
       offender.violations.forEach(v => {
+        const exceededBy = v.status === 'action_required' 
+          ? v.count - v.thresholds.actionRequired + 1
+          : v.count - v.thresholds.needsReview + 1;
         rows.push([
           offender.agentName,
           offender.agentEmail,
           v.reason,
           v.count.toString(),
-          v.threshold.toString(),
-          (v.count - v.threshold).toString()
+          v.thresholds.needsReview.toString(),
+          v.thresholds.actionRequired.toString(),
+          v.status === 'action_required' ? 'Action Required' : 'Needs Review',
+          exceededBy.toString()
         ]);
       });
     });
@@ -261,6 +324,14 @@ export default function OutageStats() {
     a.download = `repeat-offenders-${selectedMonth}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Status badge component
+  const StatusBadge = ({ status }: { status: OffenderStatus }) => {
+    if (status === 'action_required') {
+      return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Action Required</Badge>;
+    }
+    return <Badge className="gap-1 bg-amber-500 hover:bg-amber-600"><AlertTriangle className="h-3 w-3" /> Needs Review</Badge>;
   };
 
   // Redirect non-admins
@@ -325,158 +396,160 @@ export default function OutageStats() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
             <TabsTrigger value="offenders">Repeat Offenders</TabsTrigger>
+            <TabsTrigger value="policy" className="gap-1">
+              <FileText className="h-4 w-4" />
+              Policy
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6 mt-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Monthly Outages
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{filteredRequests.length}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Unique Agents
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">
-                {new Set(filteredRequests.map(r => r.agent_email)).size}
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Repeat Offenders
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-destructive">{repeatOffenders.length}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Total Violations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-warning">
-                {repeatOffenders.reduce((sum, o) => sum + o.totalViolations, 0)}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    Monthly Outages
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{filteredRequests.length}</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Unique Agents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">
+                    {new Set(filteredRequests.map(r => r.agent_email)).size}
+                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Needs Review
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold text-amber-500">{offenderCounts.needsReview}</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Action Required
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold text-destructive">{offenderCounts.actionRequired}</p>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Monthly Trend */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Trend</CardTitle>
-              <CardDescription>Outage count over the last 6 months</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="month" className="text-xs" />
-                    <YAxis className="text-xs" />
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-                              <p className="font-medium">{data.fullMonth}</p>
-                              <p className="text-sm text-muted-foreground">Outages: {data.total}</p>
-                              <p className="text-sm text-muted-foreground">Hours: {data.hours.toFixed(1)}h</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="total" 
-                      stroke="hsl(var(--primary))" 
-                      strokeWidth={2}
-                      dot={{ fill: "hsl(var(--primary))" }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Monthly Trend */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Trend</CardTitle>
+                  <CardDescription>Outage count over the last 6 months</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={trendData}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="month" className="text-xs" />
+                        <YAxis className="text-xs" />
+                        <RechartsTooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+                                  <p className="font-medium">{data.fullMonth}</p>
+                                  <p className="text-sm text-muted-foreground">Outages: {data.total}</p>
+                                  <p className="text-sm text-muted-foreground">Hours: {data.hours.toFixed(1)}h</p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="total" 
+                          stroke="hsl(var(--primary))" 
+                          strokeWidth={2}
+                          dot={{ fill: "hsl(var(--primary))" }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
 
-          {/* Reason Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Reason Distribution</CardTitle>
-              <CardDescription>Most common outage reasons this month</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {reasonDistribution.length > 0 ? (
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={reasonDistribution}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={2}
-                        dataKey="value"
-                      >
-                        {reasonDistribution.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            const total = reasonDistribution.reduce((sum, d) => sum + d.value, 0);
-                            const percent = ((data.value / total) * 100).toFixed(1);
-                            return (
-                              <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-                                <p className="font-medium">{data.name}</p>
-                                <p className="text-sm text-muted-foreground">{data.value} outages ({percent}%)</p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Legend formatter={(value: string) => <span className="text-xs">{value}</span>} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  No outages recorded for this period
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              {/* Reason Distribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Reason Distribution</CardTitle>
+                  <CardDescription>Most common outage reasons this month</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {reasonDistribution.length > 0 ? (
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={reasonDistribution}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={100}
+                            paddingAngle={2}
+                            dataKey="value"
+                          >
+                            {reasonDistribution.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip 
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                const total = reasonDistribution.reduce((sum, d) => sum + d.value, 0);
+                                const percent = ((data.value / total) * 100).toFixed(1);
+                                return (
+                                  <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+                                    <p className="font-medium">{data.name}</p>
+                                    <p className="text-sm text-muted-foreground">{data.value} outages ({percent}%)</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Legend formatter={(value: string) => <span className="text-xs">{value}</span>} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                      No outages recorded for this period
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Breakdown Tab */}
@@ -565,33 +638,198 @@ export default function OutageStats() {
 
           {/* Repeat Offenders Tab */}
           <TabsContent value="offenders" className="space-y-6 mt-6">
-            {/* Threshold Reference */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Monthly Thresholds</CardTitle>
-                <CardDescription>Maximum allowed occurrences per month before flagging as repeat offender</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {Object.entries(REASON_THRESHOLDS).map(([reason, threshold]) => (
-                    <div key={reason} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                      <span className="text-sm font-medium">{reason}</span>
-                      <Badge variant="outline">{threshold}/mo</Badge>
+            {/* Collapsible Policy Guidelines */}
+            <Collapsible open={policyOpen} onOpenChange={setPolicyOpen}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <CardTitle>HR Policy Guidelines</CardTitle>
+                      </div>
+                      {policyOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <CardDescription>Click to expand policy details</CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0 space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <h4 className="font-semibold mb-2">Policy Objective</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                          <li>Establish clear expectations for attendance and engagement</li>
+                          <li>Encourage proactive communication of service interruptions</li>
+                          <li>Ensure fair and consistent handling of performance issues</li>
+                          <li>Promote a healthy, accountable remote work environment</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold mb-2">Recurring Outages Definition</h4>
+                        <p className="text-sm text-muted-foreground">
+                          A recurring outage is defined as the same type of connectivity issue or unscheduled absence occurring more than 
+                          2 times per month without valid documentation or prior communication.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <h4 className="font-semibold mb-2">Agent Responsibilities</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                          <li>Notify Team Lead via Slack before/during any outage</li>
+                          <li>Provide honest, timely updates with documentation if required</li>
+                          <li>Take steps to prevent recurring issues (e.g., backup internet)</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold mb-2">Leader Responsibilities</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                          <li>Monitor and document agent outage patterns</li>
+                          <li>Initiate coaching when patterns emerge</li>
+                          <li>Escalate to HR if outages persist or are unsupported</li>
+                          <li>Apply progressive discipline fairly and consistently</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+
+            {/* 3-Tier Threshold Reference */}
+            <TooltipProvider>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Thresholds (Per HR Policy)</CardTitle>
+                  <CardDescription>Acceptable limits, review triggers, and action thresholds</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-center">
+                          <Tooltip>
+                            <TooltipTrigger className="flex items-center gap-1 justify-center cursor-help">
+                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              Acceptable
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Within normal expectations. Standard monitoring applies.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableHead>
+                        <TableHead className="text-center">
+                          <Tooltip>
+                            <TooltipTrigger className="flex items-center gap-1 justify-center cursor-help">
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                              Needs Review
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Early intervention stage. May result in coaching, discussion, and guidance.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableHead>
+                        <TableHead className="text-center">
+                          <Tooltip>
+                            <TooltipTrigger className="flex items-center gap-1 justify-center cursor-help">
+                              <XCircle className="h-4 w-4 text-destructive" />
+                              Action Required
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Formal corrective action stage. May result in NTE or written warning.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {OUTAGE_REASONS.map(reason => {
+                        const thresholds = REASON_THRESHOLDS[reason];
+                        return (
+                          <TableRow key={reason}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {REASON_ICONS[reason]}
+                                <span className="font-medium">{reason}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {thresholds ? (
+                                <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
+                                  ≤{thresholds.acceptable}/mo
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {thresholds ? (
+                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">
+                                  {thresholds.needsReview}/mo
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {thresholds ? (
+                                <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                                  ≥{thresholds.actionRequired}/mo
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground">No limit</Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TooltipProvider>
+
+            {/* Inline Callouts */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <Alert className="border-amber-500/50 bg-amber-500/10">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <AlertTitle className="text-amber-700">Needs Review</AlertTitle>
+                <AlertDescription className="text-sm text-amber-600">
+                  Indicates early issues and may result in coaching, discussion, and guidance.
+                </AlertDescription>
+              </Alert>
+              
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Action Required</AlertTitle>
+                <AlertDescription className="text-sm">
+                  Applies when issues are repeated and may result in formal corrective action, including an NTE or written warning.
+                </AlertDescription>
+              </Alert>
+              
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Pattern Detection</AlertTitle>
+                <AlertDescription className="text-sm">
+                  Patterns across multiple categories may trigger a review even if individual thresholds are not exceeded.
+                </AlertDescription>
+              </Alert>
+            </div>
 
             {/* Repeat Offenders Table */}
             <Card className={repeatOffenders.length > 0 ? 'border-destructive/50' : ''}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className={repeatOffenders.length > 0 ? 'h-5 w-5 text-destructive' : 'h-5 w-5'} />
-                  Repeat Offenders
+                  Flagged Agents
                 </CardTitle>
                 <CardDescription>
-                  Agents who have exceeded the monthly threshold for any outage reason
+                  Agents who have reached or exceeded the "Needs Review" or "Action Required" threshold
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -601,29 +839,38 @@ export default function OutageStats() {
                       <TableRow>
                         <TableHead>Agent</TableHead>
                         <TableHead>Violations</TableHead>
-                        <TableHead className="text-center">Exceeded By</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {repeatOffenders.map((offender) => (
-                        <TableRow key={offender.agentEmail} className="bg-destructive/5">
+                        <TableRow 
+                          key={offender.agentEmail} 
+                          className={offender.worstStatus === 'action_required' ? 'bg-destructive/5' : 'bg-amber-500/5'}
+                        >
                           <TableCell>
                             <div>
-                              <p className="font-medium text-destructive">{offender.agentName}</p>
+                              <p className={`font-medium ${offender.worstStatus === 'action_required' ? 'text-destructive' : 'text-amber-700'}`}>
+                                {offender.agentName}
+                              </p>
                               <p className="text-xs text-muted-foreground">{offender.agentEmail}</p>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
                               {offender.violations.map((v, i) => (
-                                <Badge key={i} variant="destructive" className="text-xs">
-                                  {v.reason}: {v.count}/{v.threshold}
+                                <Badge 
+                                  key={i} 
+                                  variant={v.status === 'action_required' ? 'destructive' : 'outline'}
+                                  className={v.status === 'needs_review' ? 'bg-amber-500/20 text-amber-700 border-amber-500/30' : ''}
+                                >
+                                  {v.reason}: {v.count}/{v.status === 'action_required' ? v.thresholds.actionRequired : v.thresholds.needsReview}
                                 </Badge>
                               ))}
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
-                            <span className="font-bold text-destructive">+{offender.totalViolations}</span>
+                            <StatusBadge status={offender.worstStatus} />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -631,13 +878,280 @@ export default function OutageStats() {
                   </Table>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No repeat offenders this month</p>
+                    <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500 opacity-50" />
+                    <p className="text-green-700">No flagged agents this month</p>
                     <p className="text-sm">All agents are within acceptable thresholds</p>
                   </div>
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Policy Tab */}
+          <TabsContent value="policy" className="space-y-6 mt-6">
+            {/* Acceptable Thresholds */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  Acceptable Monthly Thresholds
+                </CardTitle>
+                <CardDescription>Maximum occurrences per month considered within normal expectations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-center">Acceptable Limit</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {OUTAGE_REASONS.map(reason => {
+                      const thresholds = REASON_THRESHOLDS[reason];
+                      return (
+                        <TableRow key={reason}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {REASON_ICONS[reason]}
+                              <span className="font-medium">{reason}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {thresholds ? (
+                              <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
+                                {thresholds.acceptable} per month
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">No limit</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {reason === 'Planned Leave' ? 'Pre-approved absences are not counted against thresholds.' :
+                             reason === 'Medical Leave' ? 'Must provide documentation for extended absences.' :
+                             reason === 'Late Login' ? 'Exceeding 4 times triggers formal action.' :
+                             'Exceeding limit triggers review process.'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Intervention Levels */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Intervention Levels</CardTitle>
+                <CardDescription>Comparison of "Needs Review" vs "Action Required" responses</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Aspect</TableHead>
+                      <TableHead>
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          Needs Review
+                        </div>
+                      </TableHead>
+                      <TableHead>
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-destructive" />
+                          Action Required
+                        </div>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Purpose</TableCell>
+                      <TableCell>Early intervention</TableCell>
+                      <TableCell>Corrective enforcement</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Manager Action</TableCell>
+                      <TableCell>Coaching and discussion</TableCell>
+                      <TableCell>Formal corrective action (NTE)</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Monitoring Level</TableCell>
+                      <TableCell>Standard monitoring</TableCell>
+                      <TableCell>Close and continuous monitoring</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Documentation</TableCell>
+                      <TableCell>Internal notes recommended</TableCell>
+                      <TableCell>Formal documentation required</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Progressive Discipline Matrix */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Progressive Discipline Matrix</CardTitle>
+                <CardDescription>Stages of corrective action for repeated violations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Stage</TableHead>
+                      <TableHead>Trigger</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">
+                          Verbal Warning
+                        </Badge>
+                      </TableCell>
+                      <TableCell>Minor first-time violation</TableCell>
+                      <TableCell>Documented discussion</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">Coaching focus</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-orange-500/10 text-orange-700 border-orange-500/30">
+                          Written Warning
+                        </Badge>
+                      </TableCell>
+                      <TableCell>Repeated violations</TableCell>
+                      <TableCell>HR file entry + PIP</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">Measurable goals set</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/30">
+                          Final Written Warning
+                        </Badge>
+                      </TableCell>
+                      <TableCell>Continued issues</TableCell>
+                      <TableCell>Final warning issued</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">Last opportunity</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>
+                        <Badge variant="destructive">
+                          Termination
+                        </Badge>
+                      </TableCell>
+                      <TableCell>Persistent violations</TableCell>
+                      <TableCell>Employment ends</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">All docs required</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Clearing Periods */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Clearing Periods</CardTitle>
+                <CardDescription>Time required for warnings to be cleared from record</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Warning Level</TableHead>
+                      <TableHead className="text-center">Clearing Period</TableHead>
+                      <TableHead>Conditions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Verbal Warning</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary">60 days</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">No repeat violations during period</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Written Warning</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary">60 days</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">Full compliance + PIP completion</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Final Written Warning</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary">90 days</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">Sustained compliance demonstrated</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Responsibilities */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Agent Responsibilities
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Notify Team Lead via Slack before or during any outage</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Provide honest, timely updates with documentation if required</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Take steps to prevent recurring issues (e.g., backup internet)</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Leader Responsibilities
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Monitor and document agent outage patterns</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Initiate coaching when patterns emerge</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Escalate to HR if outages persist or are unsupported</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <span className="text-sm">Apply progressive discipline fairly and consistently</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
