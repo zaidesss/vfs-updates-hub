@@ -260,37 +260,37 @@ export default function MasterDirectory() {
         {/* Table with sticky header and frozen first column */}
         <div 
           className="border rounded-lg overflow-auto data-table-scroll"
-          style={{ maxHeight: 'calc(100vh - 220px)' }}
+          style={{ height: 'calc(100vh - 220px)' }}
         >
           <div className="min-w-[2200px]">
             <Table>
-              <TableHeader className="sticky top-0 z-20">
+              <TableHeader>
                 <TableRow className="bg-muted">
-                  <TableHead className="min-w-[150px] sticky left-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
+                  <TableHead className="min-w-[150px] sticky left-0 top-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                     Full Name
                   </TableHead>
-                      <TableHead className="min-w-[100px]">Position</TableHead>
-                      <TableHead className="min-w-[120px]">Team Lead</TableHead>
-                      <TableHead className="min-w-[100px]">Zendesk Instance</TableHead>
-                      <TableHead className="min-w-[100px]">Support Account</TableHead>
-                      <TableHead className="min-w-[120px]">Agent Name</TableHead>
-                      <TableHead className="min-w-[100px]">Agent Tag</TableHead>
-                      <TableHead className="min-w-[120px]">Views</TableHead>
-                      <TableHead className="min-w-[120px]">Ticket Assignment View ID</TableHead>
-                      <TableHead className="min-w-[140px]">Weekday Schedule</TableHead>
-                      <TableHead className="min-w-[80px]">Total Hours</TableHead>
-                      <TableHead className="min-w-[100px]">WD Ticket Assign</TableHead>
-                      <TableHead className="min-w-[140px]">Weekend Schedule</TableHead>
-                      <TableHead className="min-w-[80px]">Total Hours</TableHead>
-                      <TableHead className="min-w-[100px]">WE Ticket Assign</TableHead>
-                      <TableHead className="min-w-[130px]">Break Schedule</TableHead>
-                      <TableHead className="min-w-[140px]">Weekday OT Schedule</TableHead>
-                      <TableHead className="min-w-[140px]">Weekend OT Schedule</TableHead>
-                      <TableHead className="min-w-[80px]">Total OT Hours</TableHead>
-                      <TableHead className="min-w-[100px]">Overall Total Hours</TableHead>
-                      <TableHead className="min-w-[150px]">Day Off</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Position</TableHead>
+                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Team Lead</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Zendesk Instance</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Account</TableHead>
+                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
+                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Views</TableHead>
+                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Ticket Assignment View ID</TableHead>
+                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WD Ticket Assign</TableHead>
+                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekend Schedule</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WE Ticket Assign</TableHead>
+                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Break Schedule</TableHead>
+                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekday OT Schedule</TableHead>
+                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekend OT Schedule</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total OT Hours</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Overall Total Hours</TableHead>
+                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Day Off</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {filteredEntries.map((entry) => (
                   <TableRow key={entry.email}>
