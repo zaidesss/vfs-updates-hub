@@ -30,6 +30,7 @@ import CategoryArticles from "./pages/CategoryArticles";
 import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
 import HelpCenter from "./pages/HelpCenter";
+import AgentDashboard from "./pages/AgentDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -185,6 +186,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CategoryArticles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/people/:profileId/dashboard"
+        element={
+          <ProtectedRoute>
+            <AgentDashboard />
           </ProtectedRoute>
         }
       />
