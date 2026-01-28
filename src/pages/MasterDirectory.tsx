@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { toast } from '@/hooks/use-toast';
-import { Save, Search, ChevronDown, AlertCircle } from 'lucide-react';
+import { Save, Search, ChevronDown, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DirectoryEntry,
@@ -35,6 +36,8 @@ import {
   calculateTotalHours,
   fetchAllDropdownOptions,
 } from '@/lib/masterDirectoryApi';
+
+const SUPPORT_TYPE_OPTIONS = ['Email', 'Chat', 'Call', 'Hybrid'];
 
 export default function MasterDirectory() {
   const { user, isAdmin } = useAuth();
@@ -266,13 +269,18 @@ export default function MasterDirectory() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted">
-                  <TableHead className="min-w-[150px] sticky left-0 top-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
+                  <TableHead className="min-w-[50px] sticky left-0 top-0 z-30 bg-muted">
+                    
+                  </TableHead>
+                  <TableHead className="min-w-[150px] sticky left-[50px] top-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                     Full Name
                   </TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Position</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Team Lead</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Zendesk Instance</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Account</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Type</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Quota</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Views</TableHead>
@@ -294,8 +302,18 @@ export default function MasterDirectory() {
               <TableBody>
                 {filteredEntries.map((entry) => (
                   <TableRow key={entry.email}>
+                    {/* Dashboard link */}
+                    <TableCell className="sticky left-0 z-10 bg-background">
+                      {entry.id && (
+                        <Link to={`/people/${entry.id}/dashboard`}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Open Dashboard">
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      )}
+                    </TableCell>
                     {/* Read-only columns from agent_profiles */}
-                    <TableCell className="font-medium sticky left-0 z-10 bg-background shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
+                    <TableCell className="font-medium sticky left-[50px] z-10 bg-background shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                       {entry.full_name || '-'}
                     </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -344,6 +362,40 @@ export default function MasterDirectory() {
                             ))}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+
+                      {/* Support Type */}
+                      <TableCell>
+                        <Select
+                          value={entry.support_type || 'Email'}
+                          onValueChange={(value) =>
+                            updateField(entry.email, 'support_type', value)
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-[90px]">
+                            <SelectValue placeholder="-" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SUPPORT_TYPE_OPTIONS.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+
+                      {/* Quota */}
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={entry.quota ?? ''}
+                          onChange={(e) =>
+                            updateField(entry.email, 'quota', e.target.value ? Number(e.target.value) : null)
+                          }
+                          className="h-8 w-[70px]"
+                          min={0}
+                        />
                       </TableCell>
 
                       <TableCell>

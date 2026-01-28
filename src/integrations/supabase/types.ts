@@ -43,15 +43,24 @@ export type Database = {
           created_at: string
           day_off: string[] | null
           email: string
+          fri_schedule: string | null
           id: string
+          mon_schedule: string | null
           ot_total_hours: number | null
           overall_total_hours: number | null
+          quota: number | null
+          sat_schedule: string | null
+          sun_schedule: string | null
           support_account: string | null
+          support_type: string | null
+          thu_schedule: string | null
           ticket_assignment_view_id: string | null
+          tue_schedule: string | null
           updated_at: string
           views: string[] | null
           wd_ticket_assign: string | null
           we_ticket_assign: string | null
+          wed_schedule: string | null
           weekday_ot_schedule: string | null
           weekday_schedule: string | null
           weekday_total_hours: number | null
@@ -67,15 +76,24 @@ export type Database = {
           created_at?: string
           day_off?: string[] | null
           email: string
+          fri_schedule?: string | null
           id?: string
+          mon_schedule?: string | null
           ot_total_hours?: number | null
           overall_total_hours?: number | null
+          quota?: number | null
+          sat_schedule?: string | null
+          sun_schedule?: string | null
           support_account?: string | null
+          support_type?: string | null
+          thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
+          tue_schedule?: string | null
           updated_at?: string
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
+          wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekday_schedule?: string | null
           weekday_total_hours?: number | null
@@ -91,15 +109,24 @@ export type Database = {
           created_at?: string
           day_off?: string[] | null
           email?: string
+          fri_schedule?: string | null
           id?: string
+          mon_schedule?: string | null
           ot_total_hours?: number | null
           overall_total_hours?: number | null
+          quota?: number | null
+          sat_schedule?: string | null
+          sun_schedule?: string | null
           support_account?: string | null
+          support_type?: string | null
+          thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
+          tue_schedule?: string | null
           updated_at?: string
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
+          wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekday_schedule?: string | null
           weekday_total_hours?: number | null
@@ -753,6 +780,73 @@ export type Database = {
           target_email?: string
         }
         Relationships: []
+      }
+      profile_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          new_status: string
+          prev_status: string
+          profile_id: string
+          triggered_by: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          new_status: string
+          prev_status: string
+          profile_id: string
+          triggered_by: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          new_status?: string
+          prev_status?: string
+          profile_id?: string
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "agent_directory"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profile_status: {
+        Row: {
+          current_status: string
+          id: string
+          profile_id: string
+          status_since: string
+        }
+        Insert: {
+          current_status?: string
+          id?: string
+          profile_id: string
+          status_since?: string
+        }
+        Update: {
+          current_status?: string
+          id?: string
+          profile_id?: string
+          status_since?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_status_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "agent_directory"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       question_replies: {
         Row: {

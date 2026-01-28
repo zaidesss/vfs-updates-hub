@@ -8,6 +8,7 @@ export interface DirectoryEntry {
   team_lead: string | null;
   zendesk_instance: string | null;
   support_account: string | null;
+  support_type: string | null;
   agent_name: string | null;
   agent_tag: string | null;
   views: string[];
@@ -24,6 +25,14 @@ export interface DirectoryEntry {
   ot_total_hours: number;
   overall_total_hours: number;
   day_off: string[];
+  quota: number | null;
+  mon_schedule: string | null;
+  tue_schedule: string | null;
+  wed_schedule: string | null;
+  thu_schedule: string | null;
+  fri_schedule: string | null;
+  sat_schedule: string | null;
+  sun_schedule: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -201,6 +210,7 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         team_lead: profile.team_lead,
         zendesk_instance: dirEntry?.zendesk_instance || null,
         support_account: dirEntry?.support_account || null,
+        support_type: dirEntry?.support_type || null,
         agent_name: dirEntry?.agent_name || null,
         agent_tag: dirEntry?.agent_tag || null,
         views: dirEntry?.views || [],
@@ -217,6 +227,14 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         ot_total_hours: dirEntry?.ot_total_hours || 0,
         overall_total_hours: dirEntry?.overall_total_hours || 0,
         day_off: dirEntry?.day_off || [],
+        quota: dirEntry?.quota || null,
+        mon_schedule: dirEntry?.mon_schedule || null,
+        tue_schedule: dirEntry?.tue_schedule || null,
+        wed_schedule: dirEntry?.wed_schedule || null,
+        thu_schedule: dirEntry?.thu_schedule || null,
+        fri_schedule: dirEntry?.fri_schedule || null,
+        sat_schedule: dirEntry?.sat_schedule || null,
+        sun_schedule: dirEntry?.sun_schedule || null,
         created_at: dirEntry?.created_at || new Date().toISOString(),
         updated_at: dirEntry?.updated_at || new Date().toISOString(),
       };
@@ -253,6 +271,7 @@ export async function bulkSaveEntries(
         email: entry.email.toLowerCase(),
         zendesk_instance: entry.zendesk_instance,
         support_account: entry.support_account,
+        support_type: entry.support_type,
         agent_name: entry.agent_name,
         agent_tag: entry.agent_tag,
         views: entry.views,
@@ -269,6 +288,14 @@ export async function bulkSaveEntries(
         ot_total_hours: hours.ot_total_hours,
         overall_total_hours: hours.overall_total_hours,
         day_off: entry.day_off,
+        quota: entry.quota,
+        mon_schedule: entry.mon_schedule,
+        tue_schedule: entry.tue_schedule,
+        wed_schedule: entry.wed_schedule,
+        thu_schedule: entry.thu_schedule,
+        fri_schedule: entry.fri_schedule,
+        sat_schedule: entry.sat_schedule,
+        sun_schedule: entry.sun_schedule,
       };
       
       // Upsert the directory entry
@@ -312,6 +339,7 @@ function getChanges(
   const fieldsToTrack = [
     'zendesk_instance',
     'support_account',
+    'support_type',
     'agent_name',
     'agent_tag',
     'views',
@@ -324,6 +352,14 @@ function getChanges(
     'weekday_ot_schedule',
     'weekend_ot_schedule',
     'day_off',
+    'quota',
+    'mon_schedule',
+    'tue_schedule',
+    'wed_schedule',
+    'thu_schedule',
+    'fri_schedule',
+    'sat_schedule',
+    'sun_schedule',
   ] as const;
   
   const changes: Record<string, { old: any; new: any }> = {};
