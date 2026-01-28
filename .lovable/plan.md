@@ -1,211 +1,106 @@
 
-# Team Status Board - Implementation Plan
+# Fix Team Status Board Access for Regular Agents
 
-## Summary
+## Problem Identified
 
-Create a new page at `/team-status` showing all currently logged-in agents grouped into two sections:
-1. **Agents** - Regular support agents (left/center columns)
-2. **Team Leads & Tech Support** - Users with "Team Lead" or "Technical Support" positions (right column)
+The Team Status Board works for Admin/HR/Super Admin but **fails for regular agents** because of restrictive RLS policies:
 
-Each agent is displayed in an individual card showing their status, shift schedule, and break schedule. Logged-out users are automatically excluded from the board.
+### Current RLS Policies
 
----
+| Table | Policy for Agents | Result |
+|-------|------------------|--------|
+| `profile_status` | ✅ Can view ALL records | Works |
+| `agent_profiles` | ❌ Can only view OWN profile | **Blocks seeing other team members** |
+| `agent_directory` | ❌ Can only view OWN record | **Blocks seeing others' schedules** |
 
-## Visual Design (Based on Reference Image)
+### Data Flow Issue
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Team Status Board                                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│       Agents                    │                │  Team Leads & Tech    │
-│ ┌────────────────┐ ┌────────────────┐          │       Support         │
-│ │ Malcom Salmero │ │ Malcom Salmero │          │ ┌────────────────┐    │
-│ │ Status: Active │ │ Status: Active │          │ │ Malcom Salmero │    │
-│ │ Shift Schedule │ │ Shift Schedule │          │ │ Status: Active │    │
-│ │ 8:00 AM-5:00PM │ │ 8:00 AM-5:00PM │          │ │ Shift Schedule │    │
-│ │ Break Schedule │ │ Break Schedule │          │ │ 8:00 AM-5:00PM │    │
-│ │ 12:00-12:30 PM │ │ 12:00-12:30 PM │          │ │ Break Schedule │    │
-│ │          [↗]   │ │                │          │ │ 12:00-12:30 PM │    │
-│ └────────────────┘ └────────────────┘          │ └────────────────┘    │
-└──────────────────────────────────────────────────────────────────────────┘
+Step 1: Fetch profile_status (not LOGGED_OUT) → ✅ Returns all 5 logged-in users
+Step 2: Fetch agent_profiles for those 5 IDs → ❌ Returns only 1 (agent's own profile)
+Step 3: Result: Agent only sees themselves on the board
 ```
 
 ---
 
-## Data Flow
+## Additional Issues Found
 
-| Data | Source Table | Join Key |
-|------|--------------|----------|
-| Name, Position | `agent_profiles` | `profile_id` |
-| Current Status | `profile_status` | `profile_id` |
-| Shift Schedule, Break Schedule | `agent_directory` | `email` |
-
-### Query Logic
-
-1. Fetch all `profile_status` records where `current_status != 'LOGGED_OUT'`
-2. Join with `agent_profiles` to get name, email, and position
-3. Join with `agent_directory` using email to get schedules
-4. Filter into two groups based on position:
-   - **Team Leads & Tech Support**: `position IN ('Team Lead', 'Technical Support')`
-   - **Agents**: All other positions
+1. **Minor React Warning**: `StatusCard` component has a ref warning that should be addressed
+2. **Schedule visibility**: Even if we fix the profiles issue, agents won't see others' shift/break schedules without fixing `agent_directory` RLS
 
 ---
 
-## Features
+## Solution
 
-### Access Control
-- **ALL users** can access the Team Status Board (no admin restriction)
-- Visible under **People** menu, below "Dashboard"
+Add new RLS policies to allow **all authenticated users** to read basic info from `agent_profiles` and `agent_directory` for the Team Status Board.
 
-### Status Display
-| Status | Label | Color |
-|--------|-------|-------|
-| `LOGGED_IN` | Active | Green |
-| `ON_BREAK` | Break | Amber/Yellow |
-| `COACHING` | Coaching | Blue |
+### Option A: Add Global SELECT Policies (Simple)
 
-### Dashboard Link (Admin Only)
-- **Admin/HR/Super Admin**: Shows external link icon (↗) to open `/people/{profile_id}/dashboard`
-- **Regular Agents**: No link shown (they can only view their own dashboard)
+Add policies that allow all authenticated users to SELECT from both tables. This approach is simple but may expose more data than necessary.
 
-### Sorting
-- Default: Sort by login time (most recent first)
-- Toggle: Sort by logout time (if applicable) or alphabetical
+### Option B: Create a Database View (Recommended)
 
-### Realtime (Optional Enhancement)
-- Auto-refresh the board when status changes occur
+Create a secure view that only exposes the specific fields needed for the Team Status Board, with a simpler RLS policy.
 
----
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/TeamStatusBoard.tsx` | **Create** | Main page component with two-column layout |
-| `src/components/team-status/StatusCard.tsx` | **Create** | Individual agent status card component |
-| `src/lib/teamStatusApi.ts` | **Create** | API functions to fetch logged-in agents with their data |
-| `src/App.tsx` | **Modify** | Add route for `/team-status` |
-| `src/components/Layout.tsx` | **Modify** | Add navigation link under People menu |
+**I recommend Option A** as these tables don't contain highly sensitive data (no passwords, tokens, or PII beyond names/emails which are visible on the board anyway).
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Create API Layer (`src/lib/teamStatusApi.ts`)
+### Step 1: Add RLS Policy for `agent_profiles`
 
-```typescript
-export interface TeamMemberStatus {
-  profileId: string;
-  email: string;
-  fullName: string;
-  position: string | null;
-  currentStatus: ProfileStatus;
-  statusSince: string;
-  shiftSchedule: string | null;
-  breakSchedule: string | null;
-}
-
-export async function fetchLoggedInTeamMembers(): Promise<{
-  agents: TeamMemberStatus[];
-  leadsAndTech: TeamMemberStatus[];
-  error: string | null;
-}>
-```
-
-### Step 2: Create Status Card Component (`src/components/team-status/StatusCard.tsx`)
-
-Card displays:
-- Agent name (bold)
-- Status badge (Active/Break/Coaching with color)
-- Shift Schedule label + value
-- Break Schedule label + value
-- Optional: Dashboard link icon for admins
-
-### Step 3: Create Page Component (`src/pages/TeamStatusBoard.tsx`)
-
-- Page header: "Team Status Board"
-- Two sections side by side:
-  - Left: "Agents" (grid of cards)
-  - Right: "Team Leads & Tech Support" (grid of cards)
-- Sort controls at top
-
-### Step 4: Add Route and Navigation
-
-- Add `/team-status` route in `App.tsx`
-- Add "Team Status" link in `Layout.tsx` under People menu, below Dashboard
-
----
-
-## Technical Details
-
-### Determining Position Category
-
-```typescript
-const LEAD_TECH_POSITIONS = ['Team Lead', 'Technical Support'];
-
-function isLeadOrTech(position: string | null): boolean {
-  if (!position) return false;
-  return LEAD_TECH_POSITIONS.includes(position);
-}
-```
-
-### Status Badge Mapping
-
-```typescript
-const STATUS_DISPLAY: Record<ProfileStatus, { label: string; className: string }> = {
-  LOGGED_IN: { label: 'Active', className: 'text-green-600' },
-  ON_BREAK: { label: 'Break', className: 'text-amber-600' },
-  COACHING: { label: 'Coaching', className: 'text-blue-600' },
-  LOGGED_OUT: { label: 'Offline', className: 'text-gray-400' }, // Not shown on board
-};
-```
-
-### Admin Check for Dashboard Link
-
-```typescript
-const { isAdmin, isHR, isSuperAdmin } = useAuth();
-const canViewOtherDashboards = isAdmin || isHR || isSuperAdmin;
-```
-
----
-
-## Considerations
-
-1. **RLS Policies**: Users need SELECT access to `profile_status` to see who is logged in. Currently, users can only see their own status. We may need to add a public SELECT policy or use a database function.
-
-2. **Real-time Updates**: Consider adding Supabase realtime subscription to auto-refresh when statuses change.
-
-3. **Performance**: If team is large, consider pagination or virtualization.
-
-4. **Mobile Responsiveness**: Stack the two columns vertically on mobile.
-
----
-
-## Database Changes Required
-
-A new RLS policy may be needed to allow all authenticated users to read `profile_status`:
+Allow all authenticated users to SELECT from `agent_profiles`:
 
 ```sql
-CREATE POLICY "Authenticated users can view all profile_status"
-ON profile_status
+CREATE POLICY "Authenticated users can view all agent_profiles for team status"
+ON agent_profiles
 FOR SELECT TO authenticated
 USING (true);
 ```
 
-This is safe because:
-- `profile_status` only contains status info (no sensitive data)
-- All team members should be able to see who is online
+**Fields exposed**: id, email, full_name, position, start_date, etc. These are already visible to team members in other parts of the app.
+
+### Step 2: Add RLS Policy for `agent_directory`
+
+Allow all authenticated users to SELECT schedule info from `agent_directory`:
+
+```sql
+CREATE POLICY "Authenticated users can view all agent_directory for team status"
+ON agent_directory
+FOR SELECT TO authenticated
+USING (true);
+```
+
+**Fields exposed**: email, weekday_schedule, break_schedule, etc. Schedule visibility is expected for team coordination.
+
+### Step 3: Fix React Warning in StatusCard
+
+The `StatusCard` component has a ref-forwarding warning. Update it to use proper forwarding or remove the ref usage.
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| Database Migration | Add 2 new RLS policies for global SELECT |
+| `src/components/team-status/StatusCard.tsx` | Fix React ref warning |
+
+---
+
+## Security Considerations
+
+- **No sensitive data exposed**: `agent_profiles` and `agent_directory` contain team directory information that's appropriate for all team members to see
+- **Write operations unchanged**: INSERT, UPDATE, DELETE policies remain restrictive
+- **Existing functionality**: Other parts of the app (like Master Directory) may already expect team members to see each other's basic info
 
 ---
 
 ## Summary
 
-| Item | Details |
-|------|---------|
-| **Route** | `/team-status` |
-| **Access** | All authenticated users |
-| **Data Sources** | `profile_status`, `agent_profiles`, `agent_directory` |
-| **Grouping** | Agents vs Team Leads/Tech Support (by position) |
-| **Admin Feature** | Dashboard link on each card |
-| **New Files** | 3 (page, component, API) |
-| **Modified Files** | 2 (App.tsx, Layout.tsx) |
+| Action | Purpose |
+|--------|---------|
+| Add `agent_profiles` global SELECT policy | Allow agents to see Team Leads/Tech Support names & positions |
+| Add `agent_directory` global SELECT policy | Allow agents to see others' shift/break schedules |
+| Fix StatusCard ref warning | Clean React warning in console |
