@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -113,6 +113,9 @@ export function Layout({ children }: LayoutProps) {
         peopleItems.push({ href: `/people/${userProfileId}/dashboard`, label: 'Dashboard', icon: LayoutDashboard });
       }
     }
+    // Team Status Board - available to all users
+    peopleItems.push({ href: '/team-status', label: 'Team Status', icon: Activity });
+    
     if (peopleItems.length > 0) {
       groups.push({
         label: 'People',
