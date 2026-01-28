@@ -24,6 +24,7 @@ export interface DirectoryEntry {
   weekday_ot_schedule: string | null;
   weekend_ot_schedule: string | null;
   ot_total_hours: number;
+  unpaid_break_hours: number;  // Track unpaid break deductions
   overall_total_hours: number;
   day_off: string[];
   quota: number | null;
@@ -154,22 +155,46 @@ export function parseScheduleHours(schedule: string | null): number {
   return diff / 60;
 }
 
+// Day constants for working day calculations
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+const WEEKENDS = ['Sat', 'Sun'];
+
 export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
   weekday_total_hours: number;
   weekend_total_hours: number;
   ot_total_hours: number;
+  unpaid_break_hours: number;
   overall_total_hours: number;
 } {
-  const weekdayHours = parseScheduleHours(entry.weekday_schedule ?? null);
-  const weekendHours = parseScheduleHours(entry.weekend_schedule ?? null);
+  const dayOff = entry.day_off || [];
+  
+  // Count working days (exclude days off)
+  const workingWeekdays = WEEKDAYS.filter(day => !dayOff.includes(day)).length;
+  const workingWeekendDays = WEEKENDS.filter(day => !dayOff.includes(day)).length;
+  
+  // Parse daily hours from schedule strings
+  const dailyWeekdayHours = parseScheduleHours(entry.weekday_schedule ?? null);
+  const dailyWeekendHours = parseScheduleHours(entry.weekend_schedule ?? null);
   const weekdayOtHours = parseScheduleHours(entry.weekday_ot_schedule ?? null);
   const weekendOtHours = parseScheduleHours(entry.weekend_ot_schedule ?? null);
   
+  // Calculate weekly totals
+  const weekdayTotalHours = workingWeekdays * dailyWeekdayHours;
+  const weekendTotalHours = workingWeekendDays * dailyWeekendHours;
+  const otTotalHours = weekdayOtHours + weekendOtHours;
+  
+  // Unpaid break: 30 min per working weekday + 30 min weekly for Weekend Revalida
+  const unpaidBreakHours = (workingWeekdays * 0.5) + 0.5;
+  
+  // Overall = gross hours - unpaid breaks
+  const overallTotalHours = weekdayTotalHours + weekendTotalHours + otTotalHours - unpaidBreakHours;
+  
   return {
-    weekday_total_hours: weekdayHours,
-    weekend_total_hours: weekendHours,
-    ot_total_hours: weekdayOtHours + weekendOtHours,
-    overall_total_hours: weekdayHours + weekendHours + weekdayOtHours + weekendOtHours,
+    weekday_total_hours: weekdayTotalHours,
+    weekend_total_hours: weekendTotalHours,
+    ot_total_hours: otTotalHours,
+    unpaid_break_hours: unpaidBreakHours,
+    overall_total_hours: overallTotalHours,
   };
 }
 
@@ -227,6 +252,7 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         weekday_ot_schedule: dirEntry?.weekday_ot_schedule || null,
         weekend_ot_schedule: dirEntry?.weekend_ot_schedule || null,
         ot_total_hours: dirEntry?.ot_total_hours || 0,
+        unpaid_break_hours: dirEntry?.unpaid_break_hours || 0,
         overall_total_hours: dirEntry?.overall_total_hours || 0,
         day_off: dirEntry?.day_off || [],
         quota: dirEntry?.quota || null,
@@ -288,6 +314,7 @@ export async function bulkSaveEntries(
         weekday_ot_schedule: entry.weekday_ot_schedule,
         weekend_ot_schedule: entry.weekend_ot_schedule,
         ot_total_hours: hours.ot_total_hours,
+        unpaid_break_hours: hours.unpaid_break_hours,
         overall_total_hours: hours.overall_total_hours,
         day_off: entry.day_off,
         quota: entry.quota,

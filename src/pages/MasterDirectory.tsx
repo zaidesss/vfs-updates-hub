@@ -160,7 +160,16 @@ export default function MasterDirectory() {
         const newArray = currentArray.includes(value)
           ? currentArray.filter((v) => v !== value)
           : [...currentArray, value];
-        return { ...entry, [field]: newArray };
+        
+        const updated = { ...entry, [field]: newArray };
+        
+        // Recalculate hours when day_off changes (affects working days count)
+        if (field === 'day_off') {
+          const hours = calculateTotalHours(updated);
+          return { ...updated, ...hours };
+        }
+        
+        return updated;
       })
     );
   };
