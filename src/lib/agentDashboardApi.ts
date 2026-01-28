@@ -1,7 +1,33 @@
 import { supabase } from '@/integrations/supabase/client';
+import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 
 export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING';
 export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END';
+
+export type AttendanceStatus = 
+  | 'present'     // Green - logged in on time
+  | 'late'        // Yellow - logged in > 10 min after schedule
+  | 'absent'      // Red - working day, no login, no leave
+  | 'pending'     // Grey - today/future, no login yet
+  | 'day_off'     // Grey - scheduled day off
+  | 'on_leave';   // Blue - approved leave (with leave type)
+
+export interface DayAttendance {
+  date: Date;
+  dayKey: string;
+  status: AttendanceStatus;
+  leaveType?: string;
+  loginTime?: string;
+  scheduleStart?: string;
+}
+
+export interface ApprovedLeave {
+  id: string;
+  start_date: string;
+  end_date: string;
+  outage_reason: string;
+  status: string;
+}
 
 export interface DashboardProfile {
   id: string;                    // from agent_profiles
@@ -291,4 +317,168 @@ export async function getAllProfiles(): Promise<{ data: DashboardProfile[] | nul
   } catch (err: any) {
     return { data: null, error: err.message };
   }
+}
+
+export async function getApprovedLeavesForWeek(
+  agentEmail: string,
+  weekStart: Date,
+  weekEnd: Date
+): Promise<{ data: ApprovedLeave[] | null; error: string | null }> {
+  try {
+    const startStr = format(weekStart, 'yyyy-MM-dd');
+    const endStr = format(weekEnd, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .select('id, start_date, end_date, outage_reason, status')
+      .eq('agent_email', agentEmail.toLowerCase())
+      .eq('status', 'approved')
+      .lte('start_date', endStr)
+      .gte('end_date', startStr);
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as ApprovedLeave[], error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+export async function getWeekLoginEvents(
+  profileId: string,
+  weekStart: Date,
+  weekEnd: Date
+): Promise<{ data: ProfileEvent[] | null; error: string | null }> {
+  try {
+    const startStr = weekStart.toISOString();
+    const endStr = weekEnd.toISOString();
+
+    const { data, error } = await supabase
+      .from('profile_events')
+      .select('*')
+      .eq('profile_id', profileId)
+      .eq('event_type', 'LOGIN')
+      .gte('created_at', startStr)
+      .lte('created_at', endStr)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as ProfileEvent[], error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+export function calculateAttendanceForWeek(
+  profile: DashboardProfile,
+  loginEvents: ProfileEvent[],
+  approvedLeaves: ApprovedLeave[],
+  weekStart: Date
+): DayAttendance[] {
+  const DAYS = [
+    { key: 'mon', short: 'Mon', offset: 0 },
+    { key: 'tue', short: 'Tue', offset: 1 },
+    { key: 'wed', short: 'Wed', offset: 2 },
+    { key: 'thu', short: 'Thu', offset: 3 },
+    { key: 'fri', short: 'Fri', offset: 4 },
+    { key: 'sat', short: 'Sat', offset: 5 },
+    { key: 'sun', short: 'Sun', offset: 6 },
+  ];
+
+  const dayOffArray = profile.day_off || [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return DAYS.map((day) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + day.offset);
+    date.setHours(0, 0, 0, 0);
+
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const isPast = isBefore(date, today);
+    const isToday = isEqual(date, today);
+
+    // 1. Check if it's a day off
+    if (dayOffArray.includes(day.short)) {
+      return { date, dayKey: day.key, status: 'day_off' as AttendanceStatus };
+    }
+
+    // 2. Check for approved leave on this date
+    const leaveForDay = approvedLeaves.find((leave) => {
+      const leaveStart = parseISO(leave.start_date);
+      const leaveEnd = parseISO(leave.end_date);
+      return (isAfter(date, leaveStart) || isEqual(date, leaveStart)) &&
+             (isBefore(date, leaveEnd) || isEqual(date, leaveEnd));
+    });
+
+    if (leaveForDay) {
+      return {
+        date,
+        dayKey: day.key,
+        status: 'on_leave' as AttendanceStatus,
+        leaveType: leaveForDay.outage_reason,
+      };
+    }
+
+    // 3. Check for login event on this date
+    const loginForDay = loginEvents.find((event) => {
+      const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+      return eventDate === dateStr;
+    });
+
+    if (loginForDay) {
+      // Get schedule start time for this day
+      const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
+      let scheduleTime = profile[scheduleKey] as string | null;
+      
+      // Fallback to weekday/weekend schedule
+      if (!scheduleTime) {
+        scheduleTime = ['sat', 'sun'].includes(day.key)
+          ? profile.weekend_schedule
+          : profile.weekday_schedule;
+      }
+
+      // Parse schedule time and check if late (> 10 min)
+      if (scheduleTime) {
+        const loginTime = parseISO(loginForDay.created_at);
+        const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
+        
+        if (!isNaN(scheduleHours) && !isNaN(scheduleMinutes)) {
+          const scheduledStart = new Date(date);
+          scheduledStart.setHours(scheduleHours, scheduleMinutes, 0, 0);
+          const lateThreshold = addMinutes(scheduledStart, 10);
+
+          if (isAfter(loginTime, lateThreshold)) {
+            return {
+              date,
+              dayKey: day.key,
+              status: 'late' as AttendanceStatus,
+              loginTime: format(loginTime, 'HH:mm'),
+              scheduleStart: scheduleTime,
+            };
+          }
+        }
+      }
+
+      return {
+        date,
+        dayKey: day.key,
+        status: 'present' as AttendanceStatus,
+        loginTime: format(parseISO(loginForDay.created_at), 'HH:mm'),
+        scheduleStart: scheduleTime || undefined,
+      };
+    }
+
+    // 4. No login - check if past or pending
+    if (isPast) {
+      return { date, dayKey: day.key, status: 'absent' as AttendanceStatus };
+    }
+
+    return { date, dayKey: day.key, status: 'pending' as AttendanceStatus };
+  });
 }

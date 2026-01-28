@@ -817,7 +817,7 @@ export type Database = {
             foreignKeyName: "profile_events_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: "agent_directory"
+            referencedRelation: "agent_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -846,7 +846,7 @@ export type Database = {
             foreignKeyName: "profile_status_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: true
-            referencedRelation: "agent_directory"
+            referencedRelation: "agent_profiles"
             referencedColumns: ["id"]
           },
         ]
