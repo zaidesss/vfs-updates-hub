@@ -31,6 +31,7 @@ import PlaybookArticle from "./pages/PlaybookArticle";
 import NotificationSettings from "./pages/NotificationSettings";
 import HelpCenter from "./pages/HelpCenter";
 import AgentDashboard from "./pages/AgentDashboard";
+import TeamStatusBoard from "./pages/TeamStatusBoard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -218,6 +219,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HelpCenter />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-status"
+        element={
+          <ProtectedRoute>
+            <TeamStatusBoard />
           </ProtectedRoute>
         }
       />
