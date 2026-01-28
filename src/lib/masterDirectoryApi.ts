@@ -183,8 +183,17 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
   const weekendTotalHours = workingWeekendDays * dailyWeekendHours;
   const otTotalHours = weekdayOtHours + weekendOtHours;
   
-  // Unpaid break: 30 min per working weekday + 30 min weekly for Weekend Revalida
-  const unpaidBreakHours = (workingWeekdays * 0.5) + 0.5;
+  // Check if break schedule has a value - only apply break deductions if it does
+  const hasBreakSchedule = entry.break_schedule && entry.break_schedule.trim() !== '';
+  
+  let unpaidBreakHours = 0;
+  if (hasBreakSchedule) {
+    // Parse actual break duration from break schedule
+    const breakDurationPerDay = parseScheduleHours(entry.break_schedule ?? null);
+    
+    // Weekday breaks + fixed 30 min Weekend Revalida
+    unpaidBreakHours = (workingWeekdays * breakDurationPerDay) + 0.5;
+  }
   
   // Overall = gross hours - unpaid breaks
   const overallTotalHours = weekdayTotalHours + weekendTotalHours + otTotalHours - unpaidBreakHours;
