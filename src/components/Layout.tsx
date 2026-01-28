@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useDemoTour } from '@/context/DemoTourContext';
@@ -11,11 +11,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
 import ImprovementsTracker from '@/components/ImprovementsTracker';
+import { supabase } from '@/integrations/supabase/client';
+
 interface LayoutProps {
   children: ReactNode;
 }
@@ -38,6 +40,26 @@ export function Layout({ children }: LayoutProps) {
   const { openTour } = useDemoTour();
   const location = useLocation();
   const [showImprovements, setShowImprovements] = useState(false);
+  const [userProfileId, setUserProfileId] = useState<string | null>(null);
+
+  // Fetch user's profile ID from agent_directory for dashboard link
+  useEffect(() => {
+    const fetchUserProfileId = async () => {
+      if (!user?.email) return;
+      
+      const { data } = await supabase
+        .from('agent_directory')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+      
+      if (data?.id) {
+        setUserProfileId(data.id);
+      }
+    };
+    
+    fetchUserProfileId();
+  }, [user?.email]);
 
   // Define grouped navigation
   const getNavGroups = (): NavGroup[] => {
@@ -76,12 +98,20 @@ export function Layout({ children }: LayoutProps) {
     const peopleItems: NavItem[] = [];
     if (!isAdmin) {
       peopleItems.push({ href: '/profile', label: 'My Bio', icon: User });
+      // Dashboard link for agents (below My Bio)
+      if (userProfileId) {
+        peopleItems.push({ href: `/people/${userProfileId}/dashboard`, label: 'Dashboard', icon: LayoutDashboard });
+      }
     }
     if (isAdmin || isHR) {
       peopleItems.push({ href: '/manage-profiles', label: 'All Bios', icon: Users });
     }
     if (isAdmin) {
       peopleItems.push({ href: '/master-directory', label: 'Master Directory', icon: ClipboardList });
+      // Dashboard link for admins (below Master Directory)
+      if (userProfileId) {
+        peopleItems.push({ href: `/people/${userProfileId}/dashboard`, label: 'Dashboard', icon: LayoutDashboard });
+      }
     }
     if (peopleItems.length > 0) {
       groups.push({
