@@ -118,6 +118,7 @@ export default function MasterDirectory() {
         if (
           field === 'weekday_schedule' ||
           field === 'weekend_schedule' ||
+          field === 'break_schedule' ||
           field === 'weekday_ot_schedule' ||
           field === 'weekend_ot_schedule'
         ) {
