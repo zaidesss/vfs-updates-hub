@@ -1,106 +1,184 @@
 
-# Fix Team Status Board Access for Regular Agents
+# Fix "Since" Time Display in Agent Dashboard
 
-## Problem Identified
+## Problem Summary
 
-The Team Status Board works for Admin/HR/Super Admin but **fails for regular agents** because of restrictive RLS policies:
+The "Since: xx:xx PM" time shown in the Current Status section is **incorrect** in two ways:
 
-### Current RLS Policies
+1. **Wrong time source**: Shows page load time instead of actual last status change time
+2. **Missing date**: Only shows time (e.g., "05:08 PM"), but should show date + time for previous days (e.g., "1/27/2026 5:00 PM")
 
-| Table | Policy for Agents | Result |
-|-------|------------------|--------|
-| `profile_status` | ✅ Can view ALL records | Works |
-| `agent_profiles` | ❌ Can only view OWN profile | **Blocks seeing other team members** |
-| `agent_directory` | ❌ Can only view OWN record | **Blocks seeing others' schedules** |
+## Root Cause Analysis
 
-### Data Flow Issue
-
-```text
-Step 1: Fetch profile_status (not LOGGED_OUT) → ✅ Returns all 5 logged-in users
-Step 2: Fetch agent_profiles for those 5 IDs → ❌ Returns only 1 (agent's own profile)
-Step 3: Result: Agent only sees themselves on the board
+### Issue 1: Initial State Uses Current Time
+**File**: `src/pages/AgentDashboard.tsx` (Line 40)
+```typescript
+const [statusSince, setStatusSince] = useState<string>(new Date().toISOString());
 ```
+This initializes with page load time, which briefly shows before the API data arrives.
 
----
+### Issue 2: API Fallback Uses Current Time
+**File**: `src/lib/agentDashboardApi.ts` (Lines 192-200)
+```typescript
+// If no status exists, return default LOGGED_OUT
+if (!data) {
+  return { 
+    data: {
+      id: '',
+      profile_id: profileId,
+      current_status: 'LOGGED_OUT' as ProfileStatus,
+      status_since: new Date().toISOString(), // ← Wrong!
+    }, 
+    error: null 
+  };
+}
+```
+When no `profile_status` record exists, it returns the current time instead of `null`.
 
-## Additional Issues Found
-
-1. **Minor React Warning**: `StatusCard` component has a ref warning that should be addressed
-2. **Schedule visibility**: Even if we fix the profiles issue, agents won't see others' shift/break schedules without fixing `agent_directory` RLS
+### Issue 3: Time Format Lacks Date
+**File**: `src/components/dashboard/StatusIndicator.tsx` (Lines 34-37)
+```typescript
+function formatTimeSince(isoString: string): string {
+  const date = new Date(isoString);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+```
+This only formats time, missing the date when status was changed on a previous day.
 
 ---
 
 ## Solution
 
-Add new RLS policies to allow **all authenticated users** to read basic info from `agent_profiles` and `agent_directory` for the Team Status Board.
+### Step 1: Update API to Return Null for Unknown Status Time
 
-### Option A: Add Global SELECT Policies (Simple)
+When no status record exists, return `status_since: null` instead of the current time.
 
-Add policies that allow all authenticated users to SELECT from both tables. This approach is simple but may expose more data than necessary.
+**File**: `src/lib/agentDashboardApi.ts`
 
-### Option B: Create a Database View (Recommended)
-
-Create a secure view that only exposes the specific fields needed for the Team Status Board, with a simpler RLS policy.
-
-**I recommend Option A** as these tables don't contain highly sensitive data (no passwords, tokens, or PII beyond names/emails which are visible on the board anyway).
-
----
-
-## Implementation Steps
-
-### Step 1: Add RLS Policy for `agent_profiles`
-
-Allow all authenticated users to SELECT from `agent_profiles`:
-
-```sql
-CREATE POLICY "Authenticated users can view all agent_profiles for team status"
-ON agent_profiles
-FOR SELECT TO authenticated
-USING (true);
+Update the fallback return:
+```typescript
+if (!data) {
+  return { 
+    data: {
+      id: '',
+      profile_id: profileId,
+      current_status: 'LOGGED_OUT' as ProfileStatus,
+      status_since: null, // Changed from new Date().toISOString()
+    }, 
+    error: null 
+  };
+}
 ```
 
-**Fields exposed**: id, email, full_name, position, start_date, etc. These are already visible to team members in other parts of the app.
-
-### Step 2: Add RLS Policy for `agent_directory`
-
-Allow all authenticated users to SELECT schedule info from `agent_directory`:
-
-```sql
-CREATE POLICY "Authenticated users can view all agent_directory for team status"
-ON agent_directory
-FOR SELECT TO authenticated
-USING (true);
+Update the type to allow null:
+```typescript
+export interface ProfileStatusRecord {
+  id: string;
+  profile_id: string;
+  current_status: ProfileStatus;
+  status_since: string | null;  // Allow null
+}
 ```
 
-**Fields exposed**: email, weekday_schedule, break_schedule, etc. Schedule visibility is expected for team coordination.
+### Step 2: Update AgentDashboard to Handle Null
 
-### Step 3: Fix React Warning in StatusCard
+**File**: `src/pages/AgentDashboard.tsx`
 
-The `StatusCard` component has a ref-forwarding warning. Update it to use proper forwarding or remove the ref usage.
+Change initial state to null:
+```typescript
+const [statusSince, setStatusSince] = useState<string | null>(null);
+```
+
+Update the data loading:
+```typescript
+if (statusResult.data) {
+  setStatus(statusResult.data.current_status);
+  setStatusSince(statusResult.data.status_since); // May be null now
+}
+```
+
+### Step 3: Smart Date/Time Formatting
+
+**File**: `src/components/dashboard/StatusIndicator.tsx`
+
+Replace the `formatTimeSince` function with a smarter version that:
+- Shows only time if status changed today (e.g., "3:15 PM")
+- Shows date + time if status changed on a different day (e.g., "1/27/2026 5:00 PM")
+- Uses EST timezone consistently per project standards
+
+```typescript
+function formatTimeSince(isoString: string): string {
+  const date = new Date(isoString);
+  const today = new Date();
+  
+  // Check if same day in EST
+  const dateEST = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).format(date);
+  
+  const todayEST = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).format(today);
+  
+  const timeFormatted = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+  
+  if (dateEST === todayEST) {
+    // Same day: show only time
+    return timeFormatted;
+  } else {
+    // Different day: show date + time
+    return `${dateEST} ${timeFormatted}`;
+  }
+}
+```
+
+Handle null case in the render:
+```typescript
+{since ? (
+  <span className="text-sm text-muted-foreground">
+    Since: {formatTimeSince(since)}
+  </span>
+) : null}
+```
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| Database Migration | Add 2 new RLS policies for global SELECT |
-| `src/components/team-status/StatusCard.tsx` | Fix React ref warning |
+| File | Changes |
+|------|---------|
+| `src/lib/agentDashboardApi.ts` | Update `ProfileStatusRecord` type to allow `null` for `status_since`; update fallback to return `null` |
+| `src/pages/AgentDashboard.tsx` | Change `statusSince` state to allow `null`; handle null in template |
+| `src/components/dashboard/StatusIndicator.tsx` | Smart date/time formatting with EST timezone; handle null `since` prop |
 
 ---
 
-## Security Considerations
+## Expected Behavior After Fix
 
-- **No sensitive data exposed**: `agent_profiles` and `agent_directory` contain team directory information that's appropriate for all team members to see
-- **Write operations unchanged**: INSERT, UPDATE, DELETE policies remain restrictive
-- **Existing functionality**: Other parts of the app (like Master Directory) may already expect team members to see each other's basic info
+| Scenario | Current (Wrong) | After Fix (Correct) |
+|----------|-----------------|---------------------|
+| Logged in at 9:00 AM today | Since: 10:42 AM (page load) | Since: 9:00 AM |
+| Took break at 12:30 PM | Since: 10:42 AM (page load) | Since: 12:30 PM |
+| Logged out 5:00 PM yesterday | Since: 10:42 AM (page load) | Since: 1/27/2026 5:00 PM |
+| Never had any status | Since: 10:42 AM (page load) | (No "Since" shown) |
 
 ---
 
-## Summary
+## Additional Considerations
 
-| Action | Purpose |
-|--------|---------|
-| Add `agent_profiles` global SELECT policy | Allow agents to see Team Leads/Tech Support names & positions |
-| Add `agent_directory` global SELECT policy | Allow agents to see others' shift/break schedules |
-| Fix StatusCard ref warning | Clean React warning in console |
+1. **Team Status Board**: The `StatusCard` component on the Team Status Board may also need updating to show proper time formatting. Should we apply the same fix there?
+
+2. **Profile Events as Fallback**: If `profile_status` is empty but `profile_events` exists, we could query the most recent event to get the actual last status change time. Would you like this enhancement?
+
+3. **Realtime Updates**: When status changes via the buttons, the "Since" time updates correctly (using `new Date()` after a successful change). This is correct behavior.
