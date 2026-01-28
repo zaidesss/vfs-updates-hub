@@ -56,6 +56,7 @@ export type Database = {
           thu_schedule: string | null
           ticket_assignment_view_id: string | null
           tue_schedule: string | null
+          unpaid_break_hours: number | null
           updated_at: string
           views: string[] | null
           wd_ticket_assign: string | null
@@ -89,6 +90,7 @@ export type Database = {
           thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
           tue_schedule?: string | null
+          unpaid_break_hours?: number | null
           updated_at?: string
           views?: string[] | null
           wd_ticket_assign?: string | null
@@ -122,6 +124,7 @@ export type Database = {
           thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
           tue_schedule?: string | null
+          unpaid_break_hours?: number | null
           updated_at?: string
           views?: string[] | null
           wd_ticket_assign?: string | null
