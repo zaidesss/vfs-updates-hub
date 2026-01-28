@@ -37,7 +37,7 @@ export default function AgentDashboard() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [profile, setProfile] = useState<DashboardProfile | null>(null);
   const [status, setStatus] = useState<ProfileStatus>('LOGGED_OUT');
-  const [statusSince, setStatusSince] = useState<string>(new Date().toISOString());
+  const [statusSince, setStatusSince] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
 

@@ -69,7 +69,7 @@ export interface ProfileStatusRecord {
   id: string;
   profile_id: string;
   current_status: ProfileStatus;
-  status_since: string;
+  status_since: string | null;
 }
 
 export interface ProfileEvent {
@@ -188,14 +188,14 @@ export async function getProfileStatus(profileId: string): Promise<{ data: Profi
       return { data: null, error: error.message };
     }
 
-    // If no status exists, return default LOGGED_OUT
+    // If no status exists, return default LOGGED_OUT with null timestamp
     if (!data) {
       return { 
         data: {
           id: '',
           profile_id: profileId,
           current_status: 'LOGGED_OUT' as ProfileStatus,
-          status_since: new Date().toISOString(),
+          status_since: null,
         }, 
         error: null 
       };
