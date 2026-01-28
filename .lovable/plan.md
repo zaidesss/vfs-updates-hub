@@ -1,193 +1,132 @@
 
 
-## Fix Dashboard Access for All Agents
+## Update Total Hours Calculation with Correct Break Deduction Logic
 
-### Problem
+### Summary
 
-Currently, the Dashboard link only appears if a user has an entry in `agent_directory`. However, `agent_profiles` is the source of truth for agent identity. Most agents have a profile in `agent_profiles` but may not yet have operational data in `agent_directory`.
+This plan updates the hours calculation to properly compute weekly totals with unpaid break deductions, including:
+- Weekday schedule applies to Mon-Fri (excluding day_off)
+- Weekend schedule applies to Sat-Sun (excluding day_off)
+- 30 minutes unpaid break per working weekday
+- Fixed 30 minutes weekly for Weekend Revalida (applies to all agents regardless of day_off)
 
-### Data Model Clarification
+---
 
-| Table | Purpose | Key Fields |
-|-------|---------|------------|
-| `agent_profiles` | Agent identity (source of truth for who is an agent) | `id`, `email`, `full_name` |
-| `agent_directory` | Operational data (schedules, quota, etc.) | `email` (linked), operational fields |
+### Formula
 
-### Solution
+```text
+weekday_total_hours = workingWeekdays × weekdayHoursPerDay
+weekend_total_hours = workingWeekendDays × weekendHoursPerDay
+unpaid_break_hours = (workingWeekdays × 0.5) + 0.5
+overall_total_hours = weekday_total_hours + weekend_total_hours + ot_total_hours - unpaid_break_hours
+```
 
-Change the Dashboard system to use `agent_profiles.id` as the primary key instead of `agent_directory.id`.
+### Example Calculation
+
+For an agent with:
+- Weekday Schedule: 8:00 AM - 5:00 PM (9 hours)
+- Weekend Schedule: 10:00 AM - 3:00 PM (5 hours)
+- Day Off: Wed, Sun
+
+Result:
+- Working weekdays = 5 - 1 (Wed) = 4 days
+- Working weekend days = 2 - 1 (Sun) = 1 day
+- Weekday Total: 4 × 9 = 36 hours
+- Weekend Total: 1 × 5 = 5 hours
+- Unpaid Break: (4 × 0.5) + 0.5 = 2.5 hours
+- Overall Total: 36 + 5 + 0 (OT) - 2.5 = 38.5 hours
 
 ---
 
 ### Changes Required
 
-#### File 1: `src/components/Layout.tsx`
+#### Step 1: Database Migration
 
-**Change the profile lookup to use `agent_profiles` instead of `agent_directory`**
+Add `unpaid_break_hours` column to `agent_directory` table for tracking/reporting.
 
-Current code (line 51-59):
-```typescript
-const { data } = await supabase
-  .from('agent_directory')
-  .select('id')
-  .eq('email', user.email)
-  .maybeSingle();
+```sql
+ALTER TABLE agent_directory 
+ADD COLUMN unpaid_break_hours NUMERIC DEFAULT 0;
 ```
 
-New code:
-```typescript
-const { data } = await supabase
-  .from('agent_profiles')
-  .select('id')
-  .eq('email', user.email)
-  .maybeSingle();
-```
+#### Step 2: Update DirectoryEntry Interface
 
----
+**File:** `src/lib/masterDirectoryApi.ts`
 
-#### File 2: `src/lib/agentDashboardApi.ts`
-
-**Update `fetchDashboardProfile` to:**
-1. First fetch from `agent_profiles` using the profile ID to get `email` and `full_name`
-2. Then fetch operational data from `agent_directory` using the email
-
-Update the `DashboardProfile` interface and function:
-
-```typescript
-export interface DashboardProfile {
-  id: string;                    // from agent_profiles
-  email: string;                 // from agent_profiles
-  full_name: string | null;      // from agent_profiles
-  agent_name: string | null;     // from agent_directory
-  zendesk_instance: string | null;
-  support_account: string | null;
-  support_type: string | null;
-  ticket_assignment_view_id: string | null;
-  break_schedule: string | null;
-  quota: number | null;
-  // ... schedule fields
-}
-
-export async function fetchDashboardProfile(profileId: string) {
-  // 1. Fetch from agent_profiles (identity)
-  const { data: profile } = await supabase
-    .from('agent_profiles')
-    .select('id, email, full_name')
-    .eq('id', profileId)
-    .single();
-
-  // 2. Fetch from agent_directory (operational data)
-  const { data: directory } = await supabase
-    .from('agent_directory')
-    .select('*')
-    .eq('email', profile.email)
-    .maybeSingle();
-
-  // 3. Merge and return
-  return {
-    id: profile.id,
-    email: profile.email,
-    full_name: profile.full_name,
-    agent_name: directory?.agent_name || profile.full_name,
-    zendesk_instance: directory?.zendesk_instance || null,
-    // ... other fields with defaults
-  };
-}
-```
-
----
-
-#### File 3: `src/pages/AgentDashboard.tsx`
-
-**Update access control check to use `agent_profiles`**
-
-Current code checks `profile.email === user?.email` where `profile` comes from `agent_directory`.
-
-After the API change, `profile` will come from `agent_profiles`, so the same check will work correctly.
-
----
-
-#### File 4: `src/components/dashboard/ProfileHeader.tsx`
-
-**Use `full_name` as fallback for display name**
-
-Update to display `profile.full_name || profile.agent_name || profile.email`
-
----
-
-#### File 5: `src/pages/MasterDirectory.tsx`
-
-**Update dashboard link to use `agent_profiles.id` instead of `agent_directory.id`**
-
-The MasterDirectory already merges data from both tables. We need to ensure the link uses the `agent_profiles` ID. However, since the current merge uses `agent_directory.id` as the `id` field (line 206), we need to:
-
-1. Add `profile_id` (from agent_profiles) to the DirectoryEntry interface
-2. Update the merge to include this field
-3. Use `profile_id` for the dashboard link
-
----
-
-#### File 6: `src/lib/masterDirectoryApi.ts`
-
-**Add `profile_id` to DirectoryEntry interface and fetch**
-
+Add the new field to the interface:
 ```typescript
 export interface DirectoryEntry {
-  id: string;           // agent_directory.id (for save operations)
-  profile_id: string;   // agent_profiles.id (for dashboard link)
-  // ... rest of fields
-}
-```
-
-Update the fetch to include `id` from agent_profiles:
-```typescript
-const { data: profiles } = await supabase
-  .from('agent_profiles')
-  .select('id, email, full_name, position, team_lead');
-
-// In merge:
-return {
-  profile_id: profile.id,  // Use for dashboard link
-  id: dirEntry?.id || '',  // Keep for save operations
+  // ... existing fields
+  unpaid_break_hours: number;  // NEW: Track unpaid break deductions
   // ...
 }
 ```
 
+#### Step 3: Update calculateTotalHours Function
+
+**File:** `src/lib/masterDirectoryApi.ts`
+
+Replace the current simple calculation with:
+- Count working weekdays (Mon-Fri excluding day_off)
+- Count working weekend days (Sat-Sun excluding day_off)
+- Calculate unpaid break: (workingWeekdays × 0.5) + 0.5
+- Return all values including unpaid_break_hours
+
+#### Step 4: Update toggleArrayValue to Recalculate Hours
+
+**File:** `src/pages/MasterDirectory.tsx`
+
+When day_off changes, trigger recalculation of total hours (similar to how schedule changes work).
+
+#### Step 5: Update Merge Logic for fetchAllDirectoryEntries
+
+**File:** `src/lib/masterDirectoryApi.ts`
+
+Add `unpaid_break_hours` to the merged data with default value of 0.
+
+#### Step 6: Update bulkSaveEntries
+
+**File:** `src/lib/masterDirectoryApi.ts`
+
+Include `unpaid_break_hours` in the upsert data.
+
 ---
 
-### Database Considerations
+### Technical Details
 
-**No database changes required.** Both tables already exist and are linked by email.
+#### Updated calculateTotalHours Function Logic
 
-The `profile_status` and `profile_events` tables reference `agent_directory.id` via `profile_id`. We have two options:
+```typescript
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+const WEEKENDS = ['Sat', 'Sun'];
 
-**Option A: Update references to use `agent_profiles.id`**
-- Requires migration to update foreign key
-- Cleaner long-term
+// Count working days
+const workingWeekdays = WEEKDAYS.filter(day => !dayOff.includes(day)).length;
+const workingWeekendDays = WEEKENDS.filter(day => !dayOff.includes(day)).length;
 
-**Option B: Keep as-is, create directory entry on first status change**
-- When a user clicks a status button and no `agent_directory` entry exists, auto-create one
-- No migration needed
-- Simpler implementation
+// Parse daily hours
+const dailyWeekdayHours = parseScheduleHours(weekday_schedule);
+const dailyWeekendHours = parseScheduleHours(weekend_schedule);
 
-I recommend **Option B** for simplicity.
+// Calculate totals
+const weekdayTotal = workingWeekdays * dailyWeekdayHours;
+const weekendTotal = workingWeekendDays * dailyWeekendHours;
+const otTotal = parseScheduleHours(weekday_ot) + parseScheduleHours(weekend_ot);
+
+// Unpaid break: 30 min per working weekday + 30 min weekly for Weekend Revalida
+const unpaidBreak = (workingWeekdays * 0.5) + 0.5;
+
+// Overall = gross hours - unpaid breaks
+const overall = weekdayTotal + weekendTotal + otTotal - unpaidBreak;
+```
 
 ---
 
-### Updated RLS Policies for `profile_status` and `profile_events`
+### Files to Modify
 
-The current RLS policies check against `agent_directory.id`. If we keep the current structure (Option B), these policies work fine. When an agent accesses their dashboard for the first time and clicks a status button, an `agent_directory` entry will be created for them.
-
----
-
-### Summary of Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/components/Layout.tsx` | Query `agent_profiles` instead of `agent_directory` |
-| `src/lib/agentDashboardApi.ts` | Fetch from `agent_profiles` + join with `agent_directory` |
-| `src/lib/masterDirectoryApi.ts` | Add `profile_id` from `agent_profiles` to DirectoryEntry |
-| `src/pages/MasterDirectory.tsx` | Use `profile_id` for dashboard link |
-| `src/components/dashboard/ProfileHeader.tsx` | Use `full_name` as display name fallback |
-| `src/pages/AgentDashboard.tsx` | Minor updates for new data structure |
+| File | Changes |
+|------|---------|
+| Database | Add `unpaid_break_hours` column |
+| `src/lib/masterDirectoryApi.ts` | Update interface, `calculateTotalHours`, `fetchAllDirectoryEntries`, `bulkSaveEntries` |
+| `src/pages/MasterDirectory.tsx` | Update `toggleArrayValue` to recalculate hours when day_off changes |
 
