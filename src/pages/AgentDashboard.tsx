@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
 import { ShiftScheduleTable } from '@/components/dashboard/ShiftScheduleTable';
@@ -17,9 +18,15 @@ import {
   fetchDashboardProfile,
   getProfileStatus,
   updateProfileStatus,
+  getApprovedLeavesForWeek,
+  getWeekLoginEvents,
+  calculateAttendanceForWeek,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
+  type DayAttendance,
+  type ProfileEvent,
+  type ApprovedLeave,
 } from '@/lib/agentDashboardApi';
 
 export default function AgentDashboard() {
@@ -32,6 +39,7 @@ export default function AgentDashboard() {
   const [status, setStatus] = useState<ProfileStatus>('LOGGED_OUT');
   const [statusSince, setStatusSince] = useState<string>(new Date().toISOString());
   const [error, setError] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<DayAttendance[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -66,6 +74,30 @@ export default function AgentDashboard() {
         setStatus(statusResult.data.current_status);
         setStatusSince(statusResult.data.status_since);
       }
+
+      // Calculate week dates
+      const today = new Date();
+      const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+      const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
+
+      // Fetch login events and approved leaves in parallel
+      const [loginEventsResult, leavesResult] = await Promise.all([
+        getWeekLoginEvents(profileId, weekStart, weekEnd),
+        getApprovedLeavesForWeek(profileResult.data.email, weekStart, weekEnd),
+      ]);
+
+      const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
+      const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
+
+      // Calculate attendance for each day of the week
+      const weekAttendance = calculateAttendanceForWeek(
+        profileResult.data,
+        loginEvents,
+        approvedLeaves,
+        weekStart
+      );
+
+      setAttendance(weekAttendance);
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard data');
     } finally {
@@ -91,6 +123,9 @@ export default function AgentDashboard() {
         title: 'Status Updated',
         description: `Status changed to ${result.newStatus.replace('_', ' ')}`,
       });
+      
+      // Reload attendance data after status change
+      await loadDashboardData();
     } else {
       toast({
         title: 'Error',
@@ -173,8 +208,8 @@ export default function AgentDashboard() {
         {/* Profile Header */}
         <ProfileHeader profile={profile} />
 
-        {/* Shift Schedule */}
-        <ShiftScheduleTable profile={profile} />
+        {/* Shift Schedule with Attendance */}
+        <ShiftScheduleTable profile={profile} attendance={attendance} />
 
         {/* Status Control */}
         <Card>
