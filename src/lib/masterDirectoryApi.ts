@@ -1,7 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export interface DirectoryEntry {
-  id: string;
+  id: string;           // agent_directory.id (for save operations)
+  profile_id: string;   // agent_profiles.id (for dashboard link)
   email: string;
   full_name: string | null;
   position: string | null;
@@ -174,10 +175,10 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
 
 export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry[] | null; error: string | null }> {
   try {
-    // Fetch all agent profiles
+    // Fetch all agent profiles (including id for dashboard link)
     const { data: profiles, error: profilesError } = await supabase
       .from('agent_profiles')
-      .select('email, full_name, position, team_lead');
+      .select('id, email, full_name, position, team_lead');
     
     if (profilesError) {
       return { data: null, error: profilesError.message };
@@ -204,6 +205,7 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
       
       return {
         id: dirEntry?.id || '',
+        profile_id: profile.id,  // agent_profiles.id for dashboard link
         email: profile.email,
         full_name: profile.full_name,
         position: profile.position,

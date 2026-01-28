@@ -164,7 +164,7 @@ export default function AgentDashboard() {
                 Agent Dashboard
               </h1>
               <p className="text-muted-foreground text-sm">
-                {profile.agent_name || profile.email}
+                {profile.full_name || profile.agent_name || profile.email}
               </p>
             </div>
           </div>
