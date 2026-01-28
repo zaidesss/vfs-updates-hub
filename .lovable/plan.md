@@ -1,171 +1,167 @@
 
-# Fix Login Error and Implement Dynamic Attendance Status
+
+# Fix RLS Policy Mismatch and Data Sync Issues
 
 ## Summary
 
-This plan addresses two issues:
-1. **Foreign Key Error**: The `profile_status` table references the wrong table (`agent_directory` instead of `agent_profiles`)
-2. **Attendance Status**: The Shift Schedule should show dynamic attendance status (Present/Absent/Late) based on login events and approved leaves
+There are two related issues preventing the Agent Dashboard from working correctly for non-admin users:
+
+1. **RLS Policy Error**: The "Users can insert own profile_status" policy fails because it checks against `agent_directory.id`, but the system now uses `agent_profiles.id`
+2. **Data Not Reflecting**: Updates in Master Directory (agent_directory) not appearing in Agent Dashboard
 
 ---
 
-## Part 1: Fix Foreign Key Error
+## Root Cause Analysis
 
-### Problem
-The `profile_status` and `profile_events` tables have foreign keys pointing to `agent_directory.id`, but the Agent Dashboard uses `agent_profiles.id` as the profile identifier. These are different IDs for the same person.
+### The ID Mismatch Problem
 
-### Solution
-Alter the foreign key constraints to reference `agent_profiles.id` instead of `agent_directory.id`.
+The database has two separate tables for agent information:
+
+| Table | Purpose | Example ID for salmeromalcom12@gmail.com |
+|-------|---------|------------------------------------------|
+| `agent_profiles` | Auth/identity, links to Supabase auth | `c10d78bb-9079-4608-a30f-313378a52829` |
+| `agent_directory` | Operational data (schedules, quotas) | `9bbd45cc-7961-4317-8d20-192288f040a7` |
+
+These are **different UUIDs** for the same user (linked by email).
+
+### What Went Wrong
+
+The previous migration fixed the **foreign key** to reference `agent_profiles(id)`, but the **RLS policies** still use this check:
+
+```sql
+-- Current RLS policy (BROKEN)
+EXISTS (
+  SELECT 1 FROM agent_directory ad
+  WHERE ad.id = profile_status.profile_id  -- This compares agent_directory.id
+  AND ad.email = current_user_email
+)
+```
+
+This fails because:
+- `profile_status.profile_id` is now an `agent_profiles.id` (e.g., `c10d78bb...`)
+- The policy tries to match it against `agent_directory.id` (e.g., `9bbd45cc...`)
+- They never match, so RLS denies the insert
+
+---
+
+## Solution
+
+Update the RLS policies to reference `agent_profiles` instead of `agent_directory`:
 
 ### Database Migration
 
 ```sql
--- Drop existing foreign key constraints
-ALTER TABLE profile_status 
-DROP CONSTRAINT IF EXISTS profile_status_profile_id_fkey;
+-- Drop and recreate the "Users can" policies for profile_status
+DROP POLICY IF EXISTS "Users can insert own profile_status" ON profile_status;
+DROP POLICY IF EXISTS "Users can update own profile_status" ON profile_status;
+DROP POLICY IF EXISTS "Users can view own profile_status" ON profile_status;
 
-ALTER TABLE profile_events 
-DROP CONSTRAINT IF EXISTS profile_events_profile_id_fkey;
+CREATE POLICY "Users can insert own profile_status" ON profile_status
+FOR INSERT WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM agent_profiles ap
+    WHERE ap.id = profile_status.profile_id
+    AND ap.email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+  )
+);
 
--- Recreate foreign keys pointing to agent_profiles
-ALTER TABLE profile_status
-ADD CONSTRAINT profile_status_profile_id_fkey 
-FOREIGN KEY (profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE;
+CREATE POLICY "Users can update own profile_status" ON profile_status
+FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM agent_profiles ap
+    WHERE ap.id = profile_status.profile_id
+    AND ap.email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+  )
+);
 
-ALTER TABLE profile_events
-ADD CONSTRAINT profile_events_profile_id_fkey 
-FOREIGN KEY (profile_id) REFERENCES agent_profiles(id) ON DELETE CASCADE;
+CREATE POLICY "Users can view own profile_status" ON profile_status
+FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM agent_profiles ap
+    WHERE ap.id = profile_status.profile_id
+    AND ap.email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+  )
+);
+
+-- Same for profile_events
+DROP POLICY IF EXISTS "Users can insert own profile_events" ON profile_events;
+DROP POLICY IF EXISTS "Users can view own profile_events" ON profile_events;
+
+CREATE POLICY "Users can insert own profile_events" ON profile_events
+FOR INSERT WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM agent_profiles ap
+    WHERE ap.id = profile_events.profile_id
+    AND ap.email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+  )
+);
+
+CREATE POLICY "Users can view own profile_events" ON profile_events
+FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM agent_profiles ap
+    WHERE ap.id = profile_events.profile_id
+    AND ap.email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+  )
+);
 ```
 
 ---
 
-## Part 2: Implement Dynamic Attendance Status
+## Data Sync Verification
 
-### Status Logic
-
-For each day in the current week (Mon-Sun):
-
-| Condition | Status | Color |
-|-----------|--------|-------|
-| Day Off | Off | Grey |
-| Approved leave on that date | Leave type (e.g., "Medical Leave") | Blue |
-| Login event exists & on time | Present | Green |
-| Login event exists & > 10 min late | Late | Yellow |
-| Past day, no login, no leave | Absent | Red |
-| Today/future, no login yet | Pending | Grey |
-
-### Data Sources
-
-1. **profile_events** - Check for LOGIN events on each date
-2. **leave_requests** - Check for approved leaves covering each date (where `status = 'approved'` and date falls between `start_date` and `end_date`)
-3. **agent_directory** - Get the schedule start time for that day to determine "Late"
-
-### Components to Modify
-
-1. **ShiftScheduleTable.tsx** - Pass profile events and leaves data, calculate status per row
-2. **AgentDashboard.tsx** - Fetch profile events and approved leaves for the current week
-3. **agentDashboardApi.ts** - Add function to fetch approved leaves for an agent
-
-### New Types
+The Agent Dashboard already correctly joins `agent_profiles` with `agent_directory` using email:
 
 ```typescript
-export type AttendanceStatus = 
-  | 'present'     // Green - logged in on time
-  | 'late'        // Yellow - logged in > 10 min after schedule
-  | 'absent'      // Red - working day, no login, no leave
-  | 'pending'     // Grey - today/future, no login yet
-  | 'day_off'     // Grey - scheduled day off
-  | 'on_leave';   // Blue - approved leave (with leave type)
-
-export interface DayAttendance {
-  date: Date;
-  status: AttendanceStatus;
-  leaveType?: string;  // e.g., "Medical Leave", "Vacation"
-  loginTime?: string;  // Actual login time if present/late
-  scheduleStart?: string; // Expected schedule start time
-}
+// Current code in agentDashboardApi.ts (line 129-134)
+const { data: directory } = await supabase
+  .from('agent_directory')
+  .select('agent_name, zendesk_instance, ...')
+  .eq('email', profile.email)  // Joins by email
+  .maybeSingle();
 ```
 
-### Implementation Flow
+This should work. If data still doesn't reflect, we need to ensure:
+1. The emails match exactly (case-insensitive comparison already in place)
+2. The user has SELECT permission on `agent_directory` (non-admins need a policy)
 
-```text
-                    +-------------------+
-                    |  Is it Day Off?   |
-                    +--------+----------+
-                             |
-              Yes ─┐         | No
-                   v         v
-              +--------+  +----------------------+
-              |  OFF   |  | Check approved leaves|
-              +--------+  +----------+-----------+
-                                     |
-                    Has approved leave?
-                           |
-             Yes ─┐        | No
-                  v        v
-          +-----------+  +--------------------+
-          | LEAVE     |  | Check login events |
-          | (type)    |  +--------+-----------+
-          +-----------+           |
-                       Has login event on that day?
-                              |
-              Yes ─┐          | No
-                   v          v
-          +----------------+  +-------------------+
-          | Check if Late  |  | Is date in past?  |
-          | (>10 min)      |  +--------+----------+
-          +-------+--------+           |
-                  |           Yes ─┐   | No
-          +-------+-------+        v   v
-          |               |    +------+ +--------+
-          v               v    |ABSENT| |PENDING |
-       +-------+      +------+ +------+ +--------+
-       |PRESENT|      | LATE |
-       +-------+      +------+
+### Additional: Add SELECT policy for agent_directory
+
+Currently, only admins/HR/super_admins can view `agent_directory`. Regular users can't see their own row:
+
+```sql
+-- Add policy for users to see their own agent_directory row
+CREATE POLICY "Users can view own agent_directory" ON agent_directory
+FOR SELECT USING (
+  email = lower((current_setting('request.jwt.claims', true)::json->>'email'))
+);
 ```
-
-### API Addition
-
-New function in `agentDashboardApi.ts`:
-
-```typescript
-export async function getApprovedLeavesForWeek(
-  agentEmail: string,
-  weekStart: Date,
-  weekEnd: Date
-): Promise<{ data: ApprovedLeave[] | null; error: string | null }>
-```
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/lib/agentDashboardApi.ts` | Add `getApprovedLeavesForWeek()` function, add `AttendanceStatus` type |
-| `src/components/dashboard/ShiftScheduleTable.tsx` | Accept events/leaves props, calculate attendance status per day |
-| `src/pages/AgentDashboard.tsx` | Fetch profile events and approved leaves, pass to ShiftScheduleTable |
 
 ---
 
 ## Implementation Steps
 
-1. **Database Migration** - Fix foreign key constraints (Part 1)
-2. **API Updates** - Add approved leaves fetch function
-3. **ShiftScheduleTable Refactor** - Implement attendance status logic with new badge styles
-4. **AgentDashboard Integration** - Fetch required data and pass to table
+| Step | Action |
+|------|--------|
+| 1 | Run database migration to fix RLS policies on `profile_status` and `profile_events` |
+| 2 | Add RLS policy for users to view their own `agent_directory` row |
+| 3 | Test login flow with non-admin user |
 
 ---
 
-## Visual Changes
+## Files Changed
 
-### Before
-- Working (green badge) / Off (grey badge)
+| File | Change |
+|------|--------|
+| Database (migration) | Update 6 RLS policies to use `agent_profiles` instead of `agent_directory` |
+| Database (migration) | Add new SELECT policy on `agent_directory` for users |
 
-### After
-- **Present** - Green badge
-- **Late** - Yellow/amber badge  
-- **Absent** - Red badge
-- **Pending** - Grey badge (faded)
-- **Off** - Grey badge
-- **Medical Leave**, **Vacation**, etc. - Blue badge with leave type text
+---
+
+## Expected Outcome
+
+After the fix:
+- Non-admin users can click "Log in" without RLS errors
+- Agent Dashboard displays the correct schedule data from Master Directory
+- Status changes (Login, Logout, Break, Coaching) work for all users
+
