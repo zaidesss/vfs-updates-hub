@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -21,8 +20,8 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
   const statusInfo = STATUS_DISPLAY[member.currentStatus] || STATUS_DISPLAY.LOGGED_OUT;
 
   return (
-    <Card className="relative overflow-hidden">
-      <CardContent className="p-4">
+    <div className="relative overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
+      <div className="p-4">
         {/* Name and Dashboard Link */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <h3 className="font-semibold text-foreground truncate flex-1">
@@ -67,7 +66,7 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
             </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
