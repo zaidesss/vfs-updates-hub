@@ -31,9 +31,44 @@ const STATUS_CONFIG: Record<ProfileStatus, { label: string; color: string; bgCol
   },
 };
 
+/**
+ * Format status time in EST timezone with smart date display:
+ * - Same day: shows only time (e.g., "3:15 PM")
+ * - Different day: shows date + time (e.g., "1/27/2026 5:00 PM")
+ */
 function formatTimeSince(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  
+  // Get date strings in EST for comparison
+  const dateEST = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).format(date);
+  
+  const todayEST = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).format(today);
+  
+  const timeFormatted = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+  
+  if (dateEST === todayEST) {
+    // Same day: show only time
+    return timeFormatted;
+  } else {
+    // Different day: show date + time
+    return `${dateEST} ${timeFormatted}`;
+  }
 }
 
 export function StatusIndicator({ status, since, className }: StatusIndicatorProps) {
