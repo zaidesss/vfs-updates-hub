@@ -302,10 +302,10 @@ export default function MasterDirectory() {
               <TableBody>
                 {filteredEntries.map((entry) => (
                   <TableRow key={entry.email}>
-                    {/* Dashboard link */}
+                    {/* Dashboard link - uses profile_id from agent_profiles */}
                     <TableCell className="sticky left-0 z-10 bg-background">
-                      {entry.id && (
-                        <Link to={`/people/${entry.id}/dashboard`}>
+                      {entry.profile_id && (
+                        <Link to={`/people/${entry.profile_id}/dashboard`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Open Dashboard">
                             <ExternalLink className="h-4 w-4" />
                           </Button>

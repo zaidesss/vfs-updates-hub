@@ -4,9 +4,10 @@ export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING'
 export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END';
 
 export interface DashboardProfile {
-  id: string;
-  email: string;
-  agent_name: string | null;
+  id: string;                    // from agent_profiles
+  email: string;                 // from agent_profiles
+  full_name: string | null;      // from agent_profiles
+  agent_name: string | null;     // from agent_directory (fallback to full_name)
   zendesk_instance: string | null;
   support_account: string | null;
   support_type: string | null;
@@ -84,20 +85,53 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
 
 export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
-    const { data, error } = await supabase
-      .from('agent_directory')
-      .select('id, email, agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+    // 1. Fetch identity from agent_profiles (source of truth)
+    const { data: profile, error: profileError } = await supabase
+      .from('agent_profiles')
+      .select('id, email, full_name')
       .eq('id', profileId)
       .single();
 
-    if (error) {
-      return { data: null, error: error.message };
+    if (profileError) {
+      return { data: null, error: profileError.message };
     }
 
-    return { 
-      data: data as DashboardProfile, 
-      error: null 
+    if (!profile) {
+      return { data: null, error: 'Profile not found' };
+    }
+
+    // 2. Fetch operational data from agent_directory using email
+    const { data: directory } = await supabase
+      .from('agent_directory')
+      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+      .eq('email', profile.email)
+      .maybeSingle();
+
+    // 3. Merge and return - use directory data where available, fallback to defaults
+    const dashboardProfile: DashboardProfile = {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      agent_name: directory?.agent_name || profile.full_name,
+      zendesk_instance: directory?.zendesk_instance || null,
+      support_account: directory?.support_account || null,
+      support_type: directory?.support_type || null,
+      ticket_assignment_view_id: directory?.ticket_assignment_view_id || null,
+      break_schedule: directory?.break_schedule || null,
+      quota: directory?.quota || null,
+      weekday_schedule: directory?.weekday_schedule || null,
+      weekend_schedule: directory?.weekend_schedule || null,
+      day_off: directory?.day_off || [],
+      mon_schedule: directory?.mon_schedule || null,
+      tue_schedule: directory?.tue_schedule || null,
+      wed_schedule: directory?.wed_schedule || null,
+      thu_schedule: directory?.thu_schedule || null,
+      fri_schedule: directory?.fri_schedule || null,
+      sat_schedule: directory?.sat_schedule || null,
+      sun_schedule: directory?.sun_schedule || null,
     };
+
+    return { data: dashboardProfile, error: null };
   } catch (err: any) {
     return { data: null, error: err.message };
   }

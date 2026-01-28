@@ -42,13 +42,13 @@ export function Layout({ children }: LayoutProps) {
   const [showImprovements, setShowImprovements] = useState(false);
   const [userProfileId, setUserProfileId] = useState<string | null>(null);
 
-  // Fetch user's profile ID from agent_directory for dashboard link
+  // Fetch user's profile ID from agent_profiles for dashboard link
   useEffect(() => {
     const fetchUserProfileId = async () => {
       if (!user?.email) return;
       
       const { data } = await supabase
-        .from('agent_directory')
+        .from('agent_profiles')
         .select('id')
         .eq('email', user.email)
         .maybeSingle();

@@ -12,7 +12,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
     { 
       icon: User, 
       label: 'Agent Name', 
-      value: profile.agent_name || '-' 
+      value: profile.full_name || profile.agent_name || '-' 
     },
     { 
       icon: Monitor, 
