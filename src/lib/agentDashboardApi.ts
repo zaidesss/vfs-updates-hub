@@ -18,7 +18,20 @@ export interface DayAttendance {
   status: AttendanceStatus;
   leaveType?: string;
   loginTime?: string;
+  logoutTime?: string;
   scheduleStart?: string;
+}
+
+/**
+ * Format a date to 12-hour EST/EDT time format (e.g., "3:15 PM")
+ */
+export function formatTimeInEST(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
 }
 
 export interface ApprovedLeave {
@@ -346,7 +359,7 @@ export async function getApprovedLeavesForWeek(
   }
 }
 
-export async function getWeekLoginEvents(
+export async function getWeekStatusEvents(
   profileId: string,
   weekStart: Date,
   weekEnd: Date
@@ -359,7 +372,7 @@ export async function getWeekLoginEvents(
       .from('profile_events')
       .select('*')
       .eq('profile_id', profileId)
-      .eq('event_type', 'LOGIN')
+      .in('event_type', ['LOGIN', 'LOGOUT'])
       .gte('created_at', startStr)
       .lte('created_at', endStr)
       .order('created_at', { ascending: true });
@@ -374,9 +387,12 @@ export async function getWeekLoginEvents(
   }
 }
 
+// Backward compatibility alias
+export const getWeekLoginEvents = getWeekStatusEvents;
+
 export function calculateAttendanceForWeek(
   profile: DashboardProfile,
-  loginEvents: ProfileEvent[],
+  statusEvents: ProfileEvent[],
   approvedLeaves: ApprovedLeave[],
   weekStart: Date
 ): DayAttendance[] {
@@ -425,13 +441,25 @@ export function calculateAttendanceForWeek(
       };
     }
 
-    // 3. Check for login event on this date
-    const loginForDay = loginEvents.find((event) => {
+    // 3. Find login event for this date
+    const loginForDay = statusEvents.find((event) => {
       const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
-      return eventDate === dateStr;
+      return eventDate === dateStr && event.event_type === 'LOGIN';
+    });
+
+    // 4. Find logout event for this date
+    const logoutForDay = statusEvents.find((event) => {
+      const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+      return eventDate === dateStr && event.event_type === 'LOGOUT';
     });
 
     if (loginForDay) {
+      const loginTime = parseISO(loginForDay.created_at);
+      const formattedLoginTime = formatTimeInEST(loginTime);
+      const formattedLogoutTime = logoutForDay 
+        ? formatTimeInEST(parseISO(logoutForDay.created_at))
+        : undefined;
+
       // Get schedule start time for this day
       const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
       let scheduleTime = profile[scheduleKey] as string | null;
@@ -445,7 +473,6 @@ export function calculateAttendanceForWeek(
 
       // Parse schedule time and check if late (> 10 min)
       if (scheduleTime) {
-        const loginTime = parseISO(loginForDay.created_at);
         const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
         
         if (!isNaN(scheduleHours) && !isNaN(scheduleMinutes)) {
@@ -458,7 +485,8 @@ export function calculateAttendanceForWeek(
               date,
               dayKey: day.key,
               status: 'late' as AttendanceStatus,
-              loginTime: format(loginTime, 'HH:mm'),
+              loginTime: formattedLoginTime,
+              logoutTime: formattedLogoutTime,
               scheduleStart: scheduleTime,
             };
           }
@@ -469,12 +497,13 @@ export function calculateAttendanceForWeek(
         date,
         dayKey: day.key,
         status: 'present' as AttendanceStatus,
-        loginTime: format(parseISO(loginForDay.created_at), 'HH:mm'),
+        loginTime: formattedLoginTime,
+        logoutTime: formattedLogoutTime,
         scheduleStart: scheduleTime || undefined,
       };
     }
 
-    // 4. No login - check if past or pending
+    // 5. No login - check if past or pending
     if (isPast) {
       return { date, dayKey: day.key, status: 'absent' as AttendanceStatus };
     }

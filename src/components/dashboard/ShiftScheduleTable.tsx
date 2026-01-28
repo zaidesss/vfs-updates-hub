@@ -32,20 +32,32 @@ function getStatusBadge(dayAttendance: DayAttendance | undefined): React.ReactNo
     return <Badge variant="secondary" className="bg-muted text-muted-foreground">Pending</Badge>;
   }
 
-  const { status, leaveType, loginTime } = dayAttendance;
+  const { status, leaveType, loginTime, logoutTime } = dayAttendance;
+
+  const logoutBadge = logoutTime ? (
+    <Badge variant="secondary" className="bg-muted text-muted-foreground">
+      Logged Out ({logoutTime})
+    </Badge>
+  ) : null;
 
   switch (status) {
     case 'present':
       return (
-        <Badge className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          Present {loginTime && `(${loginTime})`}
-        </Badge>
+        <div className="flex flex-wrap gap-1">
+          <Badge className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            Present {loginTime && `(${loginTime})`}
+          </Badge>
+          {logoutBadge}
+        </div>
       );
     case 'late':
       return (
-        <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-700">
-          Late {loginTime && `(${loginTime})`}
-        </Badge>
+        <div className="flex flex-wrap gap-1">
+          <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-700">
+            Late {loginTime && `(${loginTime})`}
+          </Badge>
+          {logoutBadge}
+        </div>
       );
     case 'absent':
       return (
