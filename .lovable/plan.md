@@ -1,271 +1,193 @@
 
 
-## Agent Dashboard System - Implementation Plan
+## Fix Dashboard Access for All Agents
 
-### Overview
+### Problem
 
-This plan creates a comprehensive Agent Dashboard system with individual agent pages, a status state machine, and full event logging for the VFS Agent Portal.
+Currently, the Dashboard link only appears if a user has an entry in `agent_directory`. However, `agent_profiles` is the source of truth for agent identity. Most agents have a profile in `agent_profiles` but may not yet have operational data in `agent_directory`.
 
----
+### Data Model Clarification
 
-### 1. Database Schema Changes
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `agent_profiles` | Agent identity (source of truth for who is an agent) | `id`, `email`, `full_name` |
+| `agent_directory` | Operational data (schedules, quota, etc.) | `email` (linked), operational fields |
 
-#### 1.1 Add Fields to `agent_directory` Table
+### Solution
 
-| New Field | Type | Purpose |
-|-----------|------|---------|
-| `quota` | numeric | Editable ticket quota per agent |
-| `support_type` | text | Email/Chat/Call/Hybrid support type |
-| `mon_schedule` | text | Monday shift (e.g., "8:00 AM-5:00 PM") |
-| `tue_schedule` | text | Tuesday shift |
-| `wed_schedule` | text | Wednesday shift |
-| `thu_schedule` | text | Thursday shift |
-| `fri_schedule` | text | Friday shift |
-| `sat_schedule` | text | Saturday shift |
-| `sun_schedule` | text | Sunday shift |
-
-#### 1.2 Create `profile_status` Table (Current State)
-
-```sql
-CREATE TABLE profile_status (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id uuid REFERENCES agent_directory(id) ON DELETE CASCADE,
-  current_status text NOT NULL DEFAULT 'LOGGED_OUT',
-  status_since timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(profile_id)
-);
-```
-
-Valid statuses: `LOGGED_OUT`, `LOGGED_IN`, `ON_BREAK`, `COACHING`
-
-#### 1.3 Create `profile_events` Table (Audit Log)
-
-```sql
-CREATE TABLE profile_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id uuid REFERENCES agent_directory(id) ON DELETE CASCADE,
-  event_type text NOT NULL,
-  prev_status text NOT NULL,
-  new_status text NOT NULL,
-  triggered_by text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-```
-
-Event types: `LOGIN`, `LOGOUT`, `BREAK_IN`, `BREAK_OUT`, `COACHING_START`, `COACHING_END`
-
-#### 1.4 RLS Policies
-
-| Table | Role | Permissions |
-|-------|------|-------------|
-| profile_status | Admins/HR/SuperAdmins | SELECT, UPDATE |
-| profile_status | Users | SELECT (own profile) |
-| profile_events | Admins/HR/SuperAdmins | SELECT, INSERT |
-| profile_events | Users | SELECT (own profile), INSERT (own profile) |
+Change the Dashboard system to use `agent_profiles.id` as the primary key instead of `agent_directory.id`.
 
 ---
 
-### 2. Route & Navigation Changes
+### Changes Required
 
-#### 2.1 New Route in `App.tsx`
+#### File 1: `src/components/Layout.tsx`
 
-```
-/people/:profileId/dashboard → AgentDashboard page
-```
+**Change the profile lookup to use `agent_profiles` instead of `agent_directory`**
 
-#### 2.2 Navigation Updates in `Layout.tsx`
-
-Add to People dropdown:
-- "Agent Dashboard" link (visible to admins/HR) pointing to a dashboard selector or default profile
-
----
-
-### 3. New Files to Create
-
-| File Path | Purpose |
-|-----------|---------|
-| `src/pages/AgentDashboard.tsx` | Main dashboard page component |
-| `src/lib/agentDashboardApi.ts` | API functions for status & events |
-| `src/components/dashboard/ProfileHeader.tsx` | Profile summary section |
-| `src/components/dashboard/ShiftScheduleTable.tsx` | Mon-Sun schedule display |
-| `src/components/dashboard/StatusButtons.tsx` | Status control buttons |
-| `src/components/dashboard/StatusIndicator.tsx` | Current status badge |
-
----
-
-### 4. Status State Machine Logic
-
-#### Valid State Transitions
-
-```
-LOGGED_OUT  → LOGGED_IN  (via Login)
-LOGGED_IN   → LOGGED_OUT (via Logout)
-LOGGED_IN   → ON_BREAK   (via Break In)
-LOGGED_IN   → COACHING   (via Coaching Start)
-ON_BREAK    → LOGGED_IN  (via Break Out)
-COACHING    → LOGGED_IN  (via Coaching End)
+Current code (line 51-59):
+```typescript
+const { data } = await supabase
+  .from('agent_directory')
+  .select('id')
+  .eq('email', user.email)
+  .maybeSingle();
 ```
 
-#### Button Enable/Disable Rules
-
-| Status | Log In | Log Out | Break In | Break Out | Coaching |
-|--------|--------|---------|----------|-----------|----------|
-| LOGGED_OUT | Enabled (primary) | Disabled | Disabled | Disabled | Disabled |
-| LOGGED_IN | Shows "Logged In" (disabled) | Enabled (red) | Enabled | Disabled | Enabled |
-| ON_BREAK | Disabled | Disabled | Disabled | Enabled | Disabled |
-| COACHING | Disabled | Disabled | Disabled | Disabled | "End Coaching" (enabled) |
-
-#### Double-Click Prevention
-
-Before recording an event:
-1. Fetch current status from `profile_status`
-2. Verify `current_status` matches expected `prev_status`
-3. Only if match: update status + insert event
-4. If mismatch: show error toast "Status changed, please refresh"
-
----
-
-### 5. Dashboard Page Layout
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ VFS Agent Portal    [Updates▾] [Outages▾] [People▾] [Admin▾]  │
-├────────────────────────────────────────────────────────────────┤
-│                                                                │
-│  Agent Dashboard                                               │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │ PROFILE HEADER                                            │ │
-│  │                                                           │ │
-│  │ Agent Name: John Doe          Zendesk Instance: ZD1       │ │
-│  │ Support Account: 1            Support Type: Email         │ │
-│  │ Ticket View ID: 12345         Break Schedule: 12PM-1PM    │ │
-│  │ Quota: 50 tickets/day                                     │ │
-│  └──────────────────────────────────────────────────────────┘ │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │ SHIFT SCHEDULE                                            │ │
-│  │                                                           │ │
-│  │ Day   | Schedule       | Status                           │ │
-│  │ ──────|────────────────|────────                          │ │
-│  │ Mon   | 8:00AM-5:00PM  | Working                          │ │
-│  │ Tue   | 8:00AM-5:00PM  | Working                          │ │
-│  │ Wed   | Day Off        | Off                              │ │
-│  │ Thu   | 8:00AM-5:00PM  | Working                          │ │
-│  │ Fri   | 8:00AM-5:00PM  | Working                          │ │
-│  │ Sat   | 10:00AM-3:00PM | Working                          │ │
-│  │ Sun   | Day Off        | Off                              │ │
-│  └──────────────────────────────────────────────────────────┘ │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │ CURRENT STATUS                                            │ │
-│  │                                                           │ │
-│  │ Status: ● LOGGED_IN                    Since: 8:02 AM     │ │
-│  │                                                           │ │
-│  │ [Logged In] [Log Out] [Break In] [Break Out] [Coaching]   │ │
-│  │  (grey)      (red)     (blue)     (grey)      (blue)      │ │
-│  └──────────────────────────────────────────────────────────┘ │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │ DAILY WORK TRACKER (placeholder)                          │ │
-│  │                                                           │ │
-│  │ Tickets Handled: 0/50      Time Logged: 0h 0m             │ │
-│  │                                                           │ │
-│  │ (Data will be wired later)                                │ │
-│  └──────────────────────────────────────────────────────────┘ │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
+New code:
+```typescript
+const { data } = await supabase
+  .from('agent_profiles')
+  .select('id')
+  .eq('email', user.email)
+  .maybeSingle();
 ```
 
 ---
 
-### 6. MasterDirectory Updates
+#### File 2: `src/lib/agentDashboardApi.ts`
 
-#### 6.1 Add New Columns to Table View
+**Update `fetchDashboardProfile` to:**
+1. First fetch from `agent_profiles` using the profile ID to get `email` and `full_name`
+2. Then fetch operational data from `agent_directory` using the email
 
-| Column | Type | Editable |
-|--------|------|----------|
-| Quota | Numeric input | Yes |
-| Support Type | Dropdown (Email/Chat/Call/Hybrid) | Yes |
-| Mon Schedule | Time range input | Yes |
-| Tue Schedule | Time range input | Yes |
-| Wed Schedule | Time range input | Yes |
-| Thu Schedule | Time range input | Yes |
-| Fri Schedule | Time range input | Yes |
-| Sat Schedule | Time range input | Yes |
-| Sun Schedule | Time range input | Yes |
-
-#### 6.2 Add Dashboard Link
-
-Each row in MasterDirectory will have a link icon that navigates to `/people/{profile_id}/dashboard`
-
----
-
-### 7. Implementation Sequence
-
-| Step | Task | Files |
-|------|------|-------|
-| 1 | Database migration: add columns to agent_directory | SQL migration |
-| 2 | Database migration: create profile_status table | SQL migration |
-| 3 | Database migration: create profile_events table | SQL migration |
-| 4 | Update DirectoryEntry interface | masterDirectoryApi.ts |
-| 5 | Create dashboard API functions | agentDashboardApi.ts |
-| 6 | Create dashboard components | dashboard/*.tsx |
-| 7 | Create AgentDashboard page | AgentDashboard.tsx |
-| 8 | Add route to App.tsx | App.tsx |
-| 9 | Update MasterDirectory with new columns | MasterDirectory.tsx |
-| 10 | Update Layout navigation | Layout.tsx |
-
----
-
-### 8. API Functions (agentDashboardApi.ts)
+Update the `DashboardProfile` interface and function:
 
 ```typescript
-// Fetch profile with directory data
-fetchDashboardProfile(profileId: string)
+export interface DashboardProfile {
+  id: string;                    // from agent_profiles
+  email: string;                 // from agent_profiles
+  full_name: string | null;      // from agent_profiles
+  agent_name: string | null;     // from agent_directory
+  zendesk_instance: string | null;
+  support_account: string | null;
+  support_type: string | null;
+  ticket_assignment_view_id: string | null;
+  break_schedule: string | null;
+  quota: number | null;
+  // ... schedule fields
+}
 
-// Get current status
-getProfileStatus(profileId: string)
+export async function fetchDashboardProfile(profileId: string) {
+  // 1. Fetch from agent_profiles (identity)
+  const { data: profile } = await supabase
+    .from('agent_profiles')
+    .select('id, email, full_name')
+    .eq('id', profileId)
+    .single();
 
-// Update status with event logging
-updateProfileStatus(
-  profileId: string,
-  newStatus: string,
-  eventType: string,
-  triggeredBy: string
-)
+  // 2. Fetch from agent_directory (operational data)
+  const { data: directory } = await supabase
+    .from('agent_directory')
+    .select('*')
+    .eq('email', profile.email)
+    .maybeSingle();
 
-// Fetch event history
-getProfileEvents(profileId: string, limit?: number)
+  // 3. Merge and return
+  return {
+    id: profile.id,
+    email: profile.email,
+    full_name: profile.full_name,
+    agent_name: directory?.agent_name || profile.full_name,
+    zendesk_instance: directory?.zendesk_instance || null,
+    // ... other fields with defaults
+  };
+}
 ```
 
 ---
 
-### 9. Possible Additional Features/Issues to Consider
+#### File 3: `src/pages/AgentDashboard.tsx`
 
-Before proceeding, here are related features you might want to include:
+**Update access control check to use `agent_profiles`**
 
-1. **Dashboard Access Control**: Should regular agents only see their own dashboard, or can they view others?
+Current code checks `profile.email === user?.email` where `profile` comes from `agent_directory`.
 
-2. **Real-time Status Updates**: Should the status badge update in real-time (using Supabase Realtime) when another admin changes an agent's status?
-
-3. **Event History Panel**: Would you like an expandable section showing recent status changes (last 10 events)?
-
-4. **Dashboard Link from Manage Profiles**: Should there also be dashboard links from the "All Bios" (ManageProfiles) page?
-
-5. **Agent Selector Dropdown**: For admins viewing dashboards, should there be a dropdown to quickly switch between agents?
-
-6. **Quota Achievement Indicator**: Should the quota field show progress (e.g., "32/50 tickets" with progress bar)?
-
-7. **Shift Status Indicator**: Should the dashboard show if the agent is currently within their scheduled shift time?
-
-8. **Mobile Responsiveness**: Any specific mobile layout requirements for the dashboard?
+After the API change, `profile` will come from `agent_profiles`, so the same check will work correctly.
 
 ---
 
-### 10. Questions for Clarification
+#### File 4: `src/components/dashboard/ProfileHeader.tsx`
 
-Would you like me to:
-- Include any of the additional features listed above?
-- Proceed with the base implementation as described?
+**Use `full_name` as fallback for display name**
+
+Update to display `profile.full_name || profile.agent_name || profile.email`
+
+---
+
+#### File 5: `src/pages/MasterDirectory.tsx`
+
+**Update dashboard link to use `agent_profiles.id` instead of `agent_directory.id`**
+
+The MasterDirectory already merges data from both tables. We need to ensure the link uses the `agent_profiles` ID. However, since the current merge uses `agent_directory.id` as the `id` field (line 206), we need to:
+
+1. Add `profile_id` (from agent_profiles) to the DirectoryEntry interface
+2. Update the merge to include this field
+3. Use `profile_id` for the dashboard link
+
+---
+
+#### File 6: `src/lib/masterDirectoryApi.ts`
+
+**Add `profile_id` to DirectoryEntry interface and fetch**
+
+```typescript
+export interface DirectoryEntry {
+  id: string;           // agent_directory.id (for save operations)
+  profile_id: string;   // agent_profiles.id (for dashboard link)
+  // ... rest of fields
+}
+```
+
+Update the fetch to include `id` from agent_profiles:
+```typescript
+const { data: profiles } = await supabase
+  .from('agent_profiles')
+  .select('id, email, full_name, position, team_lead');
+
+// In merge:
+return {
+  profile_id: profile.id,  // Use for dashboard link
+  id: dirEntry?.id || '',  // Keep for save operations
+  // ...
+}
+```
+
+---
+
+### Database Considerations
+
+**No database changes required.** Both tables already exist and are linked by email.
+
+The `profile_status` and `profile_events` tables reference `agent_directory.id` via `profile_id`. We have two options:
+
+**Option A: Update references to use `agent_profiles.id`**
+- Requires migration to update foreign key
+- Cleaner long-term
+
+**Option B: Keep as-is, create directory entry on first status change**
+- When a user clicks a status button and no `agent_directory` entry exists, auto-create one
+- No migration needed
+- Simpler implementation
+
+I recommend **Option B** for simplicity.
+
+---
+
+### Updated RLS Policies for `profile_status` and `profile_events`
+
+The current RLS policies check against `agent_directory.id`. If we keep the current structure (Option B), these policies work fine. When an agent accesses their dashboard for the first time and clicks a status button, an `agent_directory` entry will be created for them.
+
+---
+
+### Summary of Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/Layout.tsx` | Query `agent_profiles` instead of `agent_directory` |
+| `src/lib/agentDashboardApi.ts` | Fetch from `agent_profiles` + join with `agent_directory` |
+| `src/lib/masterDirectoryApi.ts` | Add `profile_id` from `agent_profiles` to DirectoryEntry |
+| `src/pages/MasterDirectory.tsx` | Use `profile_id` for dashboard link |
+| `src/components/dashboard/ProfileHeader.tsx` | Use `full_name` as display name fallback |
+| `src/pages/AgentDashboard.tsx` | Minor updates for new data structure |
 
