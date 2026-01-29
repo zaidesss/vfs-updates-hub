@@ -151,16 +151,39 @@ export async function fetchDashboardData(zdInstance?: string): Promise<AgentDash
     console.error('Error fetching gaps for dashboard:', gapsError);
   }
 
-  // Fetch active agent profiles
+  // Fetch agent_directory to map agent_tag → email
+  const { data: agentDir } = await supabase
+    .from('agent_directory')
+    .select('agent_tag, email');
+
+  const tagToEmail: Record<string, string> = {};
+  for (const agent of agentDir || []) {
+    if (agent.agent_tag && agent.email) {
+      tagToEmail[agent.agent_tag.toLowerCase()] = agent.email.toLowerCase();
+    }
+  }
+
+  // Fetch agent_profiles to get profile IDs
   const { data: profiles } = await supabase
     .from('agent_profiles')
-    .select('email, employment_status');
+    .select('id, email');
 
-  const activeEmails = new Set(
-    (profiles || [])
-      .filter(p => p.employment_status === 'Active')
-      .map(p => p.email?.toLowerCase())
-  );
+  const emailToProfileId: Record<string, string> = {};
+  for (const p of profiles || []) {
+    if (p.email) {
+      emailToProfileId[p.email.toLowerCase()] = p.id;
+    }
+  }
+
+  // Fetch profile_status to get current login status
+  const { data: statusData } = await supabase
+    .from('profile_status')
+    .select('profile_id, current_status');
+
+  const profileIdToStatus: Record<string, string> = {};
+  for (const s of statusData || []) {
+    profileIdToStatus[s.profile_id] = s.current_status;
+  }
 
   // Generate date range (last 14 days)
   const dates: string[] = [];
@@ -199,7 +222,11 @@ export async function fetchDashboardData(zdInstance?: string): Promise<AgentDash
 
   // Build result
   const result: AgentDashboardData[] = Object.entries(agentMap).map(([agentName, data]) => {
-    const isActive = data.email ? activeEmails.has(data.email.toLowerCase()) : false;
+    // Use lookup chain: agent_name → agent_tag → email → profile_id → current_status
+    const agentEmail = tagToEmail[agentName.toLowerCase()];
+    const profileId = agentEmail ? emailToProfileId[agentEmail] : null;
+    const currentStatus = profileId ? profileIdToStatus[profileId] : null;
+    const isActive = currentStatus === 'LOGGED_IN';
 
     return {
       agent_name: agentName,
