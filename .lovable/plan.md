@@ -1,166 +1,91 @@
 
-# Fix "Since" Time Display in Agent Dashboard
+# Fix Late Status Detection in Shift Schedule
 
-## Problem Summary
+## Problem Identified
 
-The "Since: xx:xx PM" time shown in the Current Status section is **incorrect** in two ways:
+The "Late" status detection is failing because of a **schedule format parsing mismatch**:
 
-1. **Wrong time source**: Shows page load time instead of actual last status change time
-2. **Missing date**: Only shows time (e.g., "05:08 PM"), but should show date + time for previous days (e.g., "1/27/2026 5:00 PM")
+| Expected Format | Actual Format in Database |
+|----------------|--------------------------|
+| `9:00` (24-hour) | `9:00 AM-5:00 PM` (12-hour range) |
 
-## Root Cause Analysis
+### What's Happening
 
-### Issue 1: Initial State Uses Current Time
-**File**: `src/pages/AgentDashboard.tsx` (Line 40)
+The current parsing logic:
 ```typescript
-const [statusSince, setStatusSince] = useState<string>(new Date().toISOString());
+const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
 ```
-This initializes with page load time, which briefly shows before the API data arrives.
 
-### Issue 2: API Fallback Uses Current Time
-**File**: `src/lib/agentDashboardApi.ts` (Lines 192-200)
-```typescript
-// If no status exists, return default LOGGED_OUT
-if (!data) {
-  return { 
-    data: {
-      id: '',
-      profile_id: profileId,
-      current_status: 'LOGGED_OUT' as ProfileStatus,
-      status_since: new Date().toISOString(), // ← Wrong!
-    }, 
-    error: null 
-  };
-}
-```
-When no `profile_status` record exists, it returns the current time instead of `null`.
-
-### Issue 3: Time Format Lacks Date
-**File**: `src/components/dashboard/StatusIndicator.tsx` (Lines 34-37)
-```typescript
-function formatTimeSince(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-```
-This only formats time, missing the date when status was changed on a previous day.
+When parsing `"9:00 AM-5:00 PM"`:
+1. Split by `:` → `["9", "00 AM-5", "00 PM"]`
+2. `scheduleHours = 9` ✓ (works by accident)
+3. `scheduleMinutes = NaN` ✗ (because `"00 AM-5"` is not a number)
+4. Check `!isNaN(scheduleMinutes)` → **fails**
+5. Late detection **skipped entirely** → defaults to "Present"
 
 ---
 
 ## Solution
 
-### Step 1: Update API to Return Null for Unknown Status Time
+Update the schedule parsing logic to correctly extract the **start time** from the range format (`HH:MM AM/PM-HH:MM AM/PM`).
 
-When no status record exists, return `status_since: null` instead of the current time.
+### Parsing Steps
 
-**File**: `src/lib/agentDashboardApi.ts`
+1. Extract start time by splitting on `-` to get `"9:00 AM"` from `"9:00 AM-5:00 PM"`
+2. Parse the 12-hour time to extract hours, minutes, and AM/PM
+3. Convert to 24-hour format for comparison with login time
 
-Update the fallback return:
-```typescript
-if (!data) {
-  return { 
-    data: {
-      id: '',
-      profile_id: profileId,
-      current_status: 'LOGGED_OUT' as ProfileStatus,
-      status_since: null, // Changed from new Date().toISOString()
-    }, 
-    error: null 
-  };
-}
-```
-
-Update the type to allow null:
-```typescript
-export interface ProfileStatusRecord {
-  id: string;
-  profile_id: string;
-  current_status: ProfileStatus;
-  status_since: string | null;  // Allow null
-}
-```
-
-### Step 2: Update AgentDashboard to Handle Null
-
-**File**: `src/pages/AgentDashboard.tsx`
-
-Change initial state to null:
-```typescript
-const [statusSince, setStatusSince] = useState<string | null>(null);
-```
-
-Update the data loading:
-```typescript
-if (statusResult.data) {
-  setStatus(statusResult.data.current_status);
-  setStatusSince(statusResult.data.status_since); // May be null now
-}
-```
-
-### Step 3: Smart Date/Time Formatting
-
-**File**: `src/components/dashboard/StatusIndicator.tsx`
-
-Replace the `formatTimeSince` function with a smarter version that:
-- Shows only time if status changed today (e.g., "3:15 PM")
-- Shows date + time if status changed on a different day (e.g., "1/27/2026 5:00 PM")
-- Uses EST timezone consistently per project standards
+### Updated Logic
 
 ```typescript
-function formatTimeSince(isoString: string): string {
-  const date = new Date(isoString);
-  const today = new Date();
+// Parse schedule start time from range format (e.g., "9:00 AM-5:00 PM")
+if (scheduleTime) {
+  // Extract start time (before the dash)
+  const startTimePart = scheduleTime.split('-')[0].trim();
   
-  // Check if same day in EST
-  const dateEST = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).format(date);
+  // Parse 12-hour format: "9:00 AM" or "12:30 PM"
+  const timeMatch = startTimePart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   
-  const todayEST = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).format(today);
-  
-  const timeFormatted = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(date);
-  
-  if (dateEST === todayEST) {
-    // Same day: show only time
-    return timeFormatted;
-  } else {
-    // Different day: show date + time
-    return `${dateEST} ${timeFormatted}`;
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    const period = timeMatch[3].toUpperCase();
+    
+    // Convert to 24-hour format
+    if (period === 'PM' && hours !== 12) {
+      hours += 12;
+    } else if (period === 'AM' && hours === 12) {
+      hours = 0;
+    }
+    
+    const scheduledStart = new Date(date);
+    scheduledStart.setHours(hours, minutes, 0, 0);
+    const lateThreshold = addMinutes(scheduledStart, 10);
+    
+    if (isAfter(loginTime, lateThreshold)) {
+      return { status: 'late', ... };
+    }
   }
 }
 ```
 
-Handle null case in the render:
-```typescript
-{since ? (
-  <span className="text-sm text-muted-foreground">
-    Since: {formatTimeSince(since)}
-  </span>
-) : null}
-```
+---
+
+## Additional Consideration: Timezone Handling
+
+The current comparison creates `scheduledStart` using **local browser time**, but `loginTime` comes from `profile_events.created_at` which is in **UTC**. Since the project standardizes on EST, we should ensure both times are compared in the same timezone.
+
+### Recommended Approach
+
+Convert the login time to EST before comparison to ensure accurate late detection regardless of user's browser timezone.
 
 ---
 
 ## Files to Modify
 
 | File | Changes |
-|------|---------|
-| `src/lib/agentDashboardApi.ts` | Update `ProfileStatusRecord` type to allow `null` for `status_since`; update fallback to return `null` |
-| `src/pages/AgentDashboard.tsx` | Change `statusSince` state to allow `null`; handle null in template |
-| `src/components/dashboard/StatusIndicator.tsx` | Smart date/time formatting with EST timezone; handle null `since` prop |
+|------|--------|
+| `src/lib/agentDashboardApi.ts` | Update schedule parsing in `calculateAttendanceForWeek` to handle `HH:MM AM/PM-HH:MM AM/PM` format and ensure EST timezone consistency |
 
 ---
 
@@ -168,17 +93,16 @@ Handle null case in the render:
 
 | Scenario | Current (Wrong) | After Fix (Correct) |
 |----------|-----------------|---------------------|
-| Logged in at 9:00 AM today | Since: 10:42 AM (page load) | Since: 9:00 AM |
-| Took break at 12:30 PM | Since: 10:42 AM (page load) | Since: 12:30 PM |
-| Logged out 5:00 PM yesterday | Since: 10:42 AM (page load) | Since: 1/27/2026 5:00 PM |
-| Never had any status | Since: 10:42 AM (page load) | (No "Since" shown) |
+| Schedule: 9:00 AM, Login: 9:05 AM | Present | Present (within 10 min) |
+| Schedule: 9:00 AM, Login: 9:15 AM | Present | **Late (9:15 AM)** |
+| Schedule: 9:00 AM, Login: 12:00 PM | Present | **Late (12:00 PM)** |
 
 ---
 
-## Additional Considerations
+## Summary
 
-1. **Team Status Board**: The `StatusCard` component on the Team Status Board may also need updating to show proper time formatting. Should we apply the same fix there?
-
-2. **Profile Events as Fallback**: If `profile_status` is empty but `profile_events` exists, we could query the most recent event to get the actual last status change time. Would you like this enhancement?
-
-3. **Realtime Updates**: When status changes via the buttons, the "Since" time updates correctly (using `new Date()` after a successful change). This is correct behavior.
+| Action | Purpose |
+|--------|---------|
+| Fix schedule parsing | Extract start time from `"9:00 AM-5:00 PM"` range format |
+| Convert 12h to 24h | Handle AM/PM correctly for time comparison |
+| Optional: EST alignment | Ensure timezone-consistent late detection |
