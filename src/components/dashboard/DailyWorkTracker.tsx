@@ -164,8 +164,12 @@ export function DailyWorkTracker({
                 </div>
               </div>
               {upworkError ? (
-                <p className="text-xs text-destructive italic">
-                  {upworkError}
+                <p className="text-xs text-muted-foreground italic">
+                  {upworkError.includes('re-authorize') || upworkError.includes('refresh') 
+                    ? 'Upwork re-authorization needed' 
+                    : upworkError.includes('API') 
+                      ? 'Upwork API unavailable'
+                      : 'Unable to fetch Upwork data'}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
