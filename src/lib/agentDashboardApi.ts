@@ -472,15 +472,46 @@ export function calculateAttendanceForWeek(
       }
 
       // Parse schedule time and check if late (> 10 min)
+      // Schedule format: "9:00 AM-5:00 PM" (12-hour range)
       if (scheduleTime) {
-        const [scheduleHours, scheduleMinutes] = scheduleTime.split(':').map(Number);
+        // Extract start time (before the dash)
+        const startTimePart = scheduleTime.split('-')[0].trim();
         
-        if (!isNaN(scheduleHours) && !isNaN(scheduleMinutes)) {
-          const scheduledStart = new Date(date);
-          scheduledStart.setHours(scheduleHours, scheduleMinutes, 0, 0);
-          const lateThreshold = addMinutes(scheduledStart, 10);
-
-          if (isAfter(loginTime, lateThreshold)) {
+        // Parse 12-hour format: "9:00 AM" or "12:30 PM"
+        const timeMatch = startTimePart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        
+        if (timeMatch) {
+          let scheduleHours = parseInt(timeMatch[1], 10);
+          const scheduleMinutes = parseInt(timeMatch[2], 10);
+          const period = timeMatch[3].toUpperCase();
+          
+          // Convert to 24-hour format
+          if (period === 'PM' && scheduleHours !== 12) {
+            scheduleHours += 12;
+          } else if (period === 'AM' && scheduleHours === 12) {
+            scheduleHours = 0;
+          }
+          
+          // Get the login time in EST for comparison
+          const loginTimeEST = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).formatToParts(loginTime);
+          
+          const loginHour = parseInt(loginTimeEST.find(p => p.type === 'hour')?.value || '0', 10);
+          const loginMinute = parseInt(loginTimeEST.find(p => p.type === 'minute')?.value || '0', 10);
+          
+          // Calculate total minutes from midnight for comparison
+          const scheduledMinutes = scheduleHours * 60 + scheduleMinutes;
+          const loginTotalMinutes = loginHour * 60 + loginMinute;
+          const lateThresholdMinutes = scheduledMinutes + 10;
+          
+          if (loginTotalMinutes > lateThresholdMinutes) {
             return {
               date,
               dayKey: day.key,
