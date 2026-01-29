@@ -8,9 +8,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, AlertTriangle, Clock, Coffee } from 'lucide-react';
 import type { DashboardProfile, DayAttendance, AttendanceStatus } from '@/lib/agentDashboardApi';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface ShiftScheduleTableProps {
   profile: DashboardProfile;
@@ -27,64 +28,89 @@ const DAYS = [
   { key: 'sun', label: 'Sunday', short: 'Sun' },
 ] as const;
 
-function getStatusBadge(dayAttendance: DayAttendance | undefined): React.ReactNode {
+function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactNode {
   if (!dayAttendance) {
     return <Badge variant="secondary" className="bg-muted text-muted-foreground">Pending</Badge>;
   }
 
-  const { status, leaveType, loginTime, logoutTime } = dayAttendance;
+  const { status, leaveType, loginTime, logoutTime, isEarlyOut, noLogout } = dayAttendance;
+  const badges: React.ReactNode[] = [];
 
-  const logoutBadge = logoutTime ? (
-    <Badge variant="secondary" className="bg-muted text-muted-foreground">
-      Logged Out ({logoutTime})
-    </Badge>
-  ) : null;
-
+  // Login status badge
   switch (status) {
     case 'present':
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Badge className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            Present {loginTime && `(${loginTime})`}
-          </Badge>
-          {logoutBadge}
-        </div>
+      badges.push(
+        <Badge key="present" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          Present {loginTime && `(${loginTime})`}
+        </Badge>
       );
+      break;
     case 'late':
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-700">
-            Late {loginTime && `(${loginTime})`}
-          </Badge>
-          {logoutBadge}
-        </div>
+      badges.push(
+        <Badge key="late" variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-700">
+          Late {loginTime && `(${loginTime})`}
+        </Badge>
       );
+      break;
     case 'absent':
-      return (
-        <Badge variant="destructive">
+      badges.push(
+        <Badge key="absent" variant="destructive">
           Absent
         </Badge>
       );
+      break;
     case 'on_leave':
-      return (
-        <Badge variant="secondary" className="bg-accent text-accent-foreground">
+      badges.push(
+        <Badge key="leave" variant="secondary" className="bg-accent text-accent-foreground">
           {leaveType || 'On Leave'}
         </Badge>
       );
+      break;
     case 'day_off':
-      return (
-        <Badge variant="secondary" className="bg-muted text-muted-foreground">
+      badges.push(
+        <Badge key="off" variant="secondary" className="bg-muted text-muted-foreground">
           Off
         </Badge>
       );
+      break;
     case 'pending':
     default:
-      return (
-        <Badge variant="secondary" className="bg-muted/50 text-muted-foreground opacity-60">
+      badges.push(
+        <Badge key="pending" variant="secondary" className="bg-muted/50 text-muted-foreground opacity-60">
           Pending
         </Badge>
       );
+      break;
   }
+
+  // Logout badge or warnings
+  if (logoutTime) {
+    if (isEarlyOut) {
+      // Early out - show in red/orange
+      badges.push(
+        <Badge key="early-out" variant="destructive" className="bg-red-500 hover:bg-red-600 text-white">
+          Early Out ({logoutTime})
+        </Badge>
+      );
+    } else {
+      // Normal logout
+      badges.push(
+        <Badge key="logout" variant="secondary" className="bg-muted text-muted-foreground">
+          Logged Out ({logoutTime})
+        </Badge>
+      );
+    }
+  } else if (noLogout) {
+    // No logout warning for past days
+    badges.push(
+      <Badge key="no-logout" variant="secondary" className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+        <AlertTriangle className="h-3 w-3 mr-1" />
+        No Logout
+      </Badge>
+    );
+  }
+
+  return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
 
 export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTableProps) {
@@ -128,13 +154,21 @@ export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTablePr
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[120px]">Day</TableHead>
-              <TableHead>Schedule</TableHead>
-              <TableHead className="w-[150px]">Status</TableHead>
+              <TableHead className="w-[100px] md:w-[120px]">Day</TableHead>
+              <TableHead className="hidden sm:table-cell">Schedule</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="w-[80px] text-right">
+                <span className="hidden sm:inline">Hours</span>
+                <Clock className="h-4 w-4 sm:hidden inline" />
+              </TableHead>
+              <TableHead className="w-[100px] text-right">
+                <span className="hidden sm:inline">Break</span>
+                <Coffee className="h-4 w-4 sm:hidden inline" />
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,10 +179,19 @@ export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTablePr
               
               return (
                 <TableRow key={day.key} className={isOff ? 'bg-muted/50' : ''}>
-                  <TableCell className="font-medium">{day.label}</TableCell>
-                  <TableCell>{schedule}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="hidden md:inline">{day.label}</span>
+                    <span className="md:hidden">{day.short}</span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">{schedule}</TableCell>
                   <TableCell>
-                    {getStatusBadge(dayAttendance)}
+                    {getStatusBadges(dayAttendance)}
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-muted-foreground">
+                    {dayAttendance?.hoursWorked || '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-sm">
+                    {renderBreakCell(dayAttendance)}
                   </TableCell>
                 </TableRow>
               );
@@ -157,5 +200,39 @@ export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTablePr
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Render break tracking cell with color-coded status
+ */
+function renderBreakCell(dayAttendance: DayAttendance | undefined): React.ReactNode {
+  if (!dayAttendance || dayAttendance.status === 'day_off' || dayAttendance.status === 'on_leave' || dayAttendance.status === 'absent' || dayAttendance.status === 'pending') {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  const { breakDuration, allowedBreak, isOverbreak, breakOverageMinutes } = dayAttendance;
+
+  if (!breakDuration && !allowedBreak) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  if (!breakDuration) {
+    return <span className="text-muted-foreground">0m / {allowedBreak}</span>;
+  }
+
+  if (isOverbreak) {
+    return (
+      <span className="text-red-600 dark:text-red-400 font-medium">
+        {breakDuration} / {allowedBreak || '-'} 
+        <span className="text-xs ml-1">⚠️ +{breakOverageMinutes}m</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-green-600 dark:text-green-400">
+      {breakDuration} / {allowedBreak || '-'} ✓
+    </span>
   );
 }

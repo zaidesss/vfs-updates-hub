@@ -10,7 +10,8 @@ export type AttendanceStatus =
   | 'absent'      // Red - working day, no login, no leave
   | 'pending'     // Grey - today/future, no login yet
   | 'day_off'     // Grey - scheduled day off
-  | 'on_leave';   // Blue - approved leave (with leave type)
+  | 'on_leave'    // Blue - approved leave (with leave type)
+  | 'early_out';  // Red - logged out before shift ends
 
 export interface DayAttendance {
   date: Date;
@@ -20,6 +21,18 @@ export interface DayAttendance {
   loginTime?: string;
   logoutTime?: string;
   scheduleStart?: string;
+  scheduleEnd?: string;      // Parsed end time for early out detection
+  isEarlyOut?: boolean;      // true if logged out before shift end
+  noLogout?: boolean;        // true if past day with login but no logout
+  hoursWorked?: string;      // Formatted duration "Xh Ym"
+  hoursWorkedMinutes?: number; // Raw minutes for calculations
+  // Break tracking
+  breakDurationMinutes?: number;  // Total break time taken
+  breakDuration?: string;         // Formatted break time "Xm"
+  allowedBreakMinutes?: number;   // Allowed break from schedule
+  allowedBreak?: string;          // Formatted allowed break "Xm"
+  isOverbreak?: boolean;          // true if break > allowed + grace
+  breakOverageMinutes?: number;   // How many minutes over (if overbreak)
 }
 
 /**
@@ -390,11 +403,163 @@ export async function getWeekStatusEvents(
 // Backward compatibility alias
 export const getWeekLoginEvents = getWeekStatusEvents;
 
+/**
+ * Fetch all profile events for the week (including breaks, coaching, etc.)
+ */
+export async function getWeekAllEvents(
+  profileId: string,
+  weekStart: Date,
+  weekEnd: Date
+): Promise<{ data: ProfileEvent[] | null; error: string | null }> {
+  try {
+    const startStr = weekStart.toISOString();
+    const endStr = weekEnd.toISOString();
+
+    const { data, error } = await supabase
+      .from('profile_events')
+      .select('*')
+      .eq('profile_id', profileId)
+      .gte('created_at', startStr)
+      .lte('created_at', endStr)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as ProfileEvent[], error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+/**
+ * Calculate break duration for a specific day from break events
+ * Returns total break time in minutes
+ */
+function calculateBreakDurationForDay(
+  breakEvents: ProfileEvent[],
+  dateStr: string
+): number {
+  // Filter events for this specific day
+  const dayBreakEvents = breakEvents.filter((event) => {
+    const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+    return eventDate === dateStr && (event.event_type === 'BREAK_IN' || event.event_type === 'BREAK_OUT');
+  });
+
+  // Sort by time
+  dayBreakEvents.sort((a, b) => 
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  // Pair up BREAK_IN with following BREAK_OUT and sum durations
+  let totalBreakMinutes = 0;
+  let currentBreakStart: Date | null = null;
+
+  for (const event of dayBreakEvents) {
+    if (event.event_type === 'BREAK_IN') {
+      currentBreakStart = parseISO(event.created_at);
+    } else if (event.event_type === 'BREAK_OUT' && currentBreakStart) {
+      const breakEnd = parseISO(event.created_at);
+      const durationMs = breakEnd.getTime() - currentBreakStart.getTime();
+      totalBreakMinutes += Math.floor(durationMs / (1000 * 60));
+      currentBreakStart = null;
+    }
+  }
+
+  return totalBreakMinutes;
+}
+
+/**
+ * Parse break schedule string and return allowed break minutes
+ * Format: "12:00 PM-12:30 PM" -> 30 minutes
+ */
+function parseBreakScheduleMinutes(breakSchedule: string | null): number {
+  if (!breakSchedule) return 0;
+  
+  const parsed = parseScheduleRange(breakSchedule);
+  if (!parsed) return 0;
+  
+  // Calculate duration in minutes
+  let durationMinutes = parsed.endMinutes - parsed.startMinutes;
+  if (durationMinutes < 0) durationMinutes += 24 * 60; // Handle crossing midnight
+  
+  return durationMinutes;
+}
+
+/**
+ * Parse a 12-hour time string (e.g., "5:00 PM") and return total minutes from midnight
+ */
+function parseTimeToMinutes(timeStr: string): number | null {
+  const timeMatch = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!timeMatch) return null;
+  
+  let hours = parseInt(timeMatch[1], 10);
+  const minutes = parseInt(timeMatch[2], 10);
+  const period = timeMatch[3].toUpperCase();
+  
+  if (period === 'PM' && hours !== 12) {
+    hours += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours = 0;
+  }
+  
+  return hours * 60 + minutes;
+}
+
+/**
+ * Parse schedule string "9:00 AM-5:00 PM" and return start and end times
+ */
+function parseScheduleRange(scheduleTime: string): { startTime: string; endTime: string; startMinutes: number; endMinutes: number } | null {
+  const parts = scheduleTime.split('-');
+  if (parts.length !== 2) return null;
+  
+  const startTime = parts[0].trim();
+  const endTime = parts[1].trim();
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  
+  if (startMinutes === null || endMinutes === null) return null;
+  
+  return { startTime, endTime, startMinutes, endMinutes };
+}
+
+/**
+ * Format minutes to "Xh Ym" format
+ */
+export function formatDurationFromMinutes(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '-';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+/**
+ * Get time in EST from a Date as total minutes from midnight
+ */
+function getTimeInESTMinutes(date: Date): number {
+  const estParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  
+  const hour = parseInt(estParts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(estParts.find(p => p.type === 'minute')?.value || '0', 10);
+  
+  return hour * 60 + minute;
+}
+
 export function calculateAttendanceForWeek(
   profile: DashboardProfile,
   statusEvents: ProfileEvent[],
   approvedLeaves: ApprovedLeave[],
-  weekStart: Date
+  weekStart: Date,
+  allEvents?: ProfileEvent[]  // Optional: all events including breaks for break tracking
 ): DayAttendance[] {
   const DAYS = [
     { key: 'mon', short: 'Mon', offset: 0 },
@@ -409,6 +574,12 @@ export function calculateAttendanceForWeek(
   const dayOffArray = profile.day_off || [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Parse allowed break minutes from profile
+  const allowedBreakMinutes = parseBreakScheduleMinutes(profile.break_schedule);
+  // Grace period: allowed + 5 minutes (or proportional: allowed/6 rounded up)
+  const breakGraceMinutes = Math.ceil(allowedBreakMinutes / 6); // 30min break = 5min grace
+  const maxBreakMinutes = allowedBreakMinutes + breakGraceMinutes;
 
   return DAYS.map((day) => {
     const date = new Date(weekStart);
@@ -441,13 +612,26 @@ export function calculateAttendanceForWeek(
       };
     }
 
-    // 3. Find login event for this date
+    // 3. Get schedule for this day
+    const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
+    let scheduleTime = profile[scheduleKey] as string | null;
+    
+    // Fallback to weekday/weekend schedule
+    if (!scheduleTime) {
+      scheduleTime = ['sat', 'sun'].includes(day.key)
+        ? profile.weekend_schedule
+        : profile.weekday_schedule;
+    }
+
+    const scheduleParsed = scheduleTime ? parseScheduleRange(scheduleTime) : null;
+
+    // 4. Find login event for this date
     const loginForDay = statusEvents.find((event) => {
       const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
       return eventDate === dateStr && event.event_type === 'LOGIN';
     });
 
-    // 4. Find logout event for this date
+    // 5. Find logout event for this date
     const logoutForDay = statusEvents.find((event) => {
       const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
       return eventDate === dateStr && event.event_type === 'LOGOUT';
@@ -460,66 +644,50 @@ export function calculateAttendanceForWeek(
         ? formatTimeInEST(parseISO(logoutForDay.created_at))
         : undefined;
 
-      // Get schedule start time for this day
-      const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
-      let scheduleTime = profile[scheduleKey] as string | null;
-      
-      // Fallback to weekday/weekend schedule
-      if (!scheduleTime) {
-        scheduleTime = ['sat', 'sun'].includes(day.key)
-          ? profile.weekend_schedule
-          : profile.weekday_schedule;
+      // Calculate hours worked
+      let hoursWorked: string | undefined;
+      let hoursWorkedMinutes: number | undefined;
+      if (logoutForDay) {
+        const logoutTime = parseISO(logoutForDay.created_at);
+        const durationMs = logoutTime.getTime() - loginTime.getTime();
+        hoursWorkedMinutes = Math.floor(durationMs / (1000 * 60));
+        hoursWorked = formatDurationFromMinutes(hoursWorkedMinutes);
       }
 
-      // Parse schedule time and check if late (> 10 min)
-      // Schedule format: "9:00 AM-5:00 PM" (12-hour range)
-      if (scheduleTime) {
-        // Extract start time (before the dash)
-        const startTimePart = scheduleTime.split('-')[0].trim();
-        
-        // Parse 12-hour format: "9:00 AM" or "12:30 PM"
-        const timeMatch = startTimePart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-        
-        if (timeMatch) {
-          let scheduleHours = parseInt(timeMatch[1], 10);
-          const scheduleMinutes = parseInt(timeMatch[2], 10);
-          const period = timeMatch[3].toUpperCase();
+      // Check for early out (logout before scheduled end)
+      let isEarlyOut = false;
+      if (logoutForDay && scheduleParsed) {
+        const logoutTimeMinutes = getTimeInESTMinutes(parseISO(logoutForDay.created_at));
+        // Early out if logged out before scheduled end time
+        isEarlyOut = logoutTimeMinutes < scheduleParsed.endMinutes;
+      }
+
+      // Check for no logout (past day with login but no logout)
+      const noLogout = isPast && !logoutForDay;
+
+      // Check if late (login > 10 min after schedule start)
+      let isLate = false;
+      if (scheduleParsed) {
+        const loginTimeMinutes = getTimeInESTMinutes(loginTime);
+        const lateThreshold = scheduleParsed.startMinutes + 10;
+        isLate = loginTimeMinutes > lateThreshold;
+      }
+
+      // Calculate break duration for this day (if allEvents provided)
+      let breakDurationMinutes: number | undefined;
+      let breakDuration: string | undefined;
+      let isOverbreak = false;
+      let breakOverageMinutes: number | undefined;
+
+      if (allEvents && allEvents.length > 0) {
+        breakDurationMinutes = calculateBreakDurationForDay(allEvents, dateStr);
+        if (breakDurationMinutes > 0) {
+          breakDuration = `${breakDurationMinutes}m`;
           
-          // Convert to 24-hour format
-          if (period === 'PM' && scheduleHours !== 12) {
-            scheduleHours += 12;
-          } else if (period === 'AM' && scheduleHours === 12) {
-            scheduleHours = 0;
-          }
-          
-          // Get the login time in EST for comparison
-          const loginTimeEST = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'America/New_York',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          }).formatToParts(loginTime);
-          
-          const loginHour = parseInt(loginTimeEST.find(p => p.type === 'hour')?.value || '0', 10);
-          const loginMinute = parseInt(loginTimeEST.find(p => p.type === 'minute')?.value || '0', 10);
-          
-          // Calculate total minutes from midnight for comparison
-          const scheduledMinutes = scheduleHours * 60 + scheduleMinutes;
-          const loginTotalMinutes = loginHour * 60 + loginMinute;
-          const lateThresholdMinutes = scheduledMinutes + 10;
-          
-          if (loginTotalMinutes > lateThresholdMinutes) {
-            return {
-              date,
-              dayKey: day.key,
-              status: 'late' as AttendanceStatus,
-              loginTime: formattedLoginTime,
-              logoutTime: formattedLogoutTime,
-              scheduleStart: scheduleTime,
-            };
+          // Check for overbreak
+          if (allowedBreakMinutes > 0 && breakDurationMinutes > maxBreakMinutes) {
+            isOverbreak = true;
+            breakOverageMinutes = breakDurationMinutes - allowedBreakMinutes;
           }
         }
       }
@@ -527,14 +695,26 @@ export function calculateAttendanceForWeek(
       return {
         date,
         dayKey: day.key,
-        status: 'present' as AttendanceStatus,
+        status: isLate ? 'late' as AttendanceStatus : 'present' as AttendanceStatus,
         loginTime: formattedLoginTime,
         logoutTime: formattedLogoutTime,
-        scheduleStart: scheduleTime || undefined,
+        scheduleStart: scheduleParsed?.startTime,
+        scheduleEnd: scheduleParsed?.endTime,
+        isEarlyOut,
+        noLogout,
+        hoursWorked,
+        hoursWorkedMinutes,
+        // Break tracking
+        breakDurationMinutes,
+        breakDuration,
+        allowedBreakMinutes: allowedBreakMinutes > 0 ? allowedBreakMinutes : undefined,
+        allowedBreak: allowedBreakMinutes > 0 ? `${allowedBreakMinutes}m` : undefined,
+        isOverbreak,
+        breakOverageMinutes: isOverbreak ? breakOverageMinutes : undefined,
       };
     }
 
-    // 5. No login - check if past or pending
+    // 6. No login - check if past or pending
     if (isPast) {
       return { date, dayKey: day.key, status: 'absent' as AttendanceStatus };
     }
