@@ -13,6 +13,8 @@ import { ShiftScheduleTable } from '@/components/dashboard/ShiftScheduleTable';
 import { StatusIndicator } from '@/components/dashboard/StatusIndicator';
 import { StatusButtons } from '@/components/dashboard/StatusButtons';
 import { DailyWorkTracker } from '@/components/dashboard/DailyWorkTracker';
+import { DailyEventSummary } from '@/components/dashboard/DailyEventSummary';
+import { WeeklySummaryCard } from '@/components/dashboard/WeeklySummaryCard';
 
 import {
   fetchDashboardProfile,
@@ -20,6 +22,7 @@ import {
   updateProfileStatus,
   getApprovedLeavesForWeek,
   getWeekLoginEvents,
+  getWeekAllEvents,
   calculateAttendanceForWeek,
   type DashboardProfile,
   type ProfileStatus,
@@ -40,6 +43,7 @@ export default function AgentDashboard() {
   const [statusSince, setStatusSince] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
+  const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -80,24 +84,28 @@ export default function AgentDashboard() {
       const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
       const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
 
-      // Fetch login events and approved leaves in parallel
-      const [loginEventsResult, leavesResult] = await Promise.all([
+      // Fetch login events, all events (for breaks), and approved leaves in parallel
+      const [loginEventsResult, allEventsResult, leavesResult] = await Promise.all([
         getWeekLoginEvents(profileId, weekStart, weekEnd),
+        getWeekAllEvents(profileId, weekStart, weekEnd),
         getApprovedLeavesForWeek(profileResult.data.email, weekStart, weekEnd),
       ]);
 
       const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
+      const allEvents: ProfileEvent[] = allEventsResult.data || [];
       const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
 
-      // Calculate attendance for each day of the week
+      // Calculate attendance for each day of the week (with break tracking)
       const weekAttendance = calculateAttendanceForWeek(
         profileResult.data,
         loginEvents,
         approvedLeaves,
-        weekStart
+        weekStart,
+        allEvents  // Pass all events for break calculation
       );
 
       setAttendance(weekAttendance);
+      setAllEvents(allEvents);
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard data');
     } finally {
@@ -211,20 +219,29 @@ export default function AgentDashboard() {
         {/* Shift Schedule with Attendance */}
         <ShiftScheduleTable profile={profile} attendance={attendance} />
 
-        {/* Status Control */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Current Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <StatusIndicator status={status} since={statusSince} />
-            <StatusButtons
-              currentStatus={status}
-              isLoading={isUpdating}
-              onStatusChange={handleStatusChange}
-            />
-          </CardContent>
-        </Card>
+        {/* Weekly Summary */}
+        <WeeklySummaryCard attendance={attendance} allEvents={allEvents} />
+
+        {/* Today's Activity + Status Control - side by side on larger screens */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Daily Event Summary */}
+          <DailyEventSummary events={allEvents} />
+
+          {/* Status Control */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Current Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StatusIndicator status={status} since={statusSince} />
+              <StatusButtons
+                currentStatus={status}
+                isLoading={isUpdating}
+                onStatusChange={handleStatusChange}
+              />
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Daily Work Tracker */}
         <DailyWorkTracker quota={profile.quota} />
