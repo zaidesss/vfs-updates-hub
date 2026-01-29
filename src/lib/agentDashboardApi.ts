@@ -1,8 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 
-export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING';
-export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END';
+export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING';
+export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END';
 
 export type AttendanceStatus = 
   | 'present'     // Green - logged in on time
@@ -104,6 +104,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     BREAK_OUT: null,
     COACHING_START: null,
     COACHING_END: null,
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: null,
   },
   LOGGED_IN: {
     LOGIN: null,
@@ -112,6 +114,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     BREAK_OUT: null,
     COACHING_START: 'COACHING',
     COACHING_END: null,
+    DEVICE_RESTART_START: 'RESTARTING',
+    DEVICE_RESTART_END: null,
   },
   ON_BREAK: {
     LOGIN: null,
@@ -120,6 +124,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     BREAK_OUT: 'LOGGED_IN',
     COACHING_START: null,
     COACHING_END: null,
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: null,
   },
   COACHING: {
     LOGIN: null,
@@ -128,6 +134,18 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     BREAK_OUT: null,
     COACHING_START: null,
     COACHING_END: 'LOGGED_IN',
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: null,
+  },
+  RESTARTING: {
+    LOGIN: null,
+    LOGOUT: null,
+    BREAK_IN: null,
+    BREAK_OUT: null,
+    COACHING_START: null,
+    COACHING_END: null,
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: 'LOGGED_IN',
   },
 };
 
@@ -300,9 +318,91 @@ export async function updateProfileStatus(
       // Don't fail the operation for event logging errors
     }
 
+    // Send device restart notifications if applicable
+    if (eventType === 'DEVICE_RESTART_START' || eventType === 'DEVICE_RESTART_END') {
+      // Fire and forget - don't block on notification errors
+      sendDeviceRestartNotifications(profileId, eventType, triggeredBy, now).catch((err) => {
+        console.error('Failed to send device restart notifications:', err);
+      });
+    }
+
     return { success: true, newStatus, error: null };
   } catch (err: any) {
     return { success: false, newStatus: null, error: err.message };
+  }
+}
+
+/**
+ * Send notifications to team leads, admins, and active users about device restart events
+ */
+async function sendDeviceRestartNotifications(
+  profileId: string,
+  eventType: 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END',
+  agentEmail: string,
+  timestamp: string
+): Promise<void> {
+  try {
+    // Get agent's profile for their name
+    const { data: agentProfile } = await supabase
+      .from('agent_profiles')
+      .select('full_name, email')
+      .eq('id', profileId)
+      .single();
+
+    const agentName = agentProfile?.full_name || agentEmail;
+    const formattedTime = formatTimeInEST(new Date(timestamp));
+
+    const isStart = eventType === 'DEVICE_RESTART_START';
+    const title = isStart ? `Device Issue: ${agentName}` : `Device Resolved: ${agentName}`;
+    const message = isStart
+      ? `${agentName} has started a device restart at ${formattedTime} EST`
+      : `${agentName} has resolved their device issue at ${formattedTime} EST`;
+
+    // Get all admins, HR, and super_admins
+    const { data: admins } = await supabase
+      .from('user_roles')
+      .select('email')
+      .in('role', ['admin', 'hr', 'super_admin']);
+
+    // Get all currently active users (logged in, on break, or coaching)
+    const { data: activeStatuses } = await supabase
+      .from('profile_status')
+      .select('profile_id')
+      .in('current_status', ['LOGGED_IN', 'ON_BREAK', 'COACHING', 'RESTARTING']);
+
+    // Get emails for active profiles
+    const activeProfileIds = activeStatuses?.map((s) => s.profile_id) || [];
+    const { data: activeProfiles } = await supabase
+      .from('agent_profiles')
+      .select('email')
+      .in('id', activeProfileIds);
+
+    // Combine and deduplicate recipients (exclude the agent themselves)
+    const allRecipients = new Set<string>();
+    admins?.forEach((a) => allRecipients.add(a.email.toLowerCase()));
+    activeProfiles?.forEach((p) => allRecipients.add(p.email.toLowerCase()));
+    allRecipients.delete(agentEmail.toLowerCase());
+
+    if (allRecipients.size === 0) return;
+
+    // Create notification records for each recipient
+    const notifications = Array.from(allRecipients).map((email) => ({
+      user_email: email,
+      title,
+      message,
+      type: 'device_restart',
+      reference_type: 'profile_event',
+      reference_id: profileId,
+    }));
+
+    // Insert all notifications
+    const { error } = await supabase.from('notifications').insert(notifications);
+
+    if (error) {
+      console.error('Failed to insert device restart notifications:', error.message);
+    }
+  } catch (err: any) {
+    console.error('Error sending device restart notifications:', err.message);
   }
 }
 
