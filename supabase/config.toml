@@ -71,3 +71,12 @@ verify_jwt = false
 
 [functions.send-profile-change-notification]
 verify_jwt = false
+
+[functions.zendesk-ticket-webhook]
+verify_jwt = false
+
+[functions.cleanup-ticket-logs]
+verify_jwt = false
+
+[functions.calculate-daily-gaps]
+verify_jwt = false

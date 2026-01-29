@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -123,6 +123,15 @@ export function Layout({ children }: LayoutProps) {
         items: peopleItems,
       });
     }
+
+    // Team Performance Group (available to all users)
+    groups.push({
+      label: 'Team Performance',
+      icon: BarChart3,
+      items: [
+        { href: '/team-performance/ticket-logs', label: 'Ticket Logs', icon: Ticket },
+      ],
+    });
 
     // Admin Group (only for admin/HR)
     if (isAdmin || isHR) {
