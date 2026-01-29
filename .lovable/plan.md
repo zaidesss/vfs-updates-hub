@@ -1,126 +1,160 @@
 
 
-# Enhance Daily Work Tracker with Ticket Data & Fix Gap Pause/Resume Logic
+# Upwork Time Integration Plan (Updated)
 
 ## Overview
 
-This plan has two parts:
-1. **Wire Daily Work Tracker** to show real-time ticket count and gap average from the database
-2. **Update gap calculation logic** to pause during breaks and exclude break duration from gaps
+This plan integrates Upwork timesheet data into your portal by:
+1. Adding `upwork_contract_id` column to Master Directory
+2. Fetching Upwork time when an agent logs out
+3. Storing time data and displaying both Upwork and Portal time in Daily Work Tracker
+4. Auto-archiving and deleting data older than 2 weeks
 
 ---
 
-## Part 1: Daily Work Tracker Enhancement
-
-### What Changes
-
-The Daily Work Tracker will display:
-- **Tickets Handled**: Count of today's tickets from `ticket_logs` for this agent
-- **Avg Gap**: Today's `avg_gap_seconds` from `ticket_gap_daily`
-- **Manual Refresh Button**: User can click to reload data
-
-### Data Flow
+## Data Flow
 
 ```text
-Agent Dashboard
-       ↓
-agent_profiles.email → agent_directory.agent_tag
-       ↓
-ticket_logs WHERE agent_name = agent_tag AND DATE(timestamp) = today
-       ↓
-COUNT(*) = tickets handled today
-
-ticket_gap_daily WHERE agent_name = agent_tag AND date = today
-       ↓
-avg_gap_seconds = average gap time
+Agent clicks LOG OUT in portal
+         ↓
+profile_events records LOGOUT event
+         ↓
+Trigger: Call fetch-upwork-time edge function
+         ↓
+Edge function:
+  1. Look up upwork_contract_id from agent_directory
+  2. Call Upwork API work diary endpoint
+  3. Store hours in upwork_time_logs table
+         ↓
+Dashboard shows:
+  - Time Logged (Upwork): From upwork_time_logs
+  - Time Logged (Portal): LOGIN to LOGOUT duration
 ```
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/lib/agentDashboardApi.ts` | Add functions to fetch today's ticket count and gap data |
-| `src/components/dashboard/DailyWorkTracker.tsx` | Update UI to show gap average, add refresh button |
-| `src/pages/AgentDashboard.tsx` | Fetch and pass ticket data to DailyWorkTracker |
 
 ---
 
-## Part 2: Gap Pause/Resume Logic
+## Database Changes
 
-### Current Problem
+### 1. Add Column to agent_directory
 
-The `calculate-daily-gaps` function calculates gaps between ALL consecutive tickets for a day, ignoring when the agent was on break. This inflates gap averages incorrectly.
+| Column | Type | Description |
+|--------|------|-------------|
+| upwork_contract_id | text | Upwork contract ID for API lookup |
 
-### New Logic
+### 2. New Table: upwork_time_logs
 
-When calculating gaps, we need to:
-1. Fetch `profile_events` for the agent on that day
-2. Identify break/coaching/restart periods (BREAK_IN to BREAK_OUT, etc.)
-3. When calculating gap between ticket A and ticket B:
-   - Check if any break period falls between them
-   - Subtract the break duration from the gap
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| profile_id | uuid | FK to agent_profiles |
+| contract_id | text | Upwork contract ID |
+| date | date | Date of the time entry |
+| hours_logged | decimal | Total hours from Upwork |
+| memo | text | Optional work description |
+| fetched_at | timestamptz | When this was fetched |
+| created_at | timestamptz | Record creation time |
 
-### Example
+---
 
+## API Credentials Setup
+
+### Secrets Required
+
+| Secret Name | Description |
+|-------------|-------------|
+| UPWORK_CLIENT_ID | OAuth2 Client ID |
+| UPWORK_CLIENT_SECRET | OAuth2 Client Secret |
+| UPWORK_ACCESS_TOKEN | OAuth2 Access Token |
+| UPWORK_REFRESH_TOKEN | OAuth2 Refresh Token |
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| agent_directory | Add column | upwork_contract_id field |
+| upwork_time_logs table | Create | Store fetched Upwork time |
+| src/lib/masterDirectoryApi.ts | Modify | Add upwork_contract_id to interface |
+| src/pages/MasterDirectory.tsx | Modify | Add Upwork Contract ID column after Day Off |
+| supabase/functions/fetch-upwork-time/index.ts | Create | Fetch time from Upwork API |
+| supabase/functions/cleanup-upwork-logs/index.ts | Create | Archive and delete old records |
+| src/lib/agentDashboardApi.ts | Modify | Add functions to get Upwork and Portal time |
+| src/components/dashboard/DailyWorkTracker.tsx | Modify | Display both time sources |
+| src/pages/AgentDashboard.tsx | Modify | Fetch and pass time data |
+
+---
+
+## Implementation Details
+
+### 1. Master Directory Column
+
+Add input field after "Day Off" column for Upwork Contract ID. Team leads can enter the contract ID for each agent.
+
+### 2. Portal Time Calculation (Simplified)
+
+Calculate from profile_events for the current day:
+- Find first LOGIN event of the day
+- Find last LOGOUT event (or use current time if still logged in)
+- **Total Duration = LOGOUT timestamp - LOGIN timestamp**
+- No subtraction of breaks, coaching, or restarts
+
+Example:
 | Event | Time |
 |-------|------|
-| Ticket A | 10:00 AM |
-| BREAK_IN | 10:05 AM |
-| BREAK_OUT | 10:35 AM |
-| Ticket B | 10:40 AM |
+| LOGIN | 9:00 AM |
+| BREAK_IN | 12:00 PM |
+| BREAK_OUT | 12:30 PM |
+| LOGOUT | 5:00 PM |
 
-**Current calculation**: Gap = 40 minutes (wrong)
-**New calculation**: Gap = 40 - 30 = 10 minutes (correct)
+**Portal Time = 8 hours** (5:00 PM - 9:00 AM)
 
-### Logout Reset Behavior
+### 3. Edge Function: fetch-upwork-time
 
-When LOGOUT occurs:
-- Gap calculation for tickets before logout is finalized
-- Tickets after next LOGIN start fresh (no gap to previous day's tickets)
+Triggered when: Agent logs out (LOGOUT event)
 
-### Files to Modify
+Steps:
+1. Look up upwork_contract_id from agent_directory by email
+2. If no contract_id, skip (not all agents may have Upwork)
+3. Call Upwork API work diary endpoint with contract and date
+4. Extract total hours from response
+5. Upsert to upwork_time_logs table
 
-| File | Change |
-|------|--------|
-| `supabase/functions/calculate-daily-gaps/index.ts` | Add break exclusion logic |
+### 4. Daily Work Tracker Display
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ Daily Work Tracker                              [🔄]    │
+├─────────────────────────────────────────────────────────┤
+│  🎫 Tickets Handled          ⏱️ Avg Gap                 │
+│     18/50                       5m 30s                  │
+│  ████████████░░░░░░  36%                                │
+├─────────────────────────────────────────────────────────┤
+│  ⏰ Time Logged (Portal)     ⏰ Time Logged (Upwork)    │
+│     8h 00m                      7h 50m                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 5. Cleanup Function
+
+Same pattern as cleanup-ticket-logs:
+1. Find records older than 14 days
+2. Archive to storage bucket (upwork-archives)
+3. Delete archived records
 
 ---
 
-## Technical Implementation Details
+## Potential Conflicts and Considerations
 
-### 1. New API Functions (agentDashboardApi.ts)
-
-```typescript
-// Fetch today's ticket count for an agent
-export async function getTodayTicketCount(agentTag: string): Promise<number>
-
-// Fetch today's gap data for an agent
-export async function getTodayGapData(agentTag: string): Promise<{
-  avgGapSeconds: number | null;
-  ticketCount: number;
-}>
-```
-
-### 2. Updated DailyWorkTracker Component
-
-New props:
-- `ticketsHandled`: number (from ticket_logs)
-- `avgGapSeconds`: number | null (from ticket_gap_daily)
-- `onRefresh`: () => void (callback for refresh button)
-- `isRefreshing`: boolean (loading state)
-
-UI Changes:
-- Replace "Time Logged" section with "Avg Gap" display
-- Add a refresh icon button in the header
-- Show formatted gap time (e.g., "5m 30s")
-
-### 3. Updated Gap Calculation Logic
-
-The edge function will:
-1. Fetch profile_events for the target date
-2. Build a list of "inactive periods" (break start to break end)
-3. For each gap between tickets, subtract overlapping inactive time
-4. Treat LOGOUT as a session boundary (don't calculate gap across logout/login)
+| Issue | Mitigation |
+|-------|------------|
+| OAuth Token Expiry | Store refresh token, auto-refresh access token before API calls |
+| No Contract ID | Skip Upwork fetch for agents without contract ID (graceful fallback) |
+| Multiple Logouts/Day | Upsert logic - update existing record for same date |
+| API Rate Limits | One fetch per logout is low volume, unlikely to hit limits |
+| Timezone Mismatch | Upwork uses UTC, portal uses EST - normalize to user's date |
+| Network Failures | Retry logic with exponential backoff; log failures for debugging |
+| User Not on Upwork Yet | Contract ID is optional; UI shows "N/A" if no Upwork data |
 
 ---
 
@@ -128,36 +162,15 @@ The edge function will:
 
 | Step | Task |
 |------|------|
-| 1 | Add `getTodayTicketCount` and `getTodayGapData` functions to `agentDashboardApi.ts` |
-| 2 | Update `DailyWorkTracker` component with new props and UI (refresh button, gap display) |
-| 3 | Update `AgentDashboard` to fetch ticket/gap data and wire to DailyWorkTracker |
-| 4 | Update `calculate-daily-gaps` edge function to exclude break durations |
-| 5 | Deploy edge function |
-| 6 | Test end-to-end |
-
----
-
-## Expected Result
-
-### Daily Work Tracker Display
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│ 📊 Daily Work Tracker                           🔄      │
-├─────────────────────────────────────────────────────────┤
-│  🎫 Tickets Handled          ⏱️ Avg Gap                 │
-│     18/50                       5m 30s                  │
-│  ████████████░░░░░░  36%                                │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Gap Calculation Behavior
-
-| Status | Gap Tracking |
-|--------|--------------|
-| LOGGED_IN | Active - gaps calculated |
-| ON_BREAK | Paused - duration excluded from gaps |
-| COACHING | Paused - duration excluded from gaps |
-| RESTARTING | Paused - duration excluded from gaps |
-| LOGGED_OUT | Session ends - next session starts fresh |
+| 1 | Add Upwork secrets (CLIENT_ID, CLIENT_SECRET, ACCESS_TOKEN, REFRESH_TOKEN) |
+| 2 | Create database migration: add upwork_contract_id column + upwork_time_logs table |
+| 3 | Update masterDirectoryApi.ts to include upwork_contract_id |
+| 4 | Update MasterDirectory.tsx to show Upwork Contract ID column |
+| 5 | Create fetch-upwork-time edge function |
+| 6 | Modify updateProfileStatus to trigger fetch on LOGOUT |
+| 7 | Add getPortalTime and getUpworkTime functions in agentDashboardApi.ts |
+| 8 | Update DailyWorkTracker to show both time sources |
+| 9 | Create cleanup-upwork-logs edge function |
+| 10 | Create upwork-archives storage bucket |
+| 11 | Test end-to-end |
 
