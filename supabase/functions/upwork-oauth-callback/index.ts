@@ -23,7 +23,7 @@ serve(async (req) => {
         throw new Error('UPWORK_CLIENT_ID not configured');
       }
       
-      const redirectUri = `${url.origin}/functions/v1/upwork-oauth-callback`;
+      const redirectUri = 'https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/upwork-oauth-callback';
       const authUrl = `https://www.upwork.com/ab/account-security/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
       
       return new Response(null, {
@@ -43,7 +43,7 @@ serve(async (req) => {
       throw new Error('Upwork credentials not configured');
     }
     
-    const redirectUri = `${url.origin}/functions/v1/upwork-oauth-callback`;
+    const redirectUri = 'https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/upwork-oauth-callback';
     
     // Exchange authorization code for tokens
     const tokenResponse = await fetch('https://www.upwork.com/api/v3/oauth2/token', {
