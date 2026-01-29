@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.calculate-daily-gaps]
 verify_jwt = false
+
+[functions.upwork-oauth-callback]
+verify_jwt = false
