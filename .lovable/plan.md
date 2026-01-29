@@ -1,126 +1,163 @@
 
 
-# Fix Gap Tracking Based on Login Status
+# Enhance Daily Work Tracker with Ticket Data & Fix Gap Pause/Resume Logic
 
-## Problem
+## Overview
 
-Gap tracking shows "disabled" because the current logic checks `agent_profiles.employment_status` (which is for HR status like Active/Inactive/Resigned). The correct logic should check `profile_status.current_status` to see if the agent is currently logged in.
+This plan has two parts:
+1. **Wire Daily Work Tracker** to show real-time ticket count and gap average from the database
+2. **Update gap calculation logic** to pause during breaks and exclude break duration from gaps
 
-## Correct Definition of "Active"
+---
 
-| Status | Gap Tracking |
-|--------|--------------|
-| LOGGED_IN | Enabled |
-| ON_BREAK | Disabled |
-| COACHING | Disabled |
-| RESTARTING | Disabled |
-| LOGGED_OUT | Disabled |
+## Part 1: Daily Work Tracker Enhancement
 
-## Data Flow
+### What Changes
+
+The Daily Work Tracker will display:
+- **Tickets Handled**: Count of today's tickets from `ticket_logs` for this agent
+- **Avg Gap**: Today's `avg_gap_seconds` from `ticket_gap_daily`
+- **Manual Refresh Button**: User can click to reload data
+
+### Data Flow
 
 ```text
-ticket_logs.agent_name
+Agent Dashboard
        ↓
-agent_directory.agent_tag (match)
+agent_profiles.email → agent_directory.agent_tag
        ↓
-agent_directory.email
+ticket_logs WHERE agent_name = agent_tag AND DATE(timestamp) = today
        ↓
-agent_profiles.email → agent_profiles.id
+COUNT(*) = tickets handled today
+
+ticket_gap_daily WHERE agent_name = agent_tag AND date = today
        ↓
-profile_status.profile_id → profile_status.current_status
-       ↓
-isActive = (current_status === 'LOGGED_IN')
+avg_gap_seconds = average gap time
 ```
 
-## Files to Modify
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/lib/ticketLogsApi.ts` | Update `fetchDashboardData` to check `profile_status.current_status` instead of `employment_status` |
-| `supabase/functions/calculate-daily-gaps/index.ts` | Update gap calculation to check login status |
+| `src/lib/agentDashboardApi.ts` | Add functions to fetch today's ticket count and gap data |
+| `src/components/dashboard/DailyWorkTracker.tsx` | Update UI to show gap average, add refresh button |
+| `src/pages/AgentDashboard.tsx` | Fetch and pass ticket data to DailyWorkTracker |
 
-## Implementation Details
+---
 
-### 1. Update `fetchDashboardData` in ticketLogsApi.ts
+## Part 2: Gap Pause/Resume Logic
 
-**Current logic (wrong):**
-```typescript
-// Fetch active agent profiles
-const { data: profiles } = await supabase
-  .from('agent_profiles')
-  .select('email, employment_status');
+### Current Problem
 
-const activeEmails = new Set(
-  (profiles || [])
-    .filter(p => p.employment_status === 'Active')
-    .map(p => p.email?.toLowerCase())
-);
-```
+The `calculate-daily-gaps` function calculates gaps between ALL consecutive tickets for a day, ignoring when the agent was on break. This inflates gap averages incorrectly.
 
-**New logic:**
-```typescript
-// Fetch agent_directory to map agent_tag → email
-const { data: agentDir } = await supabase
-  .from('agent_directory')
-  .select('agent_tag, email');
+### New Logic
 
-const tagToEmail: Record<string, string> = {};
-for (const agent of agentDir || []) {
-  if (agent.agent_tag && agent.email) {
-    tagToEmail[agent.agent_tag.toLowerCase()] = agent.email.toLowerCase();
-  }
-}
+When calculating gaps, we need to:
+1. Fetch `profile_events` for the agent on that day
+2. Identify break/coaching/restart periods (BREAK_IN to BREAK_OUT, etc.)
+3. When calculating gap between ticket A and ticket B:
+   - Check if any break period falls between them
+   - Subtract the break duration from the gap
 
-// Fetch agent_profiles to get profile IDs
-const { data: profiles } = await supabase
-  .from('agent_profiles')
-  .select('id, email');
+### Example
 
-const emailToProfileId: Record<string, string> = {};
-for (const p of profiles || []) {
-  if (p.email) {
-    emailToProfileId[p.email.toLowerCase()] = p.id;
-  }
-}
+| Event | Time |
+|-------|------|
+| Ticket A | 10:00 AM |
+| BREAK_IN | 10:05 AM |
+| BREAK_OUT | 10:35 AM |
+| Ticket B | 10:40 AM |
 
-// Fetch profile_status to get current login status
-const { data: statusData } = await supabase
-  .from('profile_status')
-  .select('profile_id, current_status');
+**Current calculation**: Gap = 40 minutes (wrong)
+**New calculation**: Gap = 40 - 30 = 10 minutes (correct)
 
-const profileIdToStatus: Record<string, string> = {};
-for (const s of statusData || []) {
-  profileIdToStatus[s.profile_id] = s.current_status;
-}
+### Logout Reset Behavior
 
-// When building result:
-const agentEmail = tagToEmail[agentName.toLowerCase()];
-const profileId = agentEmail ? emailToProfileId[agentEmail] : null;
-const currentStatus = profileId ? profileIdToStatus[profileId] : null;
-const isActive = currentStatus === 'LOGGED_IN';
-```
+When LOGOUT occurs:
+- Gap calculation for tickets before logout is finalized
+- Tickets after next LOGIN start fresh (no gap to previous day's tickets)
 
-### 2. Update `calculate-daily-gaps` Edge Function
+### Files to Modify
 
-Same lookup chain to determine if gap calculation should run for an agent:
-- Get `agent_tag` → `email` from `agent_directory`
-- Get `email` → `profile_id` from `agent_profiles`
-- Get `profile_id` → `current_status` from `profile_status`
-- Only calculate gaps if `current_status === 'LOGGED_IN'`
-
-## Steps
-
-| Step | Action |
+| File | Change |
 |------|--------|
-| 1 | Update `fetchDashboardData` to fetch `agent_directory`, `agent_profiles`, and `profile_status` |
-| 2 | Create lookup chain: agent_tag → email → profile_id → current_status |
-| 3 | Set `isActive = (current_status === 'LOGGED_IN')` |
-| 4 | Update `calculate-daily-gaps` edge function with same logic |
+| `supabase/functions/calculate-daily-gaps/index.ts` | Add break exclusion logic |
+
+---
+
+## Technical Implementation Details
+
+### 1. New API Functions (agentDashboardApi.ts)
+
+```typescript
+// Fetch today's ticket count for an agent
+export async function getTodayTicketCount(agentTag: string): Promise<number>
+
+// Fetch today's gap data for an agent
+export async function getTodayGapData(agentTag: string): Promise<{
+  avgGapSeconds: number | null;
+  ticketCount: number;
+}>
+```
+
+### 2. Updated DailyWorkTracker Component
+
+New props:
+- `ticketsHandled`: number (from ticket_logs)
+- `avgGapSeconds`: number | null (from ticket_gap_daily)
+- `onRefresh`: () => void (callback for refresh button)
+- `isRefreshing`: boolean (loading state)
+
+UI Changes:
+- Replace "Time Logged" section with "Avg Gap" display
+- Add a refresh icon button in the header
+- Show formatted gap time (e.g., "5m 30s")
+
+### 3. Updated Gap Calculation Logic
+
+The edge function will:
+1. Fetch profile_events for the target date
+2. Build a list of "inactive periods" (break start to break end)
+3. For each gap between tickets, subtract overlapping inactive time
+4. Treat LOGOUT as a session boundary (don't calculate gap across logout/login)
+
+---
+
+## Step-by-Step Implementation
+
+| Step | Task |
+|------|------|
+| 1 | Add `getTodayTicketCount` and `getTodayGapData` functions to `agentDashboardApi.ts` |
+| 2 | Update `DailyWorkTracker` component with new props and UI (refresh button, gap display) |
+| 3 | Update `AgentDashboard` to fetch ticket/gap data and wire to DailyWorkTracker |
+| 4 | Update `calculate-daily-gaps` edge function to exclude break durations |
 | 5 | Deploy edge function |
-| 6 | Test that gap tracking shows correctly based on login status |
+| 6 | Test end-to-end |
+
+---
 
 ## Expected Result
 
-- Agent is LOGGED_IN → Gap data shows (e.g., "5m 30s")
-- Agent is ON_BREAK/COACHING/RESTARTING/LOGGED_OUT → Shows "Gap tracking disabled"
+### Daily Work Tracker Display
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ 📊 Daily Work Tracker                           🔄      │
+├─────────────────────────────────────────────────────────┤
+│  🎫 Tickets Handled          ⏱️ Avg Gap                 │
+│     18/50                       5m 30s                  │
+│  ████████████░░░░░░  36%                                │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Gap Calculation Behavior
+
+| Status | Gap Tracking |
+|--------|--------------|
+| LOGGED_IN | Active - gaps calculated |
+| ON_BREAK | Paused - duration excluded from gaps |
+| COACHING | Paused - duration excluded from gaps |
+| RESTARTING | Paused - duration excluded from gaps |
+| LOGGED_OUT | Session ends - next session starts fresh |
 
