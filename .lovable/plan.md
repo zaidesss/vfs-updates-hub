@@ -1,147 +1,126 @@
 
 
-# Split Dashboards by Zendesk Instance + Add ZD1 Secret
+# Fix Gap Tracking Based on Login Status
 
-## Summary of Changes
+## Problem
 
-This plan covers three main items:
+Gap tracking shows "disabled" because the current logic checks `agent_profiles.employment_status` (which is for HR status like Active/Inactive/Resigned). The correct logic should check `profile_status.current_status` to see if the agent is currently logged in.
 
-1. **Two separate dashboards** - ZD1 (customerserviceadvocates) and ZD2 (customerserviceadvocateshelp)
-2. **ZD Instance filter** - Add filter to Search & Filter Tickets section
-3. **ZD1 secret** - Add a second secret for ZD1 authentication
+## Correct Definition of "Active"
 
----
+| Status | Gap Tracking |
+|--------|--------------|
+| LOGGED_IN | Enabled |
+| ON_BREAK | Disabled |
+| COACHING | Disabled |
+| RESTARTING | Disabled |
+| LOGGED_OUT | Disabled |
 
-## Current State
-
-- Single unified dashboard showing all Zendesk data
-- One secret `ZENDESK_WEBHOOK_SECRET` (used for ZD2)
-- No zd_instance filter in the search section
-
----
-
-## Implementation Details
-
-### 1. Add ZD1 Secret
-
-I will add a new secret called `ZENDESK_WEBHOOK_SECRET_ZD1` for the ZD1 instance.
-
-You'll enter the Bearer token value that you've configured in ZD1's webhook settings.
-
----
-
-### 2. Update Webhook to Support Both Secrets
-
-The edge function will check both secrets and accept the request if either matches:
-
-```
-Received token matches ZENDESK_WEBHOOK_SECRET → Accept (ZD2)
-Received token matches ZENDESK_WEBHOOK_SECRET_ZD1 → Accept (ZD1)
-Neither matches → Reject with 401
-```
-
----
-
-### 3. Create Separate Dashboard Components
-
-**File changes:**
-
-| File | Change |
-|------|--------|
-| `src/components/ticket-logs/TicketDashboard.tsx` | Refactor to accept `zdInstance` prop |
-| `src/pages/TicketLogs.tsx` | Render two separate dashboard cards |
-
-**New layout:**
+## Data Flow
 
 ```text
-┌─────────────────────────────────────────────────┐
-│ Ticket Logs                                     │
-│ View ticket counts per agent from Zendesk data  │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ ZD1 - Customer Service Advocates                │
-│ Badge: Last 14 Days                             │
-├─────────────────────────────────────────────────┤
-│ [Agent grid with Email/Chat/Call by date]       │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ ZD2 - Customer Service Advocates Help           │
-│ Badge: Last 14 Days                             │
-├─────────────────────────────────────────────────┤
-│ [Agent grid with Email/Chat/Call by date]       │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ Search & Filter Tickets                         │
-│ [Search bar] [Agent] [Type] [ZD Instance] [Date]│
-└─────────────────────────────────────────────────┘
+ticket_logs.agent_name
+       ↓
+agent_directory.agent_tag (match)
+       ↓
+agent_directory.email
+       ↓
+agent_profiles.email → agent_profiles.id
+       ↓
+profile_status.profile_id → profile_status.current_status
+       ↓
+isActive = (current_status === 'LOGGED_IN')
 ```
-
----
-
-### 4. Update API to Support Instance Filtering
-
-**File: `src/lib/ticketLogsApi.ts`**
-
-Add `zdInstance` parameter to:
-- `fetchDashboardData(zdInstance?: string)`
-- `fetchTicketLogs({ ..., zdInstance?: string })`
-
-Query filter:
-```typescript
-if (zdInstance) {
-  query = query.eq('zd_instance', zdInstance);
-}
-```
-
----
-
-### 5. Add ZD Instance Filter to Search
-
-**File: `src/components/ticket-logs/TicketSearch.tsx`**
-
-Add new dropdown:
-
-| Label | Options |
-|-------|---------|
-| ZD Instance | All Instances, ZD1 (customerserviceadvocates), ZD2 (customerserviceadvocateshelp) |
-
-This filter will apply to the search results table.
-
----
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/zendesk-ticket-webhook/index.ts` | Support both `ZENDESK_WEBHOOK_SECRET` and `ZENDESK_WEBHOOK_SECRET_ZD1` |
-| `src/lib/ticketLogsApi.ts` | Add `zdInstance` filter to all fetch functions |
-| `src/components/ticket-logs/TicketDashboard.tsx` | Accept `zdInstance` and `title` props |
-| `src/components/ticket-logs/TicketSearch.tsx` | Add ZD Instance dropdown filter |
-| `src/pages/TicketLogs.tsx` | Render two dashboard instances |
+| File | Change |
+|------|--------|
+| `src/lib/ticketLogsApi.ts` | Update `fetchDashboardData` to check `profile_status.current_status` instead of `employment_status` |
+| `supabase/functions/calculate-daily-gaps/index.ts` | Update gap calculation to check login status |
 
----
+## Implementation Details
 
-## ZD Instance Values
+### 1. Update `fetchDashboardData` in ticketLogsApi.ts
 
-| Label | Value in Database |
-|-------|-------------------|
-| ZD1 | `customerserviceadvocates` |
-| ZD2 | `customerserviceadvocateshelp` |
+**Current logic (wrong):**
+```typescript
+// Fetch active agent profiles
+const { data: profiles } = await supabase
+  .from('agent_profiles')
+  .select('email, employment_status');
 
----
+const activeEmails = new Set(
+  (profiles || [])
+    .filter(p => p.employment_status === 'Active')
+    .map(p => p.email?.toLowerCase())
+);
+```
+
+**New logic:**
+```typescript
+// Fetch agent_directory to map agent_tag → email
+const { data: agentDir } = await supabase
+  .from('agent_directory')
+  .select('agent_tag, email');
+
+const tagToEmail: Record<string, string> = {};
+for (const agent of agentDir || []) {
+  if (agent.agent_tag && agent.email) {
+    tagToEmail[agent.agent_tag.toLowerCase()] = agent.email.toLowerCase();
+  }
+}
+
+// Fetch agent_profiles to get profile IDs
+const { data: profiles } = await supabase
+  .from('agent_profiles')
+  .select('id, email');
+
+const emailToProfileId: Record<string, string> = {};
+for (const p of profiles || []) {
+  if (p.email) {
+    emailToProfileId[p.email.toLowerCase()] = p.id;
+  }
+}
+
+// Fetch profile_status to get current login status
+const { data: statusData } = await supabase
+  .from('profile_status')
+  .select('profile_id, current_status');
+
+const profileIdToStatus: Record<string, string> = {};
+for (const s of statusData || []) {
+  profileIdToStatus[s.profile_id] = s.current_status;
+}
+
+// When building result:
+const agentEmail = tagToEmail[agentName.toLowerCase()];
+const profileId = agentEmail ? emailToProfileId[agentEmail] : null;
+const currentStatus = profileId ? profileIdToStatus[profileId] : null;
+const isActive = currentStatus === 'LOGGED_IN';
+```
+
+### 2. Update `calculate-daily-gaps` Edge Function
+
+Same lookup chain to determine if gap calculation should run for an agent:
+- Get `agent_tag` → `email` from `agent_directory`
+- Get `email` → `profile_id` from `agent_profiles`
+- Get `profile_id` → `current_status` from `profile_status`
+- Only calculate gaps if `current_status === 'LOGGED_IN'`
 
 ## Steps
 
 | Step | Action |
 |------|--------|
-| 1 | Add new secret `ZENDESK_WEBHOOK_SECRET_ZD1` |
-| 2 | Update webhook to accept both secrets |
-| 3 | Update API functions to filter by zd_instance |
-| 4 | Modify dashboard component to accept instance prop |
-| 5 | Update TicketLogs page to show two dashboards |
-| 6 | Add ZD Instance filter to search section |
-| 7 | Test both dashboards work correctly |
+| 1 | Update `fetchDashboardData` to fetch `agent_directory`, `agent_profiles`, and `profile_status` |
+| 2 | Create lookup chain: agent_tag → email → profile_id → current_status |
+| 3 | Set `isActive = (current_status === 'LOGGED_IN')` |
+| 4 | Update `calculate-daily-gaps` edge function with same logic |
+| 5 | Deploy edge function |
+| 6 | Test that gap tracking shows correctly based on login status |
+
+## Expected Result
+
+- Agent is LOGGED_IN → Gap data shows (e.g., "5m 30s")
+- Agent is ON_BREAK/COACHING/RESTARTING/LOGGED_OUT → Shows "Gap tracking disabled"
 
