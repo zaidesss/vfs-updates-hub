@@ -962,6 +962,81 @@ export type Database = {
           },
         ]
       }
+      ticket_gap_daily: {
+        Row: {
+          agent_email: string | null
+          agent_name: string
+          avg_gap_seconds: number | null
+          created_at: string | null
+          date: string
+          id: string
+          max_gap_seconds: number | null
+          min_gap_seconds: number | null
+          ticket_count: number
+          total_gap_seconds: number | null
+        }
+        Insert: {
+          agent_email?: string | null
+          agent_name: string
+          avg_gap_seconds?: number | null
+          created_at?: string | null
+          date: string
+          id?: string
+          max_gap_seconds?: number | null
+          min_gap_seconds?: number | null
+          ticket_count?: number
+          total_gap_seconds?: number | null
+        }
+        Update: {
+          agent_email?: string | null
+          agent_name?: string
+          avg_gap_seconds?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          max_gap_seconds?: number | null
+          min_gap_seconds?: number | null
+          ticket_count?: number
+          total_gap_seconds?: number | null
+        }
+        Relationships: []
+      }
+      ticket_logs: {
+        Row: {
+          agent_email: string | null
+          agent_name: string
+          created_at: string | null
+          id: string
+          status: string
+          ticket_id: string
+          ticket_type: string
+          timestamp: string
+          zd_instance: string
+        }
+        Insert: {
+          agent_email?: string | null
+          agent_name: string
+          created_at?: string | null
+          id?: string
+          status: string
+          ticket_id: string
+          ticket_type: string
+          timestamp: string
+          zd_instance: string
+        }
+        Update: {
+          agent_email?: string | null
+          agent_name?: string
+          created_at?: string | null
+          id?: string
+          status?: string
+          ticket_id?: string
+          ticket_type?: string
+          timestamp?: string
+          zd_instance?: string
+        }
+        Relationships: []
+      }
       update_change_history: {
         Row: {
           changed_at: string
