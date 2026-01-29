@@ -8,13 +8,18 @@ import { fetchDashboardData, formatGapTime, AgentDashboardData } from '@/lib/tic
 import { supabase } from '@/integrations/supabase/client';
 import { Mail, MessageCircle, Phone } from 'lucide-react';
 
-export function TicketDashboard() {
+interface TicketDashboardProps {
+  zdInstance: string;
+  title: string;
+}
+
+export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
   const [data, setData] = useState<AgentDashboardData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
     try {
-      const dashboardData = await fetchDashboardData();
+      const dashboardData = await fetchDashboardData(zdInstance);
       setData(dashboardData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -26,15 +31,18 @@ export function TicketDashboard() {
   useEffect(() => {
     loadData();
 
-    // Subscribe to realtime updates
+    // Subscribe to realtime updates filtered by zd_instance
     const channel = supabase
-      .channel('ticket-logs-dashboard')
+      .channel(`ticket-logs-dashboard-${zdInstance}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'ticket_logs' },
-        () => {
-          console.log('New ticket received, refreshing dashboard...');
-          loadData();
+        (payload) => {
+          // Only refresh if the new ticket is for this instance
+          if (payload.new && (payload.new as { zd_instance?: string }).zd_instance === zdInstance) {
+            console.log(`New ticket for ${zdInstance}, refreshing dashboard...`);
+            loadData();
+          }
         }
       )
       .subscribe();
@@ -42,13 +50,13 @@ export function TicketDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [zdInstance]);
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Ticket Dashboard</CardTitle>
+          <CardTitle>{title}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -65,11 +73,16 @@ export function TicketDashboard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Ticket Dashboard</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>{title}</span>
+            <Badge variant="outline" className="text-xs font-normal">
+              Last 14 Days
+            </Badge>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-center py-8">
-            No ticket data available. Tickets will appear here once Zendesk starts sending data.
+            No ticket data available for this instance.
           </p>
         </CardContent>
       </Card>
@@ -83,7 +96,7 @@ export function TicketDashboard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Ticket Dashboard</span>
+          <span>{title}</span>
           <Badge variant="outline" className="text-xs font-normal">
             Last 14 Days
           </Badge>
@@ -152,7 +165,7 @@ export function TicketDashboard() {
                         )}
                       </div>
                     </td>
-                    {agent.dates.map((dateData, idx) => (
+                    {agent.dates.map((dateData) => (
                       <>
                         <td
                           key={`${agent.agent_name}-${dateData.date}-email`}

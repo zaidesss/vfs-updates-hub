@@ -47,6 +47,7 @@ export async function fetchTicketLogs(
     endDate?: string;
     ticketType?: string;
     searchTerm?: string;
+    zdInstance?: string;
   }
 ): Promise<TicketLog[]> {
   let query = supabase
@@ -74,6 +75,10 @@ export async function fetchTicketLogs(
 
   if (filters?.ticketType && filters.ticketType !== 'all') {
     query = query.eq('ticket_type', filters.ticketType);
+  }
+
+  if (filters?.zdInstance && filters.zdInstance !== 'all') {
+    query = query.eq('zd_instance', filters.zdInstance);
   }
 
   if (filters?.searchTerm) {
@@ -115,15 +120,21 @@ export async function fetchTicketGaps(agentName?: string): Promise<TicketGapDail
 }
 
 // Get dashboard data grouped by agent and date
-export async function fetchDashboardData(): Promise<AgentDashboardData[]> {
+export async function fetchDashboardData(zdInstance?: string): Promise<AgentDashboardData[]> {
   const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
 
   // Fetch ticket logs
-  const { data: logs, error: logsError } = await supabase
+  let logsQuery = supabase
     .from('ticket_logs')
     .select('agent_name, agent_email, timestamp, ticket_type')
     .gte('timestamp', fourteenDaysAgo)
     .order('agent_name');
+
+  if (zdInstance) {
+    logsQuery = logsQuery.eq('zd_instance', zdInstance);
+  }
+
+  const { data: logs, error: logsError } = await logsQuery;
 
   if (logsError) {
     console.error('Error fetching logs for dashboard:', logsError);

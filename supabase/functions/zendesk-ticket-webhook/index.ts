@@ -21,11 +21,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate Bearer token
+    // Validate Bearer token against both ZD1 and ZD2 secrets
     const authHeader = req.headers.get('Authorization')
-    const expectedSecret = Deno.env.get('ZENDESK_WEBHOOK_SECRET')
+    const secretZD2 = Deno.env.get('ZENDESK_WEBHOOK_SECRET')
+    const secretZD1 = Deno.env.get('ZENDESK_WEBHOOK_SECRET_ZD1')
     
-    if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== expectedSecret) {
+    const receivedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    
+    // Accept if token matches either secret
+    const isValidToken = receivedToken && (receivedToken === secretZD2 || receivedToken === secretZD1)
+    
+    if (!isValidToken) {
       console.error('Unauthorized: Invalid or missing Bearer token')
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
