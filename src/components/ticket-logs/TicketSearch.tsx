@@ -24,10 +24,17 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { fetchTicketLogs, fetchUniqueAgents, TicketLog } from '@/lib/ticketLogsApi';
 
+const ZD_INSTANCES = [
+  { value: 'all', label: 'All Instances' },
+  { value: 'customerserviceadvocates', label: 'ZD1 - Customer Service Advocates' },
+  { value: 'customerserviceadvocateshelp', label: 'ZD2 - Customer Service Advocates Help' },
+];
+
 export function TicketSearch() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedZdInstance, setSelectedZdInstance] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [agents, setAgents] = useState<string[]>([]);
@@ -47,6 +54,7 @@ export function TicketSearch() {
         searchTerm: searchTerm || undefined,
         agentName: selectedAgent !== 'all' ? selectedAgent : undefined,
         ticketType: selectedType !== 'all' ? selectedType : undefined,
+        zdInstance: selectedZdInstance !== 'all' ? selectedZdInstance : undefined,
         startDate: startDate ? `${startDate}T00:00:00.000Z` : undefined,
         endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
       });
@@ -62,6 +70,7 @@ export function TicketSearch() {
     setSearchTerm('');
     setSelectedAgent('all');
     setSelectedType('all');
+    setSelectedZdInstance('all');
     setStartDate('');
     setEndDate('');
     setLogs([]);
@@ -82,6 +91,11 @@ export function TicketSearch() {
     if (lower === 'chat') return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300';
     if (lower === 'call') return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300';
     return '';
+  };
+
+  const getInstanceLabel = (value: string) => {
+    const instance = ZD_INSTANCES.find(i => i.value === value);
+    return instance?.label || value;
   };
 
   return (
@@ -115,7 +129,7 @@ export function TicketSearch() {
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="text-sm font-medium mb-1.5 block">Agent</label>
             <Select value={selectedAgent} onValueChange={setSelectedAgent}>
@@ -144,6 +158,22 @@ export function TicketSearch() {
                 <SelectItem value="Email">Email</SelectItem>
                 <SelectItem value="Chat">Chat</SelectItem>
                 <SelectItem value="Call">Call</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">ZD Instance</label>
+            <Select value={selectedZdInstance} onValueChange={setSelectedZdInstance}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Instances" />
+              </SelectTrigger>
+              <SelectContent>
+                {ZD_INSTANCES.map((instance) => (
+                  <SelectItem key={instance.value} value={instance.value}>
+                    {instance.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -206,7 +236,7 @@ export function TicketSearch() {
                           {format(new Date(log.timestamp), 'MMM d, yyyy h:mm a')}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {log.zd_instance}
+                          {log.zd_instance === 'customerserviceadvocates' ? 'ZD1' : 'ZD2'}
                         </TableCell>
                       </TableRow>
                     ))}

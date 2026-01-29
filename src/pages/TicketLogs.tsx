@@ -13,7 +13,16 @@ export default function TicketLogs() {
           </p>
         </div>
 
-        <TicketDashboard />
+        <TicketDashboard 
+          zdInstance="customerserviceadvocates" 
+          title="ZD1 - Customer Service Advocates" 
+        />
+        
+        <TicketDashboard 
+          zdInstance="customerserviceadvocateshelp" 
+          title="ZD2 - Customer Service Advocates Help" 
+        />
+        
         <TicketSearch />
       </div>
     </Layout>
