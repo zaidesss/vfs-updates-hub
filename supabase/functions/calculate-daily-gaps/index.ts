@@ -5,6 +5,42 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface InactivePeriod {
+  start: number;
+  end: number;
+}
+
+/**
+ * Calculate how much of an inactive period overlaps with a gap between two timestamps
+ */
+function calculateOverlap(gapStart: number, gapEnd: number, period: InactivePeriod): number {
+  const overlapStart = Math.max(gapStart, period.start);
+  const overlapEnd = Math.min(gapEnd, period.end);
+  
+  if (overlapStart < overlapEnd) {
+    return overlapEnd - overlapStart;
+  }
+  return 0;
+}
+
+/**
+ * Calculate total inactive time (breaks, coaching, restart) that overlaps with a gap
+ */
+function getInactiveTimeInGap(gapStart: number, gapEnd: number, inactivePeriods: InactivePeriod[]): number {
+  let totalInactive = 0;
+  for (const period of inactivePeriods) {
+    totalInactive += calculateOverlap(gapStart, gapEnd, period);
+  }
+  return totalInactive;
+}
+
+/**
+ * Check if there's a logout between two timestamps
+ */
+function hasLogoutBetween(ticketA: number, ticketB: number, logoutTimestamps: number[]): boolean {
+  return logoutTimestamps.some(logout => logout > ticketA && logout < ticketB);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -83,6 +119,66 @@ Deno.serve(async (req) => {
       profileIdToStatus[s.profile_id] = s.current_status
     }
 
+    // Fetch all profile_events for the day to identify break/coaching/restart periods
+    const { data: profileEvents } = await supabase
+      .from('profile_events')
+      .select('profile_id, event_type, created_at')
+      .gte('created_at', startOfDay)
+      .lte('created_at', endOfDay)
+      .order('created_at', { ascending: true })
+
+    // Build a map of inactive periods per profile_id
+    const profileInactivePeriods: Record<string, InactivePeriod[]> = {}
+    const profileLogouts: Record<string, number[]> = {}
+    
+    // Track open periods (started but not ended)
+    const openPeriods: Record<string, { type: string; start: number }> = {}
+
+    for (const event of profileEvents || []) {
+      const profileId = event.profile_id
+      const eventTime = new Date(event.created_at).getTime()
+      
+      if (!profileInactivePeriods[profileId]) {
+        profileInactivePeriods[profileId] = []
+        profileLogouts[profileId] = []
+      }
+
+      // Track logout events for session boundary detection
+      if (event.event_type === 'LOGOUT') {
+        profileLogouts[profileId].push(eventTime)
+      }
+
+      // Handle break/coaching/restart start events
+      if (event.event_type === 'BREAK_IN' || 
+          event.event_type === 'COACHING_START' || 
+          event.event_type === 'DEVICE_RESTART_START') {
+        openPeriods[profileId] = { type: event.event_type, start: eventTime }
+      }
+
+      // Handle break/coaching/restart end events
+      if (event.event_type === 'BREAK_OUT' && openPeriods[profileId]?.type === 'BREAK_IN') {
+        profileInactivePeriods[profileId].push({
+          start: openPeriods[profileId].start,
+          end: eventTime
+        })
+        delete openPeriods[profileId]
+      }
+      if (event.event_type === 'COACHING_END' && openPeriods[profileId]?.type === 'COACHING_START') {
+        profileInactivePeriods[profileId].push({
+          start: openPeriods[profileId].start,
+          end: eventTime
+        })
+        delete openPeriods[profileId]
+      }
+      if (event.event_type === 'DEVICE_RESTART_END' && openPeriods[profileId]?.type === 'DEVICE_RESTART_START') {
+        profileInactivePeriods[profileId].push({
+          start: openPeriods[profileId].start,
+          end: eventTime
+        })
+        delete openPeriods[profileId]
+      }
+    }
+
     // Group tickets by agent
     const agentTickets: Record<string, { email: string | null; timestamps: number[] }> = {}
     
@@ -93,15 +189,16 @@ Deno.serve(async (req) => {
       agentTickets[log.agent_name].timestamps.push(new Date(log.timestamp).getTime())
     }
 
-    const results: { agent: string; gaps: number }[] = []
+    const results: { agent: string; gaps: number; excluded: number }[] = []
 
     // Calculate gaps for each agent
     for (const [agentName, data] of Object.entries(agentTickets)) {
-      // Check if agent is currently LOGGED_IN using lookup chain
+      // Get profile ID for this agent
       const agentEmail = tagToEmail[agentName.toLowerCase()]
       const profileId = agentEmail ? emailToProfileId[agentEmail] : null
       const currentStatus = profileId ? profileIdToStatus[profileId] : null
       
+      // Only calculate gaps for currently LOGGED_IN agents
       if (currentStatus !== 'LOGGED_IN') {
         console.log(`Skipping gap calculation for agent not logged in: ${agentName} (status: ${currentStatus || 'unknown'})`)
         continue
@@ -109,6 +206,10 @@ Deno.serve(async (req) => {
 
       const timestamps = data.timestamps.sort((a, b) => a - b)
       const ticketCount = timestamps.length
+
+      // Get inactive periods and logout times for this agent
+      const inactivePeriods = profileId ? (profileInactivePeriods[profileId] || []) : []
+      const logoutTimes = profileId ? (profileLogouts[profileId] || []) : []
 
       if (ticketCount < 2) {
         // Not enough tickets to calculate gaps
@@ -126,15 +227,54 @@ Deno.serve(async (req) => {
           }, { onConflict: 'date,agent_name' })
 
         if (error) console.error(`Error upserting gap for ${agentName}:`, error)
-        results.push({ agent: agentName, gaps: 0 })
+        results.push({ agent: agentName, gaps: 0, excluded: 0 })
         continue
       }
 
       // Calculate gaps between consecutive tickets
       const gaps: number[] = []
+      let excludedGaps = 0
+      
       for (let i = 1; i < timestamps.length; i++) {
-        const gapSeconds = Math.floor((timestamps[i] - timestamps[i - 1]) / 1000)
+        const ticketA = timestamps[i - 1]
+        const ticketB = timestamps[i]
+        
+        // If there's a logout between these tickets, skip this gap (session boundary)
+        if (hasLogoutBetween(ticketA, ticketB, logoutTimes)) {
+          excludedGaps++
+          console.log(`Excluding gap between tickets due to logout boundary for ${agentName}`)
+          continue
+        }
+        
+        // Calculate raw gap
+        let gapMs = ticketB - ticketA
+        
+        // Subtract inactive time (breaks, coaching, restart)
+        const inactiveMs = getInactiveTimeInGap(ticketA, ticketB, inactivePeriods)
+        gapMs = Math.max(0, gapMs - inactiveMs)
+        
+        const gapSeconds = Math.floor(gapMs / 1000)
         gaps.push(gapSeconds)
+      }
+
+      if (gaps.length === 0) {
+        // All gaps were excluded (e.g., session boundaries)
+        const { error } = await supabase
+          .from('ticket_gap_daily')
+          .upsert({
+            date: targetDate,
+            agent_name: agentName,
+            agent_email: data.email,
+            ticket_count: ticketCount,
+            total_gap_seconds: 0,
+            avg_gap_seconds: 0,
+            min_gap_seconds: null,
+            max_gap_seconds: null,
+          }, { onConflict: 'date,agent_name' })
+
+        if (error) console.error(`Error upserting gap for ${agentName}:`, error)
+        results.push({ agent: agentName, gaps: 0, excluded: excludedGaps })
+        continue
       }
 
       const totalGapSeconds = gaps.reduce((sum, g) => sum + g, 0)
@@ -159,7 +299,7 @@ Deno.serve(async (req) => {
       if (error) {
         console.error(`Error upserting gap for ${agentName}:`, error)
       } else {
-        results.push({ agent: agentName, gaps: gaps.length })
+        results.push({ agent: agentName, gaps: gaps.length, excluded: excludedGaps })
       }
     }
 

@@ -822,3 +822,108 @@ export function calculateAttendanceForWeek(
     return { date, dayKey: day.key, status: 'pending' as AttendanceStatus };
   });
 }
+
+// ========================================
+// Daily Work Tracker Functions
+// ========================================
+
+/**
+ * Get the agent_tag from agent_directory for a given profile email
+ */
+export async function getAgentTagByEmail(email: string): Promise<{ data: string | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('agent_directory')
+      .select('agent_tag')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data?.agent_tag || null, error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+/**
+ * Fetch today's ticket count for an agent from ticket_logs
+ */
+export async function getTodayTicketCount(agentTag: string): Promise<{ data: number; error: string | null }> {
+  try {
+    // Get today's date range in UTC
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const { count, error } = await supabase
+      .from('ticket_logs')
+      .select('*', { count: 'exact', head: true })
+      .ilike('agent_name', agentTag)
+      .gte('timestamp', startOfDay.toISOString())
+      .lte('timestamp', endOfDay.toISOString());
+
+    if (error) {
+      return { data: 0, error: error.message };
+    }
+
+    return { data: count || 0, error: null };
+  } catch (err: any) {
+    return { data: 0, error: err.message };
+  }
+}
+
+/**
+ * Fetch today's gap data for an agent from ticket_gap_daily
+ */
+export async function getTodayGapData(agentTag: string): Promise<{ 
+  data: { avgGapSeconds: number | null; ticketCount: number } | null; 
+  error: string | null 
+}> {
+  try {
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('ticket_gap_daily')
+      .select('avg_gap_seconds, ticket_count')
+      .eq('date', today)
+      .ilike('agent_name', agentTag)
+      .maybeSingle();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    if (!data) {
+      return { data: { avgGapSeconds: null, ticketCount: 0 }, error: null };
+    }
+
+    return { 
+      data: { 
+        avgGapSeconds: data.avg_gap_seconds, 
+        ticketCount: data.ticket_count 
+      }, 
+      error: null 
+    };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
+/**
+ * Format seconds into a readable time string (e.g., "5m 30s")
+ */
+export function formatGapTime(seconds: number | null): string {
+  if (seconds === null || seconds === 0) return '--';
+  
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  
+  if (mins === 0) return `${secs}s`;
+  if (secs === 0) return `${mins}m`;
+  return `${mins}m ${secs}s`;
+}

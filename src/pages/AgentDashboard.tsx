@@ -24,6 +24,9 @@ import {
   getWeekLoginEvents,
   getWeekAllEvents,
   calculateAttendanceForWeek,
+  getAgentTagByEmail,
+  getTodayTicketCount,
+  getTodayGapData,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -44,6 +47,12 @@ export default function AgentDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
+  
+  // Daily Work Tracker state
+  const [agentTag, setAgentTag] = useState<string | null>(null);
+  const [ticketsHandled, setTicketsHandled] = useState(0);
+  const [avgGapSeconds, setAvgGapSeconds] = useState<number | null>(null);
+  const [isRefreshingTracker, setIsRefreshingTracker] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -106,6 +115,19 @@ export default function AgentDashboard() {
 
       setAttendance(weekAttendance);
       setAllEvents(allEvents);
+
+      // Fetch agent tag for ticket tracking
+      const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
+      if (tag) {
+        setAgentTag(tag);
+        // Fetch initial ticket data
+        const [ticketResult, gapResult] = await Promise.all([
+          getTodayTicketCount(tag),
+          getTodayGapData(tag),
+        ]);
+        setTicketsHandled(ticketResult.data);
+        setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard data');
     } finally {
@@ -116,6 +138,25 @@ export default function AgentDashboard() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  // Refresh tracker data manually
+  const handleRefreshTracker = async () => {
+    if (!agentTag) return;
+    
+    setIsRefreshingTracker(true);
+    try {
+      const [ticketResult, gapResult] = await Promise.all([
+        getTodayTicketCount(agentTag),
+        getTodayGapData(agentTag),
+      ]);
+      setTicketsHandled(ticketResult.data);
+      setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
+    } catch (err) {
+      console.error('Failed to refresh tracker:', err);
+    } finally {
+      setIsRefreshingTracker(false);
+    }
+  };
 
   const handleStatusChange = async (eventType: EventType) => {
     if (!profileId || !user?.email) return;
@@ -244,7 +285,13 @@ export default function AgentDashboard() {
         </div>
 
         {/* Daily Work Tracker */}
-        <DailyWorkTracker quota={profile.quota} />
+        <DailyWorkTracker 
+          quota={profile.quota}
+          ticketsHandled={ticketsHandled}
+          avgGapSeconds={avgGapSeconds}
+          onRefresh={handleRefreshTracker}
+          isRefreshing={isRefreshingTracker}
+        />
       </div>
     </Layout>
   );
