@@ -49,13 +49,39 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Get active agents from agent_profiles
-    const { data: activeProfiles } = await supabase
-      .from('agent_profiles')
-      .select('email, employment_status')
-      .eq('employment_status', 'Active')
+    // Fetch agent_directory to map agent_tag → email
+    const { data: agentDir } = await supabase
+      .from('agent_directory')
+      .select('agent_tag, email')
 
-    const activeEmails = new Set((activeProfiles || []).map(p => p.email?.toLowerCase()))
+    const tagToEmail: Record<string, string> = {}
+    for (const agent of agentDir || []) {
+      if (agent.agent_tag && agent.email) {
+        tagToEmail[agent.agent_tag.toLowerCase()] = agent.email.toLowerCase()
+      }
+    }
+
+    // Fetch agent_profiles to get profile IDs
+    const { data: profiles } = await supabase
+      .from('agent_profiles')
+      .select('id, email')
+
+    const emailToProfileId: Record<string, string> = {}
+    for (const p of profiles || []) {
+      if (p.email) {
+        emailToProfileId[p.email.toLowerCase()] = p.id
+      }
+    }
+
+    // Fetch profile_status to get current login status
+    const { data: statusData } = await supabase
+      .from('profile_status')
+      .select('profile_id, current_status')
+
+    const profileIdToStatus: Record<string, string> = {}
+    for (const s of statusData || []) {
+      profileIdToStatus[s.profile_id] = s.current_status
+    }
 
     // Group tickets by agent
     const agentTickets: Record<string, { email: string | null; timestamps: number[] }> = {}
@@ -71,10 +97,13 @@ Deno.serve(async (req) => {
 
     // Calculate gaps for each agent
     for (const [agentName, data] of Object.entries(agentTickets)) {
-      // Check if agent is active (by matching email)
-      const agentEmail = data.email?.toLowerCase()
-      if (agentEmail && !activeEmails.has(agentEmail)) {
-        console.log(`Skipping gap calculation for inactive agent: ${agentName}`)
+      // Check if agent is currently LOGGED_IN using lookup chain
+      const agentEmail = tagToEmail[agentName.toLowerCase()]
+      const profileId = agentEmail ? emailToProfileId[agentEmail] : null
+      const currentStatus = profileId ? profileIdToStatus[profileId] : null
+      
+      if (currentStatus !== 'LOGGED_IN') {
+        console.log(`Skipping gap calculation for agent not logged in: ${agentName} (status: ${currentStatus || 'unknown'})`)
         continue
       }
 
