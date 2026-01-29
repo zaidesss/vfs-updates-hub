@@ -27,6 +27,7 @@ import {
   getAgentTagByEmail,
   getTodayTicketCount,
   getTodayGapData,
+  fetchUpworkTime,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -34,6 +35,7 @@ import {
   type ProfileEvent,
   type ApprovedLeave,
 } from '@/lib/agentDashboardApi';
+import { format } from 'date-fns';
 
 export default function AgentDashboard() {
   const { profileId } = useParams<{ profileId: string }>();
@@ -53,6 +55,11 @@ export default function AgentDashboard() {
   const [ticketsHandled, setTicketsHandled] = useState(0);
   const [avgGapSeconds, setAvgGapSeconds] = useState<number | null>(null);
   const [isRefreshingTracker, setIsRefreshingTracker] = useState(false);
+  
+  // Upwork integration state
+  const [portalHours, setPortalHours] = useState<number | null>(null);
+  const [upworkHours, setUpworkHours] = useState<number | null>(null);
+  const [upworkError, setUpworkError] = useState<string | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -127,6 +134,30 @@ export default function AgentDashboard() {
         ]);
         setTicketsHandled(ticketResult.data);
         setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
+      }
+      
+      // Calculate portal hours from today's login/logout events
+      const todayAttendance = weekAttendance.find(
+        (d) => format(d.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+      );
+      if (todayAttendance?.hoursWorkedMinutes) {
+        setPortalHours(todayAttendance.hoursWorkedMinutes / 60);
+      }
+      
+      // Fetch Upwork hours if contract ID exists
+      if (profileResult.data.upwork_contract_id) {
+        const todayStr = format(today, 'yyyy-MM-dd');
+        const upworkResult = await fetchUpworkTime(
+          profileResult.data.upwork_contract_id,
+          todayStr
+        );
+        if (upworkResult.error) {
+          setUpworkError(upworkResult.error);
+          setUpworkHours(null);
+        } else {
+          setUpworkHours(upworkResult.hours);
+          setUpworkError(null);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard data');
@@ -291,6 +322,10 @@ export default function AgentDashboard() {
           avgGapSeconds={avgGapSeconds}
           onRefresh={handleRefreshTracker}
           isRefreshing={isRefreshingTracker}
+          portalHours={portalHours}
+          upworkHours={upworkHours}
+          upworkError={upworkError}
+          hasUpworkContract={!!profile.upwork_contract_id}
         />
       </div>
     </Layout>

@@ -69,6 +69,7 @@ export interface DashboardProfile {
   weekday_schedule: string | null;
   weekend_schedule: string | null;
   day_off: string[];
+  upwork_contract_id: string | null;
   mon_schedule: string | null;
   tue_schedule: string | null;
   wed_schedule: string | null;
@@ -173,7 +174,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
     // 2. Fetch operational data from agent_directory using email
     const { data: directory } = await supabase
       .from('agent_directory')
-      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, upwork_contract_id, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
       .eq('email', profile.email)
       .maybeSingle();
 
@@ -192,6 +193,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       weekday_schedule: directory?.weekday_schedule || null,
       weekend_schedule: directory?.weekend_schedule || null,
       day_off: directory?.day_off || [],
+      upwork_contract_id: directory?.upwork_contract_id || null,
       mon_schedule: directory?.mon_schedule || null,
       tue_schedule: directory?.tue_schedule || null,
       wed_schedule: directory?.wed_schedule || null,
@@ -926,4 +928,34 @@ export function formatGapTime(seconds: number | null): string {
   if (mins === 0) return `${secs}s`;
   if (secs === 0) return `${mins}m`;
   return `${mins}m ${secs}s`;
+}
+
+/**
+ * Fetch Upwork time logged for a specific date
+ */
+export async function fetchUpworkTime(
+  contractId: string,
+  date: string
+): Promise<{ hours: number | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('fetch-upwork-time', {
+      body: { contractId, date },
+    });
+
+    if (error) {
+      console.error('Error fetching Upwork time:', error);
+      return { hours: null, error: error.message };
+    }
+
+    if (data?.error) {
+      console.error('Upwork API error:', data.error);
+      return { hours: null, error: data.error };
+    }
+
+    return { hours: data?.hours ?? null, error: null };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Exception fetching Upwork time:', errorMessage);
+    return { hours: null, error: errorMessage };
+  }
 }
