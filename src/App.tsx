@@ -32,6 +32,7 @@ import NotificationSettings from "./pages/NotificationSettings";
 import HelpCenter from "./pages/HelpCenter";
 import AgentDashboard from "./pages/AgentDashboard";
 import TeamStatusBoard from "./pages/TeamStatusBoard";
+import TicketLogs from "./pages/TicketLogs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -227,6 +228,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TeamStatusBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/ticket-logs"
+        element={
+          <ProtectedRoute>
+            <TicketLogs />
           </ProtectedRoute>
         }
       />
