@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LogIn, LogOut, Coffee, GraduationCap, Loader2 } from 'lucide-react';
+import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw } from 'lucide-react';
 import type { ProfileStatus, EventType } from '@/lib/agentDashboardApi';
 
 interface StatusButtonsProps {
@@ -72,6 +72,10 @@ export function StatusButtons({ currentStatus, isLoading, onStatusChange }: Stat
   const isCoaching = currentStatus === 'COACHING';
   const coachingEnabled = currentStatus === 'LOGGED_IN' || currentStatus === 'COACHING';
 
+  // Device Restart is a toggle button
+  const isRestarting = currentStatus === 'RESTARTING';
+  const restartEnabled = currentStatus === 'LOGGED_IN' || currentStatus === 'RESTARTING';
+
   return (
     <div className="flex flex-wrap gap-3">
       {BUTTON_CONFIGS.map((config) => {
@@ -87,14 +91,15 @@ export function StatusButtons({ currentStatus, isLoading, onStatusChange }: Stat
             variant={variant}
             disabled={!enabled || isLoading}
             onClick={() => handleClick(config.eventType)}
-            className={cn('min-w-[110px]', className)}
+            className={cn('min-w-[100px] sm:min-w-[110px]', className)}
           >
             {isButtonLoading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <config.icon className="h-4 w-4 mr-2" />
             )}
-            {showActiveLabel ? config.activeLabel : config.label}
+            <span className="hidden sm:inline">{showActiveLabel ? config.activeLabel : config.label}</span>
+            <span className="sm:hidden">{config.label.split(' ')[0]}</span>
           </Button>
         );
       })}
@@ -105,7 +110,7 @@ export function StatusButtons({ currentStatus, isLoading, onStatusChange }: Stat
         disabled={!coachingEnabled || isLoading}
         onClick={() => handleClick(isCoaching ? 'COACHING_END' : 'COACHING_START')}
         className={cn(
-          'min-w-[130px]',
+          'min-w-[100px] sm:min-w-[130px]',
           !coachingEnabled && 'opacity-50',
           isCoaching && 'bg-blue-600 hover:bg-blue-700',
           !isCoaching && coachingEnabled && 'border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950'
@@ -116,7 +121,29 @@ export function StatusButtons({ currentStatus, isLoading, onStatusChange }: Stat
         ) : (
           <GraduationCap className="h-4 w-4 mr-2" />
         )}
-        {isCoaching ? 'End Coaching' : 'Coaching'}
+        <span className="hidden sm:inline">{isCoaching ? 'End Coaching' : 'Coaching'}</span>
+        <span className="sm:hidden">{isCoaching ? 'End' : 'Coach'}</span>
+      </Button>
+
+      {/* Device Restart Toggle Button */}
+      <Button
+        variant={isRestarting ? 'default' : 'outline'}
+        disabled={!restartEnabled || isLoading}
+        onClick={() => handleClick(isRestarting ? 'DEVICE_RESTART_END' : 'DEVICE_RESTART_START')}
+        className={cn(
+          'min-w-[100px] sm:min-w-[140px]',
+          !restartEnabled && 'opacity-50',
+          isRestarting && 'bg-orange-600 hover:bg-orange-700',
+          !isRestarting && restartEnabled && 'border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950'
+        )}
+      >
+        {loadingEvent === 'DEVICE_RESTART_START' || loadingEvent === 'DEVICE_RESTART_END' ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <RotateCcw className="h-4 w-4 mr-2" />
+        )}
+        <span className="hidden sm:inline">{isRestarting ? 'End Restart' : 'Device Restart'}</span>
+        <span className="sm:hidden">{isRestarting ? 'End' : 'Restart'}</span>
       </Button>
     </div>
   );

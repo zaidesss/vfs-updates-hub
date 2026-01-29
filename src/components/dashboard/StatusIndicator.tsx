@@ -29,6 +29,11 @@ const STATUS_CONFIG: Record<ProfileStatus, { label: string; color: string; bgCol
     color: 'text-blue-700 dark:text-blue-400', 
     bgColor: 'bg-blue-100 dark:bg-blue-900/30' 
   },
+  RESTARTING: { 
+    label: 'Device Restart', 
+    color: 'text-orange-700 dark:text-orange-400', 
+    bgColor: 'bg-orange-100 dark:bg-orange-900/30' 
+  },
 };
 
 /**
@@ -75,7 +80,7 @@ export function StatusIndicator({ status, since, className }: StatusIndicatorPro
   const config = STATUS_CONFIG[status];
 
   return (
-    <div className={cn('flex items-center gap-3', className)}>
+    <div className={cn('flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3', className)}>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-muted-foreground">Status:</span>
         <Badge 

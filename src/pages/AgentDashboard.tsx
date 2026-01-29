@@ -194,19 +194,19 @@ export default function AgentDashboard() {
     <Layout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-start sm:items-center justify-between gap-2">
+          <div className="flex items-start sm:items-center gap-2 sm:gap-4">
             <Link to="/master-directory">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="shrink-0">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <LayoutDashboard className="h-6 w-6 text-primary" />
-                Agent Dashboard
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+                <LayoutDashboard className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+                <span className="truncate">Agent Dashboard</span>
               </h1>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-sm truncate">
                 {profile.full_name || profile.agent_name || profile.email}
               </p>
             </div>
