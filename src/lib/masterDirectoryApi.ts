@@ -27,6 +27,7 @@ export interface DirectoryEntry {
   unpaid_break_hours: number;  // Track unpaid break deductions
   overall_total_hours: number;
   day_off: string[];
+  upwork_contract_id: string | null;
   quota: number | null;
   mon_schedule: string | null;
   tue_schedule: string | null;
@@ -264,6 +265,7 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         unpaid_break_hours: dirEntry?.unpaid_break_hours || 0,
         overall_total_hours: dirEntry?.overall_total_hours || 0,
         day_off: dirEntry?.day_off || [],
+        upwork_contract_id: dirEntry?.upwork_contract_id || null,
         quota: dirEntry?.quota || null,
         mon_schedule: dirEntry?.mon_schedule || null,
         tue_schedule: dirEntry?.tue_schedule || null,
@@ -326,6 +328,7 @@ export async function bulkSaveEntries(
         unpaid_break_hours: hours.unpaid_break_hours,
         overall_total_hours: hours.overall_total_hours,
         day_off: entry.day_off,
+        upwork_contract_id: entry.upwork_contract_id,
         quota: entry.quota,
         mon_schedule: entry.mon_schedule,
         tue_schedule: entry.tue_schedule,
@@ -390,7 +393,9 @@ function getChanges(
     'weekday_ot_schedule',
     'weekend_ot_schedule',
     'day_off',
+    'upwork_contract_id',
     'quota',
+    'mon_schedule',
     'mon_schedule',
     'tue_schedule',
     'wed_schedule',

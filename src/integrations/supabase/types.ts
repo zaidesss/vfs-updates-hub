@@ -58,6 +58,7 @@ export type Database = {
           tue_schedule: string | null
           unpaid_break_hours: number | null
           updated_at: string
+          upwork_contract_id: string | null
           views: string[] | null
           wd_ticket_assign: string | null
           we_ticket_assign: string | null
@@ -92,6 +93,7 @@ export type Database = {
           tue_schedule?: string | null
           unpaid_break_hours?: number | null
           updated_at?: string
+          upwork_contract_id?: string | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
@@ -126,6 +128,7 @@ export type Database = {
           tue_schedule?: string | null
           unpaid_break_hours?: number | null
           updated_at?: string
+          upwork_contract_id?: string | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null

@@ -307,6 +307,7 @@ export default function MasterDirectory() {
                   <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total OT Hours</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Overall Total Hours</TableHead>
                   <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Day Off</TableHead>
+                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Upwork Contract ID</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -558,6 +559,18 @@ export default function MasterDirectory() {
                           onToggle={(value) =>
                             toggleArrayValue(entry.email, 'day_off', value)
                           }
+                        />
+                      </TableCell>
+
+                      {/* Upwork Contract ID */}
+                      <TableCell>
+                        <Input
+                          value={entry.upwork_contract_id || ''}
+                          onChange={(e) =>
+                            updateField(entry.email, 'upwork_contract_id', e.target.value || null)
+                          }
+                          className="h-8 w-[140px]"
+                          placeholder="Contract ID"
                         />
                       </TableCell>
                   </TableRow>
