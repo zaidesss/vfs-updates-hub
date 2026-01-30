@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { fetchTicketLogs, fetchUniqueAgents, TicketLog } from '@/lib/ticketLogsApi';
+import { fetchTicketLogs, fetchUniqueAgents, TicketLog, getESTDayBoundariesUTC } from '@/lib/ticketLogsApi';
 
 const ZD_INSTANCES = [
   { value: 'all', label: 'All Instances' },
@@ -50,13 +50,17 @@ export function TicketSearch() {
     setIsLoading(true);
     setHasSearched(true);
     try {
+      // Convert date picker values to EST day boundaries for accurate filtering
+      const startBoundary = startDate ? getESTDayBoundariesUTC(startDate) : null;
+      const endBoundary = endDate ? getESTDayBoundariesUTC(endDate) : null;
+      
       const results = await fetchTicketLogs({
         searchTerm: searchTerm || undefined,
         agentName: selectedAgent !== 'all' ? selectedAgent : undefined,
         ticketType: selectedType !== 'all' ? selectedType : undefined,
         zdInstance: selectedZdInstance !== 'all' ? selectedZdInstance : undefined,
-        startDate: startDate ? `${startDate}T00:00:00.000Z` : undefined,
-        endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
+        startDate: startBoundary?.start,
+        endDate: endBoundary?.end,
       });
       setLogs(results);
     } catch (error) {
