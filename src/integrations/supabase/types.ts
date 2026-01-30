@@ -625,6 +625,7 @@ export type Database = {
           end_date: string
           end_time: string
           id: string
+          is_auto_generated: boolean | null
           outage_duration_hours: number | null
           outage_reason: string
           override_reason: string | null
@@ -651,6 +652,7 @@ export type Database = {
           end_date: string
           end_time: string
           id?: string
+          is_auto_generated?: boolean | null
           outage_duration_hours?: number | null
           outage_reason: string
           override_reason?: string | null
@@ -677,6 +679,7 @@ export type Database = {
           end_date?: string
           end_time?: string
           id?: string
+          is_auto_generated?: boolean | null
           outage_duration_hours?: number | null
           outage_reason?: string
           override_reason?: string | null

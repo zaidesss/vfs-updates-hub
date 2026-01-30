@@ -3,9 +3,9 @@ import { GuideSection, CalloutBox, Checklist, QuickTable } from '../GuideCompone
 export function LeaveRequestSection() {
   return (
     <>
-      <GuideSection letter="K" color="bg-orange-500" title="Leave Requests - Form Fields">
+      <GuideSection letter="K" color="bg-orange-500" title="Outage Requests - Form Fields">
         <p className="text-muted-foreground mb-4">
-          Leave/outage requests are submitted through a form. Some fields are auto-populated based on your profile.
+          Outage requests are submitted through a form. Some fields are auto-populated based on your profile.
         </p>
 
         <h3 className="font-semibold mb-2">Form Fields</h3>
@@ -22,6 +22,7 @@ export function LeaveRequestSection() {
             ['End Time (EST)', 'Yes', 'Defaults to 17:00', 'Time picker in 30-minute intervals.'],
             ['Outage Reason', 'Yes', 'No', 'Dropdown selection (see list below).'],
             ['Attachment', 'No', 'No', 'File upload for proof documents.'],
+            ['Remarks', 'No', 'No', 'Free-text field (only visible for auto-generated requests).'],
           ]}
         />
 
@@ -34,7 +35,7 @@ export function LeaveRequestSection() {
             ['Medical Leave', 'Health-related absence.'],
             ['Planned Leave', 'Pre-scheduled time off (vacation, etc.).'],
             ['Equipment Issue', 'Computer or equipment failure.'],
-            ['Late Login', 'Starting work later than scheduled.'],
+            ['Late Login', 'Starting work later than scheduled (auto-generated).'],
             ['Undertime', 'Leaving work earlier than scheduled.'],
             ['Unplanned', 'Emergency or unexpected absence.'],
           ]}
@@ -52,9 +53,13 @@ export function LeaveRequestSection() {
         <CalloutBox variant="info" title="All Times in EST">
           All times are entered and displayed in Eastern Standard Time (EST). Make sure to account for this when scheduling.
         </CalloutBox>
+
+        <CalloutBox variant="tip" title="Auto-Generated Late Login Requests">
+          When an agent logs in late (more than 10 minutes after scheduled start), the system automatically creates an outage request with status "For Review". These requests are marked with an "Auto" badge and include a Remarks field for additional notes.
+        </CalloutBox>
       </GuideSection>
 
-      <GuideSection letter="L" color="bg-orange-400" title="Leave Requests - Conflict Detection & Override">
+      <GuideSection letter="L" color="bg-orange-400" title="Outage Requests - Conflict Detection & Override">
         <p className="text-muted-foreground mb-4">
           The system automatically checks for scheduling conflicts when a request is submitted.
         </p>
@@ -84,9 +89,9 @@ export function LeaveRequestSection() {
         </CalloutBox>
       </GuideSection>
 
-      <GuideSection letter="M" color="bg-orange-300" title="Leave Requests - Statuses">
+      <GuideSection letter="M" color="bg-orange-300" title="Outage Requests - Statuses">
         <p className="text-muted-foreground mb-4">
-          Each leave request has a status indicating its current state in the approval process.
+          Each outage request has a status indicating its current state in the approval process.
         </p>
 
         <h3 className="font-semibold mb-2">Request Statuses</h3>
@@ -94,6 +99,7 @@ export function LeaveRequestSection() {
           headers={['Status', 'Meaning', 'Color', 'Next Steps']}
           rows={[
             ['Pending', 'Request is waiting for approval.', 'Yellow', 'Wait for Admin/HR review.'],
+            ['For Review', 'Auto-generated request needs review.', 'Blue', 'Admin reviews late login details.'],
             ['Pending Override', 'Conflict exists, awaiting admin override approval.', 'Orange', 'Admin must review override reason.'],
             ['Approved', 'Request has been approved.', 'Green', 'Outage is confirmed.'],
             ['Declined', 'Request has been rejected.', 'Red', 'Check remarks for reason.'],
@@ -106,9 +112,9 @@ export function LeaveRequestSection() {
         </CalloutBox>
       </GuideSection>
 
-      <GuideSection letter="N" color="bg-amber-500" title="Leave Requests - My Requests Table">
+      <GuideSection letter="N" color="bg-amber-500" title="Outage Requests - My Requests Table">
         <p className="text-muted-foreground mb-4">
-          The My Requests table shows all leave requests you have submitted.
+          The My Requests table shows all outage requests you have submitted.
         </p>
 
         <h3 className="font-semibold mb-2">Table Columns</h3>
@@ -117,6 +123,7 @@ export function LeaveRequestSection() {
           rows={[
             ['Checkbox', 'For bulk selection (Admin/HR only).'],
             ['Reference Number', 'Unique identifier (e.g., LR-0001).'],
+            ['Submitted', 'Date when the request was created.'],
             ['Start Date', 'When the outage begins.'],
             ['End Date', 'When the outage ends.'],
             ['Client', 'The client affected by the outage.'],
@@ -132,10 +139,10 @@ export function LeaveRequestSection() {
         <QuickTable 
           headers={['Button', 'Icon', 'Who Can Use', 'When Available']}
           rows={[
-            ['Edit', 'Pencil', 'Request owner OR Admin', 'When status is Pending.'],
+            ['Edit', 'Pencil', 'Request owner OR Admin', 'When status is Pending or For Review.'],
             ['Cancel', 'X', 'Request owner', 'When status is Pending.'],
-            ['Approve', 'Check', 'Admin/HR', 'When status is Pending or Pending Override.'],
-            ['Decline', 'X', 'Admin/HR', 'When status is Pending or Pending Override.'],
+            ['Approve', 'Check', 'Admin/HR', 'When status is Pending, For Review, or Pending Override.'],
+            ['Decline', 'X', 'Admin/HR', 'When status is Pending, For Review, or Pending Override.'],
             ['History', 'Clock', 'Everyone', 'Always available.'],
             ['Delete', 'Trash', 'Admin/HR', 'Always available.'],
           ]}
@@ -144,6 +151,11 @@ export function LeaveRequestSection() {
         <h3 className="font-semibold mb-2 mt-4">Admin View - Override Tab</h3>
         <p className="text-sm text-muted-foreground">
           Admin and HR users see an additional "Override" tab that shows only Pending Override requests. A badge indicates the count of override requests needing attention.
+        </p>
+
+        <h3 className="font-semibold mb-2 mt-4">Auto-Generated Requests</h3>
+        <p className="text-sm text-muted-foreground">
+          Requests marked with an "Auto" badge were automatically generated by the system when an agent logged in late. These requests have a "For Review" status and include a Remarks field that both users and admins can edit.
         </p>
       </GuideSection>
     </>
