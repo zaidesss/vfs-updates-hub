@@ -1,124 +1,39 @@
-
-
 # Upwork API Migration: REST to GraphQL
 
-## Problem Summary
+## Status: BLOCKED - API Key Scope Required
 
-Malcom has logged 7 hours on Upwork today, but the dashboard shows 0 hours. Investigation reveals:
+### Current Issue
 
-- **Current Issue**: The v3 REST Work Diary endpoint (`/api/v3/workdiary/contracts/{contractId}/{date}`) returns 404 errors
-- **Root Cause**: Upwork has deprecated their REST API in favor of GraphQL
-- **Evidence**: Upwork documentation states "Legacy REST API Docs - Note that these APIs are planned to be sunset"
+The GraphQL migration is implemented and working, but the Upwork API key lacks the required **"Offer - Read-Only Access"** scope.
 
-## Solution: Migrate to GraphQL API
-
-The edge function needs to be updated to use Upwork's GraphQL API instead of the deprecated REST endpoint.
-
----
-
-## Implementation Steps
-
-### Step 1: Update Edge Function to Use GraphQL
-
-Replace the REST API call with a GraphQL query to fetch work diary data.
-
-**New GraphQL Query Structure:**
-```graphql
-query contract($id: ID!) {
-  contract(id: $id) {
-    workDays {
-      date
-      hours
-    }
-    workDiaryTimeCells {
-      cellTime
-      timeTracked
-    }
-  }
-}
+**Error from Upwork API:**
+```
+The client or authentication token doesn't have enough oauth2 permissions/scopes to access: 
+[Contract.workDiaryTimeCells, DateTime.rawValue, Query.contract]
 ```
 
-**API Endpoint Change:**
-- Old: `https://www.upwork.com/api/v3/workdiary/contracts/{contractId}/{date}`
-- New: `https://api.upwork.com/graphql`
+### Action Required
 
-**Required Headers:**
-- `Authorization: Bearer {access_token}`
-- `Content-Type: application/json`
-- `X-Upwork-API-TenantId: {organization_id}` (may be required for org context)
+1. Go to [Upwork API Keys](https://www.upwork.com/developer/keys/)
+2. Edit the existing API key
+3. Add the **"Offer - Read-Only Access"** scope
+4. Re-authorize the OAuth flow if needed after scope changes
 
----
+### Implementation Complete
 
-### Step 2: Fetch Organization/Tenant ID
+The edge function has been updated to use the GraphQL API:
+- ✅ GraphQL query: `contract(id: $id) { workDiaryTimeCells(date: $date) { ... } }`
+- ✅ Date filtering via the `date` argument
+- ✅ Each time cell = 10 minutes of tracked time
+- ✅ Token refresh logic preserved
 
-Before making work diary requests, we may need to fetch the organization context using:
+### Testing
 
-```graphql
-query {
-  companySelector {
-    items {
-      title
-      organizationId
-    }
-  }
-}
+Once the scope is added, test with:
+```
+POST /fetch-upwork-time
+{"contractId": "40482492", "date": "2026-01-29"}
 ```
 
-This `organizationId` is used in the `X-Upwork-API-TenantId` header.
-
----
-
-### Step 3: Update Contract ID Format
-
-The GraphQL API may use different ID formats:
-- `termId` - Contract term ID (legacy contract assignment RID)
-- `id` - Contract ID (legacy virtual rollup ID)
-
-We need to verify which ID format Malcom's `40482492` corresponds to and adjust accordingly.
-
----
-
-### Step 4: Handle Date Filtering
-
-The GraphQL `contract` query accepts an optional `date` parameter in ISO format:
-- Format: `yyyy-MM-ddThh:mm+HHmm` or `yyyy-MM-dd`
-- This filters the work diary data to the specific date
-
----
-
-## Technical Implementation
-
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-upwork-time/index.ts` | Replace REST call with GraphQL query |
-
-### New Function Logic
-
-1. Construct GraphQL query for work diary data
-2. Send POST request to `https://api.upwork.com/graphql`
-3. Parse response to extract hours from `workDiaryTimeCells`
-4. Calculate total hours (each cell = 10 minutes typically)
-
----
-
-## Alternative Considerations
-
-Before implementing, I want to confirm a few things with you:
-
-1. **API Scopes**: Does your Upwork API key have the "Offer - Read-Only Access" scope? This is required for contract/work diary queries.
-
-2. **Contract ID Verification**: Is `40482492` the contract ID or term ID? We may need to try both `contract(id: "40482492")` and `contractByTerm(termId: "40482492")`.
-
-3. **Testing Access**: Would you like me to first test a simple GraphQL query (like fetching user info) to verify the tokens work with the GraphQL endpoint before changing the work diary logic?
-
----
-
-## Expected Outcome
-
-After implementation:
-- Upwork hours will display correctly on Malcom's dashboard
-- The integration will be future-proof using Upwork's current API
-- All agents with Upwork contracts will have accurate time tracking
+Expected: `{"hours": 7, "error": null}`
 
