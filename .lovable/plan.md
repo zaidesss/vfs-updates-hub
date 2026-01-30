@@ -1,126 +1,83 @@
 
+# Fix Upwork GraphQL Query - Use Correct Schema Fields
 
-# Fix Upwork Integration: Add Organization Context Header
+## Current Issue
 
-## Root Cause Identified
+The `fetch-upwork-time` edge function successfully connects to Upwork with the correct organization context, but the GraphQL query uses a non-existent field `cellTime`:
 
-The Upwork API requires an `X-Upwork-API-TenantId` header to specify which organization context to use. Without it, requests default to the **personal account context** of whoever authorized the OAuth flow—even if that person has agency/company access to the contracts.
+```
+Validation error: Field 'cellTime' in type 'Cell' is undefined
+```
 
-Since you authorized from your agency account but the header is missing, the API is executing under your personal context, which cannot see Malcom's contract.
+## Solution
 
-## Solution Overview
-
-1. **Add organization discovery** - Query your available organizations via `companySelector`
-2. **Store the organization ID** - Save the chosen org in a new database column or settings table
-3. **Include the header** - Add `X-Upwork-API-TenantId` to all GraphQL requests
-4. **Auto-detect with manual override** - Try orgs automatically, allow admin override
+Update the GraphQL query to use the correct Upwork API schema fields. Based on Upwork's Work Diary API, we should use aggregated hours from `workDays` rather than individual cell data.
 
 ---
 
-## Implementation Steps
+## Implementation
 
-### Step 1: Discover Available Organizations
+### Step 1: Update the GraphQL Query
 
-Add a new edge function or endpoint that queries available organizations:
+Replace the current `CONTRACT_WORK_DAYS_QUERY` with correct field names:
 
 ```graphql
-query {
-  companySelector {
-    items {
-      title
-      organizationId
+query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
+  contract(id: $id) {
+    id
+    title
+    status
+    workDays(timeRange: $timeRange) {
+      date
+      totalHoursWorked    # Use aggregated hours field
+      totalCharges        # Optional: billing info
     }
   }
 }
 ```
 
-This returns all organizations the authenticated user has access to.
+Alternative approach - if `totalHoursWorked` doesn't exist, try:
+- `hoursWorked`
+- `trackedHours`
+- Or query the workDiary without cells and just count entries
 
----
+### Step 2: Update the Response Parsing
 
-### Step 2: Database Changes
-
-Add storage for the selected organization:
-
-| Table | Change |
-|-------|--------|
-| `upwork_tokens` | Add `organization_id TEXT` column |
-| `upwork_tokens` | Add `organization_name TEXT` column (for display) |
-
----
-
-### Step 3: Update fetch-upwork-time Edge Function
-
-Modify `executeGraphQLQuery()` to include the tenant header:
+Modify the code to read from the correct response structure:
 
 ```typescript
-// Before (missing header)
-headers: {
-  'Authorization': `Bearer ${accessToken.trim()}`,
-  'Content-Type': 'application/json',
-}
+// Before - counting cells
+totalMinutes += day.workDiary.cells.length * 10;
 
-// After (with organization context)
-headers: {
-  'Authorization': `Bearer ${accessToken.trim()}`,
-  'Content-Type': 'application/json',
-  'X-Upwork-API-TenantId': organizationId,  // ← Add this
-}
+// After - using aggregated hours
+totalHours = workDaysResult.data?.contract?.workDays?.[0]?.totalHoursWorked ?? 0;
 ```
 
 ---
 
-### Step 4: Auto-Detection Logic
-
-When no organization is configured:
-1. Call `companySelector` to list available orgs
-2. For each org, try fetching a test contract
-3. When one succeeds, save that org ID
-4. Use it for all future requests
-
----
-
-### Step 5: Admin Override UI (Optional)
-
-Add a simple admin setting in the Master Directory or a dedicated Upwork settings section:
-- Show available organizations
-- Allow manual selection
-- Display currently active org
-
----
-
-## File Changes Summary
+## File Changes
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/fetch-upwork-time/index.ts` | Add `X-Upwork-API-TenantId` header, add org discovery logic |
-| `supabase/functions/upwork-oauth-callback/index.ts` | Query orgs after token exchange, store first org ID |
-| Migration | Add `organization_id` and `organization_name` columns to `upwork_tokens` |
-| (Optional) UI component | Add Upwork org selector in admin settings |
+| `supabase/functions/fetch-upwork-time/index.ts` | Update `CONTRACT_WORK_DAYS_QUERY` to use correct field names; update parsing logic |
+
+---
+
+## Technical Notes
+
+The Upwork GraphQL API has different permission levels:
+- **Contract-level fields** (id, title, status) - require basic scopes
+- **Work Diary cells** (10-minute snapshots) - require "Fetch workdiary snapshots" scope
+- **Aggregated daily hours** - typically more accessible with basic scopes
+
+We'll use aggregated fields which are more likely to work with the current scopes.
 
 ---
 
 ## Testing Plan
 
-1. Deploy updated edge function
-2. Re-run OAuth flow (to populate organization ID)
-3. Test fetch-upwork-time with Malcom's contract
-4. Verify hours appear correctly on dashboard
-
----
-
-## Why This Will Work
-
-- Your agency account has visibility to Malcom's contract through the agency organization
-- By specifying the correct `X-Upwork-API-TenantId`, the API will execute in agency context
-- The same token works for multiple orgs—you just need to tell the API which context to use
-
----
-
-## Future Considerations
-
-Since you need multiple orgs support:
-- Store a list of organization IDs (not just one)
-- Consider mapping each agent's contract to the org that can see it
-- The auto-detect logic handles this by trying orgs until one works
+After the fix:
+1. Deploy the updated edge function
+2. Test with Malcom's actual contract ID (`40482492`)
+3. Verify hours are returned correctly
 
