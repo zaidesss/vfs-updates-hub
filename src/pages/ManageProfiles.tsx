@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, ChevronLeft, Search, Briefcase, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
+import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { WorkConfigurationSection } from '@/components/profile/WorkConfigurationSection';
@@ -140,6 +141,34 @@ export default function ManageProfilesPage() {
 
   const handleSave = async () => {
     if (!editData || !selectedUser) return;
+    
+    // Validate all schedule fields before saving
+    const scheduleFields = [
+      { key: 'mon_schedule', label: 'Monday' },
+      { key: 'tue_schedule', label: 'Tuesday' },
+      { key: 'wed_schedule', label: 'Wednesday' },
+      { key: 'thu_schedule', label: 'Thursday' },
+      { key: 'fri_schedule', label: 'Friday' },
+      { key: 'sat_schedule', label: 'Saturday' },
+      { key: 'sun_schedule', label: 'Sunday' },
+      { key: 'break_schedule', label: 'Break' },
+      { key: 'weekday_ot_schedule', label: 'Weekday OT' },
+      { key: 'weekend_ot_schedule', label: 'Weekend OT' },
+    ];
+    
+    const invalidSchedules = scheduleFields.filter(f => {
+      const value = editData[f.key as keyof typeof editData] as string;
+      return value && value.trim() !== '' && !validateScheduleFormat(value);
+    });
+    
+    if (invalidSchedules.length > 0) {
+      toast({
+        title: 'Invalid Schedule Format',
+        description: `Please fix: ${invalidSchedules.map(f => f.label).join(', ')}. Format: H:MM AM-H:MM PM`,
+        variant: 'destructive'
+      });
+      return;
+    }
     
     setIsSaving(true);
     
