@@ -80,7 +80,7 @@ export function Layout({ children }: LayoutProps) {
     // Outages Group
     const outageItems: NavItem[] = [
       { href: '/leave-request', label: 'Outage Requests', icon: Clock },
-      { href: '/calendar', label: 'Outage Calendar', icon: CalendarDays },
+      { href: '/calendar', label: 'Calendar', icon: CalendarDays },
     ];
     if (!isAdmin) {
       outageItems.push({ href: '/outage-report', label: 'My Outage Report', icon: User });

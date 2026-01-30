@@ -28,6 +28,7 @@ import {
   getTodayTicketCount,
   getTodayGapData,
   fetchUpworkTime,
+  autoGenerateLateLoginRequest,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -123,6 +124,47 @@ export default function AgentDashboard() {
       setAttendance(weekAttendance);
       setAllEvents(allEvents);
 
+      // Check for today's attendance and auto-generate Late Login outage if needed
+      const todayStr = format(today, 'yyyy-MM-dd');
+      const todayAttendance = weekAttendance.find(
+        (d) => format(d.date, 'yyyy-MM-dd') === todayStr
+      );
+      
+      // If today's status is "late" and there's a login time, auto-generate outage request
+      if (todayAttendance?.status === 'late' && todayAttendance.loginTime && todayAttendance.scheduleStart) {
+        // Parse schedule start time to minutes
+        const scheduleStartParsed = todayAttendance.scheduleStart.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (scheduleStartParsed) {
+          let schedH = parseInt(scheduleStartParsed[1], 10);
+          const schedM = parseInt(scheduleStartParsed[2], 10);
+          const schedPeriod = scheduleStartParsed[3].toUpperCase();
+          if (schedPeriod === 'PM' && schedH !== 12) schedH += 12;
+          if (schedPeriod === 'AM' && schedH === 12) schedH = 0;
+          const scheduleStartMinutes = schedH * 60 + schedM;
+
+          // Parse login time to minutes
+          const loginParsed = todayAttendance.loginTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (loginParsed) {
+            let loginH = parseInt(loginParsed[1], 10);
+            const loginM = parseInt(loginParsed[2], 10);
+            const loginPeriod = loginParsed[3].toUpperCase();
+            if (loginPeriod === 'PM' && loginH !== 12) loginH += 12;
+            if (loginPeriod === 'AM' && loginH === 12) loginH = 0;
+            const loginTimeMinutes = loginH * 60 + loginM;
+
+            // Auto-generate the late login request
+            autoGenerateLateLoginRequest(
+              profileResult.data.email,
+              scheduleStartMinutes,
+              loginTimeMinutes,
+              todayStr
+            ).catch(err => {
+              console.error('Failed to auto-generate late login request:', err);
+            });
+          }
+        }
+      }
+
       // Fetch agent tag for ticket tracking
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
@@ -137,11 +179,11 @@ export default function AgentDashboard() {
       }
       
       // Calculate portal hours from today's login/logout events
-      const todayAttendance = weekAttendance.find(
+      const todayAttendanceForHours = weekAttendance.find(
         (d) => format(d.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
       );
-      if (todayAttendance?.hoursWorkedMinutes) {
-        setPortalHours(todayAttendance.hoursWorkedMinutes / 60);
+      if (todayAttendanceForHours?.hoursWorkedMinutes) {
+        setPortalHours(todayAttendanceForHours.hoursWorkedMinutes / 60);
       }
       
       // Fetch Upwork hours if contract ID exists
