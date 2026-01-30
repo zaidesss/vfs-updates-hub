@@ -7,13 +7,14 @@ export interface DirectoryEntry {
   full_name: string | null;
   position: string | null;
   team_lead: string | null;
+  employment_status: string | null;  // For filtering terminated profiles
   zendesk_instance: string | null;
   support_account: string | null;
   support_type: string | null;
   agent_name: string | null;
   agent_tag: string | null;
   views: string[];
-  ticket_assignment_view_id: string | null;
+  ticket_assignment_enabled: boolean;  // Editable toggle in Master Directory
   weekday_schedule: string | null;
   weekday_total_hours: number;
   wd_ticket_assign: string | null;
@@ -24,10 +25,9 @@ export interface DirectoryEntry {
   weekday_ot_schedule: string | null;
   weekend_ot_schedule: string | null;
   ot_total_hours: number;
-  unpaid_break_hours: number;  // Track unpaid break deductions
+  unpaid_break_hours: number;
   overall_total_hours: number;
   day_off: string[];
-  upwork_contract_id: string | null;
   quota: number | null;
   mon_schedule: string | null;
   tue_schedule: string | null;
@@ -210,10 +210,10 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
 
 export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry[] | null; error: string | null }> {
   try {
-    // Fetch all agent profiles (including id for dashboard link)
+    // Fetch all agent profiles (including id for dashboard link and employment_status for filtering)
     const { data: profiles, error: profilesError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, position, team_lead');
+      .select('id, email, full_name, position, team_lead, employment_status, ticket_assignment_enabled');
     
     if (profilesError) {
       return { data: null, error: profilesError.message };
@@ -245,13 +245,14 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         full_name: profile.full_name,
         position: profile.position,
         team_lead: profile.team_lead,
+        employment_status: profile.employment_status,  // For filtering terminated profiles
         zendesk_instance: dirEntry?.zendesk_instance || null,
         support_account: dirEntry?.support_account || null,
         support_type: dirEntry?.support_type || null,
         agent_name: dirEntry?.agent_name || null,
         agent_tag: dirEntry?.agent_tag || null,
         views: dirEntry?.views || [],
-        ticket_assignment_view_id: dirEntry?.ticket_assignment_view_id || null,
+        ticket_assignment_enabled: profile.ticket_assignment_enabled || false,  // From agent_profiles
         weekday_schedule: dirEntry?.weekday_schedule || null,
         weekday_total_hours: dirEntry?.weekday_total_hours || 0,
         wd_ticket_assign: dirEntry?.wd_ticket_assign || null,
@@ -265,7 +266,6 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         unpaid_break_hours: dirEntry?.unpaid_break_hours || 0,
         overall_total_hours: dirEntry?.overall_total_hours || 0,
         day_off: dirEntry?.day_off || [],
-        upwork_contract_id: dirEntry?.upwork_contract_id || null,
         quota: dirEntry?.quota || null,
         mon_schedule: dirEntry?.mon_schedule || null,
         tue_schedule: dirEntry?.tue_schedule || null,
@@ -305,22 +305,23 @@ export async function bulkSaveEntries(
       // Calculate hours
       const hours = calculateTotalHours(entry);
       
-      // Prepare data for upsert
+      // Prepare data for upsert (only editable fields in Master Directory)
       const upsertData = {
         email: entry.email.toLowerCase(),
+        // Only WD/WE Ticket Assign and ticket_assignment_enabled are editable in Master Directory
+        wd_ticket_assign: entry.wd_ticket_assign,
+        we_ticket_assign: entry.we_ticket_assign,
+        // Synced from Bios (read-only in Master Directory, but need to be saved)
         zendesk_instance: entry.zendesk_instance,
         support_account: entry.support_account,
         support_type: entry.support_type,
         agent_name: entry.agent_name,
         agent_tag: entry.agent_tag,
         views: entry.views,
-        ticket_assignment_view_id: entry.ticket_assignment_view_id,
         weekday_schedule: entry.weekday_schedule,
         weekday_total_hours: hours.weekday_total_hours,
-        wd_ticket_assign: entry.wd_ticket_assign,
         weekend_schedule: entry.weekend_schedule,
         weekend_total_hours: hours.weekend_total_hours,
-        we_ticket_assign: entry.we_ticket_assign,
         break_schedule: entry.break_schedule,
         weekday_ot_schedule: entry.weekday_ot_schedule,
         weekend_ot_schedule: entry.weekend_ot_schedule,
@@ -328,7 +329,6 @@ export async function bulkSaveEntries(
         unpaid_break_hours: hours.unpaid_break_hours,
         overall_total_hours: hours.overall_total_hours,
         day_off: entry.day_off,
-        upwork_contract_id: entry.upwork_contract_id,
         quota: entry.quota,
         mon_schedule: entry.mon_schedule,
         tue_schedule: entry.tue_schedule,
@@ -377,14 +377,13 @@ function getChanges(
   original: DirectoryEntry,
   updated: DirectoryEntry
 ): Record<string, { old: any; new: any }> {
-  const fieldsToTrack = [
+const fieldsToTrack = [
     'zendesk_instance',
     'support_account',
     'support_type',
     'agent_name',
     'agent_tag',
     'views',
-    'ticket_assignment_view_id',
     'weekday_schedule',
     'wd_ticket_assign',
     'weekend_schedule',
@@ -393,9 +392,7 @@ function getChanges(
     'weekday_ot_schedule',
     'weekend_ot_schedule',
     'day_off',
-    'upwork_contract_id',
     'quota',
-    'mon_schedule',
     'mon_schedule',
     'tue_schedule',
     'wed_schedule',
@@ -403,6 +400,7 @@ function getChanges(
     'fri_schedule',
     'sat_schedule',
     'sun_schedule',
+    'ticket_assignment_enabled',
   ] as const;
   
   const changes: Record<string, { old: any; new: any }> = {};

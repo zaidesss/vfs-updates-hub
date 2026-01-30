@@ -12,32 +12,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Save, Search, ChevronDown, AlertCircle, ExternalLink } from 'lucide-react';
+import { Save, Search, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DirectoryEntry,
   fetchAllDirectoryEntries,
   bulkSaveEntries,
-  validateScheduleFormat,
-  calculateTotalHours,
-  fetchAllDropdownOptions,
 } from '@/lib/masterDirectoryApi';
-
-const SUPPORT_TYPE_OPTIONS = ['Email', 'Chat', 'Call', 'Hybrid'];
+import { supabase } from '@/integrations/supabase/client';
 
 export default function MasterDirectory() {
   const { user, isAdmin } = useAuth();
@@ -46,14 +31,6 @@ export default function MasterDirectory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
-  const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
-  
-  // Dynamic dropdown options
-  const [zendeskOptions, setZendeskOptions] = useState<string[]>([]);
-  const [supportAccountOptions, setSupportAccountOptions] = useState<string[]>([]);
-  const [viewOptions, setViewOptions] = useState<string[]>([]);
-  const [dayOffOptions, setDayOffOptions] = useState<string[]>([]);
-  
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -64,20 +41,10 @@ export default function MasterDirectory() {
     });
   }, [editedData, originalData]);
 
-  // Load data and dropdown options on mount
+  // Load data on mount
   useEffect(() => {
     loadData();
-    loadDropdownOptions();
   }, []);
-  
-
-  const loadDropdownOptions = async () => {
-    const options = await fetchAllDropdownOptions();
-    setZendeskOptions(options.zendesk_instances);
-    setSupportAccountOptions(options.support_accounts);
-    setViewOptions(options.view_options);
-    setDayOffOptions(options.day_off_options);
-  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -95,99 +62,54 @@ export default function MasterDirectory() {
     setIsLoading(false);
   };
 
-  // Filter entries based on search
+  // Filter entries based on search and exclude terminated profiles
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return editedData;
-    const query = searchQuery.toLowerCase();
-    return editedData.filter(
-      (entry) =>
-        entry.full_name?.toLowerCase().includes(query) ||
-        entry.email.toLowerCase().includes(query)
-    );
+    let result = editedData;
+    
+    // Exclude terminated profiles
+    result = result.filter(entry => entry.employment_status !== 'Terminated');
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (entry) =>
+          entry.full_name?.toLowerCase().includes(query) ||
+          entry.email.toLowerCase().includes(query)
+      );
+    }
+    
+    return result;
   }, [editedData, searchQuery]);
 
-  // Update a single field for an entry
+  // Update a single field for an entry (only for editable fields)
   const updateField = (email: string, field: keyof DirectoryEntry, value: any) => {
     setEditedData((prev) =>
       prev.map((entry) => {
         if (entry.email.toLowerCase() !== email.toLowerCase()) return entry;
-        
-        const updated = { ...entry, [field]: value };
-        
-        // Recalculate hours if schedule changed
-        if (
-          field === 'weekday_schedule' ||
-          field === 'weekend_schedule' ||
-          field === 'break_schedule' ||
-          field === 'weekday_ot_schedule' ||
-          field === 'weekend_ot_schedule'
-        ) {
-          const hours = calculateTotalHours(updated);
-          return { ...updated, ...hours };
-        }
-        
-        return updated;
+        return { ...entry, [field]: value };
       })
     );
-    
-    // Validate schedule fields
-    if (
-      field === 'weekday_schedule' ||
-      field === 'weekend_schedule' ||
-      field === 'break_schedule' ||
-      field === 'weekday_ot_schedule' ||
-      field === 'weekend_ot_schedule'
-    ) {
-      if (value && !validateScheduleFormat(value)) {
-        setValidationErrors((prev) => ({
-          ...prev,
-          [email]: [...(prev[email] || []).filter((f) => f !== field), field],
-        }));
-      } else {
-        setValidationErrors((prev) => ({
-          ...prev,
-          [email]: (prev[email] || []).filter((f) => f !== field),
-        }));
-      }
-    }
   };
 
-  // Toggle array values (for views and day_off)
-  const toggleArrayValue = (email: string, field: 'views' | 'day_off', value: string) => {
-    setEditedData((prev) =>
-      prev.map((entry) => {
-        if (entry.email.toLowerCase() !== email.toLowerCase()) return entry;
-        const currentArray = entry[field] || [];
-        const newArray = currentArray.includes(value)
-          ? currentArray.filter((v) => v !== value)
-          : [...currentArray, value];
-        
-        const updated = { ...entry, [field]: newArray };
-        
-        // Recalculate hours when day_off changes (affects working days count)
-        if (field === 'day_off') {
-          const hours = calculateTotalHours(updated);
-          return { ...updated, ...hours };
-        }
-        
-        return updated;
-      })
-    );
+  // Handle ticket assignment toggle
+  const handleTicketAssignmentToggle = async (email: string, enabled: boolean) => {
+    // Update local state
+    updateField(email, 'ticket_assignment_enabled', enabled);
+    
+    // Also update agent_profiles directly since this is the source of truth for this field
+    try {
+      await supabase
+        .from('agent_profiles')
+        .update({ ticket_assignment_enabled: enabled })
+        .eq('email', email.toLowerCase());
+    } catch (error) {
+      console.error('Failed to update ticket assignment:', error);
+    }
   };
 
   // Handle save
   const handleSave = async () => {
-    // Check for validation errors
-    const hasErrors = Object.values(validationErrors).some((errors) => errors.length > 0);
-    if (hasErrors) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please fix schedule format errors before saving.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsSaving(true);
     const { success, error } = await bulkSaveEntries(
       editedData,
@@ -241,7 +163,7 @@ export default function MasterDirectory() {
           <div>
             <h1 className="text-2xl font-bold">Master Directory</h1>
             <p className="text-muted-foreground text-sm">
-              Centralized agent configuration reference
+              Centralized agent configuration reference (read-only synced from Bios)
             </p>
           </div>
           <Button
@@ -275,7 +197,7 @@ export default function MasterDirectory() {
           className="border rounded-lg overflow-auto data-table-scroll"
           style={{ height: 'calc(100vh - 220px)' }}
         >
-          <div className="min-w-[2200px]">
+          <div className="min-w-[2000px]">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted">
@@ -293,27 +215,26 @@ export default function MasterDirectory() {
                   <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Quota</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
-                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Views</TableHead>
-                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Ticket Assignment View ID</TableHead>
-                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Views</TableHead>
+                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Ticket Assignment</TableHead>
+                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">WD Hours</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WD Ticket Assign</TableHead>
-                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekend Schedule</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
+                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekend Schedule</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">WE Hours</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WE Ticket Assign</TableHead>
                   <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Break Schedule</TableHead>
-                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekday OT Schedule</TableHead>
-                  <TableHead className="min-w-[140px] sticky top-0 z-20 bg-muted">Weekend OT Schedule</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total OT Hours</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Overall Total Hours</TableHead>
-                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Day Off</TableHead>
-                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Upwork Contract ID</TableHead>
+                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday OT</TableHead>
+                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekend OT</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">OT Hours</TableHead>
+                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
+                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Day Off</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredEntries.map((entry) => (
                   <TableRow key={entry.email}>
-                    {/* Dashboard link - uses profile_id from agent_profiles */}
+                    {/* Dashboard link */}
                     <TableCell className="sticky left-0 z-10 bg-background">
                       {entry.profile_id && (
                         <Link to={`/people/${entry.profile_id}/dashboard`}>
@@ -323,256 +244,93 @@ export default function MasterDirectory() {
                         </Link>
                       )}
                     </TableCell>
-                    {/* Read-only columns from agent_profiles */}
+                    
+                    {/* Full Name - frozen column */}
                     <TableCell className="font-medium sticky left-[50px] z-10 bg-background shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                       {entry.full_name || '-'}
                     </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {entry.position || '-'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {entry.team_lead || '-'}
-                      </TableCell>
-
-                      {/* Editable columns */}
-                      <TableCell>
-                        <Select
-                          value={entry.zendesk_instance || ''}
-                          onValueChange={(value) =>
-                            updateField(entry.email, 'zendesk_instance', value)
-                          }
-                        >
-                          <SelectTrigger className="h-8 w-[90px]">
-                            <SelectValue placeholder="-" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {zendeskOptions.map((instance) => (
-                              <SelectItem key={instance} value={instance}>
-                                {instance}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-
-                      <TableCell>
-                        <Select
-                          value={entry.support_account || ''}
-                          onValueChange={(value) =>
-                            updateField(entry.email, 'support_account', value)
-                          }
-                        >
-                          <SelectTrigger className="h-8 w-[80px]">
-                            <SelectValue placeholder="-" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {supportAccountOptions.map((account) => (
-                              <SelectItem key={account} value={account}>
-                                {account}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-
-                      {/* Support Type */}
-                      <TableCell>
-                        <Select
-                          value={entry.support_type || 'Email'}
-                          onValueChange={(value) =>
-                            updateField(entry.email, 'support_type', value)
-                          }
-                        >
-                          <SelectTrigger className="h-8 w-[90px]">
-                            <SelectValue placeholder="-" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SUPPORT_TYPE_OPTIONS.map((type) => (
-                              <SelectItem key={type} value={type}>
-                                {type}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-
-                      {/* Quota */}
-                      <TableCell>
-                        <Input
-                          type="number"
-                          value={entry.quota ?? ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'quota', e.target.value ? Number(e.target.value) : null)
-                          }
-                          className="h-8 w-[70px]"
-                          min={0}
+                    
+                    {/* Read-only synced fields */}
+                    <TableCell className="text-muted-foreground">{entry.position || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.team_lead || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.zendesk_instance || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.support_account || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.support_type || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-center">{entry.quota ?? '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.agent_name || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.agent_tag || '-'}</TableCell>
+                    
+                    {/* Views - read-only badges */}
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(entry.views || []).length > 0 ? (
+                          entry.views.map((view) => (
+                            <Badge key={view} variant="outline" className="text-xs">{view}</Badge>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    
+                    {/* Ticket Assignment Toggle - EDITABLE */}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={entry.ticket_assignment_enabled || false}
+                          onCheckedChange={(checked) => handleTicketAssignmentToggle(entry.email, checked)}
                         />
-                      </TableCell>
-
-                      <TableCell>
-                        <Input
-                          value={entry.agent_name || ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'agent_name', e.target.value)
-                          }
-                          className="h-8 w-[110px]"
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <Input
-                          value={entry.agent_tag || ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'agent_tag', e.target.value)
-                          }
-                          className="h-8 w-[90px]"
-                        />
-                      </TableCell>
-
-                      {/* Multi-select: Views */}
-                      <TableCell>
-                        <MultiSelectDropdown
-                          options={viewOptions}
-                          selected={entry.views || []}
-                          onToggle={(value) =>
-                            toggleArrayValue(entry.email, 'views', value)
-                          }
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <Input
-                          value={entry.ticket_assignment_view_id || ''}
-                          onChange={(e) =>
-                            updateField(
-                              entry.email,
-                              'ticket_assignment_view_id',
-                              e.target.value
-                            )
-                          }
-                          className="h-8 w-[110px]"
-                        />
-                      </TableCell>
-
-                      {/* Schedule fields with validation */}
-                      <TableCell>
-                        <ScheduleInput
-                          value={entry.weekday_schedule || ''}
-                          onChange={(value) =>
-                            updateField(entry.email, 'weekday_schedule', value)
-                          }
-                          hasError={validationErrors[entry.email]?.includes(
-                            'weekday_schedule'
-                          )}
-                        />
-                      </TableCell>
-
-                      <TableCell className="text-center font-medium">
-                        {entry.weekday_total_hours.toFixed(1)}
-                      </TableCell>
-
-                      <TableCell>
-                        <Input
-                          value={entry.wd_ticket_assign || ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'wd_ticket_assign', e.target.value)
-                          }
-                          className="h-8 w-[90px]"
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <ScheduleInput
-                          value={entry.weekend_schedule || ''}
-                          onChange={(value) =>
-                            updateField(entry.email, 'weekend_schedule', value)
-                          }
-                          hasError={validationErrors[entry.email]?.includes(
-                            'weekend_schedule'
-                          )}
-                        />
-                      </TableCell>
-
-                      <TableCell className="text-center font-medium">
-                        {entry.weekend_total_hours.toFixed(1)}
-                      </TableCell>
-
-                      <TableCell>
-                        <Input
-                          value={entry.we_ticket_assign || ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'we_ticket_assign', e.target.value)
-                          }
-                          className="h-8 w-[90px]"
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <ScheduleInput
-                          value={entry.break_schedule || ''}
-                          onChange={(value) =>
-                            updateField(entry.email, 'break_schedule', value)
-                          }
-                          hasError={validationErrors[entry.email]?.includes(
-                            'break_schedule'
-                          )}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <ScheduleInput
-                          value={entry.weekday_ot_schedule || ''}
-                          onChange={(value) =>
-                            updateField(entry.email, 'weekday_ot_schedule', value)
-                          }
-                          hasError={validationErrors[entry.email]?.includes(
-                            'weekday_ot_schedule'
-                          )}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <ScheduleInput
-                          value={entry.weekend_ot_schedule || ''}
-                          onChange={(value) =>
-                            updateField(entry.email, 'weekend_ot_schedule', value)
-                          }
-                          hasError={validationErrors[entry.email]?.includes(
-                            'weekend_ot_schedule'
-                          )}
-                        />
-                      </TableCell>
-
-                      <TableCell className="text-center font-medium">
-                        {entry.ot_total_hours.toFixed(1)}
-                      </TableCell>
-
-                      <TableCell className="text-center font-semibold text-primary">
-                        {entry.overall_total_hours.toFixed(1)}
-                      </TableCell>
-
-                      {/* Multi-select: Day Off */}
-                      <TableCell>
-                        <MultiSelectDropdown
-                          options={dayOffOptions}
-                          selected={entry.day_off || []}
-                          onToggle={(value) =>
-                            toggleArrayValue(entry.email, 'day_off', value)
-                          }
-                        />
-                      </TableCell>
-
-                      {/* Upwork Contract ID */}
-                      <TableCell>
-                        <Input
-                          value={entry.upwork_contract_id || ''}
-                          onChange={(e) =>
-                            updateField(entry.email, 'upwork_contract_id', e.target.value || null)
-                          }
-                          className="h-8 w-[140px]"
-                          placeholder="Contract ID"
-                        />
-                      </TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {entry.ticket_assignment_enabled ? 'On' : 'Off'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    
+                    {/* Weekday Schedule - read-only */}
+                    <TableCell className="text-muted-foreground text-xs">{entry.weekday_schedule || '-'}</TableCell>
+                    <TableCell className="text-center font-medium">{entry.weekday_total_hours.toFixed(1)}</TableCell>
+                    
+                    {/* WD Ticket Assign - EDITABLE */}
+                    <TableCell>
+                      <Input
+                        value={entry.wd_ticket_assign || ''}
+                        onChange={(e) => updateField(entry.email, 'wd_ticket_assign', e.target.value)}
+                        className="h-8 w-[90px]"
+                      />
+                    </TableCell>
+                    
+                    {/* Weekend Schedule - read-only */}
+                    <TableCell className="text-muted-foreground text-xs">{entry.weekend_schedule || '-'}</TableCell>
+                    <TableCell className="text-center font-medium">{entry.weekend_total_hours.toFixed(1)}</TableCell>
+                    
+                    {/* WE Ticket Assign - EDITABLE */}
+                    <TableCell>
+                      <Input
+                        value={entry.we_ticket_assign || ''}
+                        onChange={(e) => updateField(entry.email, 'we_ticket_assign', e.target.value)}
+                        className="h-8 w-[90px]"
+                      />
+                    </TableCell>
+                    
+                    {/* Break & OT Schedules - read-only */}
+                    <TableCell className="text-muted-foreground text-xs">{entry.break_schedule || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{entry.weekday_ot_schedule || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{entry.weekend_ot_schedule || '-'}</TableCell>
+                    <TableCell className="text-center font-medium">{entry.ot_total_hours.toFixed(1)}</TableCell>
+                    <TableCell className="text-center font-semibold text-primary">{entry.overall_total_hours.toFixed(1)}</TableCell>
+                    
+                    {/* Day Off - read-only badges */}
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(entry.day_off || []).length > 0 ? (
+                          entry.day_off.map((day) => (
+                            <Badge key={day} variant="secondary" className="text-xs">{day}</Badge>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -587,73 +345,5 @@ export default function MasterDirectory() {
         )}
       </div>
     </Layout>
-  );
-}
-
-// Schedule input with validation indicator
-function ScheduleInput({
-  value,
-  onChange,
-  hasError,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  hasError?: boolean;
-}) {
-  return (
-    <div className="relative">
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="8:00 AM-5:00 PM"
-        className={cn(
-          'h-8 w-[130px]',
-          hasError && 'border-destructive focus-visible:ring-destructive'
-        )}
-      />
-      {hasError && (
-        <AlertCircle className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-destructive" />
-      )}
-    </div>
-  );
-}
-
-// Multi-select dropdown for arrays
-function MultiSelectDropdown({
-  options,
-  selected,
-  onToggle,
-}: {
-  options: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className="h-8 w-[110px] justify-between text-xs">
-          {selected.length > 0 ? (
-            <span className="truncate">{selected.join(', ')}</span>
-          ) : (
-            <span className="text-muted-foreground">Select...</span>
-          )}
-          <ChevronDown className="h-3 w-3 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[150px] p-2" align="start">
-        <div className="space-y-1">
-          {options.map((option) => (
-            <div
-              key={option}
-              className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted cursor-pointer"
-              onClick={() => onToggle(option)}
-            >
-              <Checkbox checked={selected.includes(option)} />
-              <span className="text-sm">{option}</span>
-            </div>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }

@@ -1,10 +1,10 @@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
+import { cn } from '@/lib/utils';
 import { 
   AgentProfileInput, 
   POSITION_OPTIONS, 
@@ -32,6 +32,9 @@ export function WorkConfigurationSection({
   const positionDefaults = getPositionDefaults(profile.position || null);
   const canEdit = isSuperAdmin;
 
+  // Check if a day is selected as day off
+  const isDayOff = (day: string) => (profile.day_off || []).includes(day);
+
   // Handle position change - auto-populate dependent fields
   const handlePositionChange = (position: string) => {
     const defaults = getPositionDefaults(position);
@@ -53,26 +56,39 @@ export function WorkConfigurationSection({
     onPositionChange?.(position);
   };
 
-  // Handle Monday schedule change - auto-populate Tue-Fri
+  // Handle Monday schedule change - auto-populate Tue-Fri (only if not day off)
   const handleMondayChange = (value: string) => {
     onInputChange('mon_schedule', value);
-    onInputChange('tue_schedule', value);
-    onInputChange('wed_schedule', value);
-    onInputChange('thu_schedule', value);
-    onInputChange('fri_schedule', value);
+    if (!isDayOff('Tue')) onInputChange('tue_schedule', value);
+    if (!isDayOff('Wed')) onInputChange('wed_schedule', value);
+    if (!isDayOff('Thu')) onInputChange('thu_schedule', value);
+    if (!isDayOff('Fri')) onInputChange('fri_schedule', value);
   };
 
-  // Handle Saturday schedule change - auto-populate Sunday
+  // Handle Saturday schedule change - auto-populate Sunday (only if not day off)
   const handleSaturdayChange = (value: string) => {
     onInputChange('sat_schedule', value);
-    onInputChange('sun_schedule', value);
+    if (!isDayOff('Sun')) onInputChange('sun_schedule', value);
   };
 
-  // Handle day off toggle
+  // Handle day off toggle - clear schedule when day is marked as off
   const handleDayOffToggle = (day: string, checked: boolean) => {
     const currentDaysOff = profile.day_off || [];
     if (checked) {
       onInputChange('day_off', [...currentDaysOff, day]);
+      // Clear the schedule for this day
+      const scheduleFieldMap: Record<string, keyof AgentProfileInput> = {
+        'Mon': 'mon_schedule',
+        'Tue': 'tue_schedule',
+        'Wed': 'wed_schedule',
+        'Thu': 'thu_schedule',
+        'Fri': 'fri_schedule',
+        'Sat': 'sat_schedule',
+        'Sun': 'sun_schedule',
+      };
+      if (scheduleFieldMap[day]) {
+        onInputChange(scheduleFieldMap[day], null);
+      }
     } else {
       onInputChange('day_off', currentDaysOff.filter(d => d !== day));
     }
@@ -92,6 +108,11 @@ export function WorkConfigurationSection({
   const handleAgentNameChange = (value: string) => {
     onInputChange('agent_name', value);
     onInputChange('agent_tag', value.toLowerCase().replace(/\s+/g, ''));
+  };
+
+  // Helper to get schedule value for display (shows "Day Off" if day is off)
+  const getScheduleValue = (day: string, scheduleValue: string | null | undefined) => {
+    return isDayOff(day) ? 'Day Off' : (scheduleValue || '');
   };
 
   return (
@@ -209,19 +230,16 @@ export function WorkConfigurationSection({
           </div>
         </div>
 
-        {/* Ticket Assignment Toggle */}
+        {/* Upwork Contract ID */}
         <div className="space-y-2">
-          <Label>Ticket Assignment</Label>
-          <div className="flex items-center gap-3 h-10">
-            <Switch
-              checked={profile.ticket_assignment_enabled || false}
-              onCheckedChange={(checked) => onInputChange('ticket_assignment_enabled', checked)}
-              disabled={!canEdit}
-            />
-            <span className="text-sm text-muted-foreground">
-              {profile.ticket_assignment_enabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </div>
+          <Label>Upwork Contract ID</Label>
+          <Input
+            value={profile.upwork_contract_id || ''}
+            onChange={(e) => onInputChange('upwork_contract_id', e.target.value)}
+            placeholder="Enter contract ID"
+            disabled={!canEdit}
+            className={!canEdit ? 'bg-muted' : ''}
+          />
         </div>
       </div>
 
@@ -273,59 +291,81 @@ export function WorkConfigurationSection({
         </div>
       )}
 
+      {/* Day Off - moved before schedules so it can affect them */}
+      <div className="space-y-2">
+        <Label>Day Off</Label>
+        <div className="flex flex-wrap gap-3 p-3 border rounded-md">
+          {DAY_OPTIONS.map((day) => (
+            <label key={day} className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={isDayOff(day)}
+                onCheckedChange={(checked) => handleDayOffToggle(day, !!checked)}
+                disabled={!canEdit}
+              />
+              <span className="text-sm">{day}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* Weekday Schedule */}
       <div className="space-y-4">
         <ProfileSectionHeader title="Weekday Schedule" badge="hr" locked={!canEdit} />
-        <p className="text-xs text-muted-foreground">Monday auto-populates Tue-Fri. Each field remains editable.</p>
+        <p className="text-xs text-muted-foreground">Monday auto-populates Tue-Fri. Days marked as "Day Off" are disabled.</p>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Monday</Label>
             <Input
-              value={profile.mon_schedule || ''}
+              value={getScheduleValue('Mon', profile.mon_schedule)}
               onChange={(e) => handleMondayChange(e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Mon')}
+              readOnly={isDayOff('Mon')}
+              className={cn('text-xs', (!canEdit || isDayOff('Mon')) && 'bg-muted')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Tuesday</Label>
             <Input
-              value={profile.tue_schedule || ''}
+              value={getScheduleValue('Tue', profile.tue_schedule)}
               onChange={(e) => onInputChange('tue_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Tue')}
+              readOnly={isDayOff('Tue')}
+              className={cn('text-xs', (!canEdit || isDayOff('Tue')) && 'bg-muted')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Wednesday</Label>
             <Input
-              value={profile.wed_schedule || ''}
+              value={getScheduleValue('Wed', profile.wed_schedule)}
               onChange={(e) => onInputChange('wed_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Wed')}
+              readOnly={isDayOff('Wed')}
+              className={cn('text-xs', (!canEdit || isDayOff('Wed')) && 'bg-muted')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Thursday</Label>
             <Input
-              value={profile.thu_schedule || ''}
+              value={getScheduleValue('Thu', profile.thu_schedule)}
               onChange={(e) => onInputChange('thu_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Thu')}
+              readOnly={isDayOff('Thu')}
+              className={cn('text-xs', (!canEdit || isDayOff('Thu')) && 'bg-muted')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Friday</Label>
             <Input
-              value={profile.fri_schedule || ''}
+              value={getScheduleValue('Fri', profile.fri_schedule)}
               onChange={(e) => onInputChange('fri_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Fri')}
+              readOnly={isDayOff('Fri')}
+              className={cn('text-xs', (!canEdit || isDayOff('Fri')) && 'bg-muted')}
             />
           </div>
         </div>
@@ -334,26 +374,28 @@ export function WorkConfigurationSection({
       {/* Weekend Schedule */}
       <div className="space-y-4">
         <ProfileSectionHeader title="Weekend Schedule" badge="hr" locked={!canEdit} />
-        <p className="text-xs text-muted-foreground">Saturday auto-populates Sunday. Each field remains editable.</p>
+        <p className="text-xs text-muted-foreground">Saturday auto-populates Sunday. Days marked as "Day Off" are disabled.</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Saturday</Label>
             <Input
-              value={profile.sat_schedule || ''}
+              value={getScheduleValue('Sat', profile.sat_schedule)}
               onChange={(e) => handleSaturdayChange(e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Sat')}
+              readOnly={isDayOff('Sat')}
+              className={cn('text-xs', (!canEdit || isDayOff('Sat')) && 'bg-muted')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Sunday</Label>
             <Input
-              value={profile.sun_schedule || ''}
+              value={getScheduleValue('Sun', profile.sun_schedule)}
               onChange={(e) => onInputChange('sun_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
-              disabled={!canEdit}
-              className={!canEdit ? 'bg-muted text-xs' : 'text-xs'}
+              disabled={!canEdit || isDayOff('Sun')}
+              readOnly={isDayOff('Sun')}
+              className={cn('text-xs', (!canEdit || isDayOff('Sun')) && 'bg-muted')}
             />
           </div>
         </div>
@@ -390,23 +432,6 @@ export function WorkConfigurationSection({
             disabled={!canEdit}
             className={!canEdit ? 'bg-muted' : ''}
           />
-        </div>
-      </div>
-
-      {/* Day Off */}
-      <div className="space-y-2">
-        <Label>Day Off</Label>
-        <div className="flex flex-wrap gap-3 p-3 border rounded-md">
-          {DAY_OPTIONS.map((day) => (
-            <label key={day} className="flex items-center gap-2 cursor-pointer">
-              <Checkbox
-                checked={(profile.day_off || []).includes(day)}
-                onCheckedChange={(checked) => handleDayOffToggle(day, !!checked)}
-                disabled={!canEdit}
-              />
-              <span className="text-sm">{day}</span>
-            </label>
-          ))}
         </div>
       </div>
     </div>
