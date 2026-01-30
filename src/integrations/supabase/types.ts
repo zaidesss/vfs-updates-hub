@@ -221,6 +221,7 @@ export type Database = {
           ticket_assignment_view_id: string | null
           tue_schedule: string | null
           updated_at: string | null
+          upwork_contract_id: string | null
           upwork_profile_url: string | null
           upwork_username: string | null
           views: string[] | null
@@ -275,6 +276,7 @@ export type Database = {
           ticket_assignment_view_id?: string | null
           tue_schedule?: string | null
           updated_at?: string | null
+          upwork_contract_id?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
@@ -329,6 +331,7 @@ export type Database = {
           ticket_assignment_view_id?: string | null
           tue_schedule?: string | null
           updated_at?: string | null
+          upwork_contract_id?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
