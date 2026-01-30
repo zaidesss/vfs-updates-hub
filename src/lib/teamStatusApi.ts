@@ -2,6 +2,15 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type ProfileStatus = 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'LOGGED_OUT';
 
+export type SupportCategory = 
+  | 'phoneSupport' 
+  | 'chatSupport' 
+  | 'emailSupport' 
+  | 'hybridSupport' 
+  | 'teamLeads' 
+  | 'techSupport' 
+  | 'other';
+
 export interface TeamMemberStatus {
   profileId: string;
   email: string;
@@ -13,18 +22,47 @@ export interface TeamMemberStatus {
   breakSchedule: string | null;
 }
 
-const LEAD_TECH_POSITIONS = ['Team Lead', 'Technical Support'];
+export interface CategorizedTeamMembers {
+  phoneSupport: TeamMemberStatus[];
+  chatSupport: TeamMemberStatus[];
+  emailSupport: TeamMemberStatus[];
+  hybridSupport: TeamMemberStatus[];
+  teamLeads: TeamMemberStatus[];
+  techSupport: TeamMemberStatus[];
+  other: TeamMemberStatus[];
+}
 
-function isLeadOrTech(position: string | null): boolean {
-  if (!position) return false;
-  return LEAD_TECH_POSITIONS.includes(position);
+// Map position values to categories
+function categorizeByPosition(position: string | null): SupportCategory {
+  if (!position) return 'other';
+  
+  const positionLower = position.toLowerCase().trim();
+  
+  if (positionLower === 'phone support') return 'phoneSupport';
+  if (positionLower === 'chat support') return 'chatSupport';
+  if (positionLower === 'email support') return 'emailSupport';
+  if (positionLower === 'hybrid support') return 'hybridSupport';
+  if (positionLower === 'team lead') return 'teamLeads';
+  if (positionLower === 'technical support') return 'techSupport';
+  
+  return 'other';
 }
 
 export async function fetchLoggedInTeamMembers(): Promise<{
-  agents: TeamMemberStatus[];
-  leadsAndTech: TeamMemberStatus[];
+  categories: CategorizedTeamMembers;
+  totalOnline: number;
   error: string | null;
 }> {
+  const emptyCategories: CategorizedTeamMembers = {
+    phoneSupport: [],
+    chatSupport: [],
+    emailSupport: [],
+    hybridSupport: [],
+    teamLeads: [],
+    techSupport: [],
+    other: [],
+  };
+
   try {
     // Fetch all profile_status records where user is NOT logged out
     const { data: statusData, error: statusError } = await supabase
@@ -34,28 +72,28 @@ export async function fetchLoggedInTeamMembers(): Promise<{
 
     if (statusError) {
       console.error('Error fetching profile_status:', statusError);
-      return { agents: [], leadsAndTech: [], error: statusError.message };
+      return { categories: emptyCategories, totalOnline: 0, error: statusError.message };
     }
 
     if (!statusData || statusData.length === 0) {
-      return { agents: [], leadsAndTech: [], error: null };
+      return { categories: emptyCategories, totalOnline: 0, error: null };
     }
 
     const profileIds = statusData.map(s => s.profile_id);
 
-    // Fetch agent_profiles for these profile IDs
+    // Fetch from the restricted view (only non-sensitive fields)
     const { data: profilesData, error: profilesError } = await supabase
-      .from('agent_profiles')
+      .from('agent_profiles_team_status')
       .select('id, email, full_name, position')
       .in('id', profileIds);
 
     if (profilesError) {
-      console.error('Error fetching agent_profiles:', profilesError);
-      return { agents: [], leadsAndTech: [], error: profilesError.message };
+      console.error('Error fetching agent_profiles_team_status:', profilesError);
+      return { categories: emptyCategories, totalOnline: 0, error: profilesError.message };
     }
 
     if (!profilesData || profilesData.length === 0) {
-      return { agents: [], leadsAndTech: [], error: null };
+      return { categories: emptyCategories, totalOnline: 0, error: null };
     }
 
     // Get emails to fetch from agent_directory
@@ -115,21 +153,25 @@ export async function fetchLoggedInTeamMembers(): Promise<{
     // Sort by status_since (most recent first)
     allMembers.sort((a, b) => new Date(b.statusSince).getTime() - new Date(a.statusSince).getTime());
 
-    // Split into two groups
-    const agents: TeamMemberStatus[] = [];
-    const leadsAndTech: TeamMemberStatus[] = [];
+    // Categorize members into 7 groups
+    const categories: CategorizedTeamMembers = {
+      phoneSupport: [],
+      chatSupport: [],
+      emailSupport: [],
+      hybridSupport: [],
+      teamLeads: [],
+      techSupport: [],
+      other: [],
+    };
 
     allMembers.forEach(member => {
-      if (isLeadOrTech(member.position)) {
-        leadsAndTech.push(member);
-      } else {
-        agents.push(member);
-      }
+      const category = categorizeByPosition(member.position);
+      categories[category].push(member);
     });
 
-    return { agents, leadsAndTech, error: null };
+    return { categories, totalOnline: allMembers.length, error: null };
   } catch (err) {
     console.error('Unexpected error in fetchLoggedInTeamMembers:', err);
-    return { agents: [], leadsAndTech: [], error: 'An unexpected error occurred' };
+    return { categories: emptyCategories, totalOnline: 0, error: 'An unexpected error occurred' };
   }
 }

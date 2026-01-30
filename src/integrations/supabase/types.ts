@@ -892,6 +892,13 @@ export type Database = {
             referencedRelation: "agent_profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "profile_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles_team_status"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profile_status: {
@@ -919,6 +926,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: true
             referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_status_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "agent_profiles_team_status"
             referencedColumns: ["id"]
           },
         ]
@@ -1295,6 +1309,27 @@ export type Database = {
       }
     }
     Views: {
+      agent_profiles_team_status: {
+        Row: {
+          email: string | null
+          full_name: string | null
+          id: string | null
+          position: string | null
+        }
+        Insert: {
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          position?: string | null
+        }
+        Update: {
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          position?: string | null
+        }
+        Relationships: []
+      }
       leave_calendar_view: {
         Row: {
           agent_name: string | null
