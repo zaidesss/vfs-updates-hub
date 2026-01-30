@@ -172,7 +172,9 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
   }
 }
 
-// GraphQL query using workDays with DateTimeRange
+// Introspection query to discover WorkDay type fields
+// GraphQL query using workDays with workDiary.cells sub-field
+// Each cell represents 10 minutes of tracked time
 const CONTRACT_WORK_DAYS_QUERY = `
   query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
     contract(id: $id) {
@@ -183,7 +185,7 @@ const CONTRACT_WORK_DAYS_QUERY = `
         date
         workDiary {
           cells {
-            cellTime
+            memo
           }
         }
       }
@@ -203,15 +205,17 @@ const SIMPLE_CONTRACT_QUERY = `
   }
 `;
 
-interface WorkDiaryCell {
-  cellTime?: string;
+interface Cell {
+  memo?: string;
+}
+
+interface WorkDiary {
+  cells?: Cell[];
 }
 
 interface WorkDay {
   date?: string;
-  workDiary?: {
-    cells?: WorkDiaryCell[];
-  };
+  workDiary?: WorkDiary;
 }
 
 interface ContractResponse {
@@ -222,13 +226,34 @@ interface ContractResponse {
   workDays?: WorkDay[];
 }
 
+interface IntrospectionField {
+  name: string;
+  type: {
+    name: string | null;
+    kind: string;
+  };
+}
+
+interface IntrospectionType {
+  name: string;
+  fields: IntrospectionField[];
+}
+
+interface GraphQLResponse {
+  data: {
+    contract?: ContractResponse;
+    __type?: IntrospectionType;
+  } | null;
+  errors?: Array<{ message: string }>;
+}
+
 // Execute a GraphQL query against Upwork API with organization context
 async function executeGraphQLQuery(
   query: string,
   variables: Record<string, unknown>,
   accessToken: string,
   organizationId: string | null
-): Promise<{ data: { contract?: ContractResponse; __type?: unknown } | null; errors?: Array<{ message: string }> }> {
+): Promise<GraphQLResponse> {
   // Build headers with optional organization context
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${accessToken.trim()}`,
@@ -301,10 +326,12 @@ async function fetchWorkDaysGraphQL(
     
     console.log(`Contract verified: ${contract.title}, Status: ${contract.status}`);
 
-    // Step 2: Try to fetch workDays with the correct timeRange format
+    // Step 2: Fetch workDays with the correct timeRange format
+    // Upwork expects compact date format: YYYYMMDD (no dashes)
+    const compactDate = date.replace(/-/g, '');
     const timeRange = {
-      rangeStart: date,
-      rangeEnd: date
+      rangeStart: compactDate,
+      rangeEnd: compactDate
     };
     
     console.log(`Fetching workDays with timeRange: ${JSON.stringify(timeRange)}`);
@@ -331,24 +358,44 @@ async function fetchWorkDaysGraphQL(
         };
       }
       
-      return { hours: null, needsRefresh: false, error: errorMessage };
+      return { 
+        hours: null, 
+        needsRefresh: false, 
+        error: errorMessage
+      };
     }
     
-    // Calculate hours from workDays cells
+    // Process workDays and extract hours from workDiary
     const workDays = workDaysResult.data?.contract?.workDays || [];
-    let totalMinutes = 0;
+    console.log(`Retrieved ${workDays.length} work days for ${date}`);
     
+    if (workDays.length === 0) {
+      console.log(`No work logged for ${date}`);
+      return { 
+        hours: 0, 
+        needsRefresh: false
+      };
+    }
+    
+    // Log the actual structure of workDays to understand what's available
+    console.log('First workDay structure:', JSON.stringify(workDays[0], null, 2));
+    
+    // Calculate total hours from workDiary.cells count (each cell = 10 minutes)
+    let totalCells = 0;
     for (const day of workDays) {
-      if (day.date === date && day.workDiary?.cells) {
-        // Each cell represents 10 minutes of tracked time
-        totalMinutes += day.workDiary.cells.length * 10;
+      if (day.workDiary?.cells) {
+        totalCells += day.workDiary.cells.length;
       }
     }
     
-    const hours = totalMinutes / 60;
-    console.log(`Total hours for ${date}: ${hours.toFixed(2)} (from ${totalMinutes} minutes)`);
+    // Convert cells to hours (each cell = 10 minutes = 1/6 hour)
+    const totalHours = totalCells / 6;
+    console.log(`Total hours for ${date}: ${totalHours.toFixed(2)} (from ${totalCells} cells x 10 min each)`);
     
-    return { hours, needsRefresh: false };
+    return { 
+      hours: totalHours, 
+      needsRefresh: false
+    };
     
   } catch (error: unknown) {
     if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
