@@ -187,13 +187,14 @@ export interface AgentProfileInput {
   // Freelance fields
   upwork_profile_url?: string;
   upwork_username?: string;
+  upwork_contract_id?: string;  // Added: Upwork Contract ID
   // Equipment
   headset_model?: string;
   // Work setup (Super Admin only)
   work_schedule?: string;
   employment_status?: string;
   payment_frequency?: string;
-  // NEW: Work configuration fields (from Master Directory)
+  // Work configuration fields (editable in Bios, synced to Master Directory)
   agent_name?: string;
   agent_tag?: string;
   zendesk_instance?: string;
@@ -349,6 +350,7 @@ async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
     weekday_ot_schedule: input.weekday_ot_schedule || null,
     weekend_ot_schedule: input.weekend_ot_schedule || null,
     day_off: input.day_off || [],
+    upwork_contract_id: input.upwork_contract_id || null,  // Synced but removed from Master Directory display
     // Computed summary fields for Master Directory display
     weekday_schedule: input.mon_schedule || null,
     weekend_schedule: input.sat_schedule || null,
