@@ -5,6 +5,99 @@ export interface RateHistoryEntry {
   rate: number;
 }
 
+// Position dropdown options
+export const POSITION_OPTIONS = [
+  'Hybrid Support',
+  'Team Lead',
+  'Logistics',
+  'Email Support',
+  'Chat Support',
+  'Phone Support',
+  'Technical Support',
+] as const;
+
+export type PositionType = typeof POSITION_OPTIONS[number];
+
+// Support type options
+export const SUPPORT_TYPE_OPTIONS = ['Email', 'Chat', 'Phone'] as const;
+export type SupportType = typeof SUPPORT_TYPE_OPTIONS[number];
+
+// Get defaults based on position
+export function getPositionDefaults(position: string | null): {
+  supportType: string[];
+  views: string[];
+  ticketViewId: string | null;
+  showQuotaEmail: boolean;
+  showQuotaChat: boolean;
+  showQuotaPhone: boolean;
+  supportTypeEditable: boolean;
+} {
+  switch (position) {
+    case 'Hybrid Support':
+      return {
+        supportType: ['Email', 'Chat', 'Phone'],
+        views: ['All'],
+        ticketViewId: '50553259977753',
+        showQuotaEmail: true,
+        showQuotaChat: true,
+        showQuotaPhone: true,
+        supportTypeEditable: true,
+      };
+    case 'Email Support':
+      return {
+        supportType: ['Email'],
+        views: ['Open'],
+        ticketViewId: '50553259977753',
+        showQuotaEmail: true,
+        showQuotaChat: false,
+        showQuotaPhone: false,
+        supportTypeEditable: false,
+      };
+    case 'Chat Support':
+      return {
+        supportType: ['Chat'],
+        views: ['New'],
+        ticketViewId: '48622289457049',
+        showQuotaEmail: true,
+        showQuotaChat: true,
+        showQuotaPhone: false,
+        supportTypeEditable: false,
+      };
+    case 'Phone Support':
+      return {
+        supportType: ['Phone'],
+        views: ['New'],
+        ticketViewId: '48622289457049',
+        showQuotaEmail: true,
+        showQuotaChat: false,
+        showQuotaPhone: true,
+        supportTypeEditable: false,
+      };
+    case 'Team Lead':
+    case 'Logistics':
+    case 'Technical Support':
+      return {
+        supportType: ['Email'],
+        views: ['All'],
+        ticketViewId: null,
+        showQuotaEmail: false,
+        showQuotaChat: false,
+        showQuotaPhone: false,
+        supportTypeEditable: false,
+      };
+    default:
+      return {
+        supportType: [],
+        views: [],
+        ticketViewId: null,
+        showQuotaEmail: false,
+        showQuotaChat: false,
+        showQuotaPhone: false,
+        supportTypeEditable: false,
+      };
+  }
+}
+
 export interface AgentProfile {
   id: string;
   email: string;
@@ -20,17 +113,17 @@ export interface AgentProfile {
   clients: string | null;
   hourly_rate: number | null;
   rate_history: RateHistoryEntry[] | null;
-  // New connectivity fields
+  // Connectivity fields
   primary_internet_provider: string | null;
   primary_internet_speed: string | null;
   backup_internet_provider: string | null;
   backup_internet_speed: string | null;
   backup_internet_type: string | null;
-  // New banking fields
+  // Banking fields
   bank_name: string | null;
   bank_account_number: string | null;
   bank_account_holder: string | null;
-  // New freelance fields
+  // Freelance fields
   upwork_profile_url: string | null;
   upwork_username: string | null;
   // Equipment
@@ -39,6 +132,29 @@ export interface AgentProfile {
   work_schedule: string | null;
   employment_status: string | null;
   payment_frequency: string | null;
+  // NEW: Work configuration fields (from Master Directory)
+  agent_name: string | null;
+  agent_tag: string | null;
+  zendesk_instance: string | null;
+  support_account: string | null;
+  support_type: string[] | null;
+  views: string[] | null;
+  ticket_assignment_enabled: boolean | null;
+  ticket_assignment_view_id: string | null;
+  quota_email: number | null;
+  quota_chat: number | null;
+  quota_phone: number | null;
+  mon_schedule: string | null;
+  tue_schedule: string | null;
+  wed_schedule: string | null;
+  thu_schedule: string | null;
+  fri_schedule: string | null;
+  sat_schedule: string | null;
+  sun_schedule: string | null;
+  break_schedule: string | null;
+  weekday_ot_schedule: string | null;
+  weekend_ot_schedule: string | null;
+  day_off: string[] | null;
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -58,17 +174,17 @@ export interface AgentProfileInput {
   clients?: string;
   hourly_rate?: number | null;
   rate_history?: RateHistoryEntry[];
-  // New connectivity fields
+  // Connectivity fields
   primary_internet_provider?: string;
   primary_internet_speed?: string;
   backup_internet_provider?: string;
   backup_internet_speed?: string;
   backup_internet_type?: string;
-  // New banking fields
+  // Banking fields
   bank_name?: string;
   bank_account_number?: string;
   bank_account_holder?: string;
-  // New freelance fields
+  // Freelance fields
   upwork_profile_url?: string;
   upwork_username?: string;
   // Equipment
@@ -77,6 +193,29 @@ export interface AgentProfileInput {
   work_schedule?: string;
   employment_status?: string;
   payment_frequency?: string;
+  // NEW: Work configuration fields (from Master Directory)
+  agent_name?: string;
+  agent_tag?: string;
+  zendesk_instance?: string;
+  support_account?: string;
+  support_type?: string[];
+  views?: string[];
+  ticket_assignment_enabled?: boolean;
+  ticket_assignment_view_id?: string;
+  quota_email?: number | null;
+  quota_chat?: number | null;
+  quota_phone?: number | null;
+  mon_schedule?: string;
+  tue_schedule?: string;
+  wed_schedule?: string;
+  thu_schedule?: string;
+  fri_schedule?: string;
+  sat_schedule?: string;
+  sun_schedule?: string;
+  break_schedule?: string;
+  weekday_ot_schedule?: string;
+  weekend_ot_schedule?: string;
+  day_off?: string[];
 }
 
 export interface ProfileChangeRequest {
@@ -99,7 +238,10 @@ function transformProfile(data: any): AgentProfile | null {
   if (!data) return null;
   return {
     ...data,
-    rate_history: Array.isArray(data.rate_history) ? data.rate_history : []
+    rate_history: Array.isArray(data.rate_history) ? data.rate_history : [],
+    support_type: Array.isArray(data.support_type) ? data.support_type : [],
+    views: Array.isArray(data.views) ? data.views : [],
+    day_off: Array.isArray(data.day_off) ? data.day_off : [],
   };
 }
 
@@ -181,6 +323,42 @@ export async function fetchAllUsersWithProfiles(): Promise<{ data: UserWithProfi
   return { data: usersWithProfiles, error: null };
 }
 
+// Sync profile data to agent_directory
+async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
+  // Aggregate quota (sum of all quota types for backward compatibility)
+  const quota = (input.quota_email || 0) + (input.quota_chat || 0) + (input.quota_phone || 0);
+  
+  const syncData = {
+    email: input.email.toLowerCase(),
+    agent_name: input.agent_name || null,
+    agent_tag: input.agent_tag || null,
+    zendesk_instance: input.zendesk_instance || null,
+    support_account: input.support_account || null,
+    support_type: Array.isArray(input.support_type) ? input.support_type.join(', ') : null,
+    views: input.views || [],
+    ticket_assignment_view_id: input.ticket_assignment_enabled ? input.ticket_assignment_view_id : null,
+    quota: quota || null,
+    mon_schedule: input.mon_schedule || null,
+    tue_schedule: input.tue_schedule || null,
+    wed_schedule: input.wed_schedule || null,
+    thu_schedule: input.thu_schedule || null,
+    fri_schedule: input.fri_schedule || null,
+    sat_schedule: input.sat_schedule || null,
+    sun_schedule: input.sun_schedule || null,
+    break_schedule: input.break_schedule || null,
+    weekday_ot_schedule: input.weekday_ot_schedule || null,
+    weekend_ot_schedule: input.weekend_ot_schedule || null,
+    day_off: input.day_off || [],
+    // Computed summary fields for Master Directory display
+    weekday_schedule: input.mon_schedule || null,
+    weekend_schedule: input.sat_schedule || null,
+  };
+
+  await supabase
+    .from('agent_directory')
+    .upsert(syncData, { onConflict: 'email' });
+}
+
 export async function upsertProfile(input: AgentProfileInput): Promise<{ data: AgentProfile | null; error: string | null }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) {
@@ -197,7 +375,10 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
   const dbInput = {
     ...sanitizedInput,
     email: input.email.toLowerCase(),
-    rate_history: input.rate_history ? JSON.parse(JSON.stringify(input.rate_history)) : []
+    rate_history: input.rate_history ? JSON.parse(JSON.stringify(input.rate_history)) : [],
+    support_type: input.support_type || [],
+    views: input.views || [],
+    day_off: input.day_off || [],
   };
 
   // First check if profile exists
@@ -230,6 +411,14 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
 
   if (result.error) {
     return { data: null, error: result.error.message };
+  }
+
+  // Sync to agent_directory for Master Directory visibility
+  try {
+    await syncProfileToDirectory(input);
+  } catch (syncError) {
+    console.error('Failed to sync profile to directory:', syncError);
+    // Don't fail the save for sync errors
   }
 
   return { data: transformProfile(result.data), error: null };
@@ -333,4 +522,10 @@ export function calculateDaysEmployed(startDate: string | null): number {
   const diffTime = Math.abs(today.getTime() - start.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
+}
+
+// Utility function to get agent's first name for default agent_name
+export function getFirstName(fullName: string | null | undefined): string {
+  if (!fullName) return '';
+  return fullName.split(' ')[0] || '';
 }

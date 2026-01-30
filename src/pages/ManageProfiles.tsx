@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, ChevronLeft, Search, Briefcase, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile } from '@/lib/agentProfileApi';
+import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
+import { WorkConfigurationSection } from '@/components/profile/WorkConfigurationSection';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
@@ -60,6 +61,8 @@ export default function ManageProfilesPage() {
   const handleSelectUser = (userWithProfile: UserWithProfile) => {
     setSelectedUser(userWithProfile);
     const profile = userWithProfile.profile;
+    const firstName = getFirstName(profile?.full_name || userWithProfile.name || '');
+    const positionDefaults = getPositionDefaults(profile?.position || null);
     
     setEditData({
       email: userWithProfile.email,
@@ -88,7 +91,30 @@ export default function ManageProfilesPage() {
       headset_model: profile?.headset_model || '',
       work_schedule: profile?.work_schedule || '',
       employment_status: profile?.employment_status || 'Active',
-      payment_frequency: profile?.payment_frequency || ''
+      payment_frequency: profile?.payment_frequency || '',
+      // New work configuration fields
+      agent_name: profile?.agent_name || firstName,
+      agent_tag: profile?.agent_tag || firstName.toLowerCase(),
+      zendesk_instance: profile?.zendesk_instance || '',
+      support_account: profile?.support_account || '',
+      support_type: profile?.support_type || positionDefaults.supportType,
+      views: profile?.views || positionDefaults.views,
+      ticket_assignment_enabled: profile?.ticket_assignment_enabled || false,
+      ticket_assignment_view_id: profile?.ticket_assignment_view_id || positionDefaults.ticketViewId || '',
+      quota_email: profile?.quota_email,
+      quota_chat: profile?.quota_chat,
+      quota_phone: profile?.quota_phone,
+      mon_schedule: profile?.mon_schedule || '',
+      tue_schedule: profile?.tue_schedule || '',
+      wed_schedule: profile?.wed_schedule || '',
+      thu_schedule: profile?.thu_schedule || '',
+      fri_schedule: profile?.fri_schedule || '',
+      sat_schedule: profile?.sat_schedule || '',
+      sun_schedule: profile?.sun_schedule || '',
+      break_schedule: profile?.break_schedule || '',
+      weekday_ot_schedule: profile?.weekday_ot_schedule || '',
+      weekend_ot_schedule: profile?.weekend_ot_schedule || '',
+      day_off: profile?.day_off || [],
     });
     
     const existingHistory = profile?.rate_history || [];
@@ -667,20 +693,18 @@ function ProfilesGrid({
 
                   <Separator />
 
-                  {/* Work Information */}
+                  {/* Work Configuration */}
                   <div className="space-y-4">
-                    <ProfileSectionHeader title="Work Information" badge="hr" locked={!canEditWorkInfo} />
+                    <ProfileSectionHeader title="Work Configuration" badge="hr" locked={!canEditWorkInfo} />
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Position / Role</Label>
-                        <Input
-                          value={editData.position}
-                          onChange={(e) => handleInputChange('position', e.target.value)}
-                          disabled={!canEditWorkInfo}
-                          className={!canEditWorkInfo ? 'bg-muted' : ''}
-                        />
-                      </div>
+                    <WorkConfigurationSection
+                      profile={editData}
+                      onInputChange={handleInputChange}
+                      isSuperAdmin={canEditWorkInfo}
+                    />
+
+                    {/* Additional Work Info Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       <div className="space-y-2">
                         <Label>Team Lead</Label>
                         <Input
@@ -695,15 +719,6 @@ function ProfilesGrid({
                         <Input
                           value={editData.clients}
                           onChange={(e) => handleInputChange('clients', e.target.value)}
-                          disabled={!canEditWorkInfo}
-                          className={!canEditWorkInfo ? 'bg-muted' : ''}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Work Schedule</Label>
-                        <Input
-                          value={editData.work_schedule}
-                          onChange={(e) => handleInputChange('work_schedule', e.target.value)}
                           disabled={!canEditWorkInfo}
                           className={!canEditWorkInfo ? 'bg-muted' : ''}
                         />

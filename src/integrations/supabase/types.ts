@@ -177,6 +177,8 @@ export type Database = {
       }
       agent_profiles: {
         Row: {
+          agent_name: string | null
+          agent_tag: string | null
           backup_internet_provider: string | null
           backup_internet_speed: string | null
           backup_internet_type: string | null
@@ -184,31 +186,53 @@ export type Database = {
           bank_account_number: string | null
           bank_name: string | null
           birthday: string | null
+          break_schedule: string | null
           clients: string | null
           created_at: string | null
+          day_off: string[] | null
           email: string
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
           employment_status: string | null
+          fri_schedule: string | null
           full_name: string | null
           headset_model: string | null
           home_address: string | null
           hourly_rate: number | null
           id: string
+          mon_schedule: string | null
           payment_frequency: string | null
           phone_number: string | null
           position: string | null
           primary_internet_provider: string | null
           primary_internet_speed: string | null
+          quota_chat: number | null
+          quota_email: number | null
+          quota_phone: number | null
           rate_history: Json | null
+          sat_schedule: string | null
           start_date: string | null
+          sun_schedule: string | null
+          support_account: string | null
+          support_type: string[] | null
           team_lead: string | null
+          thu_schedule: string | null
+          ticket_assignment_enabled: boolean | null
+          ticket_assignment_view_id: string | null
+          tue_schedule: string | null
           updated_at: string | null
           upwork_profile_url: string | null
           upwork_username: string | null
+          views: string[] | null
+          wed_schedule: string | null
+          weekday_ot_schedule: string | null
+          weekend_ot_schedule: string | null
           work_schedule: string | null
+          zendesk_instance: string | null
         }
         Insert: {
+          agent_name?: string | null
+          agent_tag?: string | null
           backup_internet_provider?: string | null
           backup_internet_speed?: string | null
           backup_internet_type?: string | null
@@ -216,31 +240,53 @@ export type Database = {
           bank_account_number?: string | null
           bank_name?: string | null
           birthday?: string | null
+          break_schedule?: string | null
           clients?: string | null
           created_at?: string | null
+          day_off?: string[] | null
           email: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employment_status?: string | null
+          fri_schedule?: string | null
           full_name?: string | null
           headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          mon_schedule?: string | null
           payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null
           primary_internet_provider?: string | null
           primary_internet_speed?: string | null
+          quota_chat?: number | null
+          quota_email?: number | null
+          quota_phone?: number | null
           rate_history?: Json | null
+          sat_schedule?: string | null
           start_date?: string | null
+          sun_schedule?: string | null
+          support_account?: string | null
+          support_type?: string[] | null
           team_lead?: string | null
+          thu_schedule?: string | null
+          ticket_assignment_enabled?: boolean | null
+          ticket_assignment_view_id?: string | null
+          tue_schedule?: string | null
           updated_at?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
+          views?: string[] | null
+          wed_schedule?: string | null
+          weekday_ot_schedule?: string | null
+          weekend_ot_schedule?: string | null
           work_schedule?: string | null
+          zendesk_instance?: string | null
         }
         Update: {
+          agent_name?: string | null
+          agent_tag?: string | null
           backup_internet_provider?: string | null
           backup_internet_speed?: string | null
           backup_internet_type?: string | null
@@ -248,29 +294,49 @@ export type Database = {
           bank_account_number?: string | null
           bank_name?: string | null
           birthday?: string | null
+          break_schedule?: string | null
           clients?: string | null
           created_at?: string | null
+          day_off?: string[] | null
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employment_status?: string | null
+          fri_schedule?: string | null
           full_name?: string | null
           headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          mon_schedule?: string | null
           payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null
           primary_internet_provider?: string | null
           primary_internet_speed?: string | null
+          quota_chat?: number | null
+          quota_email?: number | null
+          quota_phone?: number | null
           rate_history?: Json | null
+          sat_schedule?: string | null
           start_date?: string | null
+          sun_schedule?: string | null
+          support_account?: string | null
+          support_type?: string[] | null
           team_lead?: string | null
+          thu_schedule?: string | null
+          ticket_assignment_enabled?: boolean | null
+          ticket_assignment_view_id?: string | null
+          tue_schedule?: string | null
           updated_at?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
+          views?: string[] | null
+          wed_schedule?: string | null
+          weekday_ot_schedule?: string | null
+          weekend_ot_schedule?: string | null
           work_schedule?: string | null
+          zendesk_instance?: string | null
         }
         Relationships: []
       }

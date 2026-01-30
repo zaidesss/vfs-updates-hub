@@ -9,10 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
-import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed } from '@/lib/agentProfileApi';
+import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
+import { WorkConfigurationSection } from '@/components/profile/WorkConfigurationSection';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -43,7 +44,7 @@ export default function AgentProfilePage() {
     clients: '',
     hourly_rate: null,
     rate_history: [],
-    // New fields
+    // Connectivity fields
     primary_internet_provider: '',
     primary_internet_speed: '',
     backup_internet_provider: '',
@@ -57,7 +58,30 @@ export default function AgentProfilePage() {
     headset_model: '',
     work_schedule: '',
     employment_status: 'Active',
-    payment_frequency: ''
+    payment_frequency: '',
+    // New work configuration fields
+    agent_name: '',
+    agent_tag: '',
+    zendesk_instance: '',
+    support_account: '',
+    support_type: [],
+    views: [],
+    ticket_assignment_enabled: false,
+    ticket_assignment_view_id: '',
+    quota_email: null,
+    quota_chat: null,
+    quota_phone: null,
+    mon_schedule: '',
+    tue_schedule: '',
+    wed_schedule: '',
+    thu_schedule: '',
+    fri_schedule: '',
+    sat_schedule: '',
+    sun_schedule: '',
+    break_schedule: '',
+    weekday_ot_schedule: '',
+    weekend_ot_schedule: '',
+    day_off: [],
   });
   
   const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>(emptyRateHistory);
@@ -79,6 +103,7 @@ export default function AgentProfilePage() {
     const result = await fetchMyProfile();
     
     if (result.data) {
+      const positionDefaults = getPositionDefaults(result.data.position);
       setProfile({
         email: result.data.email,
         full_name: result.data.full_name || '',
@@ -93,7 +118,7 @@ export default function AgentProfilePage() {
         clients: result.data.clients || '',
         hourly_rate: result.data.hourly_rate,
         rate_history: result.data.rate_history || [],
-        // New fields
+        // Connectivity fields
         primary_internet_provider: result.data.primary_internet_provider || '',
         primary_internet_speed: result.data.primary_internet_speed || '',
         backup_internet_provider: result.data.backup_internet_provider || '',
@@ -107,7 +132,30 @@ export default function AgentProfilePage() {
         headset_model: result.data.headset_model || '',
         work_schedule: result.data.work_schedule || '',
         employment_status: result.data.employment_status || 'Active',
-        payment_frequency: result.data.payment_frequency || ''
+        payment_frequency: result.data.payment_frequency || '',
+        // New work configuration fields
+        agent_name: result.data.agent_name || getFirstName(result.data.full_name),
+        agent_tag: result.data.agent_tag || getFirstName(result.data.full_name)?.toLowerCase() || '',
+        zendesk_instance: result.data.zendesk_instance || '',
+        support_account: result.data.support_account || '',
+        support_type: result.data.support_type || positionDefaults.supportType,
+        views: result.data.views || positionDefaults.views,
+        ticket_assignment_enabled: result.data.ticket_assignment_enabled || false,
+        ticket_assignment_view_id: result.data.ticket_assignment_view_id || positionDefaults.ticketViewId || '',
+        quota_email: result.data.quota_email,
+        quota_chat: result.data.quota_chat,
+        quota_phone: result.data.quota_phone,
+        mon_schedule: result.data.mon_schedule || '',
+        tue_schedule: result.data.tue_schedule || '',
+        wed_schedule: result.data.wed_schedule || '',
+        thu_schedule: result.data.thu_schedule || '',
+        fri_schedule: result.data.fri_schedule || '',
+        sat_schedule: result.data.sat_schedule || '',
+        sun_schedule: result.data.sun_schedule || '',
+        break_schedule: result.data.break_schedule || '',
+        weekday_ot_schedule: result.data.weekday_ot_schedule || '',
+        weekend_ot_schedule: result.data.weekend_ot_schedule || '',
+        day_off: result.data.day_off || [],
       });
       
       const existingHistory = result.data.rate_history || [];
@@ -119,6 +167,7 @@ export default function AgentProfilePage() {
     } else {
       // Pre-fill from directory if available
       const agentInfo = getAgentInfoByEmail(user.email);
+      const firstName = getFirstName(agentInfo?.name || user.name || '');
       setProfile({
         email: user.email.toLowerCase(),
         full_name: agentInfo?.name || user.name || '',
@@ -146,7 +195,30 @@ export default function AgentProfilePage() {
         headset_model: '',
         work_schedule: '',
         employment_status: 'Active',
-        payment_frequency: ''
+        payment_frequency: '',
+        // New work configuration fields
+        agent_name: firstName,
+        agent_tag: firstName.toLowerCase(),
+        zendesk_instance: '',
+        support_account: '',
+        support_type: [],
+        views: [],
+        ticket_assignment_enabled: false,
+        ticket_assignment_view_id: '',
+        quota_email: null,
+        quota_chat: null,
+        quota_phone: null,
+        mon_schedule: '',
+        tue_schedule: '',
+        wed_schedule: '',
+        thu_schedule: '',
+        fri_schedule: '',
+        sat_schedule: '',
+        sun_schedule: '',
+        break_schedule: '',
+        weekday_ot_schedule: '',
+        weekend_ot_schedule: '',
+        day_off: [],
       });
       setRateHistoryUI(Array(6).fill(null).map(() => ({ date: '', rate: '' })));
     }
@@ -469,7 +541,7 @@ export default function AgentProfilePage() {
             {/* Section 6: Work Information (Super Admin only) */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <ProfileSectionHeader title="Work Information" badge="hr" locked={!isSuperAdmin} />
+                <ProfileSectionHeader title="Work Configuration" badge="hr" locked={!isSuperAdmin} />
                 {!isSuperAdmin && (
                   <Button
                     variant="outline"
@@ -482,19 +554,14 @@ export default function AgentProfilePage() {
                 )}
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="position">Position / Role</Label>
-                  <Input
-                    id="position"
-                    value={profile.position}
-                    onChange={(e) => handleInputChange('position', e.target.value)}
-                    placeholder="e.g., Customer Service Agent"
-                    disabled={!isSuperAdmin}
-                    className={!isSuperAdmin ? 'bg-muted' : ''}
-                  />
-                </div>
-                
+              <WorkConfigurationSection
+                profile={profile}
+                onInputChange={handleInputChange}
+                isSuperAdmin={isSuperAdmin}
+              />
+
+              {/* Team Lead and Clients - still in this section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="team_lead">Team Lead</Label>
                   <Input
@@ -514,18 +581,6 @@ export default function AgentProfilePage() {
                     value={profile.clients}
                     onChange={(e) => handleInputChange('clients', e.target.value)}
                     placeholder="e.g., VFS Global, Other Client"
-                    disabled={!isSuperAdmin}
-                    className={!isSuperAdmin ? 'bg-muted' : ''}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="work_schedule">Work Schedule</Label>
-                  <Input
-                    id="work_schedule"
-                    value={profile.work_schedule}
-                    onChange={(e) => handleInputChange('work_schedule', e.target.value)}
-                    placeholder="e.g., Mon-Fri 9AM-6PM EST"
                     disabled={!isSuperAdmin}
                     className={!isSuperAdmin ? 'bg-muted' : ''}
                   />
