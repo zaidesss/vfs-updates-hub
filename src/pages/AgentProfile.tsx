@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
+import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
@@ -239,6 +240,34 @@ export default function AgentProfilePage() {
 
   const handleSave = async () => {
     if (!user?.email) return;
+    
+    // Validate all schedule fields before saving
+    const scheduleFields = [
+      { key: 'mon_schedule', label: 'Monday' },
+      { key: 'tue_schedule', label: 'Tuesday' },
+      { key: 'wed_schedule', label: 'Wednesday' },
+      { key: 'thu_schedule', label: 'Thursday' },
+      { key: 'fri_schedule', label: 'Friday' },
+      { key: 'sat_schedule', label: 'Saturday' },
+      { key: 'sun_schedule', label: 'Sunday' },
+      { key: 'break_schedule', label: 'Break' },
+      { key: 'weekday_ot_schedule', label: 'Weekday OT' },
+      { key: 'weekend_ot_schedule', label: 'Weekend OT' },
+    ];
+    
+    const invalidSchedules = scheduleFields.filter(f => {
+      const value = profile[f.key as keyof typeof profile] as string;
+      return value && value.trim() !== '' && !validateScheduleFormat(value);
+    });
+    
+    if (invalidSchedules.length > 0) {
+      toast({
+        title: 'Invalid Schedule Format',
+        description: `Please fix: ${invalidSchedules.map(f => f.label).join(', ')}. Format: H:MM AM-H:MM PM`,
+        variant: 'destructive'
+      });
+      return;
+    }
     
     setIsSaving(true);
     

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,6 +12,7 @@ import {
   SUPPORT_TYPE_OPTIONS,
   getPositionDefaults 
 } from '@/lib/agentProfileApi';
+import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
 
 const ZENDESK_INSTANCES = ['ZD1', 'ZD2'];
 const SUPPORT_ACCOUNTS = Array.from({ length: 17 }, (_, i) => String(i + 1));
@@ -21,6 +23,8 @@ interface WorkConfigurationSectionProps {
   onInputChange: (field: keyof AgentProfileInput, value: any) => void;
   isSuperAdmin: boolean;
   onPositionChange?: (position: string) => void;
+  scheduleErrors?: Record<string, string>;
+  onScheduleBlur?: (field: string, value: string) => void;
 }
 
 export function WorkConfigurationSection({
@@ -28,9 +32,35 @@ export function WorkConfigurationSection({
   onInputChange,
   isSuperAdmin,
   onPositionChange,
+  scheduleErrors = {},
+  onScheduleBlur,
 }: WorkConfigurationSectionProps) {
+  // Local state for validation errors if no external handler provided
+  const [localScheduleErrors, setLocalScheduleErrors] = useState<Record<string, string>>({});
+  const errors = Object.keys(scheduleErrors).length > 0 ? scheduleErrors : localScheduleErrors;
+
   const positionDefaults = getPositionDefaults(profile.position || null);
   const canEdit = isSuperAdmin;
+
+  // Validation handler for schedule fields
+  const handleScheduleBlur = (field: string, value: string) => {
+    if (onScheduleBlur) {
+      onScheduleBlur(field, value);
+      return;
+    }
+    // Local validation fallback
+    if (value && value !== 'Day Off' && !validateScheduleFormat(value)) {
+      setLocalScheduleErrors(prev => ({
+        ...prev,
+        [field]: 'Invalid format. Use: H:MM AM-H:MM PM (e.g., 8:00 AM-5:00 PM)'
+      }));
+    } else {
+      setLocalScheduleErrors(prev => {
+        const { [field]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
 
   // Check if a day is selected as day off
   const isDayOff = (day: string) => (profile.day_off || []).includes(day);
@@ -318,55 +348,65 @@ export function WorkConfigurationSection({
             <Input
               value={getScheduleValue('Mon', profile.mon_schedule)}
               onChange={(e) => handleMondayChange(e.target.value)}
+              onBlur={(e) => handleScheduleBlur('mon_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Mon')}
               readOnly={isDayOff('Mon')}
-              className={cn('text-xs', (!canEdit || isDayOff('Mon')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Mon')) && 'bg-muted', errors['mon_schedule'] && 'border-destructive')}
             />
+            {errors['mon_schedule'] && <p className="text-xs text-destructive">{errors['mon_schedule']}</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Tuesday</Label>
             <Input
               value={getScheduleValue('Tue', profile.tue_schedule)}
               onChange={(e) => onInputChange('tue_schedule', e.target.value)}
+              onBlur={(e) => handleScheduleBlur('tue_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Tue')}
               readOnly={isDayOff('Tue')}
-              className={cn('text-xs', (!canEdit || isDayOff('Tue')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Tue')) && 'bg-muted', errors['tue_schedule'] && 'border-destructive')}
             />
+            {errors['tue_schedule'] && <p className="text-xs text-destructive">{errors['tue_schedule']}</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Wednesday</Label>
             <Input
               value={getScheduleValue('Wed', profile.wed_schedule)}
               onChange={(e) => onInputChange('wed_schedule', e.target.value)}
+              onBlur={(e) => handleScheduleBlur('wed_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Wed')}
               readOnly={isDayOff('Wed')}
-              className={cn('text-xs', (!canEdit || isDayOff('Wed')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Wed')) && 'bg-muted', errors['wed_schedule'] && 'border-destructive')}
             />
+            {errors['wed_schedule'] && <p className="text-xs text-destructive">{errors['wed_schedule']}</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Thursday</Label>
             <Input
               value={getScheduleValue('Thu', profile.thu_schedule)}
               onChange={(e) => onInputChange('thu_schedule', e.target.value)}
+              onBlur={(e) => handleScheduleBlur('thu_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Thu')}
               readOnly={isDayOff('Thu')}
-              className={cn('text-xs', (!canEdit || isDayOff('Thu')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Thu')) && 'bg-muted', errors['thu_schedule'] && 'border-destructive')}
             />
+            {errors['thu_schedule'] && <p className="text-xs text-destructive">{errors['thu_schedule']}</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Friday</Label>
             <Input
               value={getScheduleValue('Fri', profile.fri_schedule)}
               onChange={(e) => onInputChange('fri_schedule', e.target.value)}
+              onBlur={(e) => handleScheduleBlur('fri_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Fri')}
               readOnly={isDayOff('Fri')}
-              className={cn('text-xs', (!canEdit || isDayOff('Fri')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Fri')) && 'bg-muted', errors['fri_schedule'] && 'border-destructive')}
             />
+            {errors['fri_schedule'] && <p className="text-xs text-destructive">{errors['fri_schedule']}</p>}
           </div>
         </div>
       </div>
@@ -381,22 +421,26 @@ export function WorkConfigurationSection({
             <Input
               value={getScheduleValue('Sat', profile.sat_schedule)}
               onChange={(e) => handleSaturdayChange(e.target.value)}
+              onBlur={(e) => handleScheduleBlur('sat_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Sat')}
               readOnly={isDayOff('Sat')}
-              className={cn('text-xs', (!canEdit || isDayOff('Sat')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Sat')) && 'bg-muted', errors['sat_schedule'] && 'border-destructive')}
             />
+            {errors['sat_schedule'] && <p className="text-xs text-destructive">{errors['sat_schedule']}</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Sunday</Label>
             <Input
               value={getScheduleValue('Sun', profile.sun_schedule)}
               onChange={(e) => onInputChange('sun_schedule', e.target.value)}
+              onBlur={(e) => handleScheduleBlur('sun_schedule', e.target.value)}
               placeholder="8:00 AM-5:00 PM"
               disabled={!canEdit || isDayOff('Sun')}
               readOnly={isDayOff('Sun')}
-              className={cn('text-xs', (!canEdit || isDayOff('Sun')) && 'bg-muted')}
+              className={cn('text-xs', (!canEdit || isDayOff('Sun')) && 'bg-muted', errors['sun_schedule'] && 'border-destructive')}
             />
+            {errors['sun_schedule'] && <p className="text-xs text-destructive">{errors['sun_schedule']}</p>}
           </div>
         </div>
       </div>
@@ -408,30 +452,36 @@ export function WorkConfigurationSection({
           <Input
             value={profile.break_schedule || ''}
             onChange={(e) => onInputChange('break_schedule', e.target.value)}
+            onBlur={(e) => handleScheduleBlur('break_schedule', e.target.value)}
             placeholder="12:00 PM-1:00 PM"
             disabled={!canEdit}
-            className={!canEdit ? 'bg-muted' : ''}
+            className={cn(!canEdit ? 'bg-muted' : '', errors['break_schedule'] && 'border-destructive')}
           />
+          {errors['break_schedule'] && <p className="text-xs text-destructive">{errors['break_schedule']}</p>}
         </div>
         <div className="space-y-2">
           <Label>Weekday OT Schedule</Label>
           <Input
             value={profile.weekday_ot_schedule || ''}
             onChange={(e) => onInputChange('weekday_ot_schedule', e.target.value)}
+            onBlur={(e) => handleScheduleBlur('weekday_ot_schedule', e.target.value)}
             placeholder="5:00 PM-7:00 PM"
             disabled={!canEdit}
-            className={!canEdit ? 'bg-muted' : ''}
+            className={cn(!canEdit ? 'bg-muted' : '', errors['weekday_ot_schedule'] && 'border-destructive')}
           />
+          {errors['weekday_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekday_ot_schedule']}</p>}
         </div>
         <div className="space-y-2">
           <Label>Weekend OT Schedule</Label>
           <Input
             value={profile.weekend_ot_schedule || ''}
             onChange={(e) => onInputChange('weekend_ot_schedule', e.target.value)}
+            onBlur={(e) => handleScheduleBlur('weekend_ot_schedule', e.target.value)}
             placeholder="5:00 PM-7:00 PM"
             disabled={!canEdit}
-            className={!canEdit ? 'bg-muted' : ''}
+            className={cn(!canEdit ? 'bg-muted' : '', errors['weekend_ot_schedule'] && 'border-destructive')}
           />
+          {errors['weekend_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekend_ot_schedule']}</p>}
         </div>
       </div>
     </div>
