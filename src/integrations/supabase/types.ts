@@ -1167,6 +1167,8 @@ export type Database = {
           created_at: string | null
           expires_at: string
           id: string
+          organization_id: string | null
+          organization_name: string | null
           refresh_lock_until: string | null
           refresh_token: string
           updated_at: string | null
@@ -1176,6 +1178,8 @@ export type Database = {
           created_at?: string | null
           expires_at: string
           id?: string
+          organization_id?: string | null
+          organization_name?: string | null
           refresh_lock_until?: string | null
           refresh_token: string
           updated_at?: string | null
@@ -1185,6 +1189,8 @@ export type Database = {
           created_at?: string | null
           expires_at?: string
           id?: string
+          organization_id?: string | null
+          organization_name?: string | null
           refresh_lock_until?: string | null
           refresh_token?: string
           updated_at?: string | null
