@@ -1,92 +1,126 @@
-# Upwork Integration: Status Update
 
-## Current Status: Blocked by API Access Restrictions
 
-### Issue Summary
+# Fix Upwork Integration: Add Organization Context Header
 
-After extensive testing and schema discovery, the Upwork API integration is blocked by **two separate issues**:
+## Root Cause Identified
 
-1. **Scope Restrictions**: Fields like `workDiaryTimeCells` and `workDiary.cells` are blocked by OAuth scope restrictions, despite having "Fetch workdiary snapshots" and "Read time-sheet data" scopes enabled.
+The Upwork API requires an `X-Upwork-API-TenantId` header to specify which organization context to use. Without it, requests default to the **personal account context** of whoever authorized the OAuth flow—even if that person has agency/company access to the contracts.
 
-2. **Contract Authorization**: Even basic contract queries return `'getTermsListAuth', 'Authorization failed'` - meaning the OAuth account that authorized the tokens cannot access Malcom's contract (ID: 40482492).
+Since you authorized from your agency account but the header is missing, the API is executing under your personal context, which cannot see Malcom's contract.
 
-### Root Cause Analysis
+## Solution Overview
 
-The Upwork API has two layers of access control:
-
-1. **OAuth Scopes** - What types of data the app is allowed to access
-2. **Contract Ownership** - You can only view contracts where you are either:
-   - The freelancer on the contract
-   - The client/company that hired the freelancer
-   - An agency manager with visibility
-
-The current OAuth tokens were authorized by someone who is **not a party to Malcom's contract**, so the API correctly denies access.
+1. **Add organization discovery** - Query your available organizations via `companySelector`
+2. **Store the organization ID** - Save the chosen org in a new database column or settings table
+3. **Include the header** - Add `X-Upwork-API-TenantId` to all GraphQL requests
+4. **Auto-detect with manual override** - Try orgs automatically, allow admin override
 
 ---
 
-## Solutions
+## Implementation Steps
 
-### Option A: Individual OAuth Authorization (Recommended)
+### Step 1: Discover Available Organizations
 
-Each agent authorizes their own Upwork account, granting the app access to their own contracts/time data.
+Add a new edge function or endpoint that queries available organizations:
 
-**Pros:**
-- Each person has full access to their own data
-- Most secure approach
-- Standard OAuth pattern
-
-**Cons:**
-- Requires each agent to complete OAuth flow
-- Need to store tokens per agent
-
-### Option B: Agency/Client Account Authorization
-
-If there's a central agency or client account that manages all contracts, authorize that account.
-
-**Pros:**
-- Single authorization for all contracts
-- Centralized management
-
-**Cons:**
-- Only works if such an account exists and has visibility to all contracts
-
-### Option C: Upwork Reports API
-
-Use Upwork's reporting endpoints (if available in your API tier) which may have different access patterns.
-
----
-
-## Next Steps
-
-1. **Identify whose Upwork account authorized the current tokens** - This person's contracts would work
-2. **Determine if there's a central agency/client account** with visibility to all freelancer contracts
-3. **Consider per-agent OAuth** if agents need to view their own Upwork time
-
----
-
-## Technical Notes
-
-### Working API Calls
-- GraphQL introspection queries work
-- Schema discovery was successful
-
-### Blocked API Calls
-- `contract(id: "40482492")` → Authorization failed
-- `Contract.workDiaryTimeCells` → Scope restriction
-- `Contract.workDays.workDiary.cells` → Scope restriction
-- `Money.rawValue` → Scope restriction
-
-### Discovered Schema
-```
-workDays(timeRange: DateTimeRange!) {
-  date: String!
-  workDiary: WorkDiary {
-    cells: [WorkDiaryTimeCell!]
+```graphql
+query {
+  companySelector {
+    items {
+      title
+      organizationId
+    }
   }
 }
+```
 
-DateTimeRange {
-  rangeStart: String
-  rangeEnd: String
+This returns all organizations the authenticated user has access to.
+
+---
+
+### Step 2: Database Changes
+
+Add storage for the selected organization:
+
+| Table | Change |
+|-------|--------|
+| `upwork_tokens` | Add `organization_id TEXT` column |
+| `upwork_tokens` | Add `organization_name TEXT` column (for display) |
+
+---
+
+### Step 3: Update fetch-upwork-time Edge Function
+
+Modify `executeGraphQLQuery()` to include the tenant header:
+
+```typescript
+// Before (missing header)
+headers: {
+  'Authorization': `Bearer ${accessToken.trim()}`,
+  'Content-Type': 'application/json',
+}
+
+// After (with organization context)
+headers: {
+  'Authorization': `Bearer ${accessToken.trim()}`,
+  'Content-Type': 'application/json',
+  'X-Upwork-API-TenantId': organizationId,  // ← Add this
 }
 ```
+
+---
+
+### Step 4: Auto-Detection Logic
+
+When no organization is configured:
+1. Call `companySelector` to list available orgs
+2. For each org, try fetching a test contract
+3. When one succeeds, save that org ID
+4. Use it for all future requests
+
+---
+
+### Step 5: Admin Override UI (Optional)
+
+Add a simple admin setting in the Master Directory or a dedicated Upwork settings section:
+- Show available organizations
+- Allow manual selection
+- Display currently active org
+
+---
+
+## File Changes Summary
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/fetch-upwork-time/index.ts` | Add `X-Upwork-API-TenantId` header, add org discovery logic |
+| `supabase/functions/upwork-oauth-callback/index.ts` | Query orgs after token exchange, store first org ID |
+| Migration | Add `organization_id` and `organization_name` columns to `upwork_tokens` |
+| (Optional) UI component | Add Upwork org selector in admin settings |
+
+---
+
+## Testing Plan
+
+1. Deploy updated edge function
+2. Re-run OAuth flow (to populate organization ID)
+3. Test fetch-upwork-time with Malcom's contract
+4. Verify hours appear correctly on dashboard
+
+---
+
+## Why This Will Work
+
+- Your agency account has visibility to Malcom's contract through the agency organization
+- By specifying the correct `X-Upwork-API-TenantId`, the API will execute in agency context
+- The same token works for multiple orgs—you just need to tell the API which context to use
+
+---
+
+## Future Considerations
+
+Since you need multiple orgs support:
+- Store a list of organization IDs (not just one)
+- Consider mapping each agent's contract to the org that can see it
+- The auto-detect logic handles this by trying orgs until one works
+
