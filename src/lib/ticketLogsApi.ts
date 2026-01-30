@@ -1,10 +1,42 @@
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
+// Get current date in EST timezone
+function getESTDate(): { year: number; month: number; day: number; dayOfWeek: number } {
+  const now = new Date();
+  const estFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  });
+  
+  const parts = estFormatter.formatToParts(now);
+  const dateParts: Record<string, string> = {};
+  for (const part of parts) {
+    dateParts[part.type] = part.value;
+  }
+  
+  // Map weekday to day number (0=Sun, 1=Mon, etc.)
+  const weekdayMap: Record<string, number> = {
+    'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+  };
+  
+  return {
+    year: parseInt(dateParts.year),
+    month: parseInt(dateParts.month),
+    day: parseInt(dateParts.day),
+    dayOfWeek: weekdayMap[dateParts.weekday] || 0
+  };
+}
+
 // Calculate rolling 2-week window (previous week + current week, Monday-Sunday)
 export function getRollingTwoWeekRange(): { startDate: string; endDate: string; displayLabel: string } {
-  const today = new Date();
-  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, etc.
+  const estToday = getESTDate();
+  // Create date object from EST values
+  const today = new Date(estToday.year, estToday.month - 1, estToday.day);
+  const dayOfWeek = estToday.dayOfWeek; // 0=Sun, 1=Mon, etc.
   
   // Calculate Monday of current week
   // If today is Sunday (0), go back 6 days; otherwise go back (dayOfWeek - 1) days
@@ -215,9 +247,13 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
   }
 
   // Generate date range from startDate to endDate
+  // Parse dates correctly to avoid timezone issues
   const dates: string[] = [];
-  const start = new Date(dateRange.startDate);
-  const end = new Date(dateRange.endDate);
+  const [startYear, startMonth, startDay] = dateRange.startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = dateRange.endDate.split('-').map(Number);
+  const start = new Date(startYear, startMonth - 1, startDay);
+  const end = new Date(endYear, endMonth - 1, endDay);
+
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     dates.push(format(new Date(d), 'yyyy-MM-dd'));
   }
