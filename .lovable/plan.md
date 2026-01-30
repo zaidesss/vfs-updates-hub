@@ -1,25 +1,33 @@
 
-# Fix Upwork GraphQL Query - Use Correct Schema Fields
+# Upwork Integration - COMPLETED ✅
 
-## Current Issue
+## Summary
 
-The `fetch-upwork-time` edge function successfully connects to Upwork with the correct organization context, but the GraphQL query uses a non-existent field `cellTime`:
-
-```
-Validation error: Field 'cellTime' in type 'Cell' is undefined
-```
-
-## Solution
-
-Update the GraphQL query to use the correct Upwork API schema fields. Based on Upwork's Work Diary API, we should use aggregated hours from `workDays` rather than individual cell data.
+Successfully fixed the Upwork GraphQL integration to fetch daily work diary hours.
 
 ---
 
-## Implementation
+## What Was Fixed
 
-### Step 1: Update the GraphQL Query
+### 1. Date Format
+- **Issue**: Upwork API rejected standard date formats (YYYY-MM-DD, ISO 8601)
+- **Solution**: Use compact format `YYYYMMDD` (e.g., "20260129")
 
-Replace the current `CONTRACT_WORK_DAYS_QUERY` with correct field names:
+### 2. GraphQL Schema Fields
+- **Issue**: Attempted fields like `totalHoursWorked`, `totalTrackedTime`, `cellTime` don't exist
+- **Discovery**: Used introspection queries to find correct schema:
+  - `WorkDay` → has `date` and `workDiary`
+  - `WorkDiary` → has `cells` (list)
+  - `Cell` → has `memo` (and other fields)
+- **Solution**: Count cells × 10 minutes = total tracked time
+
+### 3. Organization Context
+- **Issue**: API calls failed with 403 when using personal context
+- **Solution**: Store and use `organization_id` from OAuth callback, pass via `X-Upwork-API-TenantId` header
+
+---
+
+## Final Query Structure
 
 ```graphql
 query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
@@ -29,55 +37,37 @@ query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
     status
     workDays(timeRange: $timeRange) {
       date
-      totalHoursWorked    # Use aggregated hours field
-      totalCharges        # Optional: billing info
+      workDiary {
+        cells {
+          memo
+        }
+      }
     }
   }
 }
 ```
 
-Alternative approach - if `totalHoursWorked` doesn't exist, try:
-- `hoursWorked`
-- `trackedHours`
-- Or query the workDiary without cells and just count entries
-
-### Step 2: Update the Response Parsing
-
-Modify the code to read from the correct response structure:
-
-```typescript
-// Before - counting cells
-totalMinutes += day.workDiary.cells.length * 10;
-
-// After - using aggregated hours
-totalHours = workDaysResult.data?.contract?.workDays?.[0]?.totalHoursWorked ?? 0;
+With variables:
+```json
+{
+  "id": "40482492",
+  "timeRange": {
+    "rangeStart": "20260129",
+    "rangeEnd": "20260129"
+  }
+}
 ```
 
 ---
 
-## File Changes
+## Calculation Logic
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-upwork-time/index.ts` | Update `CONTRACT_WORK_DAYS_QUERY` to use correct field names; update parsing logic |
-
----
-
-## Technical Notes
-
-The Upwork GraphQL API has different permission levels:
-- **Contract-level fields** (id, title, status) - require basic scopes
-- **Work Diary cells** (10-minute snapshots) - require "Fetch workdiary snapshots" scope
-- **Aggregated daily hours** - typically more accessible with basic scopes
-
-We'll use aggregated fields which are more likely to work with the current scopes.
+- Each `cell` in the work diary = **10 minutes** of tracked time
+- Total hours = `cells.length / 6`
+- Example: 44 cells = 440 minutes = **7.33 hours**
 
 ---
 
-## Testing Plan
+## Test Results
 
-After the fix:
-1. Deploy the updated edge function
-2. Test with Malcom's actual contract ID (`40482492`)
-3. Verify hours are returned correctly
-
+✅ Contract ID `40482492` on 2026-01-29 returned **7.33 hours** (44 cells)
