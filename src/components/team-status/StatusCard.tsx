@@ -16,8 +16,18 @@ const STATUS_DISPLAY: Record<ProfileStatus, { label: string; className: string }
   LOGGED_OUT: { label: 'Offline', className: 'bg-muted text-muted-foreground' },
 };
 
+const POSITION_BADGE: Record<string, { className: string }> = {
+  'Phone Support': { className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+  'Chat Support': { className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  'Email Support': { className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  'Hybrid Support': { className: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400' },
+  'Team Lead': { className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  'Technical Support': { className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
+};
+
 export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
   const statusInfo = STATUS_DISPLAY[member.currentStatus] || STATUS_DISPLAY.LOGGED_OUT;
+  const positionStyle = member.position ? POSITION_BADGE[member.position] : null;
 
   return (
     <div className="relative overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -38,11 +48,16 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
           )}
         </div>
 
-        {/* Status Badge */}
-        <div className="mb-3">
+        {/* Status and Position Badges */}
+        <div className="flex flex-wrap gap-2 mb-3">
           <Badge className={cn('font-medium', statusInfo.className)}>
             {statusInfo.label}
           </Badge>
+          {member.position && positionStyle && (
+            <Badge className={cn('font-medium', positionStyle.className)}>
+              {member.position}
+            </Badge>
+          )}
         </div>
 
         {/* Shift Schedule */}
