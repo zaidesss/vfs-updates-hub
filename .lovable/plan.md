@@ -1,176 +1,141 @@
 
 
-# Fix Security Issue & Enhance Team Status Board Categorization
+# Auto-Generate "Late Login" Outage Request from Dashboard
 
-## Problem Summary
+## Overview
 
-### Security Issue
-The `agent_profiles` table contains highly sensitive PII (bank account numbers, home addresses, hourly rates, emergency contacts) and is currently readable by ALL authenticated users due to the policy:
-```sql
-"Authenticated users can view all agent_profiles for team status" 
-USING (true)
-```
+When an agent's attendance status is detected as "Late" in the Agent Dashboard, the system will automatically create an Outage Request (renamed from "Leave Request") with:
+- All fields auto-populated from the agent's Bios (agent_profiles)
+- Calculated start/end times based on the late login (with 5-minute allowance)
+- Status set to "For Review" (new status value)
+- A visual badge indicating it was auto-generated
 
-### Feature Gap
-The Team Status Board currently shows only two categories (Agents vs Leads/Tech). You want it categorized by support type:
-- **Phone Support**
-- **Chat Support**
-- **Email Support**
-- **Hybrid Support** (handles multiple types)
-- **Team Leads**
-- **Technical Support**
+## Changes Summary
 
----
-
-## Solution Overview
-
-### Part 1: Security Fix
-
-**Step 1: Create a restricted view** that only exposes fields needed for Team Status Board:
-
-| Field | Purpose |
-|-------|---------|
-| `id` | Profile ID for linking |
-| `email` | Lookup key |
-| `full_name` | Display name |
-| `position` | Categorization |
-
-**Step 2: Remove the overly permissive RLS policy** from `agent_profiles`:
-```sql
-DROP POLICY "Authenticated users can view all agent_profiles for team status" ON agent_profiles;
-```
-
-**Step 3: Create secure RLS policy** on the new view for all authenticated users.
-
-### Part 2: Team Status Board Enhancement
-
-Update the UI to categorize team members into 6 groups using the `position` field:
-- Email Support
-- Chat Support  
-- Phone Support
-- Hybrid Support
-- Team Leads
-- Technical Support
+| Area | Changes |
+|------|---------|
+| **Database** | Add `for_review` status, add `is_auto_generated` and `remarks` fields |
+| **Naming** | Rename "Leave Request" → "Outage Request" across the app |
+| **Table Column** | Add "Date Submitted" column after Ref # |
+| **Auto-Generation Logic** | Create outage request when late status is detected |
+| **Duplicate Detection** | Skip creation if same agent + date + overlapping timeframe exists |
+| **Edit Form** | Show "Remarks" field for auto-generated requests |
 
 ---
 
-## Implementation Details
+## Technical Implementation
 
-### Database Migration
+### Part 1: Database Migration
 
-Create a restricted view and update RLS:
+Add new column and status value to `leave_requests` table:
 
 ```sql
--- Create view with only non-sensitive fields for team status
-CREATE VIEW public.agent_profiles_team_status
-WITH (security_invoker = on) AS
-SELECT 
-  id,
-  email,
-  full_name,
-  position
-FROM public.agent_profiles;
+-- Add is_auto_generated flag to track system-created requests
+ALTER TABLE public.leave_requests 
+ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false;
 
--- Grant access to authenticated users
-GRANT SELECT ON public.agent_profiles_team_status TO authenticated;
-
--- Remove the overly permissive policy (THE KEY SECURITY FIX)
-DROP POLICY IF EXISTS "Authenticated users can view all agent_profiles for team status" ON public.agent_profiles;
+-- Note: 'for_review' will be added as a valid status (no constraint change needed since status is text)
+-- Note: 'remarks' column already exists in the table
 ```
 
-### File Changes
+### Part 2: Rename "Leave Request" to "Outage Request"
 
-**File 1: `src/lib/teamStatusApi.ts`**
+**Files to update labels:**
+- `src/pages/LeaveRequest.tsx` - Page title, card headers, button labels
+- `src/components/Layout.tsx` - Navigation menu item
+- `src/components/user-guide/sections/LeaveRequestSection.tsx` - Guide content
+- Any toast messages, error messages, and descriptions
 
-Update the data fetching to:
-1. Query the new `agent_profiles_team_status` view instead of `agent_profiles`
-2. Return data categorized into 6 groups based on `position` field:
-   - `emailSupport` (position = 'Email Support')
-   - `chatSupport` (position = 'Chat Support')
-   - `phoneSupport` (position = 'Phone Support')
-   - `hybridSupport` (position = 'Hybrid Support')
-   - `teamLeads` (position = 'Team Lead')
-   - `techSupport` (position = 'Technical Support')
-3. Handle unknown positions (Logistics, etc.) in an "Other" category
+### Part 3: Add "Date Submitted" Column
 
-**File 2: `src/pages/TeamStatusBoard.tsx`**
+In `src/pages/LeaveRequest.tsx`, add a new table column after "Ref #":
 
-Update the UI layout to:
-1. Display 6 categorized sections instead of 2
-2. Use a grid layout with support type sections on the left (Phone, Chat, Email, Hybrid)
-3. Keep Team Leads and Technical Support in a sidebar on the right
-4. Show online counts per category
-5. Hide empty sections gracefully
+| Ref # | **Submitted** | Agent | Client | ... |
+|-------|---------------|-------|--------|-----|
+| LR-0001 | Jan 28, 2026 | ... | ... | ... |
 
-**File 3: `src/components/team-status/StatusCard.tsx`**
+Display `created_at` formatted as "MMM d, yyyy".
 
-Minor update to:
-1. Display the support type badge with appropriate color coding
-2. Keep existing fields (name, status, shift schedule, break schedule)
+### Part 4: Auto-Generation Logic
 
----
+**Location:** `src/lib/agentDashboardApi.ts` (new function)
 
-## Before vs After Comparison
+**Trigger:** When `calculateAttendanceForWeek()` detects a "late" status for today
 
-### RLS Policy Changes
+**Flow:**
+1. Dashboard loads and calculates attendance
+2. If today's status = "late" AND login time exists
+3. Check for existing outage requests (same agent, same date, overlapping time)
+4. If none found → Auto-create outage request with:
+   - **agent_email**: from profile
+   - **agent_name**: from agent_profiles.full_name or agent_directory.agent_name
+   - **client_name**: from agent_profiles.clients (first client)
+   - **team_lead_name**: from agent_profiles.team_lead
+   - **role**: from agent_profiles.position
+   - **start_date/end_date**: today's date
+   - **start_time**: schedule start + 5 minutes (e.g., "09:05")
+   - **end_time**: actual login time - 1 minute (e.g., "09:59" if logged in at 10:00)
+   - **outage_reason**: "Late Login"
+   - **status**: "for_review"
+   - **is_auto_generated**: true
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| Regular users can see ALL agent_profiles columns | Yes (full PII exposure) | No |
-| Regular users can see their OWN profile | Yes | Yes (unchanged) |
-| Regular users can see team status info | Yes (via full table) | Yes (via restricted view with 4 fields only) |
-| Admins/HR/Super Admin see all profiles | Yes | Yes (unchanged) |
-| Bank account numbers visible to regular users | Yes | No |
-| Home addresses visible to regular users | Yes | No |
-| Hourly rates visible to regular users | Yes | No |
-| Emergency contacts visible to regular users | Yes | No |
+### Part 5: Time Calculation Logic
 
-### Data Access Summary
+**Example:**
+- Scheduled shift: 9:00 AM - 5:00 PM
+- Actual login: 10:00 AM
 
-**Before (Current):**
+**Auto-generated outage:**
+- Start: 9:05 AM (5 min allowance after schedule start)
+- End: 9:59 AM (1 min before login)
+- Duration: 54 minutes (0.9 hours)
+
+**Edge cases handled:**
+- If login is exactly at schedule start + 10 min (threshold): No outage created
+- If login is 9:12 AM: Start = 9:05 AM, End = 9:11 AM
+
+### Part 6: Duplicate Detection
+
+Before creating an auto-generated request, check:
+```sql
+SELECT id FROM leave_requests 
+WHERE agent_email = {email}
+  AND start_date = {today}
+  AND outage_reason = 'Late Login'
+  AND status NOT IN ('declined', 'canceled')
+  LIMIT 1
 ```
-All authenticated users can SELECT * FROM agent_profiles
-→ Exposes: bank_account_number, home_address, hourly_rate, phone_number, 
-   emergency_contact_name, emergency_contact_phone, rate_history, etc.
+
+If found → Skip creation, no duplicate.
+
+### Part 7: Edit Form - Remarks Field
+
+In `src/pages/LeaveRequest.tsx`, when editing an auto-generated request:
+
+1. Check if `editingRequest?.is_auto_generated === true`
+2. If true, show a "Remarks" textarea below the attachment field
+3. Remarks is a free-text field, editable by both users and admins
+4. Save remarks via the existing update API
+
+### Part 8: Visual Badge for Auto-Generated
+
+In the table row, add a badge near the Ref # or Status column:
+
+```jsx
+{req.is_auto_generated && (
+  <Badge variant="secondary" className="text-xs">
+    Auto
+  </Badge>
+)}
 ```
 
-**After (Fixed):**
-```
-All authenticated users can SELECT * FROM agent_profiles_team_status
-→ Exposes ONLY: id, email, full_name, position
+### Part 9: Status Colors & Icons
 
-All authenticated users can SELECT * FROM agent_profiles
-→ DENIED (unless they have admin/HR/super_admin role or it's their own row)
-```
+Add new status styling:
 
----
-
-## UI Layout
-
-```text
-+--------------------------------------------------+
-| Team Status Board          [By Login] [By Name]  |
-| 24 team members online                  [Refresh]|
-+--------------------------------------------------+
-|                           |                      |
-| PHONE SUPPORT (4)         | TEAM LEADS (2)       |
-| [Card] [Card]             | [Card]               |
-| [Card] [Card]             | [Card]               |
-|                           |                      |
-| CHAT SUPPORT (6)          | TECH SUPPORT (1)     |
-| [Card] [Card] [Card]      | [Card]               |
-| [Card] [Card] [Card]      |                      |
-|                           |                      |
-| EMAIL SUPPORT (8)         |                      |
-| [Card] [Card] [Card]      |                      |
-| [Card] [Card] [Card]      |                      |
-| [Card] [Card]             |                      |
-|                           |                      |
-| HYBRID SUPPORT (3)        |                      |
-| [Card] [Card] [Card]      |                      |
-|                           |                      |
-+--------------------------------------------------+
-```
+| Status | Color | Icon |
+|--------|-------|------|
+| for_review | Blue (info) | Eye icon |
 
 ---
 
@@ -178,34 +143,78 @@ All authenticated users can SELECT * FROM agent_profiles
 
 | File | Changes |
 |------|---------|
-| Database Migration | Create `agent_profiles_team_status` view, drop permissive RLS policy |
-| `src/lib/teamStatusApi.ts` | Query new view, return categorized data |
-| `src/pages/TeamStatusBoard.tsx` | Display 6 category sections with counts |
-| `src/components/team-status/StatusCard.tsx` | Add support type badge |
-| `src/integrations/supabase/types.ts` | Auto-updated with new view type |
+| **Database Migration** | Add `is_auto_generated` column |
+| `src/lib/leaveRequestApi.ts` | Add `for_review` to status type, add `is_auto_generated` to interface, add duplicate check function, add auto-create function |
+| `src/pages/LeaveRequest.tsx` | Rename labels, add Submitted column, add Remarks field for auto-generated, add Auto badge, add for_review status styling |
+| `src/pages/AgentDashboard.tsx` | Trigger auto-generation logic after detecting late status |
+| `src/lib/agentDashboardApi.ts` | Add helper function to create auto-generated outage request |
+| `src/components/Layout.tsx` | Rename nav item to "Outage Request" |
+| Various guide files | Update terminology |
 
 ---
 
-## Security Impact
+## Potential Conflicts & Issues
 
-**Sensitive fields now protected from regular users:**
-- `bank_account_number`
-- `bank_account_holder`
-- `bank_name`
-- `hourly_rate`
-- `rate_history`
-- `home_address`
-- `phone_number`
-- `emergency_contact_name`
-- `emergency_contact_phone`
-- `birthday`
-- `payment_frequency`
-- `employment_status`
-- All work configuration fields
+| Issue | Mitigation |
+|-------|------------|
+| **Duplicate requests on page refresh** | Duplicate detection check before creation |
+| **Race condition on multiple logins** | Check uses "Late Login" reason + date as unique key |
+| **Agent has multiple clients** | Use first client from profile.clients array |
+| **Missing Bios data** | Fall back to directory data, skip creation if critical fields missing |
+| **Time zone differences** | All times standardized to EST as per existing logic |
+| **Editing auto-generated request** | Allow full edit like manual requests, just show extra Remarks field |
+| **for_review vs pending confusion** | Clear status label: "For Review" (blue) vs "Pending" (yellow) |
+| **Historical late logins** | Only auto-generate for today's attendance, not past days |
 
-**Still accessible to regular users (via view):**
-- `id` - needed for profile linking
-- `email` - needed for directory lookup
-- `full_name` - display name
-- `position` - categorization
+---
+
+## User Flow
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                     AGENT LOGS IN LATE                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│          Dashboard detects "Late" status (10+ min)          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│    Check: Does Late Login outage exist for today?           │
+└─────────────────────────────────────────────────────────────┘
+                    │                    │
+                Yes │                    │ No
+                    ▼                    ▼
+           ┌──────────────┐   ┌────────────────────────────────┐
+           │  Skip (no    │   │  Auto-create Outage Request    │
+           │  duplicate)  │   │  Status = "For Review"         │
+           └──────────────┘   │  is_auto_generated = true      │
+                              └────────────────────────────────┘
+                                             │
+                                             ▼
+                              ┌────────────────────────────────┐
+                              │  Visible in Admin & Agent's    │
+                              │  Outage Request page with      │
+                              │  "Auto" badge                  │
+                              └────────────────────────────────┘
+                                             │
+                                             ▼
+                              ┌────────────────────────────────┐
+                              │  Admin reviews & approves      │
+                              │  Agent can edit & add Remarks  │
+                              └────────────────────────────────┘
+```
+
+---
+
+## Implementation Order
+
+1. **Database migration** - Add `is_auto_generated` column
+2. **Update leaveRequestApi.ts** - Add types, duplicate check, auto-create function
+3. **Update LeaveRequest.tsx** - Rename labels, add columns, add Remarks, add badges
+4. **Update AgentDashboard.tsx** - Trigger auto-generation on late detection
+5. **Update Layout.tsx** - Rename navigation
+6. **Update guide files** - Update terminology
 
