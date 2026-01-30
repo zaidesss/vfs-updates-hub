@@ -168,30 +168,62 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
   }
 }
 
-// GraphQL query to fetch work diary time cells for a contract on a specific date
-// workDiaryTimeCells requires a 'date' argument (String!)
-// Each cell represents 10 minutes of tracked time
-const CONTRACT_TIME_CELLS_QUERY = `
-  query GetContractTimeCells($id: ID!, $date: String!) {
-    contract(id: $id) {
-      id
-      title
-      status
-      workDiaryTimeCells(date: $date) {
-        cellDateTime {
-          rawValue
+// GraphQL introspection query to discover Contract workDays field arguments
+const INTROSPECT_CONTRACT_WORKDAYS_ARGS = `
+  query IntrospectContractWorkDaysArgs {
+    __type(name: "Contract") {
+      fields {
+        name
+        args {
+          name
+          type {
+            name
+            kind
+            ofType {
+              name
+              kind
+              inputFields {
+                name
+                type {
+                  name
+                  kind
+                }
+              }
+            }
+          }
         }
       }
     }
   }
 `;
 
-// Introspection query for DateTime type
-const DATETIME_INTROSPECTION_QUERY = `
-  query IntrospectDateTime {
-    __type(name: "DateTime") {
+// GraphQL introspection query for WorkDiary type (nested in WorkDay)
+const INTROSPECT_WORK_DIARY_TYPE = `
+  query IntrospectWorkDiaryType {
+    __type(name: "WorkDiary") {
       name
       fields {
+        name
+        type {
+          name
+          kind
+          ofType {
+            name
+            kind
+          }
+        }
+      }
+    }
+  }
+`;
+
+// GraphQL introspection query for time-related input types
+const INTROSPECT_TIME_RANGE = `
+  query IntrospectTimeRange {
+    __type(name: "DateRange") {
+      name
+      kind
+      inputFields {
         name
         type {
           name
@@ -202,9 +234,49 @@ const DATETIME_INTROSPECTION_QUERY = `
   }
 `;
 
-interface WorkDiaryTimeCell {
-  cellDateTime: {
-    rawValue?: string;
+// GraphQL query using workDays with date range
+// Based on introspection: WorkDay has date and workDiary fields
+// GraphQL query using workDays with DateTimeRange
+// Based on introspection: timeRange requires DateTimeRange with rangeStart and rangeEnd
+// WorkDay has date and workDiary.cells
+const CONTRACT_WORK_DAYS_QUERY = `
+  query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
+    contract(id: $id) {
+      id
+      title
+      status
+      workDays(timeRange: $timeRange) {
+        date
+        workDiary {
+          cells {
+            cellTime
+          }
+        }
+      }
+    }
+  }
+`;
+
+// Simple contract query without restricted fields
+const SIMPLE_CONTRACT_QUERY = `
+  query GetContract($id: ID!) {
+    contract(id: $id) {
+      id
+      title
+      status
+      weeklyHoursLimit
+    }
+  }
+`;
+
+interface WorkDiaryCell {
+  cellTime?: string;
+}
+
+interface WorkDay {
+  date?: string;
+  workDiary?: {
+    cells?: WorkDiaryCell[];
   };
 }
 
@@ -212,13 +284,14 @@ interface ContractResponse {
   id: string;
   title: string;
   status: string;
-  workDiaryTimeCells: WorkDiaryTimeCell[];
+  weeklyHoursLimit?: number;
+  workDays?: WorkDay[];
 }
 
 // Execute a GraphQL query against Upwork API
 async function executeGraphQLQuery(
   query: string,
-  variables: Record<string, string>,
+  variables: Record<string, unknown>,
   accessToken: string
 ): Promise<{ data: { contract?: ContractResponse; __type?: unknown } | null; errors?: Array<{ message: string }> }> {
   const response = await fetch(UPWORK_GRAPHQL_URL, {
@@ -243,34 +316,28 @@ async function executeGraphQLQuery(
   return JSON.parse(responseText);
 }
 
-// Fetch work diary using GraphQL API
-async function fetchWorkDiaryGraphQL(
+// Fetch work days using GraphQL API
+async function fetchWorkDaysGraphQL(
   contractId: string,
   date: string,
   accessToken: string
 ): Promise<{ hours: number | null; needsRefresh: boolean; error?: string }> {
-  console.log(`Fetching work diary via GraphQL for contract: ${contractId}, date: ${date}`);
+  console.log(`Fetching work days via GraphQL for contract: ${contractId}, date: ${date}`);
 
   try {
-    // First, introspect DateTime to understand its fields
-    console.log('Introspecting DateTime type...');
-    const introspectionResult = await executeGraphQLQuery(
-      DATETIME_INTROSPECTION_QUERY,
-      {},
-      accessToken
-    );
-    console.log('DateTime introspection:', JSON.stringify(introspectionResult, null, 2));
-    
-    // Now query with the date parameter
-    const result = await executeGraphQLQuery(
-      CONTRACT_TIME_CELLS_QUERY,
-      { id: contractId, date: date },
+    // Step 1: First verify the contract exists with basic fields
+    console.log('Verifying contract exists...');
+    const contractResult = await executeGraphQLQuery(
+      SIMPLE_CONTRACT_QUERY,
+      { id: contractId },
       accessToken
     );
     
-    if (result.errors && result.errors.length > 0) {
-      const errorMessage = result.errors.map(e => e.message).join(', ');
-      console.error('GraphQL errors:', errorMessage);
+    console.log('Contract verification result:', JSON.stringify(contractResult, null, 2));
+    
+    if (contractResult.errors && contractResult.errors.length > 0) {
+      const errorMessage = contractResult.errors.map(e => e.message).join(', ');
+      console.error('Contract verification errors:', errorMessage);
       
       if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('token')) {
         return { hours: null, needsRefresh: true };
@@ -278,24 +345,60 @@ async function fetchWorkDiaryGraphQL(
       
       return { hours: null, needsRefresh: false, error: errorMessage };
     }
-
-    const contract = result.data?.contract;
     
+    const contract = contractResult.data?.contract;
     if (!contract) {
-      console.log('No contract data found');
-      return { hours: 0, needsRefresh: false };
+      return { hours: 0, needsRefresh: false, error: 'Contract not found' };
     }
+    
+    console.log(`Contract verified: ${contract.title}, Status: ${contract.status}`);
 
-    console.log(`Contract: ${contract.title}, Status: ${contract.status}`);
+    // Step 2: Try to fetch workDays with the correct timeRange format
+    // DateTimeRange uses rangeStart and rangeEnd
+    const timeRange = {
+      rangeStart: date,
+      rangeEnd: date
+    };
     
-    const timeCells = contract.workDiaryTimeCells || [];
-    console.log(`Time cells for ${date}: ${timeCells.length}`);
+    console.log(`Fetching workDays with timeRange: ${JSON.stringify(timeRange)}`);
     
-    // Calculate hours: each cell = 10 minutes
-    const totalMinutes = timeCells.length * 10;
+    const workDaysResult = await executeGraphQLQuery(
+      CONTRACT_WORK_DAYS_QUERY,
+      { id: contractId, timeRange: timeRange },
+      accessToken
+    );
+    
+    console.log('workDays query result:', JSON.stringify(workDaysResult, null, 2));
+    
+    if (workDaysResult.errors && workDaysResult.errors.length > 0) {
+      const errorMessage = workDaysResult.errors.map(e => e.message).join(', ');
+      console.error('workDays query errors:', errorMessage);
+      
+      // Check if it's a scope/permission error
+      if (errorMessage.toLowerCase().includes('scope') || errorMessage.toLowerCase().includes('permission')) {
+        return { 
+          hours: null, 
+          needsRefresh: false, 
+          error: `Upwork API scope restriction: ${errorMessage}. The Work Diary data requires additional API scopes that are not available.`
+        };
+      }
+      
+      return { hours: null, needsRefresh: false, error: errorMessage };
+    }
+    
+    // Calculate hours from workDays cells
+    const workDays = workDaysResult.data?.contract?.workDays || [];
+    let totalMinutes = 0;
+    
+    for (const day of workDays) {
+      if (day.date === date && day.workDiary?.cells) {
+        // Each cell represents 10 minutes of tracked time
+        totalMinutes += day.workDiary.cells.length * 10;
+      }
+    }
+    
     const hours = totalMinutes / 60;
-    
-    console.log(`Total hours for ${date}: ${hours.toFixed(2)}`);
+    console.log(`Total hours for ${date}: ${hours.toFixed(2)} (from ${totalMinutes} minutes)`);
     
     return { hours, needsRefresh: false };
     
@@ -362,14 +465,14 @@ serve(async (req) => {
       }
     }
 
-    let result = await fetchWorkDiaryGraphQL(contractId, date, tokens.access_token);
+    let result = await fetchWorkDaysGraphQL(contractId, date, tokens.access_token);
 
     if (result.needsRefresh) {
       console.log('API returned token expired, attempting refresh...');
       const refreshedTokens = await refreshTokensWithLock();
       
       if (refreshedTokens) {
-        result = await fetchWorkDiaryGraphQL(contractId, date, refreshedTokens.access_token);
+        result = await fetchWorkDaysGraphQL(contractId, date, refreshedTokens.access_token);
         
         if (result.needsRefresh) {
           return new Response(

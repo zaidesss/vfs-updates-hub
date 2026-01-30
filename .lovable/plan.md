@@ -1,119 +1,92 @@
+# Upwork Integration: Status Update
 
+## Current Status: Blocked by API Access Restrictions
 
-# Fix Upwork Integration: Alternative Approach
+### Issue Summary
 
-## Problem Summary
+After extensive testing and schema discovery, the Upwork API integration is blocked by **two separate issues**:
 
-The OAuth tokens have been refreshed, but the `Contract.workDiaryTimeCells` field is blocked by scope restrictions. Despite enabling "Fetch workdiary snapshots information" and "Grants read-only access to time-sheet data" scopes, the GraphQL API returns:
+1. **Scope Restrictions**: Fields like `workDiaryTimeCells` and `workDiary.cells` are blocked by OAuth scope restrictions, despite having "Fetch workdiary snapshots" and "Read time-sheet data" scopes enabled.
 
-```
-The client or authentication token doesn't have enough oauth2 permissions/scopes to access: [Contract.workDiaryTimeCells, DateTime.rawValue]
-```
+2. **Contract Authorization**: Even basic contract queries return `'getTermsListAuth', 'Authorization failed'` - meaning the OAuth account that authorized the tokens cannot access Malcom's contract (ID: 40482492).
 
-## Analysis
+### Root Cause Analysis
 
-Based on Upwork's GraphQL documentation, the `contract` query has two work-related fields:
-- `workDiaryTimeCells` - Granular 10-minute time tracking segments (currently blocked)
-- `workDays` - Aggregated daily hours (may have different/lower permission requirements)
+The Upwork API has two layers of access control:
 
-## Proposed Solution
+1. **OAuth Scopes** - What types of data the app is allowed to access
+2. **Contract Ownership** - You can only view contracts where you are either:
+   - The freelancer on the contract
+   - The client/company that hired the freelancer
+   - An agency manager with visibility
 
-Modify the edge function to use `workDays` instead of `workDiaryTimeCells`. This field returns pre-calculated daily hours which is exactly what we need, and may have fewer permission restrictions.
+The current OAuth tokens were authorized by someone who is **not a party to Malcom's contract**, so the API correctly denies access.
 
 ---
 
-## Implementation Steps
+## Solutions
 
-### Step 1: Update the GraphQL Query
+### Option A: Individual OAuth Authorization (Recommended)
 
-Replace the current query targeting `workDiaryTimeCells` with one using `workDays`:
+Each agent authorizes their own Upwork account, granting the app access to their own contracts/time data.
 
-**Current Query (blocked):**
-```graphql
-query GetContractTimeCells($id: ID!, $date: String!) {
-  contract(id: $id) {
-    id
-    title
-    status
-    workDiaryTimeCells(date: $date) {
-      cellDateTime { rawValue }
-    }
+**Pros:**
+- Each person has full access to their own data
+- Most secure approach
+- Standard OAuth pattern
+
+**Cons:**
+- Requires each agent to complete OAuth flow
+- Need to store tokens per agent
+
+### Option B: Agency/Client Account Authorization
+
+If there's a central agency or client account that manages all contracts, authorize that account.
+
+**Pros:**
+- Single authorization for all contracts
+- Centralized management
+
+**Cons:**
+- Only works if such an account exists and has visibility to all contracts
+
+### Option C: Upwork Reports API
+
+Use Upwork's reporting endpoints (if available in your API tier) which may have different access patterns.
+
+---
+
+## Next Steps
+
+1. **Identify whose Upwork account authorized the current tokens** - This person's contracts would work
+2. **Determine if there's a central agency/client account** with visibility to all freelancer contracts
+3. **Consider per-agent OAuth** if agents need to view their own Upwork time
+
+---
+
+## Technical Notes
+
+### Working API Calls
+- GraphQL introspection queries work
+- Schema discovery was successful
+
+### Blocked API Calls
+- `contract(id: "40482492")` → Authorization failed
+- `Contract.workDiaryTimeCells` → Scope restriction
+- `Contract.workDays.workDiary.cells` → Scope restriction
+- `Money.rawValue` → Scope restriction
+
+### Discovered Schema
+```
+workDays(timeRange: DateTimeRange!) {
+  date: String!
+  workDiary: WorkDiary {
+    cells: [WorkDiaryTimeCell!]
   }
 }
-```
 
-**New Query (using workDays):**
-```graphql
-query GetContractWorkDays($id: ID!, $date: String!) {
-  contract(id: $id) {
-    id
-    title
-    status
-    workDays(date: $date) {
-      date
-      hours
-    }
-  }
+DateTimeRange {
+  rangeStart: String
+  rangeEnd: String
 }
 ```
-
----
-
-### Step 2: Update Response Parsing
-
-- Remove the cell-counting logic (10 min per cell calculation)
-- Directly extract the `hours` field from `workDays` response
-- Handle the case where no work day data exists for the date
-
----
-
-### Step 3: Add Fallback Error Handling
-
-If `workDays` is also blocked, provide a clear message indicating which specific scope is needed based on the error response.
-
----
-
-## Technical Details
-
-### File to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-upwork-time/index.ts` | Update GraphQL query and response parsing |
-
-### Changes Overview
-
-1. Replace `CONTRACT_TIME_CELLS_QUERY` with `CONTRACT_WORK_DAYS_QUERY`
-2. Update the `WorkDiaryTimeCell` interface to `WorkDay` interface
-3. Simplify hours extraction (directly read `hours` field)
-4. Remove the DateTime introspection query (no longer needed)
-5. Update console logging for new response format
-
----
-
-## Testing Plan
-
-After implementation:
-1. Deploy the updated edge function
-2. Test with Malcom's contract ID (40482492) and date (2026-01-29)
-3. Verify hours are returned correctly (expecting ~7 hours)
-
----
-
-## Alternative: If workDays is Also Blocked
-
-If the `workDays` field is also blocked by permissions, we have two options:
-
-**Option A**: Contact Upwork API Support to request the specific GraphQL scope needed for work diary access
-
-**Option B**: Use Upwork's GQL Explorer tool (https://www.upwork.com/developer/explorer/) to test queries directly and identify which scopes enable which fields
-
----
-
-## Expected Outcome
-
-After this change:
-- Malcom's 7 hours of Upwork time should display correctly on his dashboard
-- The integration will use a simpler, more direct data path
-- All agents with Upwork contracts will have accurate time tracking
-
