@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { fetchDashboardData, formatGapTime, AgentDashboardData } from '@/lib/ticketLogsApi';
+import { fetchDashboardData, formatGapTime, AgentDashboardData, parseLocalDate } from '@/lib/ticketLogsApi';
 import { supabase } from '@/integrations/supabase/client';
 import { Mail, MessageCircle, Phone } from 'lucide-react';
 
@@ -119,7 +119,7 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
                       colSpan={3}
                       className="border border-border px-2 py-2 text-center font-medium bg-muted/50"
                     >
-                      {format(new Date(date), 'M/d')}
+                      {format(parseLocalDate(date), 'M/d')}
                     </th>
                   ))}
                 </tr>

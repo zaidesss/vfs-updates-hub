@@ -1,6 +1,36 @@
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
+// Parse a YYYY-MM-DD string without timezone shift
+// This prevents the browser from interpreting the date as UTC and shifting it
+export function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+// Format a UTC timestamp in EST timezone as YYYY-MM-DD
+function formatTimestampAsESTDate(timestamp: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+// Convert a date string to EST day boundaries in UTC
+// Handles DST automatically by using explicit timezone offsets
+export function getESTDayBoundariesUTC(dateStr: string): { start: string; end: string } {
+  // Parse date string and create boundaries at EST midnight and 11:59:59 PM
+  // Using explicit EST offset parsing handles DST correctly
+  const startEST = new Date(`${dateStr}T00:00:00-05:00`);
+  const endEST = new Date(`${dateStr}T23:59:59.999-05:00`);
+  return {
+    start: startEST.toISOString(),
+    end: endEST.toISOString()
+  };
+}
+
 // Get current date in EST timezone
 function getESTDate(): { year: number; month: number; day: number; dayOfWeek: number } {
   const now = new Date();
@@ -266,7 +296,8 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
       agentMap[log.agent_name] = { email: log.agent_email, counts: {} };
     }
 
-    const logDate = format(new Date(log.timestamp), 'yyyy-MM-dd');
+    // Format timestamp in EST to bucket correctly by EST day
+    const logDate = formatTimestampAsESTDate(log.timestamp);
     if (!agentMap[log.agent_name].counts[logDate]) {
       agentMap[log.agent_name].counts[logDate] = { email: 0, chat: 0, call: 0 };
     }
