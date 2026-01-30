@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const UPWORK_GRAPHQL_URL = 'https://api.upwork.com/graphql';
+
 interface UpworkTimeResponse {
   hours: number | null;
   error?: string;
@@ -60,7 +62,6 @@ async function acquireRefreshLock(): Promise<boolean> {
   const supabase = getSupabaseClient();
   const lockUntil = new Date(Date.now() + 30000).toISOString(); // 30 second lock
   
-  // Try to acquire lock only if no active lock exists
   const { data, error } = await supabase
     .from('upwork_tokens')
     .update({ refresh_lock_until: lockUntil })
@@ -97,24 +98,20 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
     return null;
   }
   
-  // Try to acquire lock
   const lockAcquired = await acquireRefreshLock();
   if (!lockAcquired) {
-    // Wait a bit and get fresh tokens (another process is refreshing)
     await new Promise(resolve => setTimeout(resolve, 2000));
     return await getTokensFromDatabase();
   }
   
   try {
-    // Get current tokens
     const currentTokens = await getTokensFromDatabase();
     if (!currentTokens) {
       throw new Error('No tokens found in database');
     }
     
-    console.log(`Refreshing tokens... Current refresh token: ${currentTokens.refresh_token.substring(0, 10)}... (${currentTokens.refresh_token.length} chars)`);
+    console.log(`Refreshing tokens...`);
     
-    // Make refresh request
     const response = await fetch('https://www.upwork.com/api/v3/oauth2/token', {
       method: 'POST',
       headers: {
@@ -136,21 +133,19 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
     }
     
     const tokens = JSON.parse(responseText);
-    console.log(`Token refresh successful! New access token: ${tokens.access_token.substring(0, 10)}... expires_in: ${tokens.expires_in}`);
+    console.log(`Token refresh successful!`);
     
-    // Calculate new expires_at
     const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000)).toISOString();
     
-    // CRITICAL: Store BOTH new access token AND new refresh token
     const supabase = getSupabaseClient();
     const { error: updateError } = await supabase
       .from('upwork_tokens')
       .update({
         access_token: tokens.access_token.trim(),
-        refresh_token: (tokens.refresh_token || currentTokens.refresh_token).trim(), // Use new refresh token if provided
+        refresh_token: (tokens.refresh_token || currentTokens.refresh_token).trim(),
         expires_at: expiresAt,
         updated_at: new Date().toISOString(),
-        refresh_lock_until: null, // Release lock
+        refresh_lock_until: null,
       })
       .eq('id', 'default');
     
@@ -158,8 +153,6 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
       console.error('Failed to update tokens in database:', updateError);
       return null;
     }
-    
-    console.log('Tokens updated in database successfully');
     
     return {
       access_token: tokens.access_token.trim(),
@@ -171,84 +164,153 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
     console.error('Error during token refresh:', error);
     return null;
   } finally {
-    // Ensure lock is released even on error
     await releaseRefreshLock();
   }
 }
 
-// Fetch work diary using REST API
-async function fetchWorkDiary(
+// GraphQL query to fetch work diary time cells for a contract on a specific date
+// workDiaryTimeCells requires a 'date' argument (String!)
+// Each cell represents 10 minutes of tracked time
+const CONTRACT_TIME_CELLS_QUERY = `
+  query GetContractTimeCells($id: ID!, $date: String!) {
+    contract(id: $id) {
+      id
+      title
+      status
+      workDiaryTimeCells(date: $date) {
+        cellDateTime {
+          rawValue
+        }
+      }
+    }
+  }
+`;
+
+// Introspection query for DateTime type
+const DATETIME_INTROSPECTION_QUERY = `
+  query IntrospectDateTime {
+    __type(name: "DateTime") {
+      name
+      fields {
+        name
+        type {
+          name
+          kind
+        }
+      }
+    }
+  }
+`;
+
+interface WorkDiaryTimeCell {
+  cellDateTime: {
+    rawValue?: string;
+  };
+}
+
+interface ContractResponse {
+  id: string;
+  title: string;
+  status: string;
+  workDiaryTimeCells: WorkDiaryTimeCell[];
+}
+
+// Execute a GraphQL query against Upwork API
+async function executeGraphQLQuery(
+  query: string,
+  variables: Record<string, string>,
+  accessToken: string
+): Promise<{ data: { contract?: ContractResponse; __type?: unknown } | null; errors?: Array<{ message: string }> }> {
+  const response = await fetch(UPWORK_GRAPHQL_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken.trim()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      variables,
+    }),
+  });
+
+  const responseText = await response.text();
+  console.log(`GraphQL response: ${response.status} - ${responseText.substring(0, 2000)}`);
+
+  if (!response.ok && response.status === 401) {
+    throw new Error('TOKEN_EXPIRED');
+  }
+
+  return JSON.parse(responseText);
+}
+
+// Fetch work diary using GraphQL API
+async function fetchWorkDiaryGraphQL(
   contractId: string,
   date: string,
   accessToken: string
 ): Promise<{ hours: number | null; needsRefresh: boolean; error?: string }> {
-  // Format date as YYYYMMDD for REST API
-  const formattedDate = date.replace(/-/g, '');
-  const url = `https://www.upwork.com/api/v3/workdiary/contracts/${contractId}/${formattedDate}`;
-  
-  console.log(`Fetching work diary: ${url}`);
-  console.log(`Using access token: ${accessToken.substring(0, 10)}... (${accessToken.length} chars)`);
+  console.log(`Fetching work diary via GraphQL for contract: ${contractId}, date: ${date}`);
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken.trim()}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const responseText = await response.text();
-    console.log(`Work diary response: ${response.status} - ${responseText.substring(0, 200)}`);
-
-    if (response.status === 401) {
-      // Check if it's explicitly an expired token error
-      const lowerText = responseText.toLowerCase();
-      if (lowerText.includes('expired') || lowerText.includes('invalid_token') || lowerText.includes('token')) {
+    // First, introspect DateTime to understand its fields
+    console.log('Introspecting DateTime type...');
+    const introspectionResult = await executeGraphQLQuery(
+      DATETIME_INTROSPECTION_QUERY,
+      {},
+      accessToken
+    );
+    console.log('DateTime introspection:', JSON.stringify(introspectionResult, null, 2));
+    
+    // Now query with the date parameter
+    const result = await executeGraphQLQuery(
+      CONTRACT_TIME_CELLS_QUERY,
+      { id: contractId, date: date },
+      accessToken
+    );
+    
+    if (result.errors && result.errors.length > 0) {
+      const errorMessage = result.errors.map(e => e.message).join(', ');
+      console.error('GraphQL errors:', errorMessage);
+      
+      if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('token')) {
         return { hours: null, needsRefresh: true };
       }
       
-      // Other 401 errors - could be scope/permission issues
-      return { 
-        hours: null, 
-        needsRefresh: false, 
-        error: `Authentication failed (401): ${responseText.substring(0, 100)}` 
-      };
+      return { hours: null, needsRefresh: false, error: errorMessage };
     }
 
-    if (response.status === 404) {
-      // No work diary data for this date - return 0 hours
+    const contract = result.data?.contract;
+    
+    if (!contract) {
+      console.log('No contract data found');
       return { hours: 0, needsRefresh: false };
     }
 
-    if (!response.ok) {
-      return { hours: null, needsRefresh: false, error: `API error: ${response.status} - ${responseText.substring(0, 100)}` };
-    }
-
-    const data = JSON.parse(responseText);
+    console.log(`Contract: ${contract.title}, Status: ${contract.status}`);
     
-    // Calculate hours from snapshots (each snapshot = 10 minutes)
-    let totalMinutes = 0;
+    const timeCells = contract.workDiaryTimeCells || [];
+    console.log(`Time cells for ${date}: ${timeCells.length}`);
     
-    if (data.data?.cells) {
-      totalMinutes = data.data.cells.length * 10;
-    } else if (data.snapshots) {
-      totalMinutes = data.snapshots.length * 10;
-    }
-
+    // Calculate hours: each cell = 10 minutes
+    const totalMinutes = timeCells.length * 10;
     const hours = totalMinutes / 60;
-    console.log(`Work diary total hours: ${hours}`);
+    
+    console.log(`Total hours for ${date}: ${hours.toFixed(2)}`);
     
     return { hours, needsRefresh: false };
     
   } catch (error: unknown) {
+    if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
+      return { hours: null, needsRefresh: true };
+    }
+    
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Work diary request error:', errorMessage);
+    console.error('GraphQL request error:', errorMessage);
     return { hours: null, needsRefresh: false, error: errorMessage };
   }
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -270,7 +332,6 @@ serve(async (req) => {
       );
     }
 
-    // Get tokens from database
     let tokens = await getTokensFromDatabase();
     
     if (!tokens) {
@@ -283,9 +344,8 @@ serve(async (req) => {
       );
     }
     
-    console.log(`Tokens loaded - expires_at: ${tokens.expires_at}, access_token: ${tokens.access_token.substring(0, 10)}...`);
+    console.log(`Tokens loaded - expires_at: ${tokens.expires_at}`);
 
-    // Check if token needs refresh before making API call
     if (shouldRefreshToken(tokens.expires_at)) {
       console.log('Token expired or near expiry, refreshing...');
       const refreshedTokens = await refreshTokensWithLock();
@@ -302,16 +362,14 @@ serve(async (req) => {
       }
     }
 
-    // Fetch work diary
-    let result = await fetchWorkDiary(contractId, date, tokens.access_token);
+    let result = await fetchWorkDiaryGraphQL(contractId, date, tokens.access_token);
 
-    // If token explicitly expired during request, try refresh once
     if (result.needsRefresh) {
       console.log('API returned token expired, attempting refresh...');
       const refreshedTokens = await refreshTokensWithLock();
       
       if (refreshedTokens) {
-        result = await fetchWorkDiary(contractId, date, refreshedTokens.access_token);
+        result = await fetchWorkDiaryGraphQL(contractId, date, refreshedTokens.access_token);
         
         if (result.needsRefresh) {
           return new Response(
@@ -333,7 +391,6 @@ serve(async (req) => {
       message: result.error ? 'Unable to fetch Upwork data' : undefined,
     };
 
-    // Return 200 even with errors so UI can handle gracefully
     return new Response(
       JSON.stringify(response),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
