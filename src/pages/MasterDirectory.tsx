@@ -15,12 +15,13 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Save, Search, ExternalLink } from 'lucide-react';
+import { Save, Search, ExternalLink, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DirectoryEntry,
   fetchAllDirectoryEntries,
   bulkSaveEntries,
+  syncAllProfilesToDirectory,
 } from '@/lib/masterDirectoryApi';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -28,6 +29,7 @@ export default function MasterDirectory() {
   const { user, isAdmin } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
@@ -134,6 +136,27 @@ export default function MasterDirectory() {
     }
   };
 
+  // Handle sync all from Bios
+  const handleSyncAll = async () => {
+    setIsSyncing(true);
+    const { success, synced, error } = await syncAllProfilesToDirectory();
+    setIsSyncing(false);
+
+    if (success) {
+      toast({
+        title: 'Sync Complete',
+        description: `Successfully synced ${synced} profile(s) to Master Directory.`,
+      });
+      await loadData(); // Refresh the data
+    } else {
+      toast({
+        title: 'Sync Failed',
+        description: error || 'Failed to sync profiles.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Access control
   if (!isAdmin) {
     return (
@@ -166,19 +189,29 @@ export default function MasterDirectory() {
               Centralized agent configuration reference (read-only synced from Bios)
             </p>
           </div>
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving}
-            className={cn(
-              'transition-all',
-              hasChanges
-                ? 'bg-primary hover:bg-primary/90'
-                : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
-            )}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save All'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSyncAll}
+              disabled={isSyncing || isSaving}
+              variant="outline"
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+              {isSyncing ? 'Syncing...' : 'Sync from Bios'}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving}
+              className={cn(
+                'transition-all',
+                hasChanges
+                  ? 'bg-primary hover:bg-primary/90'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+              )}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isSaving ? 'Saving...' : 'Save All'}
+            </Button>
+          </div>
         </div>
 
         {/* Search */}

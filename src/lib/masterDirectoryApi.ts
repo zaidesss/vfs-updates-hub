@@ -441,3 +441,90 @@ export async function fetchDirectoryHistory(
     return { data: null, error: err.message };
   }
 }
+
+// Sync all profiles from agent_profiles to agent_directory
+export async function syncAllProfilesToDirectory(): Promise<{ 
+  success: boolean; 
+  synced: number; 
+  error: string | null 
+}> {
+  try {
+    // Fetch all profiles with work configuration data
+    const { data: profiles, error: profilesError } = await supabase
+      .from('agent_profiles')
+      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, day_off, upwork_contract_id, ticket_assignment_view_id, ticket_assignment_enabled');
+    
+    if (profilesError) {
+      return { success: false, synced: 0, error: profilesError.message };
+    }
+    
+    let syncedCount = 0;
+    
+    for (const profile of profiles || []) {
+      const email = profile.email.toLowerCase();
+      
+      // Calculate quota
+      const quota = (profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0);
+      
+      // Prepare sync data
+      const syncData = {
+        email,
+        agent_name: profile.agent_name || null,
+        agent_tag: profile.agent_tag || null,
+        zendesk_instance: profile.zendesk_instance || null,
+        support_account: profile.support_account || null,
+        support_type: Array.isArray(profile.support_type) ? profile.support_type.join(', ') : null,
+        views: profile.views || [],
+        quota: quota || null,
+        mon_schedule: profile.mon_schedule || null,
+        tue_schedule: profile.tue_schedule || null,
+        wed_schedule: profile.wed_schedule || null,
+        thu_schedule: profile.thu_schedule || null,
+        fri_schedule: profile.fri_schedule || null,
+        sat_schedule: profile.sat_schedule || null,
+        sun_schedule: profile.sun_schedule || null,
+        break_schedule: profile.break_schedule || null,
+        weekday_ot_schedule: profile.weekday_ot_schedule || null,
+        weekend_ot_schedule: profile.weekend_ot_schedule || null,
+        day_off: profile.day_off || [],
+        upwork_contract_id: profile.upwork_contract_id || null,
+        ticket_assignment_view_id: profile.ticket_assignment_enabled ? profile.ticket_assignment_view_id : null,
+        weekday_schedule: profile.mon_schedule || null,
+        weekend_schedule: profile.sat_schedule || null,
+      };
+      
+      // Calculate hours
+      const hours = calculateTotalHours({
+        weekday_schedule: syncData.weekday_schedule,
+        weekend_schedule: syncData.weekend_schedule,
+        weekday_ot_schedule: syncData.weekday_ot_schedule,
+        weekend_ot_schedule: syncData.weekend_ot_schedule,
+        break_schedule: syncData.break_schedule,
+        day_off: syncData.day_off,
+      });
+      
+      // Upsert to agent_directory
+      const { error: upsertError } = await supabase
+        .from('agent_directory')
+        .upsert({
+          ...syncData,
+          weekday_total_hours: hours.weekday_total_hours,
+          weekend_total_hours: hours.weekend_total_hours,
+          ot_total_hours: hours.ot_total_hours,
+          unpaid_break_hours: hours.unpaid_break_hours,
+          overall_total_hours: hours.overall_total_hours,
+        }, { onConflict: 'email' });
+      
+      if (!upsertError) {
+        syncedCount++;
+      } else {
+        console.error(`Failed to sync ${email}:`, upsertError);
+      }
+    }
+    
+    return { success: true, synced: syncedCount, error: null };
+  } catch (err: any) {
+    console.error('Sync all profiles failed:', err);
+    return { success: false, synced: 0, error: err.message };
+  }
+}
