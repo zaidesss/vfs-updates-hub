@@ -1,189 +1,175 @@
 
 
-# Fix: Sync Bios to Master Directory
+# Fix Security Issue & Enhance Team Status Board Categorization
 
-## Problem
+## Problem Summary
 
-The `agent_directory` table is missing a record for `malcom@persistbrands.com`. The Master Directory shows this user (from `agent_profiles`), but all the synced fields (schedules, agent_name, etc.) are empty because there's no corresponding `agent_directory` row.
+### Security Issue
+The `agent_profiles` table contains highly sensitive PII (bank account numbers, home addresses, hourly rates, emergency contacts) and is currently readable by ALL authenticated users due to the policy:
+```sql
+"Authenticated users can view all agent_profiles for team status" 
+USING (true)
+```
 
-**Database State:**
-- `agent_profiles` has complete Bios data for `malcom@persistbrands.com`
-- `agent_directory` has **no record** for this email
-
-The sync function exists in `agentProfileApi.ts` but it only triggers when a profile is saved through the app. If profiles were created before the sync logic was added, they won't have `agent_directory` records.
+### Feature Gap
+The Team Status Board currently shows only two categories (Agents vs Leads/Tech). You want it categorized by support type:
+- **Phone Support**
+- **Chat Support**
+- **Email Support**
+- **Hybrid Support** (handles multiple types)
+- **Team Leads**
+- **Technical Support**
 
 ---
 
-## Solution
+## Solution Overview
 
-### 1. Add a "Sync All" Button to Master Directory
+### Part 1: Security Fix
 
-Add a button in the Master Directory header that triggers a one-time sync of all `agent_profiles` data to `agent_directory`. This will:
-- Find all profiles that are missing `agent_directory` records
-- Create the missing records with the correct synced data
-- Recalculate total hours for all entries
+**Step 1: Create a restricted view** that only exposes fields needed for Team Status Board:
 
-### 2. Improve Sync Error Handling
+| Field | Purpose |
+|-------|---------|
+| `id` | Profile ID for linking |
+| `email` | Lookup key |
+| `full_name` | Display name |
+| `position` | Categorization |
 
-Currently, the sync fails silently. We should log errors and show a warning toast if the sync fails.
+**Step 2: Remove the overly permissive RLS policy** from `agent_profiles`:
+```sql
+DROP POLICY "Authenticated users can view all agent_profiles for team status" ON agent_profiles;
+```
+
+**Step 3: Create secure RLS policy** on the new view for all authenticated users.
+
+### Part 2: Team Status Board Enhancement
+
+Update the UI to categorize team members into 6 groups using the `position` field:
+- Email Support
+- Chat Support  
+- Phone Support
+- Hybrid Support
+- Team Leads
+- Technical Support
 
 ---
 
 ## Implementation Details
 
-### File 1: `src/lib/masterDirectoryApi.ts`
+### Database Migration
 
-Add a new function to sync all profiles to directory:
+Create a restricted view and update RLS:
 
-```typescript
-export async function syncAllProfilesToDirectory(): Promise<{ 
-  success: boolean; 
-  synced: number; 
-  error: string | null 
-}> {
-  try {
-    // Fetch all profiles with work configuration data
-    const { data: profiles, error: profilesError } = await supabase
-      .from('agent_profiles')
-      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, day_off, upwork_contract_id');
-    
-    if (profilesError) {
-      return { success: false, synced: 0, error: profilesError.message };
-    }
-    
-    // Fetch existing directory entries
-    const { data: existingEntries } = await supabase
-      .from('agent_directory')
-      .select('email');
-    
-    const existingEmails = new Set((existingEntries || []).map(e => e.email.toLowerCase()));
-    
-    let syncedCount = 0;
-    
-    for (const profile of profiles || []) {
-      const email = profile.email.toLowerCase();
-      
-      // Calculate quota
-      const quota = (profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0);
-      
-      // Prepare sync data
-      const syncData = {
-        email,
-        agent_name: profile.agent_name || null,
-        agent_tag: profile.agent_tag || null,
-        zendesk_instance: profile.zendesk_instance || null,
-        support_account: profile.support_account || null,
-        support_type: Array.isArray(profile.support_type) ? profile.support_type.join(', ') : null,
-        views: profile.views || [],
-        quota: quota || null,
-        mon_schedule: profile.mon_schedule || null,
-        tue_schedule: profile.tue_schedule || null,
-        wed_schedule: profile.wed_schedule || null,
-        thu_schedule: profile.thu_schedule || null,
-        fri_schedule: profile.fri_schedule || null,
-        sat_schedule: profile.sat_schedule || null,
-        sun_schedule: profile.sun_schedule || null,
-        break_schedule: profile.break_schedule || null,
-        weekday_ot_schedule: profile.weekday_ot_schedule || null,
-        weekend_ot_schedule: profile.weekend_ot_schedule || null,
-        day_off: profile.day_off || [],
-        upwork_contract_id: profile.upwork_contract_id || null,
-        weekday_schedule: profile.mon_schedule || null,
-        weekend_schedule: profile.sat_schedule || null,
-      };
-      
-      // Calculate hours
-      const hours = calculateTotalHours({
-        weekday_schedule: syncData.weekday_schedule,
-        weekend_schedule: syncData.weekend_schedule,
-        weekday_ot_schedule: syncData.weekday_ot_schedule,
-        weekend_ot_schedule: syncData.weekend_ot_schedule,
-        break_schedule: syncData.break_schedule,
-        day_off: syncData.day_off,
-      });
-      
-      // Upsert to agent_directory
-      const { error: upsertError } = await supabase
-        .from('agent_directory')
-        .upsert({
-          ...syncData,
-          weekday_total_hours: hours.weekday_total_hours,
-          weekend_total_hours: hours.weekend_total_hours,
-          ot_total_hours: hours.ot_total_hours,
-          unpaid_break_hours: hours.unpaid_break_hours,
-          overall_total_hours: hours.overall_total_hours,
-        }, { onConflict: 'email' });
-      
-      if (!upsertError) {
-        syncedCount++;
-      }
-    }
-    
-    return { success: true, synced: syncedCount, error: null };
-  } catch (err: any) {
-    return { success: false, synced: 0, error: err.message };
-  }
-}
+```sql
+-- Create view with only non-sensitive fields for team status
+CREATE VIEW public.agent_profiles_team_status
+WITH (security_invoker = on) AS
+SELECT 
+  id,
+  email,
+  full_name,
+  position
+FROM public.agent_profiles;
+
+-- Grant access to authenticated users
+GRANT SELECT ON public.agent_profiles_team_status TO authenticated;
+
+-- Remove the overly permissive policy (THE KEY SECURITY FIX)
+DROP POLICY IF EXISTS "Authenticated users can view all agent_profiles for team status" ON public.agent_profiles;
 ```
 
-### File 2: `src/pages/MasterDirectory.tsx`
+### File Changes
 
-Add a "Sync All" button next to the "Save All" button:
+**File 1: `src/lib/teamStatusApi.ts`**
 
-```typescript
-import { syncAllProfilesToDirectory } from '@/lib/masterDirectoryApi';
-import { RefreshCw } from 'lucide-react';
+Update the data fetching to:
+1. Query the new `agent_profiles_team_status` view instead of `agent_profiles`
+2. Return data categorized into 6 groups based on `position` field:
+   - `emailSupport` (position = 'Email Support')
+   - `chatSupport` (position = 'Chat Support')
+   - `phoneSupport` (position = 'Phone Support')
+   - `hybridSupport` (position = 'Hybrid Support')
+   - `teamLeads` (position = 'Team Lead')
+   - `techSupport` (position = 'Technical Support')
+3. Handle unknown positions (Logistics, etc.) in an "Other" category
 
-// Add state for syncing
-const [isSyncing, setIsSyncing] = useState(false);
+**File 2: `src/pages/TeamStatusBoard.tsx`**
 
-// Add sync handler
-const handleSyncAll = async () => {
-  setIsSyncing(true);
-  const { success, synced, error } = await syncAllProfilesToDirectory();
-  setIsSyncing(false);
-  
-  if (success) {
-    toast({
-      title: 'Sync Complete',
-      description: `Successfully synced ${synced} profile(s) to Master Directory.`,
-    });
-    await loadData(); // Refresh the data
-  } else {
-    toast({
-      title: 'Sync Failed',
-      description: error || 'Failed to sync profiles.',
-      variant: 'destructive',
-    });
-  }
-};
+Update the UI layout to:
+1. Display 6 categorized sections instead of 2
+2. Use a grid layout with support type sections on the left (Phone, Chat, Email, Hybrid)
+3. Keep Team Leads and Technical Support in a sidebar on the right
+4. Show online counts per category
+5. Hide empty sections gracefully
 
-// Add button in header next to Save All
-<Button
-  onClick={handleSyncAll}
-  disabled={isSyncing}
-  variant="outline"
-  className="mr-2"
->
-  <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
-  {isSyncing ? 'Syncing...' : 'Sync from Bios'}
-</Button>
+**File 3: `src/components/team-status/StatusCard.tsx`**
+
+Minor update to:
+1. Display the support type badge with appropriate color coding
+2. Keep existing fields (name, status, shift schedule, break schedule)
+
+---
+
+## Before vs After Comparison
+
+### RLS Policy Changes
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Regular users can see ALL agent_profiles columns | Yes (full PII exposure) | No |
+| Regular users can see their OWN profile | Yes | Yes (unchanged) |
+| Regular users can see team status info | Yes (via full table) | Yes (via restricted view with 4 fields only) |
+| Admins/HR/Super Admin see all profiles | Yes | Yes (unchanged) |
+| Bank account numbers visible to regular users | Yes | No |
+| Home addresses visible to regular users | Yes | No |
+| Hourly rates visible to regular users | Yes | No |
+| Emergency contacts visible to regular users | Yes | No |
+
+### Data Access Summary
+
+**Before (Current):**
+```
+All authenticated users can SELECT * FROM agent_profiles
+→ Exposes: bank_account_number, home_address, hourly_rate, phone_number, 
+   emergency_contact_name, emergency_contact_phone, rate_history, etc.
 ```
 
-### File 3: `src/lib/agentProfileApi.ts`
+**After (Fixed):**
+```
+All authenticated users can SELECT * FROM agent_profiles_team_status
+→ Exposes ONLY: id, email, full_name, position
 
-Improve sync error handling to show a warning (optional enhancement):
+All authenticated users can SELECT * FROM agent_profiles
+→ DENIED (unless they have admin/HR/super_admin role or it's their own row)
+```
 
-```typescript
-// In syncProfileToDirectory function, add better error handling
-const { error: syncError } = await supabase
-  .from('agent_directory')
-  .upsert(syncData, { onConflict: 'email' });
+---
 
-if (syncError) {
-  console.error('Failed to sync profile to directory:', syncError);
-  throw new Error(`Directory sync failed: ${syncError.message}`);
-}
+## UI Layout
+
+```text
++--------------------------------------------------+
+| Team Status Board          [By Login] [By Name]  |
+| 24 team members online                  [Refresh]|
++--------------------------------------------------+
+|                           |                      |
+| PHONE SUPPORT (4)         | TEAM LEADS (2)       |
+| [Card] [Card]             | [Card]               |
+| [Card] [Card]             | [Card]               |
+|                           |                      |
+| CHAT SUPPORT (6)          | TECH SUPPORT (1)     |
+| [Card] [Card] [Card]      | [Card]               |
+| [Card] [Card] [Card]      |                      |
+|                           |                      |
+| EMAIL SUPPORT (8)         |                      |
+| [Card] [Card] [Card]      |                      |
+| [Card] [Card] [Card]      |                      |
+| [Card] [Card]             |                      |
+|                           |                      |
+| HYBRID SUPPORT (3)        |                      |
+| [Card] [Card] [Card]      |                      |
+|                           |                      |
++--------------------------------------------------+
 ```
 
 ---
@@ -192,27 +178,34 @@ if (syncError) {
 
 | File | Changes |
 |------|---------|
-| `src/lib/masterDirectoryApi.ts` | Add `syncAllProfilesToDirectory()` function |
-| `src/pages/MasterDirectory.tsx` | Add "Sync from Bios" button and handler |
-| `src/lib/agentProfileApi.ts` | (Optional) Improve error handling in sync function |
+| Database Migration | Create `agent_profiles_team_status` view, drop permissive RLS policy |
+| `src/lib/teamStatusApi.ts` | Query new view, return categorized data |
+| `src/pages/TeamStatusBoard.tsx` | Display 6 category sections with counts |
+| `src/components/team-status/StatusCard.tsx` | Add support type badge |
+| `src/integrations/supabase/types.ts` | Auto-updated with new view type |
 
 ---
 
-## Result
+## Security Impact
 
-After implementation:
-1. Admin clicks "Sync from Bios" button in Master Directory
-2. All `agent_profiles` data is synced to `agent_directory`
-3. `malcom@persistbrands.com` will now show the correct schedules, agent_name, etc.
-4. All hour calculations will be computed correctly
+**Sensitive fields now protected from regular users:**
+- `bank_account_number`
+- `bank_account_holder`
+- `bank_name`
+- `hourly_rate`
+- `rate_history`
+- `home_address`
+- `phone_number`
+- `emergency_contact_name`
+- `emergency_contact_phone`
+- `birthday`
+- `payment_frequency`
+- `employment_status`
+- All work configuration fields
 
----
-
-## Alternative Consideration
-
-**Should the sync happen automatically when loading Master Directory?**
-- Pros: Always up-to-date without manual action
-- Cons: Slower page load, could cause data conflicts if someone is editing in Bios simultaneously
-
-I recommend the manual "Sync from Bios" button approach for more control. Would you like me to also add automatic sync on page load?
+**Still accessible to regular users (via view):**
+- `id` - needed for profile linking
+- `email` - needed for directory lookup
+- `full_name` - display name
+- `position` - categorization
 
