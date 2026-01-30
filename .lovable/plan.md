@@ -1,147 +1,190 @@
 
-# Enforce Schedule Format Validation in Bios
+
+# Fix: Sync Bios to Master Directory
 
 ## Problem
 
-The schedule input fields in the Work Configuration section (Bios) currently accept any text input without validation. This can lead to:
-- Typos (e.g., "8:00AM-5:00PM" vs "8:00 AM-5:00 PM")
-- Invalid formats that break hour calculations in Master Directory
-- Inconsistent data storage
+The `agent_directory` table is missing a record for `malcom@persistbrands.com`. The Master Directory shows this user (from `agent_profiles`), but all the synced fields (schedules, agent_name, etc.) are empty because there's no corresponding `agent_directory` row.
+
+**Database State:**
+- `agent_profiles` has complete Bios data for `malcom@persistbrands.com`
+- `agent_directory` has **no record** for this email
+
+The sync function exists in `agentProfileApi.ts` but it only triggers when a profile is saved through the app. If profiles were created before the sync logic was added, they won't have `agent_directory` records.
+
+---
 
 ## Solution
 
-Add real-time format validation to all schedule input fields in the `WorkConfigurationSection.tsx` component, reusing the existing `validateScheduleFormat()` function from `masterDirectoryApi.ts`.
+### 1. Add a "Sync All" Button to Master Directory
+
+Add a button in the Master Directory header that triggers a one-time sync of all `agent_profiles` data to `agent_directory`. This will:
+- Find all profiles that are missing `agent_directory` records
+- Create the missing records with the correct synced data
+- Recalculate total hours for all entries
+
+### 2. Improve Sync Error Handling
+
+Currently, the sync fails silently. We should log errors and show a warning toast if the sync fails.
 
 ---
 
 ## Implementation Details
 
-### Validation Behavior
+### File 1: `src/lib/masterDirectoryApi.ts`
 
-**Required Format**: `H:MM AM-H:MM PM` or `HH:MM AM-HH:MM PM`
-
-Examples of valid formats:
-- `8:00 AM-5:00 PM`
-- `12:00 PM-1:00 PM`
-- `5:00 PM-7:00 PM`
-
-**Validation Points**:
-1. **On blur** (when field loses focus): Show error message if format is invalid
-2. **On save**: Block save and show toast error if any schedule format is invalid
-3. **Visual feedback**: Red border and error text for invalid fields
-
-### File Changes
-
-**File 1: `src/components/profile/WorkConfigurationSection.tsx`**
-
-Add validation state and error display for each schedule field:
+Add a new function to sync all profiles to directory:
 
 ```typescript
-import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
-import { useState } from 'react';
-
-// Add validation state
-const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>({});
-
-// Validation handler
-const handleScheduleBlur = (field: string, value: string) => {
-  if (value && value !== 'Day Off' && !validateScheduleFormat(value)) {
-    setScheduleErrors(prev => ({
-      ...prev,
-      [field]: 'Invalid format. Use: H:MM AM-H:MM PM (e.g., 8:00 AM-5:00 PM)'
-    }));
-  } else {
-    setScheduleErrors(prev => {
-      const { [field]: _, ...rest } = prev;
-      return rest;
-    });
+export async function syncAllProfilesToDirectory(): Promise<{ 
+  success: boolean; 
+  synced: number; 
+  error: string | null 
+}> {
+  try {
+    // Fetch all profiles with work configuration data
+    const { data: profiles, error: profilesError } = await supabase
+      .from('agent_profiles')
+      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, day_off, upwork_contract_id');
+    
+    if (profilesError) {
+      return { success: false, synced: 0, error: profilesError.message };
+    }
+    
+    // Fetch existing directory entries
+    const { data: existingEntries } = await supabase
+      .from('agent_directory')
+      .select('email');
+    
+    const existingEmails = new Set((existingEntries || []).map(e => e.email.toLowerCase()));
+    
+    let syncedCount = 0;
+    
+    for (const profile of profiles || []) {
+      const email = profile.email.toLowerCase();
+      
+      // Calculate quota
+      const quota = (profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0);
+      
+      // Prepare sync data
+      const syncData = {
+        email,
+        agent_name: profile.agent_name || null,
+        agent_tag: profile.agent_tag || null,
+        zendesk_instance: profile.zendesk_instance || null,
+        support_account: profile.support_account || null,
+        support_type: Array.isArray(profile.support_type) ? profile.support_type.join(', ') : null,
+        views: profile.views || [],
+        quota: quota || null,
+        mon_schedule: profile.mon_schedule || null,
+        tue_schedule: profile.tue_schedule || null,
+        wed_schedule: profile.wed_schedule || null,
+        thu_schedule: profile.thu_schedule || null,
+        fri_schedule: profile.fri_schedule || null,
+        sat_schedule: profile.sat_schedule || null,
+        sun_schedule: profile.sun_schedule || null,
+        break_schedule: profile.break_schedule || null,
+        weekday_ot_schedule: profile.weekday_ot_schedule || null,
+        weekend_ot_schedule: profile.weekend_ot_schedule || null,
+        day_off: profile.day_off || [],
+        upwork_contract_id: profile.upwork_contract_id || null,
+        weekday_schedule: profile.mon_schedule || null,
+        weekend_schedule: profile.sat_schedule || null,
+      };
+      
+      // Calculate hours
+      const hours = calculateTotalHours({
+        weekday_schedule: syncData.weekday_schedule,
+        weekend_schedule: syncData.weekend_schedule,
+        weekday_ot_schedule: syncData.weekday_ot_schedule,
+        weekend_ot_schedule: syncData.weekend_ot_schedule,
+        break_schedule: syncData.break_schedule,
+        day_off: syncData.day_off,
+      });
+      
+      // Upsert to agent_directory
+      const { error: upsertError } = await supabase
+        .from('agent_directory')
+        .upsert({
+          ...syncData,
+          weekday_total_hours: hours.weekday_total_hours,
+          weekend_total_hours: hours.weekend_total_hours,
+          ot_total_hours: hours.ot_total_hours,
+          unpaid_break_hours: hours.unpaid_break_hours,
+          overall_total_hours: hours.overall_total_hours,
+        }, { onConflict: 'email' });
+      
+      if (!upsertError) {
+        syncedCount++;
+      }
+    }
+    
+    return { success: true, synced: syncedCount, error: null };
+  } catch (err: any) {
+    return { success: false, synced: 0, error: err.message };
   }
-};
-
-// Check if all schedules are valid
-const hasScheduleErrors = Object.keys(scheduleErrors).length > 0;
+}
 ```
 
-Add `onBlur` handler and error styling to each schedule input:
+### File 2: `src/pages/MasterDirectory.tsx`
 
-```tsx
-<Input
-  value={getScheduleValue('Mon', profile.mon_schedule)}
-  onChange={(e) => handleMondayChange(e.target.value)}
-  onBlur={(e) => handleScheduleBlur('mon_schedule', e.target.value)}
-  placeholder="8:00 AM-5:00 PM"
-  disabled={!canEdit || isDayOff('Mon')}
-  className={cn(
-    'text-xs',
-    (!canEdit || isDayOff('Mon')) && 'bg-muted',
-    scheduleErrors['mon_schedule'] && 'border-red-500'
-  )}
-/>
-{scheduleErrors['mon_schedule'] && (
-  <p className="text-xs text-red-500 mt-1">{scheduleErrors['mon_schedule']}</p>
-)}
-```
-
-**File 2: `src/pages/ManageProfiles.tsx`**
-
-Add validation before save:
+Add a "Sync All" button next to the "Save All" button:
 
 ```typescript
-import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
+import { syncAllProfilesToDirectory } from '@/lib/masterDirectoryApi';
+import { RefreshCw } from 'lucide-react';
 
-const handleSave = async () => {
-  if (!editData || !selectedUser) return;
+// Add state for syncing
+const [isSyncing, setIsSyncing] = useState(false);
+
+// Add sync handler
+const handleSyncAll = async () => {
+  setIsSyncing(true);
+  const { success, synced, error } = await syncAllProfilesToDirectory();
+  setIsSyncing(false);
   
-  // Validate all schedule fields
-  const scheduleFields = [
-    { key: 'mon_schedule', label: 'Monday' },
-    { key: 'tue_schedule', label: 'Tuesday' },
-    { key: 'wed_schedule', label: 'Wednesday' },
-    { key: 'thu_schedule', label: 'Thursday' },
-    { key: 'fri_schedule', label: 'Friday' },
-    { key: 'sat_schedule', label: 'Saturday' },
-    { key: 'sun_schedule', label: 'Sunday' },
-    { key: 'break_schedule', label: 'Break' },
-    { key: 'weekday_ot_schedule', label: 'Weekday OT' },
-    { key: 'weekend_ot_schedule', label: 'Weekend OT' },
-  ];
-  
-  const invalidSchedules = scheduleFields.filter(f => {
-    const value = editData[f.key as keyof typeof editData] as string;
-    return value && !validateScheduleFormat(value);
-  });
-  
-  if (invalidSchedules.length > 0) {
+  if (success) {
     toast({
-      title: 'Invalid Schedule Format',
-      description: `Please fix: ${invalidSchedules.map(f => f.label).join(', ')}. Format: H:MM AM-H:MM PM`,
-      variant: 'destructive'
+      title: 'Sync Complete',
+      description: `Successfully synced ${synced} profile(s) to Master Directory.`,
     });
-    return;
+    await loadData(); // Refresh the data
+  } else {
+    toast({
+      title: 'Sync Failed',
+      description: error || 'Failed to sync profiles.',
+      variant: 'destructive',
+    });
   }
-  
-  // Continue with save...
 };
+
+// Add button in header next to Save All
+<Button
+  onClick={handleSyncAll}
+  disabled={isSyncing}
+  variant="outline"
+  className="mr-2"
+>
+  <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+  {isSyncing ? 'Syncing...' : 'Sync from Bios'}
+</Button>
 ```
 
-**File 3: `src/pages/AgentProfile.tsx`**
+### File 3: `src/lib/agentProfileApi.ts`
 
-Apply the same save validation logic to the Agent Profile page.
+Improve sync error handling to show a warning (optional enhancement):
 
----
+```typescript
+// In syncProfileToDirectory function, add better error handling
+const { error: syncError } = await supabase
+  .from('agent_directory')
+  .upsert(syncData, { onConflict: 'email' });
 
-## Additional Considerations
-
-Before implementing, I want to confirm a few things:
-
-1. **Empty values**: Should empty schedule fields be allowed? (Currently yes - validation only triggers if there's content)
-
-2. **Auto-formatting**: Would you like the input to automatically format as the user types? For example:
-   - Auto-insert spaces around AM/PM
-   - Auto-capitalize AM/PM
-   - This would be more complex but more user-friendly
-
-3. **Same validation for AgentProfile.tsx**: The self-service profile page should also have this validation when super admins edit their own profiles. Should I include that as well?
+if (syncError) {
+  console.error('Failed to sync profile to directory:', syncError);
+  throw new Error(`Directory sync failed: ${syncError.message}`);
+}
+```
 
 ---
 
@@ -149,16 +192,27 @@ Before implementing, I want to confirm a few things:
 
 | File | Changes |
 |------|---------|
-| `src/components/profile/WorkConfigurationSection.tsx` | Add onBlur validation, error state, visual feedback for invalid formats |
-| `src/pages/ManageProfiles.tsx` | Add pre-save validation check for all schedule fields |
-| `src/pages/AgentProfile.tsx` | Add same pre-save validation check |
+| `src/lib/masterDirectoryApi.ts` | Add `syncAllProfilesToDirectory()` function |
+| `src/pages/MasterDirectory.tsx` | Add "Sync from Bios" button and handler |
+| `src/lib/agentProfileApi.ts` | (Optional) Improve error handling in sync function |
 
 ---
 
-## Technical Notes
+## Result
 
-- The validation regex already exists: `/^(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i`
-- The format allows flexible spacing around AM/PM (with or without space)
-- Hour can be 1-2 digits (8 or 08)
-- Minutes must be 2 digits (00, 30, etc.)
+After implementation:
+1. Admin clicks "Sync from Bios" button in Master Directory
+2. All `agent_profiles` data is synced to `agent_directory`
+3. `malcom@persistbrands.com` will now show the correct schedules, agent_name, etc.
+4. All hour calculations will be computed correctly
+
+---
+
+## Alternative Consideration
+
+**Should the sync happen automatically when loading Master Directory?**
+- Pros: Always up-to-date without manual action
+- Cons: Slower page load, could cause data conflicts if someone is editing in Bios simultaneously
+
+I recommend the manual "Sync from Bios" button approach for more control. Would you like me to also add automatic sync on page load?
 
