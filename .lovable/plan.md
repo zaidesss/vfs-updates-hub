@@ -1,140 +1,123 @@
 
+# Fix Ticket Logs Dashboard to Use EST Timezone
 
-# Rolling 2-Week Dashboard with Automatic Archive
+## Problem
 
-## Overview
+The current `getRollingTwoWeekRange()` function and date generation loop in `ticketLogsApi.ts` use the user's local timezone via `new Date()`. This causes:
 
-Implement a **rolling 2-week window** (Monday-Sunday weeks) for the Ticket Logs dashboard that:
-1. Always shows **previous week + current week**
-2. Automatically **exports** logs older than the displayed range to storage
-3. Automatically **deletes** those archived logs from the database
-4. Runs cleanup on a **weekly schedule** (every Monday)
+1. **Incorrect "today" calculation** - If user is in a different timezone, "today" might not match EST
+2. **Incorrect date column generation** - Dates are shifted due to timezone parsing issues
+3. **Missing columns** - 1/31 and 2/1 are not showing because of UTC parsing
 
----
+## Solution
 
-## Week Logic (Monday-Sunday)
-
-Based on today (Friday, January 30, 2026):
-- **Current week**: Mon 1/26 → Sun 2/1
-- **Next week**: Mon 2/2 → Sun 2/8
-- **Dashboard shows**: 1/26 - 2/8 (current + next partial)
-
-When Monday 2/9 arrives:
-- **Previous week**: Mon 2/2 → Sun 2/8
-- **Current week**: Mon 2/9 → Sun 2/15
-- **Dashboard shows**: 2/2 - 2/15
-- **Archive**: Everything before 2/2
+Update `ticketLogsApi.ts` to use EST (America/New_York) timezone consistently, following the existing pattern in `dateUtils.ts` that uses `Intl.DateTimeFormat` with `timeZone: 'America/New_York'`.
 
 ---
 
-## Implementation Steps
+## Changes Required
 
-### Step 1: Update Date Calculation Logic
+### File: `src/lib/ticketLogsApi.ts`
 
-**File:** `src/lib/ticketLogsApi.ts`
+**1. Add EST helper function** (similar to `dateUtils.ts` pattern):
 
-Add a helper function to calculate the rolling 2-week window:
-
-```text
-function getRollingTwoWeekRange() {
-  const today = new Date();
-  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, etc.
+```typescript
+// Get current date in EST timezone
+function getESTDate(): { year: number; month: number; day: number; dayOfWeek: number } {
+  const now = new Date();
+  const estFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  });
   
-  // Calculate Monday of current week
-  // If today is Sunday (0), go back 6 days; otherwise go back (dayOfWeek - 1) days
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const currentWeekMonday = new Date(today);
-  currentWeekMonday.setDate(today.getDate() - daysFromMonday);
+  const parts = estFormatter.formatToParts(now);
+  const dateParts: Record<string, string> = {};
+  for (const part of parts) {
+    dateParts[part.type] = part.value;
+  }
   
-  // Previous week's Monday (7 days before current Monday)
-  const previousWeekMonday = new Date(currentWeekMonday);
-  previousWeekMonday.setDate(currentWeekMonday.getDate() - 7);
-  
-  // Current week's Sunday (6 days after current Monday)
-  const currentWeekSunday = new Date(currentWeekMonday);
-  currentWeekSunday.setDate(currentWeekMonday.getDate() + 6);
+  // Map weekday to day number (0=Sun, 1=Mon, etc.)
+  const weekdayMap: Record<string, number> = {
+    'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+  };
   
   return {
-    startDate: format(previousWeekMonday, 'yyyy-MM-dd'),
-    endDate: format(currentWeekSunday, 'yyyy-MM-dd'),
-    displayLabel: `${format(previousWeekMonday, 'M/d')} - ${format(currentWeekSunday, 'M/d')}`
+    year: parseInt(dateParts.year),
+    month: parseInt(dateParts.month),
+    day: parseInt(dateParts.day),
+    dayOfWeek: weekdayMap[dateParts.weekday] || 0
   };
 }
 ```
 
-Update `fetchDashboardData` to use this rolling window instead of static 14 days.
+**2. Update `getRollingTwoWeekRange()`** to use EST-based "today":
 
-### Step 2: Update Dashboard Badge
-
-**File:** `src/components/ticket-logs/TicketDashboard.tsx`
-
-Change the badge to show the dynamic date range (e.g., "1/26 - 2/8").
-
-### Step 3: Update Cleanup Edge Function
-
-**File:** `supabase/functions/cleanup-ticket-logs/index.ts`
-
-Modify the cutoff logic to use the start of the previous week (Monday) as the archive boundary:
-
-```text
-// Calculate previous week's Monday as the cutoff
+Replace:
+```typescript
 const today = new Date();
 const dayOfWeek = today.getDay();
-const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-const currentWeekMonday = new Date(today);
-currentWeekMonday.setDate(today.getDate() - daysFromMonday);
-const previousWeekMonday = new Date(currentWeekMonday);
-previousWeekMonday.setDate(currentWeekMonday.getDate() - 7);
-
-// Archive anything BEFORE previous week's Monday
-const cutoffDate = previousWeekMonday.toISOString();
 ```
 
-### Step 4: Schedule Weekly Cleanup (Database)
+With:
+```typescript
+const estToday = getESTDate();
+// Create date object from EST values
+const today = new Date(estToday.year, estToday.month - 1, estToday.day);
+const dayOfWeek = estToday.dayOfWeek;
+```
 
-Add a cron job to run every Monday at 1:00 AM EST (6:00 AM UTC):
+**3. Update date generation loop** (lines 217-223) to parse dates without timezone shift:
 
-```sql
--- Enable pg_cron and pg_net extensions if not already enabled
--- Schedule weekly cleanup every Monday at 6 AM UTC
-SELECT cron.schedule(
-  'weekly-ticket-logs-cleanup',
-  '0 6 * * 1',
-  $$
-  SELECT net.http_post(
-    url:='https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/cleanup-ticket-logs',
-    headers:='{"Content-Type": "application/json", "Authorization": "Bearer [service_role_key]"}'::jsonb,
-    body:='{}'::jsonb
-  );
-  $$
-);
+Replace:
+```typescript
+const dates: string[] = [];
+const start = new Date(dateRange.startDate);
+const end = new Date(dateRange.endDate);
+for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+  dates.push(format(new Date(d), 'yyyy-MM-dd'));
+}
+```
+
+With:
+```typescript
+const dates: string[] = [];
+// Parse dates correctly to avoid timezone issues
+const [startYear, startMonth, startDay] = dateRange.startDate.split('-').map(Number);
+const [endYear, endMonth, endDay] = dateRange.endDate.split('-').map(Number);
+const start = new Date(startYear, startMonth - 1, startDay);
+const end = new Date(endYear, endMonth - 1, endDay);
+
+for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+  dates.push(format(new Date(d), 'yyyy-MM-dd'));
+}
 ```
 
 ---
 
-## Archive File Access
+## Technical Details
 
-Archived files are stored in the **`ticket-archives`** storage bucket with names like:
-- `ticket-logs-archive-2026-02-03.json`
-
-To access these files, you can view them in your Lovable Cloud backend storage section.
+| Issue | Current Behavior | Fix |
+|-------|-----------------|-----|
+| "Today" uses local timezone | `new Date()` returns user's local time | Use `Intl.DateTimeFormat` with `timeZone: 'America/New_York'` to get EST date |
+| Date parsing shifts dates | `new Date('2026-01-19')` parsed as UTC midnight, shifts back in local time | Parse date strings manually with `new Date(year, month-1, day)` |
+| Day of week calculation | Uses local timezone | Extract weekday from EST-formatted date |
 
 ---
 
-## File Changes Summary
+## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/lib/ticketLogsApi.ts` | Add `getRollingTwoWeekRange()` helper; update `fetchDashboardData` to use rolling window; export the range for UI |
-| `src/components/ticket-logs/TicketDashboard.tsx` | Receive and display dynamic date range in badge |
-| `supabase/functions/cleanup-ticket-logs/index.ts` | Update cutoff logic to use Monday-based week calculation |
-| Database migration | Add cron job for weekly cleanup |
+| `src/lib/ticketLogsApi.ts` | Add `getESTDate()` helper; update `getRollingTwoWeekRange()` to use EST; fix date generation loop to parse dates correctly |
 
 ---
 
-## Optional Enhancement
+## Expected Result
 
-Would you like me to add an **Archive Viewer** section to the Ticket Logs page where admins can:
-- See a list of available archive files
-- Download archive files directly
-
+After this fix:
+- Dashboard will show **1/19 - 2/1** in the badge (previous week Mon + current week Sun)
+- Table columns will correctly display all 14 days: **1/19, 1/20, 1/21, ... 1/30, 1/31, 2/1**
+- All date calculations will be based on EST timezone regardless of user's local timezone
