@@ -1,138 +1,310 @@
 
-# Fix Ticket Logs Dashboard to Display Full EST-Correct Date Range
+# Transfer Work Configuration from Master Directory to Bios
 
-## Problem Identified
+## Summary
 
-Looking at your screenshot and the code, I found **two issues**:
-
-1. **Badge shows correct range (1/19 - 2/1)** - The `getRollingTwoWeekRange()` function now correctly calculates the EST-based range
-2. **Table shows wrong dates (1/18 - 1/31)** - The column headers are shifted by one day due to timezone parsing in `TicketDashboard.tsx`
-
-The root cause: In `TicketDashboard.tsx` line 122, the date is displayed using:
-```typescript
-{format(new Date(date), 'M/d')}
-```
-
-When parsing a string like `'2026-01-19'`, JavaScript's `new Date()` interprets it as UTC midnight, which in EST (UTC-5) becomes **January 18th at 7:00 PM**. The `format()` function then outputs `1/18` instead of `1/19`.
-
-Additionally, I need to ensure **full EST consistency** across:
-- Dashboard column headers
-- Ticket bucketing by day
-- Search date filters
+Consolidate work configuration fields into **Bios (Agent Profile)** as the single source of truth. Select fields will sync to **Master Directory** for visibility and hours computation. Master Directory synced fields become read-only.
 
 ---
 
-## Solution
+## Phase 1: Database Schema Changes
 
-### 1. Create a Shared EST Date Parsing Utility
+Add new columns to `agent_profiles` table to store work configuration data currently in `agent_directory`:
 
-Add a reusable helper function to `ticketLogsApi.ts` that parses date strings in a timezone-safe way:
+### New Fields for agent_profiles
 
-```typescript
-// Parse a YYYY-MM-DD string without timezone shift
-export function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
+| Field | Type | Description |
+|-------|------|-------------|
+| agent_name | text | Editable, defaults from first name |
+| agent_tag | text | Auto-computed lowercase of agent_name |
+| zendesk_instance | text | Dropdown: ZD1, ZD2 |
+| support_account | text | Dropdown: 1-17 |
+| support_type | text[] | Array for Hybrid, single value for others |
+| views | text[] | Auto-set based on position |
+| ticket_assignment_enabled | boolean | Toggle (replaces view ID text input) |
+| ticket_assignment_view_id | text | Auto-determined from position |
+| quota_email | integer | For Email/Chat/Hybrid |
+| quota_chat | integer | For Chat/Hybrid |
+| quota_phone | integer | For Phone/Hybrid |
+| mon_schedule | text | Individual day schedule |
+| tue_schedule | text | |
+| wed_schedule | text | |
+| thu_schedule | text | |
+| fri_schedule | text | |
+| sat_schedule | text | |
+| sun_schedule | text | |
+| break_schedule | text | |
+| weekday_ot_schedule | text | |
+| weekend_ot_schedule | text | |
+| day_off | text[] | Array of day names |
+
+---
+
+## Phase 2: Position Dropdown and Field Logic
+
+### Position Dropdown Values
+```
+Hybrid Support
+Team Lead
+Logistics
+Email Support
+Chat Support
+Phone Support
+Technical Support
 ```
 
-### 2. Fix TicketDashboard.tsx Column Headers
+### Position-Based Field Behavior
 
-Update the date display in `TicketDashboard.tsx` to use the new helper:
+| Position | Quota Fields | Views | Support Type | Ticket View ID |
+|----------|--------------|-------|--------------|----------------|
+| Hybrid Support | Email, Chat, Phone (editable) | All | Multi-select (editable) | 50553259977753 |
+| Email Support | Email only | Open | Email (read-only) | 50553259977753 |
+| Chat Support | Email, Chat | New | Chat (read-only) | 48622289457049 |
+| Phone Support | Email, Phone | New | Phone (read-only) | 48622289457049 |
+| Team Lead | No quota | All | Email (read-only) | - |
+| Logistics | No quota | All | Email (read-only) | - |
+| Technical Support | No quota | All | Email (read-only) | - |
 
-**Line 122** - Change from:
+---
+
+## Phase 3: UI Changes to Bios (AgentProfile.tsx and ManageProfiles.tsx)
+
+### Work Information Section Updates
+
+1. **Position/Role**: Change from text input to dropdown
+
+2. **Agent Name**: New field
+   - Defaults from first word of full_name
+   - Editable by user
+
+3. **Agent Tag**: New field (read-only)
+   - Auto-computed: lowercase of agent_name
+
+4. **Zendesk Instance**: New dropdown (ZD1, ZD2)
+
+5. **Support Account**: New dropdown (1-17)
+
+6. **Support Type**: Conditional rendering
+   - Hybrid: Multi-select dropdown (Email, Chat, Phone)
+   - Others: Read-only badge showing default type
+
+7. **Views**: Read-only display based on position
+
+8. **Ticket Assignment**: Toggle switch
+   - Enabled/Disabled
+   - View ID auto-determined by position
+
+9. **Productivity (Quota)**: Conditional quota fields
+   - Hybrid: 3 fields (Email, Chat, Phone quotas)
+   - Email Support: 1 field (Email quota)
+   - Chat Support: 2 fields (Email, Chat quotas)
+   - Phone Support: 2 fields (Email, Phone quotas)
+   - Team Lead/Logistics/Technical: No quota fields
+
+10. **Weekday Schedule**: 5 individual fields (Mon-Fri)
+    - Monday value auto-populates Tue-Fri
+    - Each field remains editable
+
+11. **Weekend Schedule**: 2 individual fields (Sat-Sun)
+    - Saturday value auto-populates Sunday
+    - Each field remains editable
+
+12. **Break Schedule**: Text input (same format as before)
+
+13. **Weekday OT Schedule**: Text input
+
+14. **Weekend OT Schedule**: Text input
+
+15. **Day Off**: Multi-select checkboxes (Mon-Sun)
+
+---
+
+## Phase 4: Sync Logic (Bios to Master Directory)
+
+When saving Bios, sync these fields to `agent_directory`:
+
 ```typescript
-{format(new Date(date), 'M/d')}
-```
-
-To:
-```typescript
-{format(parseLocalDate(date), 'M/d')}
-```
-
-### 3. Fix Ticket Bucketing in fetchDashboardData
-
-The log timestamps are in UTC but need to be bucketed by EST day. Update line 269:
-
-**From:**
-```typescript
-const logDate = format(new Date(log.timestamp), 'yyyy-MM-dd');
-```
-
-**To:**
-```typescript
-// Format timestamp in EST to bucket correctly
-const logDate = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'America/New_York',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-}).format(new Date(log.timestamp));
-```
-
-### 4. Make TicketSearch Date Filters EST-Correct
-
-Update `TicketSearch.tsx` lines 58-59 to use EST day boundaries:
-
-**From:**
-```typescript
-startDate: startDate ? `${startDate}T00:00:00.000Z` : undefined,
-endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
-```
-
-**To:**
-```typescript
-startDate: startDate ? `${startDate}T05:00:00.000Z` : undefined,  // EST midnight = UTC 05:00
-endDate: endDate ? `${endDate}T04:59:59.999Z` : undefined,        // EST 11:59pm next day boundary
-```
-
-Or better, create a helper function that handles DST correctly:
-
-```typescript
-// Convert EST date string to UTC range
-function getESTDayBoundariesUTC(dateStr: string): { start: string; end: string } {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  // Create date at midnight EST
-  const startEST = new Date(`${dateStr}T00:00:00-05:00`);
-  const endEST = new Date(`${dateStr}T23:59:59.999-05:00`);
-  return {
-    start: startEST.toISOString(),
-    end: endEST.toISOString()
-  };
+async function syncProfileToDirectory(profileData: AgentProfileInput) {
+  // Compute weekday_schedule from mon_schedule (first day)
+  // Compute weekend_schedule from sat_schedule (first day)
+  // Calculate hours using existing calculateTotalHours function
+  
+  await supabase.from('agent_directory').upsert({
+    email: profileData.email,
+    agent_name: profileData.agent_name,
+    agent_tag: profileData.agent_tag,
+    zendesk_instance: profileData.zendesk_instance,
+    support_account: profileData.support_account,
+    support_type: profileData.support_type,
+    views: profileData.views,
+    ticket_assignment_view_id: profileData.ticket_assignment_view_id,
+    quota: aggregateQuota(profileData),
+    mon_schedule: profileData.mon_schedule,
+    // ... all schedule fields
+    break_schedule: profileData.break_schedule,
+    weekday_ot_schedule: profileData.weekday_ot_schedule,
+    weekend_ot_schedule: profileData.weekend_ot_schedule,
+    day_off: profileData.day_off,
+    // Computed summary fields
+    weekday_schedule: profileData.mon_schedule,
+    weekend_schedule: profileData.sat_schedule,
+    ...calculatedHours,
+  });
 }
 ```
 
 ---
 
-## Files to Change
+## Phase 5: Master Directory Updates
+
+### Read-Only Synced Fields
+The following fields become read-only in Master Directory (they sync from Bios):
+
+- Agent Name
+- Agent Tag
+- Zendesk Instance
+- Support Account
+- Support Type
+- Views
+- Ticket Assignment View ID
+- Quota
+- Weekday Schedule (single field display)
+- Weekend Schedule (single field display)
+- Break Schedule
+- Weekday OT Schedule
+- Weekend OT Schedule
+- Day Off
+
+### Still Computed in Master Directory
+- Weekday Total Hours
+- Weekend Total Hours
+- OT Total Hours
+- Unpaid Break Hours
+- Overall Total Hours
+
+---
+
+## Phase 6: Data Migration
+
+### Match Existing Position Values
+
+Create migration to standardize existing position values:
+
+```sql
+UPDATE agent_profiles SET position = 
+  CASE 
+    WHEN LOWER(position) LIKE '%hybrid%' THEN 'Hybrid Support'
+    WHEN LOWER(position) LIKE '%team lead%' THEN 'Team Lead'
+    WHEN LOWER(position) LIKE '%logistics%' THEN 'Logistics'
+    WHEN LOWER(position) LIKE '%email%' THEN 'Email Support'
+    WHEN LOWER(position) LIKE '%chat%' THEN 'Chat Support'
+    WHEN LOWER(position) LIKE '%phone%' OR LOWER(position) LIKE '%call%' THEN 'Phone Support'
+    WHEN LOWER(position) LIKE '%technical%' THEN 'Technical Support'
+    ELSE position
+  END
+WHERE position IS NOT NULL;
+```
+
+---
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/ticketLogsApi.ts` | Add `parseLocalDate()` helper; fix ticket bucketing to use EST timezone |
-| `src/components/ticket-logs/TicketDashboard.tsx` | Import `parseLocalDate`; fix column header date parsing |
-| `src/components/ticket-logs/TicketSearch.tsx` | Fix date filter boundaries to use EST day ranges |
+| Database Migration | Add 20+ new columns to `agent_profiles` |
+| `src/lib/agentProfileApi.ts` | Add new fields to interfaces, add sync function |
+| `src/pages/AgentProfile.tsx` | Add Work Configuration section with conditional fields |
+| `src/pages/ManageProfiles.tsx` | Add same Work Configuration fields for admin |
+| `src/pages/MasterDirectory.tsx` | Make synced fields read-only |
+| `src/lib/masterDirectoryApi.ts` | Update fetch to show synced fields as read-only |
 
 ---
 
-## Expected Result
+## Implementation Order (Step by Step)
 
-After these fixes:
-- **Badge**: 1/19 - 2/1 (already correct)
-- **Column headers**: 1/19, 1/20, 1/21, ... 1/30, 1/31, 2/1 (14 columns)
-- **Ticket counts**: Bucketed by EST day, not UTC
-- **Search filters**: Date ranges aligned to EST day boundaries
+1. **Step 1**: Database migration - Add new columns to agent_profiles
+2. **Step 2**: Update agentProfileApi.ts - Add new fields to interfaces
+3. **Step 3**: Update AgentProfile.tsx - Add Position dropdown and conditional fields
+4. **Step 4**: Update ManageProfiles.tsx - Add same fields for admin editing
+5. **Step 5**: Add sync logic - Save to agent_directory when profile saves
+6. **Step 6**: Update MasterDirectory.tsx - Make synced fields read-only
+7. **Step 7**: Test and verify data flows correctly
 
 ---
 
 ## Technical Details
 
-### Why the Shift Happens
+### Position Change Handler
+```typescript
+function handlePositionChange(position: string) {
+  const defaults = getDefaultsForPosition(position);
+  
+  // Auto-set support type
+  if (position !== 'Hybrid Support') {
+    setProfile(prev => ({
+      ...prev,
+      position,
+      support_type: defaults.defaultSupportType,
+      views: defaults.views,
+      ticket_assignment_view_id: defaults.viewId,
+    }));
+  } else {
+    setProfile(prev => ({
+      ...prev,
+      position,
+      views: ['All'],
+      ticket_assignment_view_id: '50553259977753',
+    }));
+  }
+}
 
-| Input | `new Date()` interpretation | EST display |
-|-------|----------------------------|-------------|
-| `'2026-01-19'` | Jan 19 00:00 **UTC** | Jan 18 19:00 EST → shows **1/18** |
-| `'2026-02-01'` | Feb 1 00:00 **UTC** | Jan 31 19:00 EST → shows **1/31** |
+function getDefaultsForPosition(position: string) {
+  switch (position) {
+    case 'Chat Support':
+      return { defaultSupportType: 'Chat', views: ['New'], viewId: '48622289457049' };
+    case 'Phone Support':
+      return { defaultSupportType: 'Phone', views: ['New'], viewId: '48622289457049' };
+    case 'Email Support':
+      return { defaultSupportType: 'Email', views: ['Open'], viewId: '50553259977753' };
+    case 'Hybrid Support':
+      return { defaultSupportType: 'Hybrid', views: ['All'], viewId: '50553259977753' };
+    case 'Team Lead':
+    case 'Logistics':
+    case 'Technical Support':
+      return { defaultSupportType: 'Email', views: ['All'], viewId: null };
+    default:
+      return { defaultSupportType: null, views: [], viewId: null };
+  }
+}
+```
 
-### The Fix
+### Schedule Auto-Population
+```typescript
+function handleMondayScheduleChange(value: string) {
+  setProfile(prev => ({
+    ...prev,
+    mon_schedule: value,
+    tue_schedule: value,
+    wed_schedule: value,
+    thu_schedule: value,
+    fri_schedule: value,
+  }));
+}
 
-By manually parsing with `new Date(year, month-1, day)`, JavaScript creates the date in **local time**, avoiding the UTC shift. For timestamps, we use `Intl.DateTimeFormat` with `timeZone: 'America/New_York'` to format in EST.
+function handleSaturdayScheduleChange(value: string) {
+  setProfile(prev => ({
+    ...prev,
+    sat_schedule: value,
+    sun_schedule: value,
+  }));
+}
+```
+
+---
+
+## Potential Conflicts Addressed
+
+1. **Position migration**: Will map existing free-text values to dropdown options
+2. **Bi-directional sync**: Master Directory becomes read-only for synced fields (no conflict)
+3. **Hours computation**: Stays in Master Directory, uses synced data from Bios
+4. **Existing data**: Schedule fields from agent_directory will continue working, new profile fields will sync on next save
