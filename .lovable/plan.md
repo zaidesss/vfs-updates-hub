@@ -1,208 +1,197 @@
 
-# Transfer Work Configuration from Master Directory to Bios
+# Clarifications and Additional Changes for Bios ↔ Master Directory
 
 ## Summary
 
-Consolidate work configuration fields into **Bios (Agent Profile)** as the single source of truth. Select fields will sync to **Master Directory** for visibility and hours computation. Master Directory synced fields become read-only.
+Based on your feedback, I need to make the following adjustments to correctly implement the data flow between Bios and Master Directory:
 
 ---
 
-## Phase 1: Database Schema Changes
+## Changes Required
 
-Add new columns to `agent_profiles` table to store work configuration data currently in `agent_directory`:
+### 1. Master Directory: Make Synced Fields Read-Only
 
-### New Fields for agent_profiles
+Fields that are editable in Bios and synced to Master Directory should be **read-only** (display only, no edit controls) in Master Directory:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| agent_name | text | Editable, defaults from first name |
-| agent_tag | text | Auto-computed lowercase of agent_name |
-| zendesk_instance | text | Dropdown: ZD1, ZD2 |
-| support_account | text | Dropdown: 1-17 |
-| support_type | text[] | Array for Hybrid, single value for others |
-| views | text[] | Auto-set based on position |
-| ticket_assignment_enabled | boolean | Toggle (replaces view ID text input) |
-| ticket_assignment_view_id | text | Auto-determined from position |
-| quota_email | integer | For Email/Chat/Hybrid |
-| quota_chat | integer | For Chat/Hybrid |
-| quota_phone | integer | For Phone/Hybrid |
-| mon_schedule | text | Individual day schedule |
-| tue_schedule | text | |
-| wed_schedule | text | |
-| thu_schedule | text | |
-| fri_schedule | text | |
-| sat_schedule | text | |
-| sun_schedule | text | |
-| break_schedule | text | |
-| weekday_ot_schedule | text | |
-| weekend_ot_schedule | text | |
-| day_off | text[] | Array of day names |
+| Field | Bios | Master Directory |
+|-------|------|------------------|
+| Agent Name | Editable | Read-only |
+| Agent Tag | Auto-computed | Read-only |
+| Zendesk Instance | Editable | Read-only |
+| Support Account | Editable | Read-only |
+| Support Type | Editable (Hybrid) / Read-only (others) | Read-only |
+| Views | Auto-set | Read-only |
+| Quota | Editable | Read-only |
+| Weekday Schedule (single) | N/A | Read-only (computed from mon_schedule) |
+| Weekend Schedule (single) | N/A | Read-only (computed from sat_schedule) |
+| Break Schedule | Editable | Read-only |
+| Weekday OT Schedule | Editable | Read-only |
+| Weekend OT Schedule | Editable | Read-only |
+| Day Off | Editable | Read-only |
 
----
+### 2. Upwork Contract ID
 
-## Phase 2: Position Dropdown and Field Logic
+- **Bios**: Add to Work Configuration section (editable)
+- **Master Directory**: Remove completely
 
-### Position Dropdown Values
-```
-Hybrid Support
-Team Lead
-Logistics
-Email Support
-Chat Support
-Phone Support
-Technical Support
-```
+### 3. Ticket Assignment
 
-### Position-Based Field Behavior
+- **Bios**: Remove Ticket Assignment Toggle (it was added in error)
+- **Master Directory**: Keep Ticket Assignment Toggle here (it should remain editable in Master Directory)
 
-| Position | Quota Fields | Views | Support Type | Ticket View ID |
-|----------|--------------|-------|--------------|----------------|
-| Hybrid Support | Email, Chat, Phone (editable) | All | Multi-select (editable) | 50553259977753 |
-| Email Support | Email only | Open | Email (read-only) | 50553259977753 |
-| Chat Support | Email, Chat | New | Chat (read-only) | 48622289457049 |
-| Phone Support | Email, Phone | New | Phone (read-only) | 48622289457049 |
-| Team Lead | No quota | All | Email (read-only) | - |
-| Logistics | No quota | All | Email (read-only) | - |
-| Technical Support | No quota | All | Email (read-only) | - |
+### 4. Ticket Assignment View ID
+
+- **Master Directory**: Remove this column entirely (it's auto-determined by position and not needed for display)
+
+### 5. Day Off → Schedule Fields Auto-Disable in Bios
+
+When a day is selected as a day off in Bios:
+- The schedule input field for that day becomes disabled
+- The field displays "Day Off" text instead of a time range
+
+Example: If "Mon" is checked as day off, the Monday schedule field shows "Day Off" and is not editable.
+
+### 6. Terminated Profiles Excluded from Master Directory
+
+- Profiles with `employment_status = 'Terminated'` should NOT appear in Master Directory
+- All computations/automations should skip terminated users
+- Filter applied at the data fetch level
 
 ---
 
-## Phase 3: UI Changes to Bios (AgentProfile.tsx and ManageProfiles.tsx)
+## Implementation Details
 
-### Work Information Section Updates
+### File: `src/pages/MasterDirectory.tsx`
 
-1. **Position/Role**: Change from text input to dropdown
+**Remove these columns:**
+- Upwork Contract ID (column and input)
+- Ticket Assignment View ID (column and input)
 
-2. **Agent Name**: New field
-   - Defaults from first word of full_name
-   - Editable by user
+**Make these columns read-only (change from inputs to text display):**
+- Zendesk Instance → Display text, not dropdown
+- Support Account → Display text, not dropdown
+- Support Type → Display text, not dropdown
+- Agent Name → Display text, not input
+- Agent Tag → Display text, not input
+- Views → Display badges, no edit popover
+- Quota → Display text, not input
+- Weekday Schedule → Display text, not input
+- Weekend Schedule → Display text, not input
+- Break Schedule → Display text, not input
+- Weekday OT Schedule → Display text, not input
+- Weekend OT Schedule → Display text, not input
+- Day Off → Display badges, no edit popover
 
-3. **Agent Tag**: New field (read-only)
-   - Auto-computed: lowercase of agent_name
+**Keep editable:**
+- WD Ticket Assign
+- WE Ticket Assign
+- Ticket Assignment Toggle (add this)
 
-4. **Zendesk Instance**: New dropdown (ZD1, ZD2)
-
-5. **Support Account**: New dropdown (1-17)
-
-6. **Support Type**: Conditional rendering
-   - Hybrid: Multi-select dropdown (Email, Chat, Phone)
-   - Others: Read-only badge showing default type
-
-7. **Views**: Read-only display based on position
-
-8. **Ticket Assignment**: Toggle switch
-   - Enabled/Disabled
-   - View ID auto-determined by position
-
-9. **Productivity (Quota)**: Conditional quota fields
-   - Hybrid: 3 fields (Email, Chat, Phone quotas)
-   - Email Support: 1 field (Email quota)
-   - Chat Support: 2 fields (Email, Chat quotas)
-   - Phone Support: 2 fields (Email, Phone quotas)
-   - Team Lead/Logistics/Technical: No quota fields
-
-10. **Weekday Schedule**: 5 individual fields (Mon-Fri)
-    - Monday value auto-populates Tue-Fri
-    - Each field remains editable
-
-11. **Weekend Schedule**: 2 individual fields (Sat-Sun)
-    - Saturday value auto-populates Sunday
-    - Each field remains editable
-
-12. **Break Schedule**: Text input (same format as before)
-
-13. **Weekday OT Schedule**: Text input
-
-14. **Weekend OT Schedule**: Text input
-
-15. **Day Off**: Multi-select checkboxes (Mon-Sun)
-
----
-
-## Phase 4: Sync Logic (Bios to Master Directory)
-
-When saving Bios, sync these fields to `agent_directory`:
-
+**Filter terminated profiles:**
 ```typescript
-async function syncProfileToDirectory(profileData: AgentProfileInput) {
-  // Compute weekday_schedule from mon_schedule (first day)
-  // Compute weekend_schedule from sat_schedule (first day)
-  // Calculate hours using existing calculateTotalHours function
+const filteredEntries = useMemo(() => {
+  let result = editedData;
   
-  await supabase.from('agent_directory').upsert({
-    email: profileData.email,
-    agent_name: profileData.agent_name,
-    agent_tag: profileData.agent_tag,
-    zendesk_instance: profileData.zendesk_instance,
-    support_account: profileData.support_account,
-    support_type: profileData.support_type,
-    views: profileData.views,
-    ticket_assignment_view_id: profileData.ticket_assignment_view_id,
-    quota: aggregateQuota(profileData),
-    mon_schedule: profileData.mon_schedule,
-    // ... all schedule fields
-    break_schedule: profileData.break_schedule,
-    weekday_ot_schedule: profileData.weekday_ot_schedule,
-    weekend_ot_schedule: profileData.weekend_ot_schedule,
-    day_off: profileData.day_off,
-    // Computed summary fields
-    weekday_schedule: profileData.mon_schedule,
-    weekend_schedule: profileData.sat_schedule,
-    ...calculatedHours,
-  });
+  // Exclude terminated profiles
+  result = result.filter(entry => entry.employment_status !== 'Terminated');
+  
+  // Then apply search filter
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase();
+    result = result.filter(
+      (entry) =>
+        entry.full_name?.toLowerCase().includes(query) ||
+        entry.email.toLowerCase().includes(query)
+    );
+  }
+  
+  return result;
+}, [editedData, searchQuery]);
+```
+
+### File: `src/components/profile/WorkConfigurationSection.tsx`
+
+**Add Upwork Contract ID field:**
+```typescript
+<div className="space-y-2">
+  <Label>Upwork Contract ID</Label>
+  <Input
+    value={profile.upwork_contract_id || ''}
+    onChange={(e) => onInputChange('upwork_contract_id', e.target.value)}
+    placeholder="Enter contract ID"
+    disabled={!canEdit}
+    className={!canEdit ? 'bg-muted' : ''}
+  />
+</div>
+```
+
+**Remove Ticket Assignment Toggle** (delete lines 212-225)
+
+**Modify schedule inputs for day off auto-disable:**
+```typescript
+// Check if day is a day off
+const isDayOff = (day: string) => (profile.day_off || []).includes(day);
+
+// For each schedule input:
+<div className="space-y-1">
+  <Label className="text-xs">Monday</Label>
+  <Input
+    value={isDayOff('Mon') ? 'Day Off' : (profile.mon_schedule || '')}
+    onChange={(e) => handleMondayChange(e.target.value)}
+    placeholder="8:00 AM-5:00 PM"
+    disabled={!canEdit || isDayOff('Mon')}
+    className={cn(
+      'text-xs',
+      (!canEdit || isDayOff('Mon')) && 'bg-muted'
+    )}
+    readOnly={isDayOff('Mon')}
+  />
+</div>
+```
+
+### File: `src/lib/masterDirectoryApi.ts`
+
+**Update `fetchAllDirectoryEntries`** to include `employment_status`:
+```typescript
+const { data: profiles, error: profilesError } = await supabase
+  .from('agent_profiles')
+  .select('id, email, full_name, position, team_lead, employment_status');
+```
+
+**Update `DirectoryEntry` interface** to include `employment_status`:
+```typescript
+export interface DirectoryEntry {
+  // ... existing fields
+  employment_status: string | null;
+}
+```
+
+### File: `src/lib/agentProfileApi.ts`
+
+**Add `upwork_contract_id` to sync function:**
+```typescript
+const syncData = {
+  // ... existing fields
+  upwork_contract_id: input.upwork_contract_id || null,
+};
+```
+
+**Add `upwork_contract_id` to interfaces:**
+```typescript
+export interface AgentProfileInput {
+  // ... existing fields
+  upwork_contract_id?: string;
 }
 ```
 
 ---
 
-## Phase 5: Master Directory Updates
+## Database Migration
 
-### Read-Only Synced Fields
-The following fields become read-only in Master Directory (they sync from Bios):
-
-- Agent Name
-- Agent Tag
-- Zendesk Instance
-- Support Account
-- Support Type
-- Views
-- Ticket Assignment View ID
-- Quota
-- Weekday Schedule (single field display)
-- Weekend Schedule (single field display)
-- Break Schedule
-- Weekday OT Schedule
-- Weekend OT Schedule
-- Day Off
-
-### Still Computed in Master Directory
-- Weekday Total Hours
-- Weekend Total Hours
-- OT Total Hours
-- Unpaid Break Hours
-- Overall Total Hours
-
----
-
-## Phase 6: Data Migration
-
-### Match Existing Position Values
-
-Create migration to standardize existing position values:
-
+Add `upwork_contract_id` column to `agent_profiles` if not exists:
 ```sql
-UPDATE agent_profiles SET position = 
-  CASE 
-    WHEN LOWER(position) LIKE '%hybrid%' THEN 'Hybrid Support'
-    WHEN LOWER(position) LIKE '%team lead%' THEN 'Team Lead'
-    WHEN LOWER(position) LIKE '%logistics%' THEN 'Logistics'
-    WHEN LOWER(position) LIKE '%email%' THEN 'Email Support'
-    WHEN LOWER(position) LIKE '%chat%' THEN 'Chat Support'
-    WHEN LOWER(position) LIKE '%phone%' OR LOWER(position) LIKE '%call%' THEN 'Phone Support'
-    WHEN LOWER(position) LIKE '%technical%' THEN 'Technical Support'
-    ELSE position
-  END
-WHERE position IS NOT NULL;
+ALTER TABLE public.agent_profiles
+ADD COLUMN IF NOT EXISTS upwork_contract_id text;
 ```
 
 ---
@@ -211,100 +200,21 @@ WHERE position IS NOT NULL;
 
 | File | Changes |
 |------|---------|
-| Database Migration | Add 20+ new columns to `agent_profiles` |
-| `src/lib/agentProfileApi.ts` | Add new fields to interfaces, add sync function |
-| `src/pages/AgentProfile.tsx` | Add Work Configuration section with conditional fields |
-| `src/pages/ManageProfiles.tsx` | Add same Work Configuration fields for admin |
-| `src/pages/MasterDirectory.tsx` | Make synced fields read-only |
-| `src/lib/masterDirectoryApi.ts` | Update fetch to show synced fields as read-only |
+| `src/pages/MasterDirectory.tsx` | Make synced fields read-only, remove Upwork Contract ID & View ID columns, add Ticket Assignment Toggle, filter terminated profiles |
+| `src/components/profile/WorkConfigurationSection.tsx` | Add Upwork Contract ID, remove Ticket Assignment Toggle, add day-off auto-disable logic |
+| `src/lib/masterDirectoryApi.ts` | Add employment_status to interface and fetch, remove upwork_contract_id from interface |
+| `src/lib/agentProfileApi.ts` | Add upwork_contract_id to interfaces and sync function |
+| Database Migration | Add upwork_contract_id to agent_profiles |
 
 ---
 
-## Implementation Order (Step by Step)
+## Result Summary
 
-1. **Step 1**: Database migration - Add new columns to agent_profiles
-2. **Step 2**: Update agentProfileApi.ts - Add new fields to interfaces
-3. **Step 3**: Update AgentProfile.tsx - Add Position dropdown and conditional fields
-4. **Step 4**: Update ManageProfiles.tsx - Add same fields for admin editing
-5. **Step 5**: Add sync logic - Save to agent_directory when profile saves
-6. **Step 6**: Update MasterDirectory.tsx - Make synced fields read-only
-7. **Step 7**: Test and verify data flows correctly
-
----
-
-## Technical Details
-
-### Position Change Handler
-```typescript
-function handlePositionChange(position: string) {
-  const defaults = getDefaultsForPosition(position);
-  
-  // Auto-set support type
-  if (position !== 'Hybrid Support') {
-    setProfile(prev => ({
-      ...prev,
-      position,
-      support_type: defaults.defaultSupportType,
-      views: defaults.views,
-      ticket_assignment_view_id: defaults.viewId,
-    }));
-  } else {
-    setProfile(prev => ({
-      ...prev,
-      position,
-      views: ['All'],
-      ticket_assignment_view_id: '50553259977753',
-    }));
-  }
-}
-
-function getDefaultsForPosition(position: string) {
-  switch (position) {
-    case 'Chat Support':
-      return { defaultSupportType: 'Chat', views: ['New'], viewId: '48622289457049' };
-    case 'Phone Support':
-      return { defaultSupportType: 'Phone', views: ['New'], viewId: '48622289457049' };
-    case 'Email Support':
-      return { defaultSupportType: 'Email', views: ['Open'], viewId: '50553259977753' };
-    case 'Hybrid Support':
-      return { defaultSupportType: 'Hybrid', views: ['All'], viewId: '50553259977753' };
-    case 'Team Lead':
-    case 'Logistics':
-    case 'Technical Support':
-      return { defaultSupportType: 'Email', views: ['All'], viewId: null };
-    default:
-      return { defaultSupportType: null, views: [], viewId: null };
-  }
-}
-```
-
-### Schedule Auto-Population
-```typescript
-function handleMondayScheduleChange(value: string) {
-  setProfile(prev => ({
-    ...prev,
-    mon_schedule: value,
-    tue_schedule: value,
-    wed_schedule: value,
-    thu_schedule: value,
-    fri_schedule: value,
-  }));
-}
-
-function handleSaturdayScheduleChange(value: string) {
-  setProfile(prev => ({
-    ...prev,
-    sat_schedule: value,
-    sun_schedule: value,
-  }));
-}
-```
-
----
-
-## Potential Conflicts Addressed
-
-1. **Position migration**: Will map existing free-text values to dropdown options
-2. **Bi-directional sync**: Master Directory becomes read-only for synced fields (no conflict)
-3. **Hours computation**: Stays in Master Directory, uses synced data from Bios
-4. **Existing data**: Schedule fields from agent_directory will continue working, new profile fields will sync on next save
+| Feature | Bios | Master Directory |
+|---------|------|------------------|
+| Upwork Contract ID | ✅ Editable | ❌ Removed |
+| Ticket Assignment Toggle | ❌ Removed | ✅ Editable |
+| Ticket Assignment View ID | N/A (auto-computed) | ❌ Removed |
+| All synced fields | ✅ Editable | 📖 Read-only |
+| Schedule fields when day off | 📖 Shows "Day Off" (disabled) | 📖 Read-only |
+| Terminated profiles | Shows in Bios | ❌ Hidden |
