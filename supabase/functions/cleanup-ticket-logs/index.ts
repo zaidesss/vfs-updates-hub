@@ -5,6 +5,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Calculate cutoff date: start of previous week (Monday)
+function getArchiveCutoffDate(): Date {
+  const today = new Date()
+  const dayOfWeek = today.getDay() // 0=Sun, 1=Mon, etc.
+  
+  // Calculate Monday of current week
+  // If today is Sunday (0), go back 6 days; otherwise go back (dayOfWeek - 1) days
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  const currentWeekMonday = new Date(today)
+  currentWeekMonday.setDate(today.getDate() - daysFromMonday)
+  currentWeekMonday.setHours(0, 0, 0, 0)
+  
+  // Previous week's Monday (7 days before current Monday)
+  const previousWeekMonday = new Date(currentWeekMonday)
+  previousWeekMonday.setDate(currentWeekMonday.getDate() - 7)
+  
+  return previousWeekMonday
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -15,18 +34,17 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Calculate 14 days ago
-    const fourteenDaysAgo = new Date()
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-    const cutoffDate = fourteenDaysAgo.toISOString()
+    // Calculate cutoff: start of previous week (Monday)
+    const cutoffDate = getArchiveCutoffDate()
+    const cutoffDateStr = cutoffDate.toISOString().split('T')[0]
 
-    console.log('Cleanup started. Cutoff date:', cutoffDate)
+    console.log('Cleanup started. Cutoff date (start of previous week):', cutoffDateStr)
 
-    // Fetch old ticket logs
+    // Fetch old ticket logs (before the previous week's Monday)
     const { data: oldLogs, error: fetchError } = await supabase
       .from('ticket_logs')
       .select('*')
-      .lt('timestamp', cutoffDate)
+      .lt('timestamp', cutoffDate.toISOString())
       .order('timestamp', { ascending: true })
 
     if (fetchError) {
@@ -89,7 +107,7 @@ Deno.serve(async (req) => {
     const { error: gapDeleteError } = await supabase
       .from('ticket_gap_daily')
       .delete()
-      .lt('date', cutoffDate.split('T')[0])
+      .lt('date', cutoffDateStr)
 
     if (gapDeleteError) {
       console.error('Error deleting old gap records:', gapDeleteError)
@@ -101,7 +119,8 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         archived: oldLogs.length, 
-        archiveFile: fileName 
+        archiveFile: fileName,
+        cutoffDate: cutoffDateStr
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

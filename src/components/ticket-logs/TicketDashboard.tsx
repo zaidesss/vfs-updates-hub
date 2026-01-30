@@ -15,12 +15,14 @@ interface TicketDashboardProps {
 
 export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
   const [data, setData] = useState<AgentDashboardData[]>([]);
+  const [dateRangeLabel, setDateRangeLabel] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
     try {
-      const dashboardData = await fetchDashboardData(zdInstance);
-      setData(dashboardData);
+      const result = await fetchDashboardData(zdInstance);
+      setData(result.data);
+      setDateRangeLabel(result.dateRange.displayLabel);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -75,9 +77,9 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>{title}</span>
-            <Badge variant="outline" className="text-xs font-normal">
-              Last 14 Days
-            </Badge>
+          <Badge variant="outline" className="text-xs font-normal">
+            {dateRangeLabel || 'Loading...'}
+          </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -98,7 +100,7 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
         <CardTitle className="flex items-center justify-between">
           <span>{title}</span>
           <Badge variant="outline" className="text-xs font-normal">
-            Last 14 Days
+            {dateRangeLabel || 'Loading...'}
           </Badge>
         </CardTitle>
       </CardHeader>
