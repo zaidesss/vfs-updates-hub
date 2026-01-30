@@ -18,6 +18,8 @@ interface TokenData {
   access_token: string;
   refresh_token: string;
   expires_at: string;
+  organization_id: string | null;
+  organization_name: string | null;
 }
 
 // Create Supabase client with service role
@@ -38,7 +40,7 @@ async function getTokensFromDatabase(): Promise<TokenData | null> {
   
   const { data, error } = await supabase
     .from('upwork_tokens')
-    .select('access_token, refresh_token, expires_at')
+    .select('access_token, refresh_token, expires_at, organization_id, organization_name')
     .eq('id', 'default')
     .single();
   
@@ -158,6 +160,8 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
       access_token: tokens.access_token.trim(),
       refresh_token: (tokens.refresh_token || currentTokens.refresh_token).trim(),
       expires_at: expiresAt,
+      organization_id: currentTokens.organization_id,
+      organization_name: currentTokens.organization_name,
     };
     
   } catch (error) {
@@ -168,77 +172,7 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
   }
 }
 
-// GraphQL introspection query to discover Contract workDays field arguments
-const INTROSPECT_CONTRACT_WORKDAYS_ARGS = `
-  query IntrospectContractWorkDaysArgs {
-    __type(name: "Contract") {
-      fields {
-        name
-        args {
-          name
-          type {
-            name
-            kind
-            ofType {
-              name
-              kind
-              inputFields {
-                name
-                type {
-                  name
-                  kind
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
-// GraphQL introspection query for WorkDiary type (nested in WorkDay)
-const INTROSPECT_WORK_DIARY_TYPE = `
-  query IntrospectWorkDiaryType {
-    __type(name: "WorkDiary") {
-      name
-      fields {
-        name
-        type {
-          name
-          kind
-          ofType {
-            name
-            kind
-          }
-        }
-      }
-    }
-  }
-`;
-
-// GraphQL introspection query for time-related input types
-const INTROSPECT_TIME_RANGE = `
-  query IntrospectTimeRange {
-    __type(name: "DateRange") {
-      name
-      kind
-      inputFields {
-        name
-        type {
-          name
-          kind
-        }
-      }
-    }
-  }
-`;
-
-// GraphQL query using workDays with date range
-// Based on introspection: WorkDay has date and workDiary fields
 // GraphQL query using workDays with DateTimeRange
-// Based on introspection: timeRange requires DateTimeRange with rangeStart and rangeEnd
-// WorkDay has date and workDiary.cells
 const CONTRACT_WORK_DAYS_QUERY = `
   query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
     contract(id: $id) {
@@ -288,18 +222,30 @@ interface ContractResponse {
   workDays?: WorkDay[];
 }
 
-// Execute a GraphQL query against Upwork API
+// Execute a GraphQL query against Upwork API with organization context
 async function executeGraphQLQuery(
   query: string,
   variables: Record<string, unknown>,
-  accessToken: string
+  accessToken: string,
+  organizationId: string | null
 ): Promise<{ data: { contract?: ContractResponse; __type?: unknown } | null; errors?: Array<{ message: string }> }> {
+  // Build headers with optional organization context
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${accessToken.trim()}`,
+    'Content-Type': 'application/json',
+  };
+  
+  // Add organization context header if available
+  if (organizationId) {
+    headers['X-Upwork-API-TenantId'] = organizationId;
+    console.log(`Using organization context: ${organizationId}`);
+  } else {
+    console.log('No organization context - using personal account');
+  }
+
   const response = await fetch(UPWORK_GRAPHQL_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken.trim()}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       query,
       variables,
@@ -320,7 +266,8 @@ async function executeGraphQLQuery(
 async function fetchWorkDaysGraphQL(
   contractId: string,
   date: string,
-  accessToken: string
+  accessToken: string,
+  organizationId: string | null
 ): Promise<{ hours: number | null; needsRefresh: boolean; error?: string }> {
   console.log(`Fetching work days via GraphQL for contract: ${contractId}, date: ${date}`);
 
@@ -330,7 +277,8 @@ async function fetchWorkDaysGraphQL(
     const contractResult = await executeGraphQLQuery(
       SIMPLE_CONTRACT_QUERY,
       { id: contractId },
-      accessToken
+      accessToken,
+      organizationId
     );
     
     console.log('Contract verification result:', JSON.stringify(contractResult, null, 2));
@@ -354,7 +302,6 @@ async function fetchWorkDaysGraphQL(
     console.log(`Contract verified: ${contract.title}, Status: ${contract.status}`);
 
     // Step 2: Try to fetch workDays with the correct timeRange format
-    // DateTimeRange uses rangeStart and rangeEnd
     const timeRange = {
       rangeStart: date,
       rangeEnd: date
@@ -365,7 +312,8 @@ async function fetchWorkDaysGraphQL(
     const workDaysResult = await executeGraphQLQuery(
       CONTRACT_WORK_DAYS_QUERY,
       { id: contractId, timeRange: timeRange },
-      accessToken
+      accessToken,
+      organizationId
     );
     
     console.log('workDays query result:', JSON.stringify(workDaysResult, null, 2));
@@ -447,7 +395,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`Tokens loaded - expires_at: ${tokens.expires_at}`);
+    console.log(`Tokens loaded - expires_at: ${tokens.expires_at}, organization_id: ${tokens.organization_id || 'none'}`);
 
     if (shouldRefreshToken(tokens.expires_at)) {
       console.log('Token expired or near expiry, refreshing...');
@@ -465,14 +413,14 @@ serve(async (req) => {
       }
     }
 
-    let result = await fetchWorkDaysGraphQL(contractId, date, tokens.access_token);
+    let result = await fetchWorkDaysGraphQL(contractId, date, tokens.access_token, tokens.organization_id);
 
     if (result.needsRefresh) {
       console.log('API returned token expired, attempting refresh...');
       const refreshedTokens = await refreshTokensWithLock();
       
       if (refreshedTokens) {
-        result = await fetchWorkDaysGraphQL(contractId, date, refreshedTokens.access_token);
+        result = await fetchWorkDaysGraphQL(contractId, date, refreshedTokens.access_token, refreshedTokens.organization_id);
         
         if (result.needsRefresh) {
           return new Response(
