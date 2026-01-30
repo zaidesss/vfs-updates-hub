@@ -1,5 +1,31 @@
 import { supabase } from '@/integrations/supabase/client';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
+
+// Calculate rolling 2-week window (previous week + current week, Monday-Sunday)
+export function getRollingTwoWeekRange(): { startDate: string; endDate: string; displayLabel: string } {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, etc.
+  
+  // Calculate Monday of current week
+  // If today is Sunday (0), go back 6 days; otherwise go back (dayOfWeek - 1) days
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const currentWeekMonday = new Date(today);
+  currentWeekMonday.setDate(today.getDate() - daysFromMonday);
+  
+  // Previous week's Monday (7 days before current Monday)
+  const previousWeekMonday = new Date(currentWeekMonday);
+  previousWeekMonday.setDate(currentWeekMonday.getDate() - 7);
+  
+  // Current week's Sunday (6 days after current Monday)
+  const currentWeekSunday = new Date(currentWeekMonday);
+  currentWeekSunday.setDate(currentWeekMonday.getDate() + 6);
+  
+  return {
+    startDate: format(previousWeekMonday, 'yyyy-MM-dd'),
+    endDate: format(currentWeekSunday, 'yyyy-MM-dd'),
+    displayLabel: `${format(previousWeekMonday, 'M/d')} - ${format(currentWeekSunday, 'M/d')}`
+  };
+}
 
 export interface TicketLog {
   id: string;
@@ -55,10 +81,10 @@ export async function fetchTicketLogs(
     .select('*')
     .order('timestamp', { ascending: false });
 
-  // Default to last 14 days if no date filter
+  // Default to rolling 2-week window if no date filter
   if (!filters?.startDate && !filters?.endDate) {
-    const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
-    query = query.gte('timestamp', fourteenDaysAgo);
+    const dateRange = getRollingTwoWeekRange();
+    query = query.gte('timestamp', `${dateRange.startDate}T00:00:00.000Z`);
   }
 
   if (filters?.startDate) {
@@ -95,14 +121,15 @@ export async function fetchTicketLogs(
   return data || [];
 }
 
-// Fetch gap data for the last 14 days
+// Fetch gap data for the rolling 2-week window
 export async function fetchTicketGaps(agentName?: string): Promise<TicketGapDaily[]> {
-  const fourteenDaysAgo = subDays(new Date(), 14).toISOString().split('T')[0];
+  const dateRange = getRollingTwoWeekRange();
 
   let query = supabase
     .from('ticket_gap_daily')
     .select('*')
-    .gte('date', fourteenDaysAgo)
+    .gte('date', dateRange.startDate)
+    .lte('date', dateRange.endDate)
     .order('date', { ascending: false });
 
   if (agentName) {
@@ -120,14 +147,15 @@ export async function fetchTicketGaps(agentName?: string): Promise<TicketGapDail
 }
 
 // Get dashboard data grouped by agent and date
-export async function fetchDashboardData(zdInstance?: string): Promise<AgentDashboardData[]> {
-  const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
+export async function fetchDashboardData(zdInstance?: string): Promise<{ data: AgentDashboardData[]; dateRange: { startDate: string; endDate: string; displayLabel: string } }> {
+  const dateRange = getRollingTwoWeekRange();
 
-  // Fetch ticket logs
+  // Fetch ticket logs within the rolling 2-week window
   let logsQuery = supabase
     .from('ticket_logs')
     .select('agent_name, agent_email, timestamp, ticket_type')
-    .gte('timestamp', fourteenDaysAgo)
+    .gte('timestamp', `${dateRange.startDate}T00:00:00.000Z`)
+    .lte('timestamp', `${dateRange.endDate}T23:59:59.999Z`)
     .order('agent_name');
 
   if (zdInstance) {
@@ -141,11 +169,12 @@ export async function fetchDashboardData(zdInstance?: string): Promise<AgentDash
     throw logsError;
   }
 
-  // Fetch gap data
+  // Fetch gap data within the rolling 2-week window
   const { data: gaps, error: gapsError } = await supabase
     .from('ticket_gap_daily')
     .select('*')
-    .gte('date', fourteenDaysAgo.split('T')[0]);
+    .gte('date', dateRange.startDate)
+    .lte('date', dateRange.endDate);
 
   if (gapsError) {
     console.error('Error fetching gaps for dashboard:', gapsError);
@@ -185,10 +214,12 @@ export async function fetchDashboardData(zdInstance?: string): Promise<AgentDash
     profileIdToStatus[s.profile_id] = s.current_status;
   }
 
-  // Generate date range (last 14 days)
+  // Generate date range from startDate to endDate
   const dates: string[] = [];
-  for (let i = 13; i >= 0; i--) {
-    dates.push(format(subDays(new Date(), i), 'yyyy-MM-dd'));
+  const start = new Date(dateRange.startDate);
+  const end = new Date(dateRange.endDate);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(format(new Date(d), 'yyyy-MM-dd'));
   }
 
   // Group by agent
@@ -242,7 +273,10 @@ export async function fetchDashboardData(zdInstance?: string): Promise<AgentDash
     };
   });
 
-  return result.sort((a, b) => a.agent_name.localeCompare(b.agent_name));
+  return {
+    data: result.sort((a, b) => a.agent_name.localeCompare(b.agent_name)),
+    dateRange
+  };
 }
 
 // Format seconds to readable string
