@@ -16,6 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   Plus, 
   Search, 
@@ -41,6 +48,7 @@ export default function QAEvaluations() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
+  const [selectedAgent, setSelectedAgent] = useState<string>('all');
 
   const canCreate = isAdmin || isHR || isSuperAdmin;
   const canViewAll = isAdmin || isHR || isSuperAdmin;
@@ -57,6 +65,17 @@ export default function QAEvaluations() {
     queryFn: fetchWeeklyComparisonStats,
   });
 
+  // Get unique agents for filter dropdown
+  const uniqueAgents = useMemo(() => {
+    const agents = new Map<string, string>();
+    evaluations.forEach(e => {
+      if (!agents.has(e.agent_email)) {
+        agents.set(e.agent_email, e.agent_name);
+      }
+    });
+    return Array.from(agents.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [evaluations]);
+
   // Filter evaluations based on active tab
   const filteredEvaluations = useMemo(() => {
     const now = new Date();
@@ -65,6 +84,11 @@ export default function QAEvaluations() {
     // Filter by user if not admin
     if (!canViewAll && user?.email) {
       filtered = filtered.filter(e => e.agent_email.toLowerCase() === user.email.toLowerCase());
+    }
+
+    // Filter by selected agent (only for admins)
+    if (canViewAll && selectedAgent !== 'all') {
+      filtered = filtered.filter(e => e.agent_email === selectedAgent);
     }
 
     // Date filtering based on tab
@@ -128,7 +152,7 @@ export default function QAEvaluations() {
     }
 
     return filtered;
-  }, [evaluations, activeTab, customStartDate, customEndDate, searchQuery, canViewAll, user?.email]);
+  }, [evaluations, activeTab, customStartDate, customEndDate, searchQuery, canViewAll, user?.email, selectedAgent]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -243,6 +267,21 @@ export default function QAEvaluations() {
               </TabsList>
 
               <div className="flex items-center gap-2">
+                {canViewAll && (
+                  <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Agents</SelectItem>
+                      {uniqueAgents.map(([email, name]) => (
+                        <SelectItem key={email} value={email}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
