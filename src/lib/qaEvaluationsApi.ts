@@ -1,0 +1,446 @@
+import { supabase } from '@/integrations/supabase/client';
+
+// Types
+export interface QAEvaluation {
+  id: string;
+  reference_number: string | null;
+  agent_email: string;
+  agent_name: string;
+  evaluator_email: string;
+  evaluator_name: string | null;
+  audit_date: string;
+  zd_instance: string;
+  ticket_id: string;
+  ticket_url: string | null;
+  interaction_type: string;
+  ticket_content: string | null;
+  total_score: number;
+  total_max: number;
+  percentage: number;
+  has_critical_fail: boolean;
+  rating: string | null;
+  accuracy_feedback: string | null;
+  accuracy_kudos: string | null;
+  compliance_feedback: string | null;
+  compliance_kudos: string | null;
+  customer_exp_feedback: string | null;
+  customer_exp_kudos: string | null;
+  agent_acknowledged: boolean;
+  acknowledged_at: string | null;
+  notification_sent: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QAEvaluationScore {
+  id: string;
+  evaluation_id: string;
+  category: string;
+  subcategory: string;
+  behavior_identifier: string | null;
+  is_critical: boolean;
+  score_earned: number | null;
+  max_points: number;
+  ai_suggested_score: number | null;
+  ai_accepted: boolean | null;
+  critical_error_detected: boolean | null;
+  created_at: string;
+}
+
+export interface QAActionPlan {
+  id: string;
+  action_text: string;
+  category: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+}
+
+export interface QAActionNeeded {
+  id: string;
+  evaluation_id: string;
+  action_plan_id: string | null;
+  custom_action: string | null;
+  is_resolved: boolean;
+  resolved_at: string | null;
+  created_at: string;
+  action_plan?: QAActionPlan;
+}
+
+export interface CreateQAEvaluationInput {
+  agent_email: string;
+  agent_name: string;
+  evaluator_email: string;
+  evaluator_name: string;
+  audit_date: string;
+  zd_instance: string;
+  ticket_id: string;
+  ticket_url: string;
+  interaction_type: string;
+  ticket_content?: string;
+  accuracy_feedback?: string;
+  compliance_feedback?: string;
+  customer_exp_feedback?: string;
+  status?: string;
+}
+
+export interface CreateQAScoreInput {
+  evaluation_id: string;
+  category: string;
+  subcategory: string;
+  behavior_identifier?: string;
+  is_critical: boolean;
+  score_earned?: number;
+  max_points: number;
+  ai_suggested_score?: number;
+  ai_accepted?: boolean;
+  critical_error_detected?: boolean;
+}
+
+// Zendesk instance URL mapping
+export const ZD_INSTANCES = {
+  customerserviceadvocates: 'customerserviceadvocates.zendesk.com',
+  customerserviceadvocateshelp: 'customerserviceadvocateshelp.zendesk.com',
+} as const;
+
+export type ZDInstance = keyof typeof ZD_INSTANCES;
+
+// Generate ticket URL
+export function generateTicketUrl(instance: ZDInstance, ticketId: string): string {
+  return `https://${ZD_INSTANCES[instance]}/agent/tickets/${ticketId}`;
+}
+
+// Fetch all QA evaluations
+export async function fetchQAEvaluations(): Promise<QAEvaluation[]> {
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as QAEvaluation[];
+}
+
+// Fetch single QA evaluation with scores and actions
+export async function fetchQAEvaluationById(id: string): Promise<{
+  evaluation: QAEvaluation;
+  scores: QAEvaluationScore[];
+  actions: QAActionNeeded[];
+}> {
+  const [evaluationRes, scoresRes, actionsRes] = await Promise.all([
+    supabase.from('qa_evaluations').select('*').eq('id', id).single(),
+    supabase.from('qa_evaluation_scores').select('*').eq('evaluation_id', id),
+    supabase.from('qa_action_needed').select('*, action_plan:qa_action_plans(*)').eq('evaluation_id', id),
+  ]);
+
+  if (evaluationRes.error) throw evaluationRes.error;
+  if (scoresRes.error) throw scoresRes.error;
+  if (actionsRes.error) throw actionsRes.error;
+
+  return {
+    evaluation: evaluationRes.data as QAEvaluation,
+    scores: (scoresRes.data || []) as QAEvaluationScore[],
+    actions: (actionsRes.data || []) as QAActionNeeded[],
+  };
+}
+
+// Fetch action plans
+export async function fetchActionPlans(): Promise<QAActionPlan[]> {
+  const { data, error } = await supabase
+    .from('qa_action_plans')
+    .select('*')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as QAActionPlan[];
+}
+
+// Create QA evaluation
+export async function createQAEvaluation(input: CreateQAEvaluationInput): Promise<QAEvaluation> {
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .insert(input)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as QAEvaluation;
+}
+
+// Create QA scores in bulk
+export async function createQAScores(scores: CreateQAScoreInput[]): Promise<QAEvaluationScore[]> {
+  const { data, error } = await supabase
+    .from('qa_evaluation_scores')
+    .insert(scores)
+    .select();
+
+  if (error) throw error;
+  return (data || []) as QAEvaluationScore[];
+}
+
+// Update QA evaluation
+export async function updateQAEvaluation(
+  id: string, 
+  updates: Partial<QAEvaluation>
+): Promise<QAEvaluation> {
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as QAEvaluation;
+}
+
+// Create action needed
+export async function createActionNeeded(
+  evaluation_id: string,
+  action_plan_id?: string,
+  custom_action?: string
+): Promise<QAActionNeeded> {
+  const { data, error } = await supabase
+    .from('qa_action_needed')
+    .insert({ evaluation_id, action_plan_id, custom_action })
+    .select('*, action_plan:qa_action_plans(*)')
+    .single();
+
+  if (error) throw error;
+  return data as QAActionNeeded;
+}
+
+// Bulk create actions needed
+export async function createActionsNeeded(
+  actions: { evaluation_id: string; action_plan_id?: string; custom_action?: string }[]
+): Promise<QAActionNeeded[]> {
+  const { data, error } = await supabase
+    .from('qa_action_needed')
+    .insert(actions)
+    .select();
+
+  if (error) throw error;
+  return (data || []) as QAActionNeeded[];
+}
+
+// Resolve action
+export async function resolveAction(id: string): Promise<QAActionNeeded> {
+  const { data, error } = await supabase
+    .from('qa_action_needed')
+    .update({ is_resolved: true, resolved_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as QAActionNeeded;
+}
+
+// Acknowledge evaluation (agent)
+export async function acknowledgeEvaluation(id: string): Promise<QAEvaluation> {
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .update({ 
+      agent_acknowledged: true, 
+      acknowledged_at: new Date().toISOString() 
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as QAEvaluation;
+}
+
+// Fetch pending actions for an agent
+export async function fetchPendingActionsForAgent(agentEmail: string): Promise<QAActionNeeded[]> {
+  const { data, error } = await supabase
+    .from('qa_action_needed')
+    .select(`
+      *,
+      action_plan:qa_action_plans(*),
+      evaluation:qa_evaluations!inner(agent_email, reference_number, audit_date)
+    `)
+    .eq('is_resolved', false)
+    .eq('evaluation.agent_email', agentEmail);
+
+  if (error) throw error;
+  return (data || []) as QAActionNeeded[];
+}
+
+// Fetch past violations for an agent (all-time history)
+export async function fetchAgentViolationHistory(agentEmail: string): Promise<{
+  subcategory: string;
+  count: number;
+  last_occurrence: string;
+}[]> {
+  // First get all evaluations for this agent
+  const { data: evaluations, error: evalError } = await supabase
+    .from('qa_evaluations')
+    .select('id, audit_date')
+    .eq('agent_email', agentEmail);
+
+  if (evalError) throw evalError;
+  if (!evaluations || evaluations.length === 0) return [];
+
+  const evaluationIds = evaluations.map(e => e.id);
+
+  // Get all scores where score_earned < max_points
+  const { data: scores, error: scoresError } = await supabase
+    .from('qa_evaluation_scores')
+    .select('subcategory, evaluation_id, score_earned, max_points')
+    .in('evaluation_id', evaluationIds)
+    .not('is_critical', 'eq', true);
+
+  if (scoresError) throw scoresError;
+  if (!scores) return [];
+
+  // Filter violations and group by subcategory
+  const violations: Record<string, { count: number; last_occurrence: string }> = {};
+  
+  scores.forEach(score => {
+    if (score.score_earned !== null && score.max_points !== null && score.score_earned < score.max_points) {
+      const eval_date = evaluations.find(e => e.id === score.evaluation_id)?.audit_date || '';
+      if (!violations[score.subcategory]) {
+        violations[score.subcategory] = { count: 0, last_occurrence: eval_date };
+      }
+      violations[score.subcategory].count++;
+      if (eval_date > violations[score.subcategory].last_occurrence) {
+        violations[score.subcategory].last_occurrence = eval_date;
+      }
+    }
+  });
+
+  return Object.entries(violations).map(([subcategory, data]) => ({
+    subcategory,
+    count: data.count,
+    last_occurrence: data.last_occurrence,
+  }));
+}
+
+// Fetch evaluations for date range
+export async function fetchEvaluationsForDateRange(
+  startDate: string,
+  endDate: string
+): Promise<QAEvaluation[]> {
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .select('*')
+    .gte('audit_date', startDate)
+    .lte('audit_date', endDate)
+    .order('audit_date', { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as QAEvaluation[];
+}
+
+// Fetch weekly comparison stats (last 4 weeks)
+export async function fetchWeeklyComparisonStats(): Promise<{
+  week: string;
+  startDate: string;
+  endDate: string;
+  evaluationCount: number;
+  averageScore: number;
+}[]> {
+  const now = new Date();
+  const weeks: { week: string; startDate: string; endDate: string }[] = [];
+  
+  // Calculate last 4 weeks (Monday to Sunday)
+  for (let i = 0; i < 4; i++) {
+    const weekEnd = new Date(now);
+    weekEnd.setDate(now.getDate() - now.getDay() - (i * 7));
+    if (now.getDay() === 0) {
+      weekEnd.setDate(weekEnd.getDate() - 7);
+    }
+    
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekEnd.getDate() - 6);
+    
+    weeks.push({
+      week: `Week ${4 - i}`,
+      startDate: weekStart.toISOString().split('T')[0],
+      endDate: weekEnd.toISOString().split('T')[0],
+    });
+  }
+
+  // Fetch evaluations for all 4 weeks
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .select('audit_date, percentage')
+    .gte('audit_date', weeks[weeks.length - 1].startDate)
+    .lte('audit_date', weeks[0].endDate);
+
+  if (error) throw error;
+
+  // Calculate stats for each week
+  return weeks.reverse().map(week => {
+    const weekEvaluations = (data || []).filter(
+      e => e.audit_date >= week.startDate && e.audit_date <= week.endDate
+    );
+    
+    const avgScore = weekEvaluations.length > 0
+      ? weekEvaluations.reduce((sum, e) => sum + Number(e.percentage), 0) / weekEvaluations.length
+      : 0;
+
+    return {
+      ...week,
+      evaluationCount: weekEvaluations.length,
+      averageScore: Math.round(avgScore * 100) / 100,
+    };
+  });
+}
+
+// Delete QA evaluation
+export async function deleteQAEvaluation(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('qa_evaluations')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+// Scoring categories structure
+export const SCORING_CATEGORIES = [
+  {
+    category: 'Communication and Professionalism',
+    subcategories: [
+      { subcategory: 'Tone and Empathy', behavior: 'Demonstrates empathy and uses appropriate tone', maxPoints: 6, isCritical: false },
+      { subcategory: 'Clarity and Structure', behavior: 'Provides clear and well-structured responses', maxPoints: 6, isCritical: false },
+      { subcategory: 'Spelling and Grammar', behavior: 'Uses correct spelling and grammar', maxPoints: 6, isCritical: false },
+      { subcategory: 'Critical Error: Sharing Internal Info', behavior: 'Did the agent share internal information with the customer?', maxPoints: 0, isCritical: true },
+    ],
+  },
+  {
+    category: 'Issue Resolution and Deliverables',
+    subcategories: [
+      { subcategory: 'Understanding the Issue', behavior: 'Correctly identifies the customer issue', maxPoints: 6, isCritical: false },
+      { subcategory: 'Solution Accuracy', behavior: 'Provides accurate and appropriate solutions', maxPoints: 6, isCritical: false },
+      { subcategory: 'First Contact Resolution', behavior: 'Resolves the issue in one interaction when possible', maxPoints: 6, isCritical: false },
+      { subcategory: 'Critical Error: Incorrect Critical Info', behavior: 'Did the agent provide incorrect critical information?', maxPoints: 0, isCritical: true },
+    ],
+  },
+  {
+    category: 'Process and Policy Adherence',
+    subcategories: [
+      { subcategory: 'Policy Compliance', behavior: 'Follows company policies and procedures', maxPoints: 6, isCritical: false },
+      { subcategory: 'Customer Experience', behavior: 'Enhances overall customer experience', maxPoints: 6, isCritical: false },
+      { subcategory: 'Active Listening', behavior: 'Demonstrates active listening and addresses all concerns', maxPoints: 6, isCritical: false },
+      { subcategory: 'Critical Error: Policy Breach', behavior: 'Did the agent breach a critical policy?', maxPoints: 0, isCritical: true },
+    ],
+  },
+];
+
+// Interaction types
+export const INTERACTION_TYPES = [
+  'Call',
+  'Email',
+  'Chat',
+  'Hybrid',
+  'Logistics',
+  'Other',
+] as const;
+
+export type InteractionType = typeof INTERACTION_TYPES[number];

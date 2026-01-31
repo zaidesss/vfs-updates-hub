@@ -130,6 +130,7 @@ export function Layout({ children }: LayoutProps) {
       icon: BarChart3,
       items: [
         { href: '/team-performance/ticket-logs', label: 'Ticket Logs', icon: Ticket },
+        { href: '/team-performance/qa-evaluations', label: 'QA Evaluations', icon: ClipboardList },
       ],
     });
 
