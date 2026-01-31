@@ -33,6 +33,9 @@ import HelpCenter from "./pages/HelpCenter";
 import AgentDashboard from "./pages/AgentDashboard";
 import TeamStatusBoard from "./pages/TeamStatusBoard";
 import TicketLogs from "./pages/TicketLogs";
+import QAEvaluations from "./pages/QAEvaluations";
+import QAEvaluationForm from "./pages/QAEvaluationForm";
+import QAEvaluationDetail from "./pages/QAEvaluationDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -236,6 +239,30 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TicketLogs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/qa-evaluations"
+        element={
+          <ProtectedRoute>
+            <QAEvaluations />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/qa-evaluations/new"
+        element={
+          <ProtectedRoute>
+            <QAEvaluationForm />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/qa-evaluations/:id"
+        element={
+          <ProtectedRoute>
+            <QAEvaluationDetail />
           </ProtectedRoute>
         }
       />

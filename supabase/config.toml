@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.fetch-upwork-time]
 verify_jwt = false
+
+[functions.fetch-zendesk-ticket]
+verify_jwt = false
+
+[functions.analyze-qa-ticket]
+verify_jwt = false
