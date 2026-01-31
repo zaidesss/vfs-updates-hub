@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.analyze-qa-ticket]
 verify_jwt = false
+
+[functions.send-qa-notification]
+verify_jwt = false

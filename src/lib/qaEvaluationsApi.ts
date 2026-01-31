@@ -251,6 +251,14 @@ export async function acknowledgeEvaluation(id: string): Promise<QAEvaluation> {
     .single();
 
   if (error) throw error;
+  
+  // Send acknowledgment notification
+  try {
+    await sendQANotification(id, 'acknowledgment');
+  } catch (notifError) {
+    console.error('Failed to send acknowledgment notification:', notifError);
+  }
+  
   return data as QAEvaluation;
 }
 
@@ -444,3 +452,67 @@ export const INTERACTION_TYPES = [
 ] as const;
 
 export type InteractionType = typeof INTERACTION_TYPES[number];
+
+// Calculate rating based on percentage and critical fails
+// Pass: 80% or above with no critical errors
+// Fail: Below 80% OR has any critical error
+export function calculateRating(percentage: number, hasCriticalFail: boolean): 'Pass' | 'Fail' {
+  if (hasCriticalFail) return 'Fail';
+  return percentage >= 80 ? 'Pass' : 'Fail';
+}
+
+// Calculate totals from scores
+export function calculateScoreTotals(scores: { score_earned: number | null; max_points: number; is_critical: boolean; critical_error_detected?: boolean | null }[]): {
+  totalScore: number;
+  totalMax: number;
+  percentage: number;
+  hasCriticalFail: boolean;
+} {
+  const hasCriticalFail = scores.some(s => s.is_critical && s.critical_error_detected === true);
+  
+  if (hasCriticalFail) {
+    return {
+      totalScore: 0,
+      totalMax: scores.filter(s => !s.is_critical).reduce((sum, s) => sum + s.max_points, 0),
+      percentage: 0,
+      hasCriticalFail: true,
+    };
+  }
+  
+  const nonCriticalScores = scores.filter(s => !s.is_critical);
+  const totalScore = nonCriticalScores.reduce((sum, s) => sum + (s.score_earned || 0), 0);
+  const totalMax = nonCriticalScores.reduce((sum, s) => sum + s.max_points, 0);
+  const percentage = totalMax > 0 ? (totalScore / totalMax) * 100 : 0;
+  
+  return { totalScore, totalMax, percentage, hasCriticalFail: false };
+}
+
+// Send QA notification
+export async function sendQANotification(
+  evaluationId: string,
+  type: 'new_evaluation' | 'acknowledgment'
+): Promise<void> {
+  const { error } = await supabase.functions.invoke('send-qa-notification', {
+    body: { evaluationId, type },
+  });
+  
+  if (error) throw error;
+}
+
+// Finalize and send evaluation to agent
+export async function finalizeAndSendEvaluation(id: string): Promise<QAEvaluation> {
+  // First update status to sent
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .update({ status: 'sent' })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  
+  // Send notification
+  await sendQANotification(id, 'new_evaluation');
+  
+  return data as QAEvaluation;
+}
