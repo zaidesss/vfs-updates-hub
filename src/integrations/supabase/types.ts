@@ -940,6 +940,227 @@ export type Database = {
           },
         ]
       }
+      qa_action_needed: {
+        Row: {
+          action_plan_id: string | null
+          created_at: string
+          custom_action: string | null
+          evaluation_id: string
+          id: string
+          is_resolved: boolean
+          resolved_at: string | null
+        }
+        Insert: {
+          action_plan_id?: string | null
+          created_at?: string
+          custom_action?: string | null
+          evaluation_id: string
+          id?: string
+          is_resolved?: boolean
+          resolved_at?: string | null
+        }
+        Update: {
+          action_plan_id?: string | null
+          created_at?: string
+          custom_action?: string | null
+          evaluation_id?: string
+          id?: string
+          is_resolved?: boolean
+          resolved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_action_needed_action_plan_id_fkey"
+            columns: ["action_plan_id"]
+            isOneToOne: false
+            referencedRelation: "qa_action_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qa_action_needed_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "qa_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_action_plans: {
+        Row: {
+          action_text: string
+          category: string | null
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+        }
+        Insert: {
+          action_text: string
+          category?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+        }
+        Update: {
+          action_text?: string
+          category?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+        }
+        Relationships: []
+      }
+      qa_evaluation_scores: {
+        Row: {
+          ai_accepted: boolean | null
+          ai_suggested_score: number | null
+          behavior_identifier: string | null
+          category: string
+          created_at: string
+          critical_error_detected: boolean | null
+          evaluation_id: string
+          id: string
+          is_critical: boolean
+          max_points: number
+          score_earned: number | null
+          subcategory: string
+        }
+        Insert: {
+          ai_accepted?: boolean | null
+          ai_suggested_score?: number | null
+          behavior_identifier?: string | null
+          category: string
+          created_at?: string
+          critical_error_detected?: boolean | null
+          evaluation_id: string
+          id?: string
+          is_critical?: boolean
+          max_points?: number
+          score_earned?: number | null
+          subcategory: string
+        }
+        Update: {
+          ai_accepted?: boolean | null
+          ai_suggested_score?: number | null
+          behavior_identifier?: string | null
+          category?: string
+          created_at?: string
+          critical_error_detected?: boolean | null
+          evaluation_id?: string
+          id?: string
+          is_critical?: boolean
+          max_points?: number
+          score_earned?: number | null
+          subcategory?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_evaluation_scores_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "qa_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_evaluations: {
+        Row: {
+          accuracy_feedback: string | null
+          accuracy_kudos: string | null
+          acknowledged_at: string | null
+          agent_acknowledged: boolean
+          agent_email: string
+          agent_name: string
+          audit_date: string
+          compliance_feedback: string | null
+          compliance_kudos: string | null
+          created_at: string
+          customer_exp_feedback: string | null
+          customer_exp_kudos: string | null
+          evaluator_email: string
+          evaluator_name: string | null
+          has_critical_fail: boolean
+          id: string
+          interaction_type: string
+          notification_sent: boolean
+          percentage: number
+          rating: string | null
+          reference_number: string | null
+          status: string
+          ticket_content: string | null
+          ticket_id: string
+          ticket_url: string | null
+          total_max: number
+          total_score: number
+          updated_at: string
+          zd_instance: string
+        }
+        Insert: {
+          accuracy_feedback?: string | null
+          accuracy_kudos?: string | null
+          acknowledged_at?: string | null
+          agent_acknowledged?: boolean
+          agent_email: string
+          agent_name: string
+          audit_date?: string
+          compliance_feedback?: string | null
+          compliance_kudos?: string | null
+          created_at?: string
+          customer_exp_feedback?: string | null
+          customer_exp_kudos?: string | null
+          evaluator_email: string
+          evaluator_name?: string | null
+          has_critical_fail?: boolean
+          id?: string
+          interaction_type: string
+          notification_sent?: boolean
+          percentage?: number
+          rating?: string | null
+          reference_number?: string | null
+          status?: string
+          ticket_content?: string | null
+          ticket_id: string
+          ticket_url?: string | null
+          total_max?: number
+          total_score?: number
+          updated_at?: string
+          zd_instance: string
+        }
+        Update: {
+          accuracy_feedback?: string | null
+          accuracy_kudos?: string | null
+          acknowledged_at?: string | null
+          agent_acknowledged?: boolean
+          agent_email?: string
+          agent_name?: string
+          audit_date?: string
+          compliance_feedback?: string | null
+          compliance_kudos?: string | null
+          created_at?: string
+          customer_exp_feedback?: string | null
+          customer_exp_kudos?: string | null
+          evaluator_email?: string
+          evaluator_name?: string | null
+          has_critical_fail?: boolean
+          id?: string
+          interaction_type?: string
+          notification_sent?: boolean
+          percentage?: number
+          rating?: string | null
+          reference_number?: string | null
+          status?: string
+          ticket_content?: string | null
+          ticket_id?: string
+          ticket_url?: string | null
+          total_max?: number
+          total_score?: number
+          updated_at?: string
+          zd_instance?: string
+        }
+        Relationships: []
+      }
       question_replies: {
         Row: {
           created_at: string | null
