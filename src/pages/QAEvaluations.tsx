@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -26,16 +25,14 @@ import {
 import { 
   Plus, 
   Search, 
-  Calendar,
   CheckCircle2,
-  XCircle,
   Clock,
   TrendingUp,
   FileText,
   Eye
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from 'date-fns';
-import { fetchQAEvaluations, fetchWeeklyComparisonStats, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { fetchQAEvaluations, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { DatePicker } from '@/components/ui/date-picker';
 
@@ -59,12 +56,6 @@ export default function QAEvaluations() {
     queryFn: fetchQAEvaluations,
   });
 
-  // Fetch weekly comparison stats
-  const { data: weeklyStats = [] } = useQuery({
-    queryKey: ['qa-weekly-stats'],
-    queryFn: fetchWeeklyComparisonStats,
-  });
-
   // Get unique agents for filter dropdown
   const uniqueAgents = useMemo(() => {
     const agents = new Map<string, string>();
@@ -76,9 +67,8 @@ export default function QAEvaluations() {
     return Array.from(agents.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [evaluations]);
 
-  // Filter evaluations based on active tab
-  const filteredEvaluations = useMemo(() => {
-    const now = new Date();
+  // Filter evaluations by agent first (for chart), then by date (for table)
+  const agentFilteredEvaluations = useMemo(() => {
     let filtered = evaluations;
 
     // Filter by user if not admin
@@ -90,6 +80,55 @@ export default function QAEvaluations() {
     if (canViewAll && selectedAgent !== 'all') {
       filtered = filtered.filter(e => e.agent_email === selectedAgent);
     }
+
+    return filtered;
+  }, [evaluations, canViewAll, user?.email, selectedAgent]);
+
+  // Calculate weekly stats from agent-filtered evaluations (client-side)
+  const weeklyStats = useMemo(() => {
+    const now = new Date();
+    const weeks: { week: string; startDate: string; endDate: string }[] = [];
+    
+    // Calculate last 4 weeks (Monday to Sunday)
+    for (let i = 0; i < 4; i++) {
+      const weekEnd = new Date(now);
+      weekEnd.setDate(now.getDate() - now.getDay() - (i * 7));
+      if (now.getDay() === 0) {
+        weekEnd.setDate(weekEnd.getDate() - 7);
+      }
+      
+      const weekStart = new Date(weekEnd);
+      weekStart.setDate(weekEnd.getDate() - 6);
+      
+      weeks.push({
+        week: `Week ${4 - i}`,
+        startDate: weekStart.toISOString().split('T')[0],
+        endDate: weekEnd.toISOString().split('T')[0],
+      });
+    }
+
+    // Calculate stats for each week using agent-filtered data
+    return weeks.reverse().map(week => {
+      const weekEvaluations = agentFilteredEvaluations.filter(
+        e => e.audit_date >= week.startDate && e.audit_date <= week.endDate
+      );
+      
+      const avgScore = weekEvaluations.length > 0
+        ? weekEvaluations.reduce((sum, e) => sum + Number(e.percentage), 0) / weekEvaluations.length
+        : 0;
+
+      return {
+        ...week,
+        evaluationCount: weekEvaluations.length,
+        averageScore: Math.round(avgScore * 100) / 100,
+      };
+    });
+  }, [agentFilteredEvaluations]);
+
+  // Filter evaluations based on date tab
+  const filteredEvaluations = useMemo(() => {
+    const now = new Date();
+    let filtered = agentFilteredEvaluations;
 
     // Date filtering based on tab
     switch (activeTab) {
@@ -152,9 +191,9 @@ export default function QAEvaluations() {
     }
 
     return filtered;
-  }, [evaluations, activeTab, customStartDate, customEndDate, searchQuery, canViewAll, user?.email, selectedAgent]);
+  }, [agentFilteredEvaluations, activeTab, customStartDate, customEndDate, searchQuery]);
 
-  // Calculate stats
+  // Calculate stats from filtered evaluations
   const stats = useMemo(() => {
     const total = filteredEvaluations.length;
     const acknowledged = filteredEvaluations.filter(e => e.agent_acknowledged).length;
@@ -208,6 +247,71 @@ export default function QAEvaluations() {
           )}
         </div>
 
+        {/* Filters Section - At the top */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              {/* Date Range Filter */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-muted-foreground">Date Range</label>
+                <Select value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="current_week">Current Week</SelectItem>
+                    <SelectItem value="previous_week">Previous Week</SelectItem>
+                    <SelectItem value="monthly">This Month</SelectItem>
+                    <SelectItem value="quarterly">This Quarter</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Custom Date Range */}
+              {activeTab === 'custom' && (
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-muted-foreground">From</label>
+                    <DatePicker 
+                      value={customStartDate?.toISOString().split('T')[0] || ''} 
+                      onChange={(v) => setCustomStartDate(v ? new Date(v) : undefined)} 
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-muted-foreground">To</label>
+                    <DatePicker 
+                      value={customEndDate?.toISOString().split('T')[0] || ''} 
+                      onChange={(v) => setCustomEndDate(v ? new Date(v) : undefined)} 
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Agent Filter */}
+              {canViewAll && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Agent</label>
+                  <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="Filter by agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Agents</SelectItem>
+                      {uniqueAgents.map(([email, name]) => (
+                        <SelectItem key={email} value={email}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
@@ -253,71 +357,22 @@ export default function QAEvaluations() {
           <QAWeeklyComparison data={weeklyStats} />
         )}
 
-        {/* Filters and Search */}
-        <div className="flex flex-col gap-4">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="current_week">Current Week</TabsTrigger>
-                <TabsTrigger value="previous_week">Previous Week</TabsTrigger>
-                <TabsTrigger value="monthly">Monthly</TabsTrigger>
-                <TabsTrigger value="quarterly">Quarterly</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-
-              <div className="flex items-center gap-2">
-                {canViewAll && (
-                  <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Filter by agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Agents</SelectItem>
-                      {uniqueAgents.map(([email, name]) => (
-                        <SelectItem key={email} value={email}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by agent, ticket, ref..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
+        {/* Search and Table */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle>Evaluations</CardTitle>
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by agent, ticket, ref..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
               </div>
             </div>
-
-            {/* Custom date range */}
-            {activeTab === 'custom' && (
-              <div className="flex items-center gap-4 mt-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">From:</span>
-                  <DatePicker 
-                    value={customStartDate?.toISOString().split('T')[0] || ''} 
-                    onChange={(v) => setCustomStartDate(v ? new Date(v) : undefined)} 
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">To:</span>
-                  <DatePicker 
-                    value={customEndDate?.toISOString().split('T')[0] || ''} 
-                    onChange={(v) => setCustomEndDate(v ? new Date(v) : undefined)} 
-                  />
-                </div>
-              </div>
-            )}
-          </Tabs>
-        </div>
-
-        {/* Evaluations Table */}
-        <Card>
+          </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex items-center justify-center h-48">
