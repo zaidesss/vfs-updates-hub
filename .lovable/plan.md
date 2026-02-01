@@ -1,63 +1,89 @@
 
-
-# Fix: Upwork Contract ID Not Loading in Agent Profiles
+# Fix: Upwork GraphQL Query Invalid Field Error
 
 ## Problem Summary
 
-The Upwork Contract ID is being saved to the database successfully (confirmed: `malcom@persistbrands.com` has value `40482492`), but it disappears from the UI when you navigate away and return. This is because the field is not being loaded back from the database.
+The Upwork integration is failing with the error:
+```
+"Field 'cellIndex' in type 'Cell' is undefined"
+```
+
+This is happening because the GraphQL query in `fetch-upwork-time/index.ts` includes a field called `cellIndex` that **does not exist** in Upwork's API Cell type.
 
 ## Root Cause
 
-There are **3 code locations** that need to be fixed:
+| Issue | Details |
+|-------|---------|
+| Invalid Field | The query at line 192 requests `cellIndex` which doesn't exist in the Upwork Cell schema |
+| Recent Change | This field was added during the "Track First Upwork Time" feature implementation |
+| Result | The entire API request fails, causing "Unable to fetch Upwork data" error |
 
-| Location | Issue |
-|----------|-------|
-| `AgentProfile` interface | Missing `upwork_contract_id` field - TypeScript doesn't know it exists |
-| `ManageProfiles.tsx` | Not loading `upwork_contract_id` when populating `editData` |
-| `AgentProfile.tsx` | Not loading `upwork_contract_id` when populating the profile state |
+## Solution
+
+The Upwork Work Diary cells are returned as an **ordered array** where:
+- First element (index 0) = earliest tracked 10-minute slot
+- Last element = latest tracked 10-minute slot
+
+We don't need a `cellIndex` field because **the array position IS the index**. The approach:
+1. Remove `cellIndex` from the GraphQL query
+2. Use the array index of each cell to determine its time position
+3. Calculate first/last times from the array's first and last elements
+
+### Why This Works
+
+Each cell in the Upwork Work Diary represents a 10-minute time slot:
+- Cell at array index 0 in the response → first tracked time of the day
+- Cell at array index N (last) → last tracked time of the day
+
+However, we need to determine what time of day each cell represents. Options:
+1. If `workDiary.cells` contains a `time` or `startTime` field - use it directly
+2. If not, we may need to use a different query or just count cells (total hours) without first/last time
+
+---
 
 ## Implementation Plan
 
-### Step 1: Add `upwork_contract_id` to `AgentProfile` Interface
+### Step 1: Investigate Cell Type Fields
 
-**File:** `src/lib/agentProfileApi.ts`
+First, I need to modify the query to discover what fields ARE available in the Cell type. Options:
+- Remove `cellIndex` and only request `memo` (which is known to work)
+- Add logging to see the actual cell structure returned
 
-Add the missing field to the `AgentProfile` interface (around line 128, after `upwork_username`):
+### Step 2: Update GraphQL Query
 
-```typescript
-// Freelance fields
-upwork_profile_url: string | null;
-upwork_username: string | null;
-upwork_contract_id: string | null;  // ADD THIS LINE
+**File:** `supabase/functions/fetch-upwork-time/index.ts`
+
+Change the query from:
+```graphql
+workDiary {
+  cells {
+    cellIndex    # REMOVE - doesn't exist
+    memo
+  }
+}
 ```
 
-### Step 2: Fix ManageProfiles.tsx to Load the Field
-
-**File:** `src/pages/ManageProfiles.tsx`
-
-In the `handleSelectUser` function, add the missing field to `setEditData` (around line 91, after `upwork_username`):
-
-```typescript
-upwork_username: profile?.upwork_username || '',
-upwork_contract_id: profile?.upwork_contract_id || '',  // ADD THIS LINE
+To:
+```graphql
+workDiary {
+  cells {
+    memo         # Keep only valid fields
+  }
+}
 ```
 
-### Step 3: Fix AgentProfile.tsx to Load the Field
+### Step 3: Update Cell Processing Logic
 
-**File:** `src/pages/AgentProfile.tsx`
+Since we can't get an explicit index field, we'll:
+1. Use the array **length** to calculate total hours (existing logic works)
+2. For first/last time tracking - investigate if there's another field or query that provides time slot information
+3. If no time field exists, we may need to disable the "Upwork Start Time" feature temporarily until we find the correct API approach
 
-In the `loadProfile` function, add the missing field when setting the profile state (around line 132, after `upwork_username`):
+### Step 4: Alternative Approach for Time Tracking
 
-```typescript
-upwork_username: result.data.upwork_username || '',
-upwork_contract_id: result.data.upwork_contract_id || '',  // ADD THIS LINE
-```
-
-Also in the fallback case when creating a new profile (around line 194), add:
-```typescript
-upwork_username: '',
-upwork_contract_id: '',  // ADD THIS LINE
-```
+If the Cell type doesn't expose time information, consider:
+- Using `WorkDiaryTimeCell` query (seen in documentation) which may have different fields
+- The cells might be returned in chronological order, allowing us to infer times based on position
 
 ---
 
@@ -65,16 +91,17 @@ upwork_contract_id: '',  // ADD THIS LINE
 
 | File | Change |
 |------|--------|
-| `src/lib/agentProfileApi.ts` | Add `upwork_contract_id` to `AgentProfile` interface |
-| `src/pages/ManageProfiles.tsx` | Load `upwork_contract_id` in `handleSelectUser` |
-| `src/pages/AgentProfile.tsx` | Load `upwork_contract_id` in `loadProfile` (2 places) |
+| `supabase/functions/fetch-upwork-time/index.ts` | Remove `cellIndex` from GraphQL query, update cell processing logic |
 
 ## Expected Result
 
 After the fix:
-1. Navigate to Manage Profiles
-2. Select an agent with a saved Upwork Contract ID
-3. The field will display the saved value correctly
-4. Navigate away and return - the value will still be there
-5. Upwork integration will work because the contract ID persists
+1. The GraphQL query will succeed (no more validation errors)
+2. Total hours will be calculated correctly (cell count still works)
+3. First/last cell time tracking may need a follow-up investigation if no time fields exist in Cell type
 
+---
+
+## Technical Notes
+
+The Upwork API documentation shows `workDiaryTimeCells` as a separate query that might provide time slot information directly. This could be explored as an alternative if the current approach doesn't provide timing data.
