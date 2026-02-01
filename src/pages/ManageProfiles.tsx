@@ -89,6 +89,7 @@ export default function ManageProfilesPage() {
       bank_account_holder: profile?.bank_account_holder || '',
       upwork_profile_url: profile?.upwork_profile_url || '',
       upwork_username: profile?.upwork_username || '',
+      upwork_contract_id: profile?.upwork_contract_id || '',
       headset_model: profile?.headset_model || '',
       work_schedule: profile?.work_schedule || '',
       employment_status: profile?.employment_status || 'Active',

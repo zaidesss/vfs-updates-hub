@@ -126,6 +126,7 @@ export interface AgentProfile {
   // Freelance fields
   upwork_profile_url: string | null;
   upwork_username: string | null;
+  upwork_contract_id: string | null;
   // Equipment
   headset_model: string | null;
   // Work setup (Super Admin only)
