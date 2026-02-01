@@ -1,131 +1,80 @@
 
 
-# Plan: Fix Portal/Upwork Hours Display + Track First Upwork Time
+# Fix: Upwork Contract ID Not Loading in Agent Profiles
 
 ## Problem Summary
 
-Based on my investigation, there are **3 issues** to fix plus **1 new feature** to add:
+The Upwork Contract ID is being saved to the database successfully (confirmed: `malcom@persistbrands.com` has value `40482492`), but it disappears from the UI when you navigate away and return. This is because the field is not being loaded back from the database.
 
-### Issues Identified
+## Root Cause
 
-| Issue | Root Cause | Impact |
-|-------|-----------|--------|
-| Portal Hours not showing for all users | Both Portal and Upwork hour sections are wrapped in `hasUpworkContract` check | Agents without Upwork contracts cannot see their Portal logged hours |
-| Upwork Hours not showing even when contract exists | Dashboard reads `upwork_contract_id` from `agent_directory` which is NULL, but it exists in `agent_profiles` | Data sync mismatch between tables |
-| Hours sections missing entirely | Conditional rendering logic too restrictive | UI appears broken |
+There are **3 code locations** that need to be fixed:
 
-### New Feature Request
-
-**Track First Upwork Time Start**: Display when the user first enabled Upwork time tracking each day (similar to how Portal shows login time).
-
----
+| Location | Issue |
+|----------|-------|
+| `AgentProfile` interface | Missing `upwork_contract_id` field - TypeScript doesn't know it exists |
+| `ManageProfiles.tsx` | Not loading `upwork_contract_id` when populating `editData` |
+| `AgentProfile.tsx` | Not loading `upwork_contract_id` when populating the profile state |
 
 ## Implementation Plan
 
-### Step 1: Fix Dashboard to Read Upwork Contract ID from Source of Truth
+### Step 1: Add `upwork_contract_id` to `AgentProfile` Interface
 
-**File:** `src/lib/agentDashboardApi.ts`
+**File:** `src/lib/agentProfileApi.ts`
 
-Currently, `fetchDashboardProfile` reads from `agent_directory`. We need to also check `agent_profiles` for `upwork_contract_id` since that's where it's stored:
+Add the missing field to the `AgentProfile` interface (around line 128, after `upwork_username`):
 
-- Modify the query to fetch `upwork_contract_id` from `agent_profiles` table (source of truth)
-- Use `agent_profiles.upwork_contract_id` as the primary source, falling back to `agent_directory` for backwards compatibility
-
-### Step 2: Fix DailyWorkTracker Conditional Rendering
-
-**File:** `src/components/dashboard/DailyWorkTracker.tsx`
-
-Update the rendering logic:
-
-- **Portal Hours**: Always show (calculated from login/logout events)
-- **Upwork Hours**: Only show when `hasUpworkContract` is true
-- This ensures all agents see their Portal hours while Upwork-specific columns appear only for contracted agents
-
-### Step 3: Create Database Table for Upwork Daily Time Logs
-
-**Migration:** Create `upwork_daily_logs` table
-
-```sql
-CREATE TABLE upwork_daily_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contract_id TEXT NOT NULL,
-  agent_email TEXT NOT NULL,
-  date DATE NOT NULL,
-  first_cell_time TIME,          -- Time tracking started
-  last_cell_time TIME,           -- Time tracking ended  
-  total_cells INTEGER DEFAULT 0, -- Number of 10-min cells
-  total_hours NUMERIC(5,2),      -- Calculated hours
-  fetched_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(contract_id, date)
-);
+```typescript
+// Freelance fields
+upwork_profile_url: string | null;
+upwork_username: string | null;
+upwork_contract_id: string | null;  // ADD THIS LINE
 ```
 
-This stores:
-- The first time slot when tracking started
-- The last time slot when tracking ended
-- Total tracked time for historical reference
+### Step 2: Fix ManageProfiles.tsx to Load the Field
 
-### Step 4: Update Edge Function to Extract and Store First/Last Cell Times
+**File:** `src/pages/ManageProfiles.tsx`
 
-**File:** `supabase/functions/fetch-upwork-time/index.ts`
+In the `handleSelectUser` function, add the missing field to `setEditData` (around line 91, after `upwork_username`):
 
-The current GraphQL query already fetches `workDiary.cells`. We need to:
+```typescript
+upwork_username: profile?.upwork_username || '',
+upwork_contract_id: profile?.upwork_contract_id || '',  // ADD THIS LINE
+```
 
-1. Request additional fields from cells if available (like index/position)
-2. Calculate first/last tracking times from cell positions (each cell = 10 min slot)
-3. Save the data to `upwork_daily_logs` table
-4. Return `firstCellTime` in the response
+### Step 3: Fix AgentProfile.tsx to Load the Field
 
-### Step 5: Update Dashboard to Display Upwork Start Time
+**File:** `src/pages/AgentProfile.tsx`
 
-**Files:** 
-- `src/components/dashboard/DailyWorkTracker.tsx`
-- `src/lib/agentDashboardApi.ts`
-- `src/pages/AgentDashboard.tsx`
+In the `loadProfile` function, add the missing field when setting the profile state (around line 132, after `upwork_username`):
 
-Add new UI elements:
-- Show "Upwork Start: 8:00 AM" similar to Portal login time
-- Fetch and display the first tracking time from database or API response
+```typescript
+upwork_username: result.data.upwork_username || '',
+upwork_contract_id: result.data.upwork_contract_id || '',  // ADD THIS LINE
+```
 
----
-
-## Technical Details
-
-### Database Changes
-
-| Table | Action | Description |
-|-------|--------|-------------|
-| `upwork_daily_logs` | CREATE | Store daily Upwork tracking data including start/end times |
-
-### File Changes Summary
-
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/lib/agentDashboardApi.ts` | Modify | Fetch `upwork_contract_id` from `agent_profiles` instead of just `agent_directory` |
-| `src/components/dashboard/DailyWorkTracker.tsx` | Modify | 1) Always show Portal Hours, 2) Add Upwork Start Time display |
-| `supabase/functions/fetch-upwork-time/index.ts` | Modify | Calculate and return first cell time, store to database |
-| `src/pages/AgentDashboard.tsx` | Modify | Pass new upwork start time data to component |
-
-### Upwork API Time Calculation
-
-The Upwork Work Diary divides each day into 10-minute cells (144 cells per day). The first cell at index 0 represents 00:00 (midnight), and each subsequent cell adds 10 minutes:
-
-- Cell index 0 = 00:00
-- Cell index 48 = 08:00 (start of typical workday)
-- Cell index 102 = 17:00
-
-By identifying the minimum cell index in the returned data, we can calculate the first tracking start time.
+Also in the fallback case when creating a new profile (around line 194), add:
+```typescript
+upwork_username: '',
+upwork_contract_id: '',  // ADD THIS LINE
+```
 
 ---
 
-## Verification Steps
+## Files to Modify
 
-After implementation:
+| File | Change |
+|------|--------|
+| `src/lib/agentProfileApi.ts` | Add `upwork_contract_id` to `AgentProfile` interface |
+| `src/pages/ManageProfiles.tsx` | Load `upwork_contract_id` in `handleSelectUser` |
+| `src/pages/AgentProfile.tsx` | Load `upwork_contract_id` in `loadProfile` (2 places) |
 
-1. Navigate to Agent Dashboard for an agent WITH Upwork contract
-   - Should see: Tickets, Avg Gap, Portal Time, Upwork Time, Upwork Start
-2. Navigate to Agent Dashboard for an agent WITHOUT Upwork contract  
-   - Should see: Tickets, Avg Gap, Portal Time only
-3. Check database for stored Upwork daily logs
-4. Verify times match between Upwork dashboard and Portal display
+## Expected Result
+
+After the fix:
+1. Navigate to Manage Profiles
+2. Select an agent with a saved Upwork Contract ID
+3. The field will display the saved value correctly
+4. Navigate away and return - the value will still be there
+5. Upwork integration will work because the contract ID persists
 
