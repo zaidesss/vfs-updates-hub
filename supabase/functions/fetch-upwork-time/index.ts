@@ -189,7 +189,6 @@ const CONTRACT_WORK_DAYS_QUERY = `
         date
         workDiary {
           cells {
-            cellIndex
             memo
           }
         }
@@ -211,7 +210,6 @@ const SIMPLE_CONTRACT_QUERY = `
 `;
 
 interface Cell {
-  cellIndex?: number;
   memo?: string;
 }
 
@@ -396,25 +394,21 @@ async function fetchWorkDaysGraphQL(
     // Log the actual structure of workDays to understand what's available
     console.log('First workDay structure:', JSON.stringify(workDays[0], null, 2));
     
-    // Calculate total hours and extract first/last cell indices from workDiary.cells
+    // Calculate total hours from workDiary.cells
+    // Note: Without cellIndex field, we can only count cells for total hours
+    // First/last time tracking requires API investigation for available fields
     let totalCells = 0;
-    let allCellIndices: number[] = [];
     
     for (const day of workDays) {
       if (day.workDiary?.cells) {
         totalCells += day.workDiary.cells.length;
-        // Collect all cell indices
-        for (const cell of day.workDiary.cells) {
-          if (cell.cellIndex !== undefined && cell.cellIndex !== null) {
-            allCellIndices.push(cell.cellIndex);
-          }
-        }
       }
     }
     
-    // Find first (min) and last (max) cell indices
-    const firstCellIndex = allCellIndices.length > 0 ? Math.min(...allCellIndices) : undefined;
-    const lastCellIndex = allCellIndices.length > 0 ? Math.max(...allCellIndices) : undefined;
+    // Without cellIndex, we cannot determine first/last cell times
+    // Set to undefined until we find the correct API field
+    const firstCellIndex = undefined;
+    const lastCellIndex = undefined;
     
     // Convert cells to hours (each cell = 10 minutes = 1/6 hour)
     const totalHours = totalCells / 6;
