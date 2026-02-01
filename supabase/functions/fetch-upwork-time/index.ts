@@ -10,6 +10,9 @@ const UPWORK_GRAPHQL_URL = 'https://api.upwork.com/graphql';
 
 interface UpworkTimeResponse {
   hours: number | null;
+  firstCellTime?: string | null;  // Time when tracking started (e.g., "8:00 AM")
+  lastCellTime?: string | null;   // Time when tracking ended
+  totalCells?: number;
   error?: string;
   message?: string;
 }
@@ -175,6 +178,7 @@ async function refreshTokensWithLock(): Promise<TokenData | null> {
 // Introspection query to discover WorkDay type fields
 // GraphQL query using workDays with workDiary.cells sub-field
 // Each cell represents 10 minutes of tracked time
+// Cell index ranges from 0-143 (144 x 10 min = 24 hours)
 const CONTRACT_WORK_DAYS_QUERY = `
   query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
     contract(id: $id) {
@@ -185,6 +189,7 @@ const CONTRACT_WORK_DAYS_QUERY = `
         date
         workDiary {
           cells {
+            cellIndex
             memo
           }
         }
@@ -206,6 +211,7 @@ const SIMPLE_CONTRACT_QUERY = `
 `;
 
 interface Cell {
+  cellIndex?: number;
   memo?: string;
 }
 
@@ -216,6 +222,15 @@ interface WorkDiary {
 interface WorkDay {
   date?: string;
   workDiary?: WorkDiary;
+}
+
+interface WorkDaysResult {
+  hours: number | null;
+  needsRefresh: boolean;
+  error?: string;
+  firstCellIndex?: number;
+  lastCellIndex?: number;
+  totalCells?: number;
 }
 
 interface ContractResponse {
@@ -293,7 +308,7 @@ async function fetchWorkDaysGraphQL(
   date: string,
   accessToken: string,
   organizationId: string | null
-): Promise<{ hours: number | null; needsRefresh: boolean; error?: string }> {
+): Promise<WorkDaysResult> {
   console.log(`Fetching work days via GraphQL for contract: ${contractId}, date: ${date}`);
 
   try {
@@ -373,28 +388,45 @@ async function fetchWorkDaysGraphQL(
       console.log(`No work logged for ${date}`);
       return { 
         hours: 0, 
-        needsRefresh: false
+        needsRefresh: false,
+        totalCells: 0
       };
     }
     
     // Log the actual structure of workDays to understand what's available
     console.log('First workDay structure:', JSON.stringify(workDays[0], null, 2));
     
-    // Calculate total hours from workDiary.cells count (each cell = 10 minutes)
+    // Calculate total hours and extract first/last cell indices from workDiary.cells
     let totalCells = 0;
+    let allCellIndices: number[] = [];
+    
     for (const day of workDays) {
       if (day.workDiary?.cells) {
         totalCells += day.workDiary.cells.length;
+        // Collect all cell indices
+        for (const cell of day.workDiary.cells) {
+          if (cell.cellIndex !== undefined && cell.cellIndex !== null) {
+            allCellIndices.push(cell.cellIndex);
+          }
+        }
       }
     }
+    
+    // Find first (min) and last (max) cell indices
+    const firstCellIndex = allCellIndices.length > 0 ? Math.min(...allCellIndices) : undefined;
+    const lastCellIndex = allCellIndices.length > 0 ? Math.max(...allCellIndices) : undefined;
     
     // Convert cells to hours (each cell = 10 minutes = 1/6 hour)
     const totalHours = totalCells / 6;
     console.log(`Total hours for ${date}: ${totalHours.toFixed(2)} (from ${totalCells} cells x 10 min each)`);
+    console.log(`First cell index: ${firstCellIndex}, Last cell index: ${lastCellIndex}`);
     
     return { 
       hours: totalHours, 
-      needsRefresh: false
+      needsRefresh: false,
+      firstCellIndex,
+      lastCellIndex,
+      totalCells
     };
     
   } catch (error: unknown) {
@@ -408,13 +440,81 @@ async function fetchWorkDaysGraphQL(
   }
 }
 
+// Convert cell index (0-143) to time string (e.g., "8:00 AM")
+function cellIndexToTime(cellIndex: number): string {
+  const totalMinutes = cellIndex * 10;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const displayMinutes = minutes.toString().padStart(2, '0');
+  
+  return `${displayHours}:${displayMinutes} ${period}`;
+}
+
+// Convert cell index to TIME type for database (HH:MM:SS format)
+function cellIndexToDbTime(cellIndex: number): string {
+  const totalMinutes = cellIndex * 10;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+}
+
+// Save Upwork daily log to database
+async function saveUpworkDailyLog(
+  contractId: string,
+  agentEmail: string,
+  date: string,
+  firstCellIndex: number | undefined,
+  lastCellIndex: number | undefined,
+  totalCells: number,
+  totalHours: number
+): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    const logData: Record<string, unknown> = {
+      contract_id: contractId,
+      agent_email: agentEmail,
+      date: date,
+      total_cells: totalCells,
+      total_hours: totalHours,
+      fetched_at: new Date().toISOString(),
+    };
+    
+    if (firstCellIndex !== undefined) {
+      logData.first_cell_index = firstCellIndex;
+      logData.first_cell_time = cellIndexToDbTime(firstCellIndex);
+    }
+    
+    if (lastCellIndex !== undefined) {
+      logData.last_cell_index = lastCellIndex;
+      logData.last_cell_time = cellIndexToDbTime(lastCellIndex);
+    }
+    
+    // Upsert - update if exists, insert if not
+    const { error } = await supabase
+      .from('upwork_daily_logs')
+      .upsert(logData, { onConflict: 'contract_id,date' });
+    
+    if (error) {
+      console.error('Failed to save upwork daily log:', error.message);
+    } else {
+      console.log(`Saved upwork daily log for ${date}`);
+    }
+  } catch (err) {
+    console.error('Error saving upwork daily log:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { contractId, date } = await req.json();
+    const { contractId, date, agentEmail } = await req.json();
 
     if (!contractId) {
       return new Response(
@@ -483,8 +583,33 @@ serve(async (req) => {
       }
     }
 
+    // Calculate first/last cell times
+    const firstCellTime = result.firstCellIndex !== undefined 
+      ? cellIndexToTime(result.firstCellIndex) 
+      : null;
+    const lastCellTime = result.lastCellIndex !== undefined 
+      ? cellIndexToTime(result.lastCellIndex) 
+      : null;
+
+    // Save to database if we have data and agentEmail
+    if (agentEmail && result.hours !== null && !result.error) {
+      // Fire and forget - don't block on database save
+      saveUpworkDailyLog(
+        contractId,
+        agentEmail,
+        date,
+        result.firstCellIndex,
+        result.lastCellIndex,
+        result.totalCells || 0,
+        result.hours
+      ).catch(err => console.error('Background save failed:', err));
+    }
+
     const response: UpworkTimeResponse = {
       hours: result.hours,
+      firstCellTime,
+      lastCellTime,
+      totalCells: result.totalCells,
       error: result.error,
       message: result.error ? 'Unable to fetch Upwork data' : undefined,
     };

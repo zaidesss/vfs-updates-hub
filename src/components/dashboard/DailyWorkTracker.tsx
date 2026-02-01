@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { BarChart3, RefreshCw, Ticket, Timer, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { BarChart3, RefreshCw, Ticket, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle } from 'lucide-react';
 import { formatGapTime } from '@/lib/agentDashboardApi';
 import { cn } from '@/lib/utils';
 
@@ -11,10 +11,13 @@ interface DailyWorkTrackerProps {
   avgGapSeconds: number | null;
   onRefresh: () => void;
   isRefreshing: boolean;
-  // Upwork integration props
+  // Portal hours (always show)
   portalHours?: number | null;
+  portalLoginTime?: string | null;
+  // Upwork integration props (only show when hasUpworkContract)
   upworkHours?: number | null;
   upworkError?: string | null;
+  upworkStartTime?: string | null;
   hasUpworkContract?: boolean;
 }
 
@@ -25,15 +28,17 @@ export function DailyWorkTracker({
   onRefresh,
   isRefreshing,
   portalHours,
+  portalLoginTime,
   upworkHours,
   upworkError,
+  upworkStartTime,
   hasUpworkContract,
 }: DailyWorkTrackerProps) {
   const quotaValue = quota || 50; // Default quota
   const progressPercent = Math.min((ticketsHandled / quotaValue) * 100, 100);
   const isOverQuota = ticketsHandled > quotaValue;
 
-  // Calculate variance between portal and Upwork hours
+  // Calculate variance between portal and Upwork hours (only if both are available)
   const hasUpworkData = upworkHours !== null && upworkHours !== undefined;
   const hasPortalData = portalHours !== null && portalHours !== undefined;
   const variance = hasPortalData && hasUpworkData 
@@ -58,6 +63,13 @@ export function DailyWorkTracker({
     return `${h}h ${m}m`;
   };
 
+  // Determine grid columns based on what we're showing
+  // Always show: Tickets, Avg Gap, Portal Time
+  // Conditionally show: Upwork Time (when hasUpworkContract)
+  const gridCols = hasUpworkContract 
+    ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" 
+    : "grid-cols-1 md:grid-cols-3";
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -79,10 +91,7 @@ export function DailyWorkTracker({
         </div>
       </CardHeader>
       <CardContent>
-        <div className={cn(
-          "grid gap-6",
-          hasUpworkContract ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-2"
-        )}>
+        <div className={cn("grid gap-6", gridCols)}>
           {/* Tickets Handled */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -118,25 +127,30 @@ export function DailyWorkTracker({
             </p>
           </div>
 
-          {/* Time Logged (Portal) - Only show if Upwork contract exists */}
-          {hasUpworkContract && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  Portal Time
-                </div>
-                <span className="text-2xl font-bold">
-                  {formatHours(portalHours)}
-                </span>
+          {/* Portal Time Logged - ALWAYS SHOW */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                Portal Time
               </div>
-              <p className="text-xs text-muted-foreground italic">
-                Login to logout duration
-              </p>
+              <span className="text-2xl font-bold">
+                {formatHours(portalHours)}
+              </span>
             </div>
-          )}
+            <div className="flex items-center gap-1 text-xs text-muted-foreground italic">
+              {portalLoginTime ? (
+                <>
+                  <PlayCircle className="h-3 w-3" />
+                  Started: {portalLoginTime}
+                </>
+              ) : (
+                'Login to logout duration'
+              )}
+            </div>
+          </div>
 
-          {/* Time Logged (Upwork) - Only show if Upwork contract exists */}
+          {/* Upwork Time Logged - Only show if Upwork contract exists */}
           {hasUpworkContract && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -172,12 +186,22 @@ export function DailyWorkTracker({
                       : 'Unable to fetch Upwork data'}
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  {varianceStatus === 'ok' && 'Times match ✓'}
-                  {varianceStatus === 'over' && `Portal +${formatHours(variance)} vs Upwork`}
-                  {varianceStatus === 'under' && `Upwork +${formatHours(Math.abs(variance ?? 0))} vs Portal`}
-                  {!varianceStatus && 'From Upwork Work Diary'}
-                </p>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground italic">
+                  {upworkStartTime ? (
+                    <>
+                      <PlayCircle className="h-3 w-3 text-green-600" />
+                      Started: {upworkStartTime}
+                    </>
+                  ) : varianceStatus === 'ok' ? (
+                    'Times match ✓'
+                  ) : varianceStatus === 'over' ? (
+                    `Portal +${formatHours(variance)} vs Upwork`
+                  ) : varianceStatus === 'under' ? (
+                    `Upwork +${formatHours(Math.abs(variance ?? 0))} vs Portal`
+                  ) : (
+                    'From Upwork Work Diary'
+                  )}
+                </div>
               )}
             </div>
           )}

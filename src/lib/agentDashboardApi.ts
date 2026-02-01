@@ -156,10 +156,10 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
 
 export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
-    // 1. Fetch identity from agent_profiles (source of truth)
+    // 1. Fetch identity AND upwork_contract_id from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name')
+      .select('id, email, full_name, upwork_contract_id')
       .eq('id', profileId)
       .single();
 
@@ -174,11 +174,11 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
     // 2. Fetch operational data from agent_directory using email
     const { data: directory } = await supabase
       .from('agent_directory')
-      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, upwork_contract_id, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
       .eq('email', profile.email)
       .maybeSingle();
 
-    // 3. Merge and return - use directory data where available, fallback to defaults
+    // 3. Merge and return - use agent_profiles.upwork_contract_id as source of truth
     const dashboardProfile: DashboardProfile = {
       id: profile.id,
       email: profile.email,
@@ -193,7 +193,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       weekday_schedule: directory?.weekday_schedule || null,
       weekend_schedule: directory?.weekend_schedule || null,
       day_off: directory?.day_off || [],
-      upwork_contract_id: directory?.upwork_contract_id || null,
+      upwork_contract_id: profile.upwork_contract_id || null, // Use agent_profiles as source of truth
       mon_schedule: directory?.mon_schedule || null,
       tue_schedule: directory?.tue_schedule || null,
       wed_schedule: directory?.wed_schedule || null,
@@ -935,28 +935,39 @@ export function formatGapTime(seconds: number | null): string {
  */
 export async function fetchUpworkTime(
   contractId: string,
-  date: string
-): Promise<{ hours: number | null; error: string | null }> {
+  date: string,
+  agentEmail?: string
+): Promise<{ 
+  hours: number | null; 
+  firstCellTime: string | null;
+  lastCellTime: string | null;
+  error: string | null 
+}> {
   try {
     const { data, error } = await supabase.functions.invoke('fetch-upwork-time', {
-      body: { contractId, date },
+      body: { contractId, date, agentEmail },
     });
 
     if (error) {
       console.error('Error fetching Upwork time:', error);
-      return { hours: null, error: error.message };
+      return { hours: null, firstCellTime: null, lastCellTime: null, error: error.message };
     }
 
     if (data?.error) {
       console.error('Upwork API error:', data.error);
-      return { hours: null, error: data.error };
+      return { hours: null, firstCellTime: null, lastCellTime: null, error: data.error };
     }
 
-    return { hours: data?.hours ?? null, error: null };
+    return { 
+      hours: data?.hours ?? null, 
+      firstCellTime: data?.firstCellTime ?? null,
+      lastCellTime: data?.lastCellTime ?? null,
+      error: null 
+    };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Exception fetching Upwork time:', errorMessage);
-    return { hours: null, error: errorMessage };
+    return { hours: null, firstCellTime: null, lastCellTime: null, error: errorMessage };
   }
 }
 
