@@ -1468,6 +1468,51 @@ export type Database = {
         }
         Relationships: []
       }
+      upwork_daily_logs: {
+        Row: {
+          agent_email: string
+          contract_id: string
+          created_at: string | null
+          date: string
+          fetched_at: string | null
+          first_cell_index: number | null
+          first_cell_time: string | null
+          id: string
+          last_cell_index: number | null
+          last_cell_time: string | null
+          total_cells: number | null
+          total_hours: number | null
+        }
+        Insert: {
+          agent_email: string
+          contract_id: string
+          created_at?: string | null
+          date: string
+          fetched_at?: string | null
+          first_cell_index?: number | null
+          first_cell_time?: string | null
+          id?: string
+          last_cell_index?: number | null
+          last_cell_time?: string | null
+          total_cells?: number | null
+          total_hours?: number | null
+        }
+        Update: {
+          agent_email?: string
+          contract_id?: string
+          created_at?: string | null
+          date?: string
+          fetched_at?: string | null
+          first_cell_index?: number | null
+          first_cell_time?: string | null
+          id?: string
+          last_cell_index?: number | null
+          last_cell_time?: string | null
+          total_cells?: number | null
+          total_hours?: number | null
+        }
+        Relationships: []
+      }
       upwork_tokens: {
         Row: {
           access_token: string

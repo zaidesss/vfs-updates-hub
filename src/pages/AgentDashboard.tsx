@@ -59,8 +59,10 @@ export default function AgentDashboard() {
   
   // Upwork integration state
   const [portalHours, setPortalHours] = useState<number | null>(null);
+  const [portalLoginTime, setPortalLoginTime] = useState<string | null>(null);
   const [upworkHours, setUpworkHours] = useState<number | null>(null);
   const [upworkError, setUpworkError] = useState<string | null>(null);
+  const [upworkStartTime, setUpworkStartTime] = useState<string | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -178,12 +180,15 @@ export default function AgentDashboard() {
         setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
       }
       
-      // Calculate portal hours from today's login/logout events
+      // Calculate portal hours and login time from today's attendance
       const todayAttendanceForHours = weekAttendance.find(
         (d) => format(d.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
       );
       if (todayAttendanceForHours?.hoursWorkedMinutes) {
         setPortalHours(todayAttendanceForHours.hoursWorkedMinutes / 60);
+      }
+      if (todayAttendanceForHours?.loginTime) {
+        setPortalLoginTime(todayAttendanceForHours.loginTime);
       }
       
       // Fetch Upwork hours if contract ID exists
@@ -191,13 +196,16 @@ export default function AgentDashboard() {
         const todayStr = format(today, 'yyyy-MM-dd');
         const upworkResult = await fetchUpworkTime(
           profileResult.data.upwork_contract_id,
-          todayStr
+          todayStr,
+          profileResult.data.email // Pass email for database logging
         );
         if (upworkResult.error) {
           setUpworkError(upworkResult.error);
           setUpworkHours(null);
+          setUpworkStartTime(null);
         } else {
           setUpworkHours(upworkResult.hours);
+          setUpworkStartTime(upworkResult.firstCellTime);
           setUpworkError(null);
         }
       }
@@ -365,8 +373,10 @@ export default function AgentDashboard() {
           onRefresh={handleRefreshTracker}
           isRefreshing={isRefreshingTracker}
           portalHours={portalHours}
+          portalLoginTime={portalLoginTime}
           upworkHours={upworkHours}
           upworkError={upworkError}
+          upworkStartTime={upworkStartTime}
           hasUpworkContract={!!profile.upwork_contract_id}
         />
       </div>
