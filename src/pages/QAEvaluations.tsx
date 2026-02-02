@@ -114,7 +114,7 @@ export default function QAEvaluations() {
   // Calculate weekly stats from agent-filtered evaluations (client-side)
   const weeklyStats = useMemo(() => {
     const now = new Date();
-    const weeks: { week: string; startDate: string; endDate: string }[] = [];
+    const weeks: { week: string; startDate: string; endDate: string; startDateISO: string; endDateISO: string }[] = [];
     
     // Calculate last 4 weeks (Monday to Sunday)
     for (let i = 0; i < 4; i++) {
@@ -129,15 +129,17 @@ export default function QAEvaluations() {
       
       weeks.push({
         week: `Week ${4 - i}`,
-        startDate: weekStart.toISOString().split('T')[0],
-        endDate: weekEnd.toISOString().split('T')[0],
+        startDate: format(weekStart, 'MM-dd-yy'),
+        endDate: format(weekEnd, 'MM-dd-yy'),
+        startDateISO: weekStart.toISOString().split('T')[0],
+        endDateISO: weekEnd.toISOString().split('T')[0],
       });
     }
 
     // Calculate stats for each week using agent-filtered data
     return weeks.reverse().map(week => {
       const weekEvaluations = agentFilteredEvaluations.filter(
-        e => e.audit_date >= week.startDate && e.audit_date <= week.endDate
+        e => e.audit_date >= week.startDateISO && e.audit_date <= week.endDateISO
       );
       
       const avgScore = weekEvaluations.length > 0
