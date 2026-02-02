@@ -189,6 +189,7 @@ const CONTRACT_WORK_DAYS_QUERY = `
         date
         workDiary {
           cells {
+            __typename
             memo
           }
         }
@@ -205,6 +206,23 @@ const SIMPLE_CONTRACT_QUERY = `
       title
       status
       weeklyHoursLimit
+    }
+  }
+`;
+
+// Introspection query to discover available Cell type fields
+// This is the ONLY source of truth for valid field names
+const INTROSPECT_CELL_QUERY = `
+  query IntrospectCell {
+    __type(name: "Cell") {
+      name
+      fields {
+        name
+        type {
+          name
+          kind
+        }
+      }
     }
   }
 `;
@@ -300,6 +318,48 @@ async function executeGraphQLQuery(
   return JSON.parse(responseText);
 }
 
+// Discover available fields on the Cell type via introspection
+// Returns array of field names or null if introspection fails
+async function introspectCellFields(
+  accessToken: string,
+  organizationId: string | null
+): Promise<string[] | null> {
+  try {
+    const result = await executeGraphQLQuery(
+      INTROSPECT_CELL_QUERY,
+      {},
+      accessToken,
+      organizationId
+    );
+    
+    if (result.errors || !result.data?.__type?.fields) {
+      console.log('[INTROSPECTION] Cell type introspection failed or no fields found');
+      return null;
+    }
+    
+    const fieldNames = result.data.__type.fields.map((f: { name: string }) => f.name);
+    console.log(`[INTROSPECTION] Cell type has fields: ${fieldNames.join(', ')}`);
+    
+    // Check for time-related fields that could enable start/end tracking
+    const timeFields = fieldNames.filter((name: string) => 
+      name.toLowerCase().includes('time') || 
+      name.toLowerCase().includes('start') ||
+      name.toLowerCase().includes('index')
+    );
+    
+    if (timeFields.length > 0) {
+      console.log(`[INTROSPECTION] Potential time fields found: ${timeFields.join(', ')}`);
+    } else {
+      console.log('[INTROSPECTION] No time-related fields found on Cell type');
+    }
+    
+    return fieldNames;
+  } catch (error) {
+    console.error('[INTROSPECTION] Introspection query failed:', error);
+    return null;
+  }
+}
+
 // Fetch work days using GraphQL API
 async function fetchWorkDaysGraphQL(
   contractId: string,
@@ -310,6 +370,19 @@ async function fetchWorkDaysGraphQL(
   console.log(`Fetching work days via GraphQL for contract: ${contractId}, date: ${date}`);
 
   try {
+    // SCHEMA DISCOVERY: Run introspection to log available Cell fields
+    // This provides evidence-based field availability for debugging/future enhancements
+    const cellFields = await introspectCellFields(accessToken, organizationId);
+    
+    // Check if any time-tracking field exists in the Cell schema
+    const hasTimeField = cellFields?.some(field => 
+      field === 'time' || field === 'startTime' || field === 'cellIndex' || field === 'index'
+    ) || false;
+    
+    if (!hasTimeField) {
+      console.log('[SCHEMA] No time-tracking field available on Cell type - first/last time will be null');
+    }
+
     // Step 1: First verify the contract exists with basic fields
     console.log('Verifying contract exists...');
     const contractResult = await executeGraphQLQuery(
@@ -395,8 +468,7 @@ async function fetchWorkDaysGraphQL(
     console.log('First workDay structure:', JSON.stringify(workDays[0], null, 2));
     
     // Calculate total hours from workDiary.cells
-    // Note: Without cellIndex field, we can only count cells for total hours
-    // First/last time tracking requires API investigation for available fields
+    // SAFE: Cell count is reliable - each cell = 10 minutes
     let totalCells = 0;
     
     for (const day of workDays) {
@@ -405,15 +477,19 @@ async function fetchWorkDaysGraphQL(
       }
     }
     
-    // Without cellIndex, we cannot determine first/last cell times
-    // Set to undefined until we find the correct API field
-    const firstCellIndex = undefined;
-    const lastCellIndex = undefined;
+    // CRITICAL: First/Last cell time tracking
+    // We CANNOT determine time-of-day without an explicit time field in the schema.
+    // Array position does NOT indicate time slot - Upwork may return cells in any order.
+    // These values MUST remain undefined until introspection confirms a valid time field.
+    const firstCellIndex: number | undefined = undefined;
+    const lastCellIndex: number | undefined = undefined;
     
     // Convert cells to hours (each cell = 10 minutes = 1/6 hour)
+    // This calculation is RELIABLE regardless of time field availability
     const totalHours = totalCells / 6;
-    console.log(`Total hours for ${date}: ${totalHours.toFixed(2)} (from ${totalCells} cells x 10 min each)`);
-    console.log(`First cell index: ${firstCellIndex}, Last cell index: ${lastCellIndex}`);
+    
+    console.log(`[RESULT] Total hours: ${totalHours.toFixed(2)} (${totalCells} cells × 10 min)`);
+    console.log(`[RESULT] First/Last time: NOT AVAILABLE (no time field in Cell schema)`);
     
     return { 
       hours: totalHours, 
@@ -433,6 +509,10 @@ async function fetchWorkDaysGraphQL(
     return { hours: null, needsRefresh: false, error: errorMessage };
   }
 }
+
+// DEPRECATED: These functions require cell index data which is not available
+// in the current Upwork API Cell schema. Kept for future use if schema changes.
+// DO NOT USE until introspection confirms a time/index field exists.
 
 // Convert cell index (0-143) to time string (e.g., "8:00 AM")
 function cellIndexToTime(cellIndex: number): string {
