@@ -1012,6 +1012,47 @@ export type Database = {
         }
         Relationships: []
       }
+      qa_evaluation_events: {
+        Row: {
+          actor_email: string
+          actor_name: string | null
+          created_at: string
+          evaluation_id: string
+          event_description: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          actor_email: string
+          actor_name?: string | null
+          created_at?: string
+          evaluation_id: string
+          event_description?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          actor_email?: string
+          actor_name?: string | null
+          created_at?: string
+          evaluation_id?: string
+          event_description?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_evaluation_events_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "qa_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qa_evaluation_scores: {
         Row: {
           ai_accepted: boolean | null
