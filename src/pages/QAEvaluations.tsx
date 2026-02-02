@@ -47,6 +47,7 @@ import { toZonedTime, format as formatTz } from 'date-fns-tz';
 import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
+import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
 import { DatePicker } from '@/components/ui/date-picker';
 
 type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'quarterly' | 'custom';
@@ -426,6 +427,9 @@ export default function QAEvaluations() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Weekly/Monthly Performance Summary */}
+        <QAPerformanceSummary evaluations={agentFilteredEvaluations} />
 
         {/* Weekly Comparison Chart */}
         {weeklyStats.length > 0 && (
