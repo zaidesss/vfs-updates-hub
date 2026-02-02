@@ -9,6 +9,42 @@ const corsHeaders = {
 
 const APP_URL = 'https://vfs-updates-hub.lovable.app';
 
+// Helper function to get active (non-terminated) user emails
+async function getActiveUserEmails(supabase: any): Promise<string[]> {
+  // Get all users from user_roles
+  const { data: users, error: usersError } = await supabase
+    .from('user_roles')
+    .select('email');
+
+  if (usersError) {
+    console.error('Error fetching users:', usersError);
+    throw new Error('Failed to fetch users');
+  }
+
+  const allEmails = (users as { email: string }[] || []).map(u => u.email.toLowerCase());
+
+  // Get terminated agent emails
+  const { data: terminatedProfiles, error: profilesError } = await supabase
+    .from('agent_profiles')
+    .select('email')
+    .eq('employment_status', 'Terminated');
+
+  if (profilesError) {
+    console.error('Error fetching terminated profiles:', profilesError);
+    // Return all emails if we can't check terminated status
+    return allEmails;
+  }
+
+  const terminatedEmails = new Set((terminatedProfiles as { email: string }[] || []).map(p => p.email.toLowerCase()));
+
+  // Filter out terminated agents
+  const activeEmails = allEmails.filter(email => !terminatedEmails.has(email));
+  
+  console.log(`Filtered ${allEmails.length - activeEmails.length} terminated agents from notifications`);
+  
+  return activeEmails;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -26,19 +62,11 @@ serve(async (req) => {
     const refDisplay = referenceNumber ? ` (${referenceNumber})` : '';
     console.log(`Sending notifications for ${notificationType.toLowerCase()} update: ${updateTitle}${refDisplay}`);
 
-    // Get all users (admins and regular users) from user_roles
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: users, error: usersError } = await supabase
-      .from('user_roles')
-      .select('email');
-
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      throw new Error('Failed to fetch users');
-    }
-
-    const emails = users?.map(u => u.email) || [];
-    console.log(`Found ${emails.length} users to notify`);
+    
+    // Get active (non-terminated) user emails
+    const emails = await getActiveUserEmails(supabase);
+    console.log(`Found ${emails.length} active users to notify`);
 
     const results = {
       slack: false,
@@ -114,7 +142,7 @@ serve(async (req) => {
       console.log('No Resend API key configured or no users to notify');
     }
 
-    // Create in-app notifications for all users
+    // Create in-app notifications for all active users
     if (emails.length > 0) {
       try {
         const notificationType = isEdit ? 'Updated' : 'New';

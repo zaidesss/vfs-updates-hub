@@ -58,6 +58,23 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log("Sending decision notification for:", payload);
 
+    // Get terminated agent emails
+    const { data: terminatedProfiles } = await supabase
+      .from("agent_profiles")
+      .select("email")
+      .eq("employment_status", "Terminated");
+    
+    const terminatedEmails = new Set((terminatedProfiles as { email: string }[] || []).map(p => p.email.toLowerCase()));
+
+    // Check if the agent is terminated - skip sending entirely
+    if (terminatedEmails.has(payload.agentEmail.toLowerCase())) {
+      console.log(`Skipping notification for terminated agent: ${payload.agentEmail}`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: 'Agent is terminated' }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get super admin, admin, and HR emails for CC
     const { data: recipientUsers, error: recipientError } = await supabase
       .from("user_roles")
@@ -68,8 +85,9 @@ serve(async (req: Request): Promise<Response> => {
       console.error("Error fetching recipient emails:", recipientError);
     }
 
-    // Get unique emails and exclude the agent's email
-    const recipientEmails = [...new Set(recipientUsers?.map((u) => u.email) || [])].filter((e) => e !== payload.agentEmail);
+    // Get unique emails, exclude the agent's email and terminated agents
+    const recipientEmails = [...new Set((recipientUsers as { email: string }[] || []).map((u) => u.email))]
+      .filter((e) => e !== payload.agentEmail && !terminatedEmails.has(e.toLowerCase()));
     console.log("Recipient emails for CC (super admins, admins, hr):", recipientEmails);
 
     // Format dates

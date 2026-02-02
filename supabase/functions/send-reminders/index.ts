@@ -10,6 +10,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper function to get terminated agent emails
+async function getTerminatedEmails(supabase: any): Promise<Set<string>> {
+  const { data: terminatedProfiles, error } = await supabase
+    .from('agent_profiles')
+    .select('email')
+    .eq('employment_status', 'Terminated');
+
+  if (error) {
+    console.error('Error fetching terminated profiles:', error);
+    return new Set();
+  }
+
+  return new Set((terminatedProfiles as { email: string }[] || []).map(p => p.email.toLowerCase()));
+}
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -44,6 +59,10 @@ const handler = async (req: Request): Promise<Response> => {
       throw usersError;
     }
 
+    // Get terminated agent emails
+    const terminatedEmails = await getTerminatedEmails(supabase);
+    console.log(`Found ${terminatedEmails.size} terminated agents to exclude`);
+
     // Get all acknowledgements
     const { data: acknowledgements, error: ackError } = await supabase
       .from("acknowledgements")
@@ -54,11 +73,19 @@ const handler = async (req: Request): Promise<Response> => {
       throw ackError;
     }
 
-    // Find users with unread updates
+    // Find users with unread updates (excluding terminated agents)
     const usersWithUnread: { email: string; unreadCount: number; unreadUpdates: { title: string; reference_number: string | null }[] }[] = [];
 
     for (const user of users || []) {
-      const userAcks = acknowledgements?.filter(a => a.agent_email.toLowerCase() === user.email.toLowerCase()) || [];
+      const normalizedEmail = user.email.toLowerCase();
+      
+      // Skip terminated agents
+      if (terminatedEmails.has(normalizedEmail)) {
+        console.log(`Skipping terminated agent: ${normalizedEmail}`);
+        continue;
+      }
+
+      const userAcks = acknowledgements?.filter(a => a.agent_email.toLowerCase() === normalizedEmail) || [];
       const ackedUpdateIds = userAcks.map(a => a.update_id);
       
       const unreadUpdates = updates?.filter(u => !ackedUpdateIds.includes(u.id)) || [];
@@ -72,7 +99,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`Found ${usersWithUnread.length} users with unread updates`);
+    console.log(`Found ${usersWithUnread.length} active users with unread updates`);
 
     if (usersWithUnread.length === 0) {
       return new Response(JSON.stringify({ success: true, message: "No reminders to send" }), {

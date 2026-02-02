@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.send-qa-notification]
 verify_jwt = false
+
+[functions.check-user-profile-mismatch]
+verify_jwt = false

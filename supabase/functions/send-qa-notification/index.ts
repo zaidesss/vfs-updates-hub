@@ -45,13 +45,32 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Get terminated agent emails
+    const { data: terminatedProfiles } = await supabase
+      .from('agent_profiles')
+      .select('email')
+      .eq('employment_status', 'Terminated');
+    
+    const terminatedEmails = new Set((terminatedProfiles as { email: string }[] || []).map(p => p.email.toLowerCase()));
+
+    // Check if the agent is terminated - skip sending entirely
+    if (terminatedEmails.has(evaluation.agent_email.toLowerCase())) {
+      console.log(`Skipping QA notification for terminated agent: ${evaluation.agent_email}`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: 'Agent is terminated' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Fetch all admins, HR, and super admins for CC
     const { data: adminUsers } = await supabase
       .from('user_roles')
       .select('email, name, role')
       .in('role', ['admin', 'hr', 'super_admin']);
 
-    const ccEmails = [...new Set(adminUsers?.map(u => u.email) || [])];
+    // Filter out terminated agents from CC list
+    const ccEmails = [...new Set((adminUsers as { email: string }[] || []).map(u => u.email))]
+      .filter(e => !terminatedEmails.has(e.toLowerCase()));
     
     // Remove the agent email from CC if present
     const filteredCcEmails = ccEmails.filter(e => e !== evaluation.agent_email);
