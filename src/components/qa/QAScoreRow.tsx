@@ -19,9 +19,8 @@ interface QAScoreRowProps {
   aiAccepted: boolean | null;
   onScoreChange: (score: number) => void;
   onAcceptAI: () => void;
+  occurrenceCount?: number;
 }
-
-const SCORE_OPTIONS = [2, 3, 4, 5, 6];
 
 export function QAScoreRow({
   subcategory,
@@ -32,11 +31,22 @@ export function QAScoreRow({
   aiAccepted,
   onScoreChange,
   onAcceptAI,
+  occurrenceCount,
 }: QAScoreRowProps) {
+  // All-or-nothing scoring: only 0 or maxPoints allowed
+  const scoreOptions = [0, maxPoints];
+
   return (
     <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 border rounded-lg">
       <div className="flex-1">
-        <Label className="font-medium">{subcategory}</Label>
+        <div className="flex items-center gap-2">
+          <Label className="font-medium">{subcategory}</Label>
+          {occurrenceCount && occurrenceCount > 1 && (
+            <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+              {occurrenceCount === 2 ? '2nd' : occurrenceCount === 3 ? '3rd' : `${occurrenceCount}th`} occurrence
+            </Badge>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">{behavior}</p>
       </div>
       
@@ -64,13 +74,13 @@ export function QAScoreRow({
           value={score !== null ? score.toString() : ''} 
           onValueChange={(v) => onScoreChange(parseInt(v))}
         >
-          <SelectTrigger className="w-20">
+          <SelectTrigger className="w-24">
             <SelectValue placeholder="—" />
           </SelectTrigger>
           <SelectContent>
-            {SCORE_OPTIONS.map(opt => (
+            {scoreOptions.map(opt => (
               <SelectItem key={opt} value={opt.toString()}>
-                {opt}
+                {opt} {opt === 0 ? '(Fail)' : '(Pass)'}
               </SelectItem>
             ))}
           </SelectContent>
