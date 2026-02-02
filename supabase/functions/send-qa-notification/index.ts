@@ -116,6 +116,18 @@ const handler = async (req: Request): Promise<Response> => {
       if (!emailRes.ok) {
         const errText = await emailRes.text();
         console.error('Failed to send new evaluation email:', errText);
+      } else {
+        // Log the event
+        await supabase
+          .from('qa_evaluation_events')
+          .insert({
+            evaluation_id: evaluationId,
+            event_type: 'notification_sent',
+            event_description: `Notification email sent to ${evaluation.agent_email}`,
+            actor_email: evaluation.evaluator_email,
+            actor_name: evaluation.evaluator_name,
+            metadata: { to: evaluation.agent_email, cc: filteredCcEmails },
+          });
       }
 
       // Mark notification as sent

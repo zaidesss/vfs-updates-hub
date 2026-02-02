@@ -68,6 +68,17 @@ export interface QAActionNeeded {
   action_plan?: QAActionPlan;
 }
 
+export interface QAEvaluationEvent {
+  id: string;
+  evaluation_id: string;
+  event_type: string;
+  event_description: string | null;
+  actor_email: string;
+  actor_name: string | null;
+  metadata: Record<string, any>;
+  created_at: string;
+}
+
 export interface CreateQAEvaluationInput {
   agent_email: string;
   agent_name: string;
@@ -515,4 +526,46 @@ export async function finalizeAndSendEvaluation(id: string): Promise<QAEvaluatio
   await sendQANotification(id, 'new_evaluation');
   
   return data as QAEvaluation;
+}
+
+// Create evaluation event (audit trail)
+export async function createEvaluationEvent(
+  evaluationId: string,
+  eventType: string,
+  eventDescription: string,
+  actorEmail: string,
+  actorName?: string,
+  metadata?: Record<string, any>
+): Promise<void> {
+  const { error } = await supabase
+    .from('qa_evaluation_events')
+    .insert({
+      evaluation_id: evaluationId,
+      event_type: eventType,
+      event_description: eventDescription,
+      actor_email: actorEmail,
+      actor_name: actorName,
+      metadata: metadata || {},
+    });
+
+  if (error) {
+    console.error('Failed to create evaluation event:', error);
+  }
+}
+
+// Fetch evaluation events (audit trail)
+export async function fetchEvaluationEvents(evaluationId: string): Promise<QAEvaluationEvent[]> {
+  const { data, error } = await supabase
+    .from('qa_evaluation_events')
+    .select('*')
+    .eq('evaluation_id', evaluationId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as QAEvaluationEvent[];
+}
+
+// Resend QA notification
+export async function resendQANotification(evaluationId: string): Promise<void> {
+  await sendQANotification(evaluationId, 'new_evaluation');
 }

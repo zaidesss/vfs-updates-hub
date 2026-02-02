@@ -20,18 +20,34 @@ import {
   User,
   Calendar,
   FileText,
-  Loader2
+  Loader2,
+  Mail,
+  RefreshCw,
+  Eye
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toZonedTime, format as formatTz } from 'date-fns-tz';
 import { 
   fetchQAEvaluationById, 
   acknowledgeEvaluation,
   resolveAction,
+  fetchEvaluationEvents,
+  createEvaluationEvent,
   SCORING_CATEGORIES,
   type QAEvaluation,
   type QAEvaluationScore,
-  type QAActionNeeded
+  type QAActionNeeded,
+  type QAEvaluationEvent
 } from '@/lib/qaEvaluationsApi';
+
+const EST_TIMEZONE = 'America/New_York';
+
+// Format date in EST
+function formatInEST(date: Date | string, formatStr: string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const zonedDate = toZonedTime(d, EST_TIMEZONE);
+  return formatTz(zonedDate, formatStr, { timeZone: EST_TIMEZONE });
+}
 
 export default function QAEvaluationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -52,6 +68,13 @@ export default function QAEvaluationDetail() {
     enabled: !!id,
   });
 
+  // Fetch audit trail events
+  const { data: events = [] } = useQuery({
+    queryKey: ['qa-evaluation-events', id],
+    queryFn: () => fetchEvaluationEvents(id!),
+    enabled: !!id,
+  });
+
   const evaluation = data?.evaluation;
   const scores = data?.scores || [];
   const actions = data?.actions || [];
@@ -61,10 +84,22 @@ export default function QAEvaluationDetail() {
 
   // Acknowledge mutation
   const acknowledgeMutation = useMutation({
-    mutationFn: () => acknowledgeEvaluation(id!),
+    mutationFn: async () => {
+      const result = await acknowledgeEvaluation(id!);
+      // Log the event
+      await createEvaluationEvent(
+        id!,
+        'agent_acknowledged',
+        'Agent acknowledged the evaluation',
+        user?.email || '',
+        user?.name
+      );
+      return result;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['qa-evaluation', id] });
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation-events', id] });
       toast({
         title: 'Evaluation acknowledged',
         description: 'Thank you for reviewing this evaluation.',
@@ -394,6 +429,59 @@ export default function QAEvaluationDetail() {
                     {action.action_plan?.category && (
                       <Badge variant="outline">{action.action_plan.category}</Badge>
                     )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Audit Trail */}
+        {canViewAll && events.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Activity History
+              </CardTitle>
+              <CardDescription>Timeline of all activities for this evaluation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {events.map((event, index) => (
+                  <div 
+                    key={event.id} 
+                    className="flex gap-4 relative"
+                  >
+                    {/* Timeline line */}
+                    {index < events.length - 1 && (
+                      <div className="absolute left-[11px] top-6 w-0.5 h-full bg-border" />
+                    )}
+                    {/* Timeline dot */}
+                    <div className="w-6 h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center flex-shrink-0 z-10">
+                      {event.event_type === 'notification_sent' && <Mail className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'notification_resent' && <RefreshCw className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'agent_acknowledged' && <CheckCircle2 className="h-3 w-3 text-chart-2" />}
+                      {event.event_type === 'agent_reviewed' && <Eye className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'agent_remarks' && <FileText className="h-3 w-3 text-primary" />}
+                      {!['notification_sent', 'notification_resent', 'agent_acknowledged', 'agent_reviewed', 'agent_remarks'].includes(event.event_type) && (
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                      )}
+                    </div>
+                    {/* Event content */}
+                    <div className="flex-1 pb-4">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{event.event_description}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {event.event_type.replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <span>by {event.actor_name || event.actor_email}</span>
+                        <span className="mx-2">•</span>
+                        <span>{formatInEST(event.created_at, 'MMM d, yyyy')} at {formatInEST(event.created_at, 'h:mm a')} EST</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

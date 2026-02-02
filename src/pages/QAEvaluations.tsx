@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Plus, 
   Search, 
@@ -29,18 +36,33 @@ import {
   Clock,
   TrendingUp,
   FileText,
-  Eye
+  Eye,
+  MoreHorizontal,
+  Mail,
+  RefreshCw
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from 'date-fns';
-import { fetchQAEvaluations, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { toZonedTime, format as formatTz } from 'date-fns-tz';
+import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { DatePicker } from '@/components/ui/date-picker';
 
 type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'quarterly' | 'custom';
 
+const EST_TIMEZONE = 'America/New_York';
+
+// Format date in EST
+function formatInEST(date: Date | string, formatStr: string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const zonedDate = toZonedTime(d, EST_TIMEZONE);
+  return formatTz(zonedDate, formatStr, { timeZone: EST_TIMEZONE });
+}
+
 export default function QAEvaluations() {
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
@@ -204,6 +226,34 @@ export default function QAEvaluations() {
     
     return { total, acknowledged, pending, avgScore: Math.round(avgScore * 100) / 100 };
   }, [filteredEvaluations]);
+
+  // Resend notification mutation
+  const resendMutation = useMutation({
+    mutationFn: async (evaluation: QAEvaluation) => {
+      await resendQANotification(evaluation.id);
+      await createEvaluationEvent(
+        evaluation.id,
+        'notification_resent',
+        'Notification email resent to agent',
+        user?.email || '',
+        user?.name
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      toast({
+        title: 'Email resent',
+        description: 'The notification has been resent to the agent.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to resend',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
 
   const getRatingBadge = (evaluation: QAEvaluation) => {
     if (evaluation.has_critical_fail) {
@@ -397,14 +447,14 @@ export default function QAEvaluations() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Ref #</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Date / Time (EST)</TableHead>
                     <TableHead>Agent</TableHead>
                     <TableHead>Ticket</TableHead>
                     <TableHead>Evaluator</TableHead>
                     <TableHead>Score</TableHead>
                     <TableHead>Rating</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -414,7 +464,12 @@ export default function QAEvaluations() {
                         {evaluation.reference_number || '-'}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(evaluation.audit_date), 'MMM d, yyyy')}
+                        <div className="flex flex-col">
+                          <span>{formatInEST(evaluation.created_at, 'MMM d, yyyy')}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatInEST(evaluation.created_at, 'h:mm a')} EST
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">{evaluation.agent_name}</TableCell>
                       <TableCell>
@@ -440,13 +495,30 @@ export default function QAEvaluations() {
                       <TableCell>{getRatingBadge(evaluation)}</TableCell>
                       <TableCell>{getStatusBadge(evaluation)}</TableCell>
                       <TableCell>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => navigate(`/team-performance/qa-evaluations/${evaluation.id}`)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => navigate(`/team-performance/qa-evaluations/${evaluation.id}`)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            {canCreate && evaluation.status === 'sent' && (
+                              <DropdownMenuItem
+                                onClick={() => resendMutation.mutate(evaluation)}
+                                disabled={resendMutation.isPending}
+                              >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${resendMutation.isPending ? 'animate-spin' : ''}`} />
+                                Resend Notification
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
