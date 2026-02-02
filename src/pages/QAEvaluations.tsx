@@ -290,7 +290,7 @@ export default function QAEvaluations() {
       return <Badge variant="destructive">Critical Fail</Badge>;
     }
     if (evaluation.rating === 'Pass') {
-      return <Badge className="bg-chart-2 hover:bg-chart-2/90 text-primary-foreground">Pass</Badge>;
+      return <Badge className="bg-chart-2 hover:bg-chart-2/90 text-white">Pass</Badge>;
     }
     if (evaluation.rating === 'Fail') {
       return <Badge variant="destructive">Fail</Badge>;
