@@ -133,7 +133,7 @@ export async function fetchAdmins(): Promise<ApiResponse<AdminRole[]>> {
     const { data, error } = await supabase
       .from('user_roles')
       .select('*')
-      .eq('role', 'admin')
+      .in('role', ['admin', 'super_admin'])
       .order('created_at', { ascending: true });
 
     if (error) {
