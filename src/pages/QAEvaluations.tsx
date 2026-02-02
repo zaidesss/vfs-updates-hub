@@ -36,9 +36,7 @@ import {
   Clock,
   TrendingUp,
   FileText,
-  Eye,
   MoreHorizontal,
-  Mail,
   RefreshCw,
   Trash2
 } from 'lucide-react';
@@ -298,7 +296,7 @@ export default function QAEvaluations() {
 
   const getStatusBadge = (evaluation: QAEvaluation) => {
     if (evaluation.agent_acknowledged) {
-      return <Badge className="bg-chart-2 hover:bg-chart-2/90 text-primary-foreground"><CheckCircle2 className="h-3 w-3 mr-1" />Acknowledged</Badge>;
+      return <Badge className="bg-chart-2/20 text-chart-2 border-chart-2/50 hover:bg-chart-2/30"><CheckCircle2 className="h-3 w-3 mr-1" />Acknowledged</Badge>;
     }
     if (evaluation.status === 'sent') {
       return <Badge variant="outline"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
@@ -478,6 +476,7 @@ export default function QAEvaluations() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Ref #</TableHead>
+                    <TableHead>Work Week</TableHead>
                     <TableHead>Date / Time (EST)</TableHead>
                     <TableHead>Agent</TableHead>
                     <TableHead>Ticket</TableHead>
@@ -485,14 +484,32 @@ export default function QAEvaluations() {
                     <TableHead>Score</TableHead>
                     <TableHead>Rating</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEvaluations.map((evaluation) => (
                     <TableRow key={evaluation.id}>
                       <TableCell className="font-mono text-sm">
-                        {evaluation.reference_number || '-'}
+                        <a 
+                          href={`/team-performance/qa-evaluations/${evaluation.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/team-performance/qa-evaluations/${evaluation.id}`);
+                          }}
+                          className="text-primary hover:underline font-medium"
+                        >
+                          {evaluation.reference_number || '-'}
+                        </a>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {evaluation.work_week_start && evaluation.work_week_end ? (
+                          <span className="text-muted-foreground">
+                            {format(new Date(evaluation.work_week_start + 'T00:00:00'), 'MM/dd')} - {format(new Date(evaluation.work_week_end + 'T00:00:00'), 'MM/dd/yy')}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
@@ -526,42 +543,38 @@ export default function QAEvaluations() {
                       <TableCell>{getRatingBadge(evaluation)}</TableCell>
                       <TableCell>{getStatusBadge(evaluation)}</TableCell>
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              onClick={() => navigate(`/team-performance/qa-evaluations/${evaluation.id}`)}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            {canCreate && evaluation.status === 'sent' && (
-                              <DropdownMenuItem
-                                onClick={() => resendMutation.mutate(evaluation)}
-                                disabled={resendMutation.isPending}
-                              >
-                                <RefreshCw className={`h-4 w-4 mr-2 ${resendMutation.isPending ? 'animate-spin' : ''}`} />
-                                Resend Notification
-                              </DropdownMenuItem>
-                            )}
-                            {isSuperAdmin && (
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setEvaluationToDelete(evaluation);
-                                  setDeleteModalOpen(true);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {(canCreate || isSuperAdmin) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canCreate && evaluation.status === 'sent' && (
+                                <DropdownMenuItem
+                                  onClick={() => resendMutation.mutate(evaluation)}
+                                  disabled={resendMutation.isPending}
+                                >
+                                  <RefreshCw className={`h-4 w-4 mr-2 ${resendMutation.isPending ? 'animate-spin' : ''}`} />
+                                  Resend Notification
+                                </DropdownMenuItem>
+                              )}
+                              {isSuperAdmin && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setEvaluationToDelete(evaluation);
+                                    setDeleteModalOpen(true);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
