@@ -1,370 +1,286 @@
 
-
-# QA Evaluation System Enhancement - Implementation Plan
+# Performance Optimization Plan
 
 ## Overview
-
-This plan implements 17 confirmed requirements for the QA Evaluation system, organized into logical phases for step-by-step implementation.
+This plan implements the performance optimizations identified in the previous analysis, excluding QA Evaluations as requested. The changes focus on caching strategies, query consolidation, and loading optimizations across the portal.
 
 ---
 
-## Phase 1: Database Schema Updates
+## Phase 1: Global Query Client Configuration
 
-### New Columns for `qa_evaluations` Table
+### 1.1 Configure TanStack Query with Smart Defaults
+**File:** `src/App.tsx`
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `work_week_start` | DATE | Start date of the work week (e.g., Jan 26, 2026) |
-| `work_week_end` | DATE | End date of the work week (e.g., Feb 1, 2026) |
-| `coaching_date` | DATE | Required date for coaching session |
-| `agent_remarks` | TEXT | Agent's written response/reaction to violations |
-| `agent_reviewed` | BOOLEAN | Whether agent clicked "Reviewed" button |
-| `agent_reviewed_at` | TIMESTAMPTZ | When agent clicked "Reviewed" |
-
-### New Table: `qa_action_plan_occurrences`
-
-Track repeat violations of the same action plan:
+Update the QueryClient initialization with optimized defaults:
+- Set `staleTime: 5 * 60 * 1000` (5 minutes) - prevents refetching data that was just fetched
+- Set `gcTime: 10 * 60 * 1000` (10 minutes) - keeps cached data longer
+- Disable `refetchOnWindowFocus` - prevents unnecessary refetches when user switches tabs
+- Set `retry: 1` - reduces retry attempts for faster failure feedback
 
 ```text
-+---------------------------+
-| qa_action_plan_occurrences|
-+---------------------------+
-| id: UUID (PK)             |
-| agent_email: TEXT         |
-| action_plan_id: UUID (FK) |
-| evaluation_id: UUID (FK)  |
-| occurrence_number: INT    |
-| created_at: TIMESTAMPTZ   |
-+---------------------------+
+Current:
+const queryClient = new QueryClient();
+
+Updated:
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 ```
+
+**Impact:** 20-30% improvement on repeated page visits
 
 ---
 
-## Phase 2: Scoring Logic Changes
+## Phase 2: Cache User Profile ID in AuthContext
 
-### 2.1 Update SCORING_CATEGORIES
+### 2.1 Move Profile ID Fetch from Layout to AuthContext
+**Files:** `src/context/AuthContext.tsx`, `src/components/Layout.tsx`
 
-Based on the provided scoring sheet, update `src/lib/qaEvaluationsApi.ts`:
+**Problem:** Currently, `Layout.tsx` fetches the user's profile ID on every page navigation (lines 46-62), adding 50-100ms latency to every single page load.
+
+**Solution:** 
+1. Add `profileId` state to AuthContext
+2. Fetch profile ID once during login/session restoration
+3. Expose `profileId` via context
+4. Remove the useEffect fetch from Layout and use context value instead
+
+**AuthContext Changes:**
+- Add `profileId: string | null` to AuthContextType
+- Fetch profile ID alongside role checks in the auth state listener
+- Return profileId in context value
+
+**Layout Changes:**
+- Remove the `useEffect` that fetches `userProfileId`
+- Get `profileId` directly from `useAuth()` hook
+- Use context value for dashboard navigation links
+
+**Impact:** Eliminates 50-100ms latency on every page navigation
+
+---
+
+## Phase 3: Lazy Load UpdatesContext
+
+### 3.1 Convert UpdatesContext to Lazy Loading Pattern
+**Files:** `src/context/UpdatesContext.tsx`, `src/App.tsx`
+
+**Problem:** UpdatesProvider loads ALL updates and acknowledgements on initial app load, even when visiting pages that don't need this data.
+
+**Solution:** Implement lazy initialization - only fetch data when first accessed by a component.
+
+**UpdatesContext Changes:**
+```text
+Current behavior:
+- useEffect fetches on mount
+- All pages wait for updates to load
+
+New behavior:
+- Add `initialized` state flag
+- Replace automatic useEffect with on-demand loading
+- First component that calls useUpdates() triggers the fetch
+- Subsequent calls use cached data
+```
+
+Key changes:
+1. Add `initialized: boolean` state (starts false)
+2. Export a `ensureLoaded()` function that fetches if not initialized
+3. Pages that need updates call `ensureLoaded()` 
+4. Other pages skip the wait entirely
+
+**Impact:** 200-500ms faster load on non-update pages (Dashboard, Calendar, Profile, etc.)
+
+---
+
+## Phase 4: Parallelize Agent Dashboard Fetches
+
+### 4.1 Restructure Agent Dashboard Data Loading
+**File:** `src/pages/AgentDashboard.tsx`
+
+**Problem:** The dashboard has a 4-stage sequential waterfall:
+1. Fetch profile + status
+2. Wait, then fetch events + leaves
+3. Wait, then fetch agent tag
+4. Wait, then fetch ticket count + gap data + Upwork time
+
+**Solution:** Restructure to maximize parallelization using Promise.all and remove unnecessary sequential dependencies.
+
+**Changes:**
+1. Combine profile fetch with agent_directory lookup in a single database call or parallel Promise.all
+2. Fetch agent tag in parallel with events/leaves (it only depends on email, not the full profile)
+3. Pre-fetch ticket data and Upwork data in the same parallel batch
+4. Move late-login auto-generation to a non-blocking background task
+
+**Optimized Flow:**
+```text
+Stage 1 (parallel):
+- fetchDashboardProfile(profileId)
+- getProfileStatus(profileId)
+
+Stage 2 (parallel, needs profile.email):
+- getWeekLoginEvents(profileId, weekStart, weekEnd)
+- getWeekAllEvents(profileId, weekStart, weekEnd)
+- getApprovedLeavesForWeek(email, weekStart, weekEnd)
+- getAgentTagByEmail(email)
+
+Stage 3 (parallel, needs agentTag OR upworkContractId):
+- getTodayTicketCount(agentTag)
+- getTodayGapData(agentTag)
+- fetchUpworkTime(upworkContractId, date, email)
+```
+
+**Impact:** 40-60% faster Agent Dashboard load
+
+---
+
+## Phase 5: Consolidate Ticket Dashboard Queries
+
+### 5.1 Create Optimized Database Function for Ticket Dashboard
+**Database Migration**
+
+**Problem:** `fetchDashboardData()` in `ticketLogsApi.ts` makes 5 sequential queries:
+1. ticket_logs
+2. ticket_gap_daily
+3. agent_directory
+4. agent_profiles  
+5. profile_status
+
+**Solution:** Create a database function that returns pre-aggregated dashboard data in a single call.
+
+**SQL Function:**
+```sql
+CREATE OR REPLACE FUNCTION get_ticket_dashboard_data(
+  p_zd_instance text,
+  p_start_date date,
+  p_end_date date
+)
+RETURNS TABLE (
+  agent_name text,
+  agent_email text,
+  log_date date,
+  email_count bigint,
+  chat_count bigint,
+  call_count bigint,
+  avg_gap_seconds numeric,
+  is_logged_in boolean
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH ticket_counts AS (
+    SELECT 
+      tl.agent_name,
+      tl.agent_email,
+      (tl.timestamp AT TIME ZONE 'America/New_York')::date as log_date,
+      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'email') as email_count,
+      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'chat') as chat_count,
+      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'call') as call_count
+    FROM ticket_logs tl
+    WHERE tl.zd_instance = p_zd_instance
+      AND tl.timestamp >= (p_start_date::text || 'T00:00:00Z')::timestamptz
+      AND tl.timestamp <= (p_end_date::text || 'T23:59:59.999Z')::timestamptz
+    GROUP BY tl.agent_name, tl.agent_email, log_date
+  ),
+  agent_status AS (
+    SELECT 
+      ad.agent_tag,
+      ad.email,
+      ps.current_status = 'LOGGED_IN' as is_logged_in
+    FROM agent_directory ad
+    LEFT JOIN agent_profiles ap ON LOWER(ad.email) = LOWER(ap.email)
+    LEFT JOIN profile_status ps ON ap.id = ps.profile_id
+    WHERE ad.agent_tag IS NOT NULL
+  ),
+  gaps AS (
+    SELECT 
+      tgd.agent_name,
+      tgd.date as log_date,
+      tgd.avg_gap_seconds
+    FROM ticket_gap_daily tgd
+    WHERE tgd.date >= p_start_date AND tgd.date <= p_end_date
+  )
+  SELECT 
+    tc.agent_name,
+    tc.agent_email,
+    tc.log_date,
+    tc.email_count,
+    tc.chat_count,
+    tc.call_count,
+    g.avg_gap_seconds,
+    COALESCE(ast.is_logged_in, false)
+  FROM ticket_counts tc
+  LEFT JOIN gaps g ON tc.agent_name = g.agent_name AND tc.log_date = g.log_date
+  LEFT JOIN agent_status ast ON LOWER(tc.agent_name) = LOWER(ast.agent_tag)
+  ORDER BY tc.agent_name, tc.log_date;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+### 5.2 Update ticketLogsApi.ts to Use New Function
+**File:** `src/lib/ticketLogsApi.ts`
+
+Replace the `fetchDashboardData()` function to call the new database function instead of making 5 separate queries.
+
+**Impact:** 50%+ faster Ticket Logs page load
+
+---
+
+## Phase 6: Code Splitting for Heavy Pages
+
+### 6.1 Lazy Load Heavy Components
+**File:** `src/App.tsx`
+
+Use React.lazy() for pages with heavy dependencies that aren't always needed:
 
 ```text
-Category: Communication and Professionalism
-+---------------------------------------+------------+
-| Subcategory                           | Max Points |
-+---------------------------------------+------------+
-| Critical Error: Sharing Internal Info | Yes/No     |
-| Tone and Empathy                      | 5          |
-| Clarity & Structure                   | 2          |
-| Uses correct spelling and grammar     | 3          |
-+---------------------------------------+------------+
-| Accuracy Feedback (grouped here)      | Textarea   |
-| Accuracy Action Plans (grouped here)  | Selection  |
-+---------------------------------------+------------+
+Current:
+import MasterDirectory from "./pages/MasterDirectory";
+import TicketLogs from "./pages/TicketLogs";
+import TeamStatusBoard from "./pages/TeamStatusBoard";
 
-Category: Issue Resolution and Deliverables
-+---------------------------------------+------------+
-| Subcategory                           | Max Points |
-+---------------------------------------+------------+
-| Critical Error: Incorrect Critical    | Yes/No     |
-| Probes to identify root cause         | 5          |
-| Offers appropriate solution           | 3          |
-| Shows ownership                       | 2          |
-| Follows proper ticket handling        | 2          |
-| Applies FCR principle                 | 5          |
-+---------------------------------------+------------+
-| Compliance Feedback (grouped here)    | Textarea   |
-| Compliance Action Plans (grouped)     | Selection  |
-+---------------------------------------+------------+
-
-Category: Process and Policy Adherence
-+---------------------------------------+------------+
-| Subcategory                           | Max Points |
-+---------------------------------------+------------+
-| Critical Error: Policy Breach         | Yes/No     |
-| Follows established processes         | 3          |
-| Accurately identifies & escalates     | 3          |
-+---------------------------------------+------------+
-| Customer Exp Feedback (grouped here)  | Textarea   |
-| Process Action Plans (grouped here)   | Selection  |
-+---------------------------------------+------------+
-
-TOTAL MAX: 33 points
+Updated:
+const MasterDirectory = lazy(() => import("./pages/MasterDirectory"));
+const TicketLogs = lazy(() => import("./pages/TicketLogs"));
+const TeamStatusBoard = lazy(() => import("./pages/TeamStatusBoard"));
 ```
 
-### 2.2 Critical Error Behavior
+Wrap routes in Suspense with a loading fallback.
 
-When agent commits a critical error:
-- Total Score = 0 (automatic fail)
-- Category scores in the **affected category** = 0
-- **Other category scores are RETAINED** for visibility
-- Rating = "Fail"
-- Percentage = 0%
-
-### 2.3 Passing Score Threshold
-
-Update from 80% to **96%**:
-- Pass: >= 96% AND no critical errors
-- Fail: < 96% OR has critical error
-
-### 2.4 All-or-Nothing Scoring
-
-Each subcategory score is binary:
-- Example: "Clarity & Structure" (max 2) → score is either **0** or **2**
-- Example: "Tone and Empathy" (max 5) → score is either **0** or **5**
-
----
-
-## Phase 3: AI Scoring Updates
-
-### Update Edge Function: `analyze-qa-ticket`
-
-Modify the AI prompt to suggest only binary scores:
-
-```text
-Current: "Score 2-6"
-Updated: "Score 0 (did not meet) or MAX_POINTS (met requirement)"
-```
-
-The AI will suggest:
-- For max 5: either 0 or 5
-- For max 3: either 0 or 3
-- For max 2: either 0 or 2
-
----
-
-## Phase 4: Form UI Reorganization
-
-### 4.1 Category Section Structure
-
-Reorder each category section to show:
-
-```text
-+------------------------------------------+
-| Category: Communication and Professional |
-+------------------------------------------+
-| 1. Critical Error: Sharing Internal Info | ← Critical FIRST
-| 2. Tone and Empathy (0 or 5)             |
-| 3. Clarity & Structure (0 or 2)          |
-| 4. Uses correct spelling/grammar (0 or 3)|
-+------------------------------------------+
-| Accuracy Feedback: [textarea]            | ← Feedback within category
-+------------------------------------------+
-| Action Needed: [action plan select]      | ← Actions within category
-+------------------------------------------+
-```
-
-### 4.2 QAScoreRow Component Update
-
-Update to show only valid score options (0 or max):
-
-```text
-Current dropdown: 2, 3, 4, 5, 6
-New dropdown: 0, [MAX_POINTS]
-```
-
----
-
-## Phase 5: New Form Fields
-
-### 5.1 Work Week Field
-
-Add date range picker for work week selection:
-
-```text
-Work Week: [Jan 26, 2026] to [Feb 1, 2026]
-```
-
-- Two date pickers: start date and end date
-- Displayed as "January 26 - February 1, 2026"
-
-### 5.2 Coaching Date Field (Footer)
-
-Add required date picker before "Send to Agent" button:
-
-```text
-+------------------------------------------+
-| Coaching Date: [Date Picker] *Required   |
-+------------------------------------------+
-| [Cancel] [Save Draft] [Send to Agent]    |
-+------------------------------------------+
-```
-
-- Must be selected before "Send to Agent" is enabled
-- Not required for "Save Draft"
-
-### 5.3 Agent Selection - Searchable Combobox
-
-Replace dropdown with searchable combobox:
-- User can type to filter agents by name
-- Autocomplete suggestions appear as user types
-
----
-
-## Phase 6: Agent View Enhancements
-
-### 6.1 Reviewed Button & Remarks Section
-
-Add to `QAEvaluationDetail.tsx`:
-
-```text
-+------------------------------------------+
-| Your Response                            |
-+------------------------------------------+
-| Remarks (optional):                      |
-| [textarea for agent's reaction]          |
-|                                          |
-| [Reviewed] button                        |
-+------------------------------------------+
-| Acknowledgement Required                 |
-| [checkbox] I acknowledge that I have...  |
-| [Acknowledge] button                     |
-+------------------------------------------+
-```
-
-- "Reviewed" = soft confirmation, allows adding remarks
-- "Acknowledge" = final mandatory confirmation
-
----
-
-## Phase 7: Email Notification Fix
-
-### Bug Identified
-
-The `saveMutation` in `QAEvaluationForm.tsx` does not call `sendQANotification()` after saving with status `'sent'`.
-
-**Evidence:**
-- Database shows `notification_sent: false` for evaluation QA-0002
-- Edge function logs show no invocations
-- Email to `merfmartinez15@gmail.com` never triggered
-
-### Fix
-
-Add notification call in `saveMutation.onSuccess`:
-
-```typescript
-onSuccess: async (evaluation, status) => {
-  if (status === 'sent') {
-    try {
-      await sendQANotification(evaluation.id, 'new_evaluation');
-    } catch (notifError) {
-      console.error('Failed to send notification:', notifError);
-    }
-  }
-  // ... rest of success handler
-}
-```
-
----
-
-## Phase 8: Weekly/Monthly Averaging
-
-### 8.1 Weekly Average (5 Tickets per Week)
-
-Display average score for 5 tickets in a work week:
-- Group evaluations by `work_week_start` and `work_week_end`
-- Calculate: `SUM(percentage) / COUNT(evaluations)`
-
-### 8.2 Monthly Average (4-5 Weeks per Month)
-
-Display monthly average:
-- Support months with 4 or 5 weeks
-- Show breakdown by work week within the month
-- Calculate: `SUM(weekly_averages) / COUNT(weeks)`
-
-### UI Location
-
-Add new summary section in QAEvaluations dashboard:
-- "Weekly Summary" card showing current week average
-- "Monthly Summary" card showing month-to-date average
-
----
-
-## Phase 9: Repeat Action Plan Tracking
-
-### Logic
-
-When assigning an action plan:
-1. Check `qa_action_plan_occurrences` for existing records with same `agent_email` and `action_plan_id`
-2. Count total occurrences
-3. Insert new occurrence record with incremented `occurrence_number`
-4. Display warning in UI: "This is occurrence #X for this action plan"
-
-### Display
-
-In the form, show badge next to repeated action plans:
-```text
-[Action Plan Text] (2nd occurrence)
-```
-
----
-
-## Phase 10: Super Admin Delete Capability
-
-### Add Delete Button
-
-In `QAEvaluations.tsx` table row actions:
-- Only visible to super admins
-- Confirmation dialog before deletion
-- Uses existing `deleteQAEvaluation()` function
-
-### UI
-
-```text
-Actions: [View] [Delete] ← Delete only for super_admin
-```
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/lib/qaEvaluationsApi.ts` | Update SCORING_CATEGORIES, calculateRating (96%), add new types |
-| `src/pages/QAEvaluationForm.tsx` | Work week field, coaching date, searchable agent, reorganized categories, fix notification |
-| `src/pages/QAEvaluationDetail.tsx` | Reviewed button, remarks section |
-| `src/pages/QAEvaluations.tsx` | Super admin delete, weekly/monthly averages display |
-| `src/components/qa/QAScoreRow.tsx` | Binary score options (0 or max) |
-| `src/components/qa/QAActionPlanSelect.tsx` | Show occurrence count badge |
-| `supabase/functions/analyze-qa-ticket/index.ts` | Binary AI suggestions |
-| `supabase/functions/send-qa-notification/index.ts` | No changes needed (already working) |
-
-### New Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/components/qa/AgentSearchCombobox.tsx` | Searchable agent selector |
-| `src/components/qa/CategorySection.tsx` | Reorganized category with feedback + actions |
-| `src/components/qa/WorkWeekPicker.tsx` | Date range picker for work week |
-
-### Database Migration
-
-New columns and table as described in Phase 1.
+**Impact:** 100-300ms faster initial bundle load
 
 ---
 
 ## Implementation Order
 
-We will implement step-by-step:
-
-1. **Email Fix** (#11) - Quick win, unblocks testing
-2. **Database Schema** - Foundation for new features
-3. **Scoring Categories Update** (#3) - Core logic change
-4. **Passing Score 96%** (#10) - Simple config change
-5. **Binary AI Scoring** (#4) - Edge function update
-6. **Form Reorganization** (#5, #6, #7) - UI restructure
-7. **Work Week Field** (#8) - New form field
-8. **Weekly/Monthly Averaging** (#1, #9) - Reporting feature
-9. **Coaching Date** (#12) - Form footer addition
-10. **Agent Reviewed + Remarks** (#13) - Agent view enhancement
-11. **Searchable Agent** (#17) - Combobox component
-12. **Repeat Action Plan Tracking** (#14) - Occurrence counting
-13. **Super Admin Delete** (#15) - Admin capability
+| Step | Change | Files Affected | Risk |
+|------|--------|----------------|------|
+| 1 | Query Client defaults | App.tsx | Low |
+| 2 | Cache profile ID in AuthContext | AuthContext.tsx, Layout.tsx | Low |
+| 3 | Lazy UpdatesContext | UpdatesContext.tsx | Low |
+| 4 | Parallelize Agent Dashboard | AgentDashboard.tsx | Medium |
+| 5 | Create ticket dashboard DB function | SQL migration, ticketLogsApi.ts | Medium |
+| 6 | Code splitting | App.tsx | Low |
 
 ---
 
-## Notes
+## Technical Notes
 
-- **Critical Error Scoring**: When critical error detected in one category, that category's scores become 0, but other categories retain actual scores. Total is still 0.
-- **Work Week**: Uses actual date range, not "Week 1/2/3/4" labels
-- **Action Plan Occurrences**: Only tracks count, no auto-escalation
-- **Combined Performance Form (#16)**: Deferred to future phase
+### Files to Modify:
+- `src/App.tsx` - Query client config + code splitting
+- `src/context/AuthContext.tsx` - Add profileId caching
+- `src/components/Layout.tsx` - Remove profile fetch
+- `src/context/UpdatesContext.tsx` - Lazy initialization
+- `src/pages/AgentDashboard.tsx` - Parallel data loading
+- `src/lib/ticketLogsApi.ts` - Use consolidated DB function
+- New SQL migration - Ticket dashboard function
 
+### Expected Overall Impact:
+- **Page navigation:** 50-150ms faster (profile ID caching)
+- **Non-update pages:** 200-500ms faster (lazy UpdatesContext)
+- **Agent Dashboard:** 40-60% faster
+- **Ticket Logs:** 50%+ faster
+- **Initial load:** 100-300ms faster (code splitting)
