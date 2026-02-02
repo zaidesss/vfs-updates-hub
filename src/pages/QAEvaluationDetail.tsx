@@ -231,7 +231,7 @@ export default function QAEvaluationDetail() {
               {evaluation.has_critical_fail ? (
                 <Badge variant="destructive">Critical Fail</Badge>
               ) : evaluation.rating === 'Pass' ? (
-                <Badge className="bg-chart-2 text-primary-foreground">Pass</Badge>
+                <Badge className="bg-chart-2/20 text-chart-2 border-chart-2/50 font-semibold">Pass</Badge>
               ) : (
                 <Badge variant="destructive">Fail</Badge>
               )}
