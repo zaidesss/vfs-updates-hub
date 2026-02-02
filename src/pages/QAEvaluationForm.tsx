@@ -44,6 +44,7 @@ import {
   Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toProperCase } from '@/lib/stringUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { getDay } from 'date-fns';
 import {
@@ -155,6 +156,25 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
       return data as AgentProfile[];
     },
   });
+
+  // Fetch evaluator profile to get proper name
+  const { data: evaluatorProfile } = useQuery({
+    queryKey: ['evaluator-profile', user?.email],
+    queryFn: async () => {
+      if (!user?.email) return null;
+      const { data, error } = await supabase
+        .from('agent_profiles')
+        .select('full_name, agent_name')
+        .eq('email', user.email.toLowerCase())
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.email,
+  });
+
+  // Get the evaluator's display name
+  const evaluatorName = evaluatorProfile?.full_name || evaluatorProfile?.agent_name || user?.name || user?.email || '';
 
   // Fetch action plans
   const { data: actionPlans = [] } = useQuery({
@@ -579,7 +599,7 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
         evaluationId = editId;
         await updateQAEvaluation(editId, {
           agent_email: selectedAgent!.email,
-          agent_name: selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email,
+          agent_name: toProperCase(selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email),
           audit_date: auditDate,
           zd_instance: zdInstance,
           ticket_id: ticketId,
@@ -606,15 +626,15 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
           'evaluation_edited',
           'Evaluation was edited',
           user!.email,
-          user!.name
+          evaluatorName
         );
       } else {
         // Create new evaluation
         const evaluation = await createQAEvaluation({
           agent_email: selectedAgent!.email,
-          agent_name: selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email,
+          agent_name: toProperCase(selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email),
           evaluator_email: user!.email,
-          evaluator_name: user!.name,
+          evaluator_name: toProperCase(evaluatorName),
           audit_date: auditDate,
           zd_instance: zdInstance,
           ticket_id: ticketId,
@@ -736,7 +756,7 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
                 evaluationId: evaluationId,
                 customActions,
                 evaluatorEmail: user!.email,
-                evaluatorName: user!.name,
+                evaluatorName: evaluatorName,
               },
             });
           } catch (customActionErr) {
@@ -752,7 +772,7 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
           'evaluation_sent',
           'Evaluation was sent to agent after editing',
           user!.email,
-          user!.name
+          evaluatorName
         );
         try {
           await sendQANotification(evaluationId, 'new_evaluation');
