@@ -94,6 +94,9 @@ export interface CreateQAEvaluationInput {
   compliance_feedback?: string;
   customer_exp_feedback?: string;
   status?: string;
+  work_week_start?: string;
+  work_week_end?: string;
+  coaching_date?: string;
 }
 
 export interface CreateQAScoreInput {

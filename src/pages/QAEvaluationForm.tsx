@@ -81,6 +81,11 @@ export default function QAEvaluationForm() {
   const [interactionType, setInteractionType] = useState<string>('');
   const [ticketContent, setTicketContent] = useState('');
   const [isFetchingTicket, setIsFetchingTicket] = useState(false);
+  
+  // Work week and coaching date
+  const [workWeekStart, setWorkWeekStart] = useState<string>('');
+  const [workWeekEnd, setWorkWeekEnd] = useState<string>('');
+  const [coachingDate, setCoachingDate] = useState<string>('');
 
   // Feedback state
   const [accuracyFeedback, setAccuracyFeedback] = useState('');
@@ -323,7 +328,7 @@ export default function QAEvaluationForm() {
 
   // Validate form
   const isFormValid = useMemo(() => {
-    if (!selectedAgent || !zdInstance || !ticketId || !interactionType) {
+    if (!selectedAgent || !zdInstance || !ticketId || !interactionType || !coachingDate) {
       return false;
     }
     // Check all non-critical scores are filled
@@ -336,7 +341,7 @@ export default function QAEvaluationForm() {
         return scores[key]?.score !== null;
       })
     );
-  }, [selectedAgent, zdInstance, ticketId, interactionType, scores]);
+  }, [selectedAgent, zdInstance, ticketId, interactionType, coachingDate, scores]);
 
   // Save as draft
   const saveMutation = useMutation({
@@ -357,6 +362,9 @@ export default function QAEvaluationForm() {
         compliance_feedback: complianceFeedback,
         customer_exp_feedback: customerExpFeedback,
         status,
+        work_week_start: workWeekStart || undefined,
+        work_week_end: workWeekEnd || undefined,
+        coaching_date: coachingDate || undefined,
       });
 
       // Create scores
@@ -521,6 +529,40 @@ export default function QAEvaluationForm() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Work Week & Coaching Date Row */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="workWeekStart">Work Week Start</Label>
+                <Input
+                  id="workWeekStart"
+                  type="date"
+                  value={workWeekStart}
+                  onChange={(e) => setWorkWeekStart(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workWeekEnd">Work Week End</Label>
+                <Input
+                  id="workWeekEnd"
+                  type="date"
+                  value={workWeekEnd}
+                  onChange={(e) => setWorkWeekEnd(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="coachingDate">Coaching Date <span className="text-destructive">*</span></Label>
+                <Input
+                  id="coachingDate"
+                  type="date"
+                  value={coachingDate}
+                  onChange={(e) => setCoachingDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Required before sending to agent</p>
               </div>
             </div>
 
