@@ -30,6 +30,7 @@ interface WeekSummary {
 
 export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps) {
   // Calculate current week summary (based on work_week fields)
+  // Week starts on Monday and ends on Sunday
   const currentWeekSummary = useMemo(() => {
     const now = new Date();
     const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
@@ -38,14 +39,13 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
     const weekStartStr = format(weekStart, 'yyyy-MM-dd');
     const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
     
-    // Filter evaluations that match this work week
+    // Filter evaluations where work_week_start matches this week's Monday
     const weekEvaluations = evaluations.filter(e => {
-      // Use work_week fields if available, otherwise fall back to audit_date
-      if (e.work_week_start && e.work_week_end) {
-        return e.work_week_start === weekStartStr || 
-               (e.work_week_start >= weekStartStr && e.work_week_start <= weekEndStr);
+      if (e.work_week_start) {
+        // Match evaluations where work_week_start is this Monday
+        return e.work_week_start === weekStartStr;
       }
-      // Fallback to audit_date
+      // Fallback to audit_date for legacy data
       return e.audit_date >= weekStartStr && e.audit_date <= weekEndStr;
     }).filter(e => e.status === 'sent');
     
@@ -63,6 +63,8 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
   }, [evaluations]);
 
   // Calculate monthly summary with weekly breakdown
+  // Monthly = evaluations where work_week_start falls within the calendar month
+  // This means a work week that starts Jan 26 and ends Feb 1 counts for January
   const monthlySummary = useMemo(() => {
     const now = new Date();
     const monthStart = startOfMonth(now);
@@ -71,10 +73,10 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
     const monthStartStr = format(monthStart, 'yyyy-MM-dd');
     const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
     
-    // Get all evaluations for this month
+    // Get all evaluations where work_week_start falls within this month
     const monthEvaluations = evaluations.filter(e => {
-      const dateToCheck = e.work_week_start || e.audit_date;
-      return dateToCheck >= monthStartStr && dateToCheck <= monthEndStr && e.status === 'sent';
+      const weekStart = e.work_week_start || e.audit_date;
+      return weekStart >= monthStartStr && weekStart <= monthEndStr && e.status === 'sent';
     });
     
     // Group by work week
@@ -99,8 +101,8 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
       
       weeklyAverages.push({
         weekLabel: end 
-          ? `${format(new Date(start), 'MMM d')} - ${format(new Date(end), 'MMM d')}`
-          : format(new Date(start), 'MMM d'),
+          ? `${format(new Date(start + 'T12:00:00'), 'MMM d')} - ${format(new Date(end + 'T12:00:00'), 'MMM d')}`
+          : format(new Date(start + 'T12:00:00'), 'MMM d'),
         startDate: start,
         endDate: end || start,
         count: evals.length,
@@ -112,9 +114,10 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
     // Sort by start date
     weeklyAverages.sort((a, b) => a.startDate.localeCompare(b.startDate));
     
-    // Calculate month-to-date average (average of weekly averages)
-    const monthAverage = weeklyAverages.length > 0
-      ? weeklyAverages.reduce((sum, w) => sum + w.average, 0) / weeklyAverages.length
+    // Calculate month-to-date average (true average across ALL evaluations, not average of averages)
+    const totalSum = monthEvaluations.reduce((sum, e) => sum + Number(e.percentage), 0);
+    const monthAverage = monthEvaluations.length > 0
+      ? totalSum / monthEvaluations.length
       : 0;
     
     return {

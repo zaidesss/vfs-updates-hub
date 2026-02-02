@@ -40,7 +40,7 @@ import {
   RefreshCw,
   Trash2
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from 'date-fns';
+import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
 import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
@@ -49,7 +49,7 @@ import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
 import { DatePicker } from '@/components/ui/date-picker';
 import { toProperCase } from '@/lib/stringUtils';
 
-type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'quarterly' | 'custom';
+type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'last_month' | 'quarterly' | 'custom';
 
 const EST_TIMEZONE = 'America/New_York';
 
@@ -111,18 +111,22 @@ export default function QAEvaluations() {
   }, [evaluations, canViewAll, user?.email, selectedAgent]);
 
   // Calculate weekly stats from agent-filtered evaluations (client-side)
+  // Weeks are Monday to Sunday - we match evaluations by their work_week_start field
   const weeklyStats = useMemo(() => {
     const now = new Date();
     const weeks: { week: string; startDate: string; endDate: string; startDateISO: string; endDateISO: string }[] = [];
     
     // Calculate last 4 weeks (Monday to Sunday)
     for (let i = 0; i < 4; i++) {
+      // Get Sunday of week (i weeks ago)
       const weekEnd = new Date(now);
       weekEnd.setDate(now.getDate() - now.getDay() - (i * 7));
       if (now.getDay() === 0) {
+        // If today is Sunday, go back one more week
         weekEnd.setDate(weekEnd.getDate() - 7);
       }
       
+      // Monday is 6 days before Sunday
       const weekStart = new Date(weekEnd);
       weekStart.setDate(weekEnd.getDate() - 6);
       
@@ -130,18 +134,20 @@ export default function QAEvaluations() {
         week: `Week ${4 - i}`,
         startDate: format(weekStart, 'MM-dd-yy'),
         endDate: format(weekEnd, 'MM-dd-yy'),
-        startDateISO: weekStart.toISOString().split('T')[0],
-        endDateISO: weekEnd.toISOString().split('T')[0],
+        startDateISO: format(weekStart, 'yyyy-MM-dd'),
+        endDateISO: format(weekEnd, 'yyyy-MM-dd'),
       });
     }
 
     // Calculate stats for each week using agent-filtered data
-    // Use work_week_start to determine which week an evaluation belongs to
+    // Match evaluations where work_week_start equals this week's Monday
     return weeks.reverse().map(week => {
       const weekEvaluations = agentFilteredEvaluations.filter(e => {
-        // Use work_week_start if available, otherwise fall back to audit_date
+        // Use work_week_start to determine week membership
         const evalWeekStart = e.work_week_start || e.audit_date;
-        return evalWeekStart >= week.startDateISO && evalWeekStart <= week.endDateISO;
+        // Match if work_week_start is exactly this Monday OR falls within this week's range
+        return evalWeekStart === week.startDateISO || 
+               (evalWeekStart >= week.startDateISO && evalWeekStart <= week.endDateISO);
       });
       
       const avgScore = weekEvaluations.length > 0
@@ -183,11 +189,28 @@ export default function QAEvaluations() {
         break;
       }
       case 'monthly': {
+        // This month: evaluations where work_week_start falls within this calendar month
         const monthStart = startOfMonth(now);
         const monthEnd = endOfMonth(now);
+        const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+        const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
         filtered = filtered.filter(e => {
-          const date = new Date(e.audit_date);
-          return date >= monthStart && date <= monthEnd;
+          // Use work_week_start to determine month membership
+          const weekStart = e.work_week_start || e.audit_date;
+          return weekStart >= monthStartStr && weekStart <= monthEndStr;
+        });
+        break;
+      }
+      case 'last_month': {
+        // Last month: evaluations where work_week_start falls within last calendar month
+        const lastMonth = subMonths(now, 1);
+        const monthStart = startOfMonth(lastMonth);
+        const monthEnd = endOfMonth(lastMonth);
+        const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+        const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+        filtered = filtered.filter(e => {
+          const weekStart = e.work_week_start || e.audit_date;
+          return weekStart >= monthStartStr && weekStart <= monthEndStr;
         });
         break;
       }
@@ -344,6 +367,7 @@ export default function QAEvaluations() {
                     <SelectItem value="current_week">Current Week</SelectItem>
                     <SelectItem value="previous_week">Previous Week</SelectItem>
                     <SelectItem value="monthly">This Month</SelectItem>
+                    <SelectItem value="last_month">Last Month</SelectItem>
                     <SelectItem value="quarterly">This Quarter</SelectItem>
                     <SelectItem value="custom">Custom Range</SelectItem>
                   </SelectContent>
@@ -411,6 +435,9 @@ export default function QAEvaluations() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.avgScore}%</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                from {stats.total} evaluation{stats.total !== 1 ? 's' : ''}
+              </p>
             </CardContent>
           </Card>
           <Card>
