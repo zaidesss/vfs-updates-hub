@@ -50,11 +50,13 @@ import {
   createQAScores,
   createActionsNeeded,
   updateQAEvaluation,
+  fetchQAEvaluationById,
   fetchActionPlans,
   fetchAgentViolationHistory,
   fetchPendingActionsForAgent,
   generateTicketUrl,
   sendQANotification,
+  createEvaluationEvent,
   SCORING_CATEGORIES,
   INTERACTION_TYPES,
   ZD_INSTANCES,
@@ -91,7 +93,12 @@ interface CategoryActionState {
   customAction: string;
 }
 
-export default function QAEvaluationForm() {
+interface QAEvaluationFormProps {
+  editId?: string;
+}
+
+export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
+  const isEditMode = !!editId;
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -132,6 +139,8 @@ export default function QAEvaluationForm() {
   const [aiSuggestedActionIds, setAiSuggestedActionIds] = useState<string[]>([]);
   // AI state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Track if form has been initialized from edit data
+  const [editDataLoaded, setEditDataLoaded] = useState(false);
 
   // Fetch agents
   const { data: agents = [] } = useQuery({
@@ -205,8 +214,18 @@ export default function QAEvaluationForm() {
   const actionPlanOccurrences = occurrenceData.counts;
   const occurrenceReferences = occurrenceData.references;
 
+  // Fetch existing evaluation data when editing
+  const { data: existingEvalData, isLoading: isLoadingEdit } = useQuery({
+    queryKey: ['qa-evaluation-edit', editId],
+    queryFn: () => fetchQAEvaluationById(editId!),
+    enabled: isEditMode,
+  });
+
   // Initialize scores from categories
   useEffect(() => {
+    // Only initialize empty scores if not editing or edit data not loaded
+    if (isEditMode && !editDataLoaded) return;
+    
     const initialScores: ScoreState = {};
     SCORING_CATEGORIES.forEach(cat => {
       cat.subcategories.forEach(sub => {
@@ -220,8 +239,94 @@ export default function QAEvaluationForm() {
         };
       });
     });
-    setScores(initialScores);
-  }, []);
+    if (!isEditMode) {
+      setScores(initialScores);
+    }
+  }, [isEditMode, editDataLoaded]);
+
+  // Populate form when editing
+  useEffect(() => {
+    if (!isEditMode || !existingEvalData || editDataLoaded) return;
+
+    const { evaluation, scores: existingScores, actions } = existingEvalData;
+    
+    // Find matching agent
+    const matchingAgent = agents.find(a => a.email === evaluation.agent_email);
+    if (matchingAgent) {
+      setSelectedAgent(matchingAgent);
+    } else if (evaluation.agent_email) {
+      // Create a pseudo agent object if not found in list
+      setSelectedAgent({
+        id: '',
+        email: evaluation.agent_email,
+        full_name: evaluation.agent_name,
+        agent_name: evaluation.agent_name,
+      });
+    }
+    
+    // Basic fields
+    setAuditDate(evaluation.audit_date);
+    setZdInstance((evaluation.zd_instance || '') as ZDInstance | '');
+    setTicketId(evaluation.ticket_id);
+    setInteractionType(evaluation.interaction_type);
+    setTicketContent(evaluation.ticket_content || '');
+    setWorkWeekStart(evaluation.work_week_start || '');
+    setWorkWeekEnd(evaluation.work_week_end || '');
+    setCoachingDate(evaluation.coaching_date || '');
+    setCoachingTime(evaluation.coaching_time || '');
+    
+    // Feedback
+    setAccuracyFeedback(evaluation.accuracy_feedback || '');
+    setComplianceFeedback(evaluation.compliance_feedback || '');
+    setCustomerExpFeedback(evaluation.customer_exp_feedback || '');
+    
+    // Populate scores
+    const loadedScores: ScoreState = {};
+    SCORING_CATEGORIES.forEach(cat => {
+      cat.subcategories.forEach(sub => {
+        const key = `${cat.category}|${sub.subcategory}`;
+        const existingScore = existingScores.find(
+          s => s.category === cat.category && s.subcategory === sub.subcategory
+        );
+        loadedScores[key] = {
+          score: existingScore?.score_earned ?? null,
+          aiSuggested: existingScore?.ai_suggested_score ?? null,
+          aiAccepted: existingScore?.ai_accepted ?? null,
+          criticalError: existingScore?.critical_error_detected ?? null,
+          aiJustification: null,
+        };
+      });
+    });
+    setScores(loadedScores);
+    
+    // Populate action plans by category
+    const loadedCategoryActions: Record<string, CategoryActionState> = {
+      'Accuracy': { selectedActions: [], customAction: '' },
+      'Compliance': { selectedActions: [], customAction: '' },
+      'Customer Experience': { selectedActions: [], customAction: '' },
+    };
+    
+    actions.forEach(action => {
+      if (action.action_plan_id && action.action_plan) {
+        const category = action.action_plan.category || 'Accuracy';
+        if (loadedCategoryActions[category]) {
+          loadedCategoryActions[category].selectedActions.push(action.action_plan_id);
+        }
+      }
+      if (action.custom_action) {
+        // Put custom action in first category that doesn't have one
+        for (const cat of ['Accuracy', 'Compliance', 'Customer Experience']) {
+          if (!loadedCategoryActions[cat].customAction) {
+            loadedCategoryActions[cat].customAction = action.custom_action;
+            break;
+          }
+        }
+      }
+    });
+    setCategoryActions(loadedCategoryActions);
+    
+    setEditDataLoaded(true);
+  }, [isEditMode, existingEvalData, agents, editDataLoaded]);
 
   // Calculate totals - NOW with proper critical error behavior
   const totals = useMemo(() => {
@@ -466,27 +571,66 @@ export default function QAEvaluationForm() {
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (status: 'draft' | 'sent') => {
-      // Create evaluation
-      const evaluation = await createQAEvaluation({
-        agent_email: selectedAgent!.email,
-        agent_name: selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email,
-        evaluator_email: user!.email,
-        evaluator_name: user!.name,
-        audit_date: auditDate,
-        zd_instance: zdInstance,
-        ticket_id: ticketId,
-        ticket_url: ticketUrl,
-        interaction_type: interactionType,
-        ticket_content: ticketContent,
-        accuracy_feedback: accuracyFeedback,
-        compliance_feedback: complianceFeedback,
-        customer_exp_feedback: customerExpFeedback,
-        status,
-        work_week_start: workWeekStart || undefined,
-        work_week_end: workWeekEnd || undefined,
-        coaching_date: coachingDate || undefined,
-        coaching_time: coachingTime || undefined,
-      });
+      let evaluationId: string;
+      
+      if (isEditMode && editId) {
+        // Update existing evaluation
+        evaluationId = editId;
+        await updateQAEvaluation(editId, {
+          agent_email: selectedAgent!.email,
+          agent_name: selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email,
+          audit_date: auditDate,
+          zd_instance: zdInstance,
+          ticket_id: ticketId,
+          ticket_url: ticketUrl,
+          interaction_type: interactionType,
+          ticket_content: ticketContent,
+          accuracy_feedback: accuracyFeedback,
+          compliance_feedback: complianceFeedback,
+          customer_exp_feedback: customerExpFeedback,
+          status,
+          work_week_start: workWeekStart || null,
+          work_week_end: workWeekEnd || null,
+          coaching_date: coachingDate || null,
+          coaching_time: coachingTime || null,
+        });
+        
+        // Delete existing scores and actions to recreate them
+        await supabase.from('qa_evaluation_scores').delete().eq('evaluation_id', editId);
+        await supabase.from('qa_action_needed').delete().eq('evaluation_id', editId);
+        
+        // Log edit event
+        await createEvaluationEvent(
+          editId,
+          'evaluation_edited',
+          'Evaluation was edited',
+          user!.email,
+          user!.name
+        );
+      } else {
+        // Create new evaluation
+        const evaluation = await createQAEvaluation({
+          agent_email: selectedAgent!.email,
+          agent_name: selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email,
+          evaluator_email: user!.email,
+          evaluator_name: user!.name,
+          audit_date: auditDate,
+          zd_instance: zdInstance,
+          ticket_id: ticketId,
+          ticket_url: ticketUrl,
+          interaction_type: interactionType,
+          ticket_content: ticketContent,
+          accuracy_feedback: accuracyFeedback,
+          compliance_feedback: complianceFeedback,
+          customer_exp_feedback: customerExpFeedback,
+          status,
+          work_week_start: workWeekStart || undefined,
+          work_week_end: workWeekEnd || undefined,
+          coaching_date: coachingDate || undefined,
+          coaching_time: coachingTime || undefined,
+        });
+        evaluationId = evaluation.id;
+      }
 
       // Create scores - preserve category scores even if critical fail
       const scoreInputs: CreateQAScoreInput[] = [];
@@ -495,7 +639,7 @@ export default function QAEvaluationForm() {
           const key = `${cat.category}|${sub.subcategory}`;
           const scoreData = scores[key];
           scoreInputs.push({
-            evaluation_id: evaluation.id,
+            evaluation_id: evaluationId,
             category: cat.category,
             subcategory: sub.subcategory,
             behavior_identifier: sub.behavior,
@@ -516,10 +660,10 @@ export default function QAEvaluationForm() {
       const allActions: { evaluation_id: string; action_plan_id?: string; custom_action?: string }[] = [];
       Object.entries(categoryActions).forEach(([category, state]) => {
         state.selectedActions.forEach(id => {
-          allActions.push({ evaluation_id: evaluation.id, action_plan_id: id });
+          allActions.push({ evaluation_id: evaluationId, action_plan_id: id });
         });
         if (state.customAction) {
-          allActions.push({ evaluation_id: evaluation.id, custom_action: state.customAction });
+          allActions.push({ evaluation_id: evaluationId, custom_action: state.customAction });
         }
       });
       
@@ -527,8 +671,8 @@ export default function QAEvaluationForm() {
         await createActionsNeeded(allActions);
       }
 
-      // Record action plan occurrences for tracking repeat violations
-      if (status === 'sent') {
+      // Record action plan occurrences for tracking repeat violations (only for new sends)
+      if (status === 'sent' && !isEditMode) {
         const occurrences: { agent_email: string; evaluation_id: string; action_plan_id?: string; subcategory?: string }[] = [];
         
         // Track by subcategory for any failing scores
@@ -540,13 +684,13 @@ export default function QAEvaluationForm() {
             if (sub.isCritical && scoreData?.criticalError === true) {
               occurrences.push({
                 agent_email: selectedAgent!.email,
-                evaluation_id: evaluation.id,
+                evaluation_id: evaluationId,
                 subcategory: sub.subcategory,
               });
             } else if (!sub.isCritical && scoreData?.score === 0) {
               occurrences.push({
                 agent_email: selectedAgent!.email,
-                evaluation_id: evaluation.id,
+                evaluation_id: evaluationId,
                 subcategory: sub.subcategory,
               });
             }
@@ -560,7 +704,7 @@ export default function QAEvaluationForm() {
 
       // Update totals on evaluation
       const rating = totals.hasCriticalFail ? 'Fail' : (totals.percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail');
-      await updateQAEvaluation(evaluation.id, {
+      await updateQAEvaluation(evaluationId, {
         total_score: totals.totalScore,
         total_max: totals.totalMax,
         percentage: totals.percentage,
@@ -568,13 +712,13 @@ export default function QAEvaluationForm() {
         rating,
       });
 
-      return { evaluation, status };
+      return { evaluationId, status };
     },
-    onSuccess: async ({ evaluation, status }) => {
-      // Send email notification if status is 'sent'
-      if (status === 'sent') {
+    onSuccess: async ({ evaluationId, status }) => {
+      // Send email notification if status is 'sent' and not editing (new evaluation)
+      if (status === 'sent' && !isEditMode) {
         try {
-          await sendQANotification(evaluation.id, 'new_evaluation');
+          await sendQANotification(evaluationId, 'new_evaluation');
         } catch (notifError) {
           console.error('Failed to send notification:', notifError);
         }
@@ -588,7 +732,7 @@ export default function QAEvaluationForm() {
           try {
             await supabase.functions.invoke('send-custom-action-notification', {
               body: {
-                evaluationId: evaluation.id,
+                evaluationId: evaluationId,
                 customActions,
                 evaluatorEmail: user!.email,
                 evaluatorName: user!.name,
@@ -599,15 +743,44 @@ export default function QAEvaluationForm() {
           }
         }
       }
+      
+      // If editing and status changed to sent, log the event
+      if (status === 'sent' && isEditMode) {
+        await createEvaluationEvent(
+          evaluationId,
+          'evaluation_sent',
+          'Evaluation was sent to agent after editing',
+          user!.email,
+          user!.name
+        );
+        try {
+          await sendQANotification(evaluationId, 'new_evaluation');
+        } catch (notifError) {
+          console.error('Failed to send notification:', notifError);
+        }
+      }
 
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation-edit', editId] });
+      
+      const toastTitle = isEditMode 
+        ? (status === 'sent' ? 'Evaluation updated and sent' : 'Changes saved')
+        : (status === 'sent' ? 'Evaluation sent' : 'Draft saved');
+      const toastDesc = status === 'sent' 
+        ? 'The agent will receive a notification email.'
+        : 'You can continue editing later.';
+      
       toast({
-        title: status === 'sent' ? 'Evaluation sent' : 'Draft saved',
-        description: status === 'sent' 
-          ? 'The agent will receive a notification email.'
-          : 'You can continue editing later.',
+        title: toastTitle,
+        description: toastDesc,
       });
-      navigate('/team-performance/qa-evaluations');
+      
+      // Navigate to detail view if editing, otherwise to list
+      if (isEditMode) {
+        navigate(`/team-performance/qa-evaluations/${editId}`);
+      } else {
+        navigate('/team-performance/qa-evaluations');
+      }
     },
     onError: (error: any) => {
       toast({
@@ -618,6 +791,17 @@ export default function QAEvaluationForm() {
     },
   });
 
+  // Loading state for edit mode
+  if (isEditMode && isLoadingEdit) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6 max-w-5xl mx-auto">
@@ -627,8 +811,15 @@ export default function QAEvaluationForm() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">New QA Evaluation</h1>
-            <p className="text-muted-foreground">Evaluate agent ticket handling quality</p>
+            <h1 className="text-2xl font-bold">
+              {isEditMode ? 'Edit QA Evaluation' : 'New QA Evaluation'}
+            </h1>
+            <p className="text-muted-foreground">
+              {isEditMode 
+                ? `Editing ${existingEvalData?.evaluation.reference_number || 'evaluation'}`
+                : 'Evaluate agent ticket handling quality'
+              }
+            </p>
           </div>
         </div>
 
@@ -1000,7 +1191,7 @@ export default function QAEvaluationForm() {
             disabled={saveMutation.isPending}
           >
             <Save className="h-4 w-4 mr-2" />
-            Save Draft
+            {isEditMode ? 'Save Changes' : 'Save Draft'}
           </Button>
           <Button 
             onClick={() => saveMutation.mutate('sent')}
