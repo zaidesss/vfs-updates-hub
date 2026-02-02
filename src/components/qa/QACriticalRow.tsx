@@ -25,6 +25,7 @@ interface QACriticalRowProps {
   onCriticalChange: (hasCritical: boolean) => void;
   onAcceptAI: (accept: boolean) => void;
   occurrenceCount?: number;
+  occurrenceReferences?: string[]; // QA-XXXX references from previous occurrences
 }
 
 export function QACriticalRow({
@@ -36,6 +37,7 @@ export function QACriticalRow({
   onCriticalChange,
   onAcceptAI,
   occurrenceCount,
+  occurrenceReferences = [],
 }: QACriticalRowProps) {
   const [justificationOpen, setJustificationOpen] = useState(false);
   
@@ -51,8 +53,17 @@ export function QACriticalRow({
             <Label className="font-medium text-destructive">{subcategory}</Label>
             <Badge variant="destructive" className="text-xs">Critical Error</Badge>
             {occurrenceCount && occurrenceCount > 1 && (
-              <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-amber-100 text-amber-800 border-amber-300"
+                title={occurrenceReferences.length > 0 ? `Previous: ${occurrenceReferences.join(', ')}` : undefined}
+              >
                 {occurrenceCount === 2 ? '2nd' : occurrenceCount === 3 ? '3rd' : `${occurrenceCount}th`} occurrence
+                {occurrenceReferences.length > 0 && (
+                  <span className="ml-1 text-amber-600">
+                    ({occurrenceReferences.slice(0, 3).join(', ')}{occurrenceReferences.length > 3 ? '...' : ''})
+                  </span>
+                )}
               </Badge>
             )}
           </div>
