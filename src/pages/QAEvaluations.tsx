@@ -40,16 +40,31 @@ import {
   RefreshCw,
   Trash2
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getMonth, getYear } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
 import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
-import { DatePicker } from '@/components/ui/date-picker';
+
+const MONTHS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
 import { toProperCase } from '@/lib/stringUtils';
 
-type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'last_month' | 'quarterly' | 'custom';
+
 
 const EST_TIMEZONE = 'America/New_York';
 
@@ -66,9 +81,11 @@ export default function QAEvaluations() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<FilterTab>('all');
-  const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
-  const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
+  // New Year/Month/Week selectors - default to current month
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState<string>(String(now.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
+  const [selectedWeek, setSelectedWeek] = useState<string>('all'); // 'all' or week start ISO string
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<QAEvaluation | null>(null);
@@ -110,75 +127,67 @@ export default function QAEvaluations() {
     return filtered;
   }, [evaluations, canViewAll, user?.email, selectedAgent]);
 
-  // Filter evaluations based on date tab
+  // Get available weeks for the selected month
+  const availableWeeks = useMemo(() => {
+    const year = parseInt(selectedYear);
+    const month = parseInt(selectedMonth) - 1; // 0-indexed
+    const monthStart = startOfMonth(new Date(year, month, 1));
+    const monthEnd = endOfMonth(new Date(year, month, 1));
+    
+    // Find all unique weeks from evaluations in this month
+    const weeks = new Map<string, { start: string; end: string; label: string }>();
+    
+    agentFilteredEvaluations.forEach(e => {
+      if (e.work_week_start && e.work_week_end) {
+        const weekStartDate = new Date(e.work_week_start + 'T12:00:00');
+        // Week belongs to month if its start date falls within the month
+        if (weekStartDate >= monthStart && weekStartDate <= monthEnd) {
+          const key = e.work_week_start;
+          if (!weeks.has(key)) {
+            weeks.set(key, {
+              start: e.work_week_start,
+              end: e.work_week_end,
+              label: `${format(new Date(e.work_week_start + 'T12:00:00'), 'MM/dd')} - ${format(new Date(e.work_week_end + 'T12:00:00'), 'MM/dd')}`,
+            });
+          }
+        }
+      }
+    });
+    
+    return Array.from(weeks.values()).sort((a, b) => a.start.localeCompare(b.start));
+  }, [agentFilteredEvaluations, selectedYear, selectedMonth]);
+
+  // Reset week selection when month changes
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month);
+    setSelectedWeek('all');
+  };
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year);
+    setSelectedWeek('all');
+  };
+
+  // Filter evaluations based on Year/Month/Week selection
   const filteredEvaluations = useMemo(() => {
-    const now = new Date();
     let filtered = agentFilteredEvaluations;
 
-    // Date filtering based on tab
-    switch (activeTab) {
-      case 'current_week': {
-        const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-        filtered = filtered.filter(e => {
-          const date = new Date(e.audit_date);
-          return date >= weekStart && date <= weekEnd;
-        });
-        break;
-      }
-      case 'previous_week': {
-        const prevWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-        const prevWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-        filtered = filtered.filter(e => {
-          const date = new Date(e.audit_date);
-          return date >= prevWeekStart && date <= prevWeekEnd;
-        });
-        break;
-      }
-      case 'monthly': {
-        // This month: evaluations where work_week_start falls within this calendar month
-        const monthStart = startOfMonth(now);
-        const monthEnd = endOfMonth(now);
-        const monthStartStr = format(monthStart, 'yyyy-MM-dd');
-        const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
-        filtered = filtered.filter(e => {
-          // Use work_week_start to determine month membership
-          const weekStart = e.work_week_start || e.audit_date;
-          return weekStart >= monthStartStr && weekStart <= monthEndStr;
-        });
-        break;
-      }
-      case 'last_month': {
-        // Last month: evaluations where work_week_start falls within last calendar month
-        const lastMonth = subMonths(now, 1);
-        const monthStart = startOfMonth(lastMonth);
-        const monthEnd = endOfMonth(lastMonth);
-        const monthStartStr = format(monthStart, 'yyyy-MM-dd');
-        const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
-        filtered = filtered.filter(e => {
-          const weekStart = e.work_week_start || e.audit_date;
-          return weekStart >= monthStartStr && weekStart <= monthEndStr;
-        });
-        break;
-      }
-      case 'quarterly': {
-        const quarterStart = startOfQuarter(now);
-        const quarterEnd = endOfQuarter(now);
-        filtered = filtered.filter(e => {
-          const date = new Date(e.audit_date);
-          return date >= quarterStart && date <= quarterEnd;
-        });
-        break;
-      }
-      case 'custom': {
-        if (customStartDate && customEndDate) {
-          filtered = filtered.filter(e => {
-            const date = new Date(e.audit_date);
-            return date >= customStartDate && date <= customEndDate;
-          });
-        }
-        break;
-      }
+    const year = parseInt(selectedYear);
+    const month = parseInt(selectedMonth) - 1; // 0-indexed
+    const monthStart = startOfMonth(new Date(year, month, 1));
+    const monthEnd = endOfMonth(new Date(year, month, 1));
+    const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+    const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+
+    // Filter by month (work_week_start falls within selected month)
+    filtered = filtered.filter(e => {
+      const weekStart = e.work_week_start || e.audit_date;
+      return weekStart >= monthStartStr && weekStart <= monthEndStr;
+    });
+
+    // If specific week is selected, filter further
+    if (selectedWeek !== 'all') {
+      filtered = filtered.filter(e => e.work_week_start === selectedWeek);
     }
 
     // Search filtering
@@ -193,7 +202,7 @@ export default function QAEvaluations() {
     }
 
     return filtered;
-  }, [agentFilteredEvaluations, activeTab, customStartDate, customEndDate, searchQuery]);
+  }, [agentFilteredEvaluations, selectedYear, selectedMonth, selectedWeek, searchQuery]);
 
   // Calculate weekly stats from filtered evaluations (based on date range)
   // Group evaluations by their work_week_start to show weeks dynamically
@@ -341,52 +350,68 @@ export default function QAEvaluations() {
           )}
         </div>
 
-        {/* Filters Section - At the top */}
+        {/* Filters Section - Year, Month, Week selectors in a row */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              {/* Date Range Filter */}
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:flex-wrap">
+              {/* Year Selector */}
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-muted-foreground">Date Range</label>
-                <Select value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Select date range" />
+                <label className="text-sm font-medium text-muted-foreground">Year</label>
+                <Select value={selectedYear} onValueChange={handleYearChange}>
+                  <SelectTrigger className="w-28">
+                    <SelectValue placeholder="Year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Time</SelectItem>
-                    <SelectItem value="current_week">Current Week</SelectItem>
-                    <SelectItem value="previous_week">Previous Week</SelectItem>
-                    <SelectItem value="monthly">This Month</SelectItem>
-                    <SelectItem value="last_month">Last Month</SelectItem>
-                    <SelectItem value="quarterly">This Quarter</SelectItem>
-                    <SelectItem value="custom">Custom Range</SelectItem>
+                    {Array.from({ length: 10 }, (_, i) => {
+                      const year = new Date().getFullYear() - i + 1;
+                      return (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Custom Date Range */}
-              {activeTab === 'custom' && (
-                <div className="flex items-center gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-muted-foreground">From</label>
-                    <DatePicker 
-                      value={customStartDate?.toISOString().split('T')[0] || ''} 
-                      onChange={(v) => setCustomStartDate(v ? new Date(v) : undefined)} 
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-muted-foreground">To</label>
-                    <DatePicker 
-                      value={customEndDate?.toISOString().split('T')[0] || ''} 
-                      onChange={(v) => setCustomEndDate(v ? new Date(v) : undefined)} 
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Month Selector */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-muted-foreground">Month</label>
+                <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                  <SelectTrigger className="w-36">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Week Selector */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-muted-foreground">Week</label>
+                <Select value={selectedWeek} onValueChange={setSelectedWeek}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Weeks</SelectItem>
+                    {availableWeeks.map((week, idx) => (
+                      <SelectItem key={week.start} value={week.start}>
+                        Week {idx + 1} ({week.label})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               {/* Agent Filter */}
               {canViewAll && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 md:ml-auto">
                   <label className="text-sm font-medium text-muted-foreground">Agent</label>
                   <Select value={selectedAgent} onValueChange={setSelectedAgent}>
                     <SelectTrigger className="w-56">
