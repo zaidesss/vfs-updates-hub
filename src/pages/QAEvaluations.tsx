@@ -39,11 +39,13 @@ import {
   Eye,
   MoreHorizontal,
   Mail,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
-import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { DatePicker } from '@/components/ui/date-picker';
 
@@ -68,6 +70,8 @@ export default function QAEvaluations() {
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [evaluationToDelete, setEvaluationToDelete] = useState<QAEvaluation | null>(null);
 
   const canCreate = isAdmin || isHR || isSuperAdmin;
   const canViewAll = isAdmin || isHR || isSuperAdmin;
@@ -249,6 +253,27 @@ export default function QAEvaluations() {
     onError: (error: any) => {
       toast({
         title: 'Failed to resend',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete mutation (Super Admin only)
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteQAEvaluation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      toast({
+        title: 'Evaluation deleted',
+        description: 'The QA evaluation has been permanently deleted.',
+      });
+      setDeleteModalOpen(false);
+      setEvaluationToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to delete',
         description: error.message,
         variant: 'destructive',
       });
@@ -517,6 +542,18 @@ export default function QAEvaluations() {
                                 Resend Notification
                               </DropdownMenuItem>
                             )}
+                            {isSuperAdmin && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEvaluationToDelete(evaluation);
+                                  setDeleteModalOpen(true);
+                                }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -528,6 +565,23 @@ export default function QAEvaluations() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        open={deleteModalOpen}
+        onOpenChange={(open) => {
+          setDeleteModalOpen(open);
+          if (!open) setEvaluationToDelete(null);
+        }}
+        onConfirm={async () => {
+          if (evaluationToDelete) {
+            await deleteMutation.mutateAsync(evaluationToDelete.id);
+          }
+        }}
+        title="Delete QA Evaluation"
+        description={`Are you sure you want to delete evaluation ${evaluationToDelete?.reference_number || evaluationToDelete?.id}? This action cannot be undone.`}
+        itemName={evaluationToDelete?.reference_number || undefined}
+      />
     </Layout>
   );
 }
