@@ -343,6 +343,75 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_reports: {
+        Row: {
+          agent_email: string
+          agent_name: string
+          created_at: string | null
+          details: Json | null
+          frequency_count: number | null
+          id: string
+          incident_date: string
+          incident_type: string
+          notes: string | null
+          profile_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          severity: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_email: string
+          agent_name: string
+          created_at?: string | null
+          details?: Json | null
+          frequency_count?: number | null
+          id?: string
+          incident_date: string
+          incident_type: string
+          notes?: string | null
+          profile_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string
+          created_at?: string | null
+          details?: Json | null
+          frequency_count?: number | null
+          id?: string
+          incident_date?: string
+          incident_type?: string
+          notes?: string | null
+          profile_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_reports_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_reports_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles_team_status"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       article_requests: {
         Row: {
           category: Database["public"]["Enums"]["update_category"] | null
@@ -906,18 +975,24 @@ export type Database = {
       }
       profile_status: {
         Row: {
+          bio_allowance_seconds: number | null
+          bio_time_remaining_seconds: number | null
           current_status: string
           id: string
           profile_id: string
           status_since: string
         }
         Insert: {
+          bio_allowance_seconds?: number | null
+          bio_time_remaining_seconds?: number | null
           current_status?: string
           id?: string
           profile_id: string
           status_since?: string
         }
         Update: {
+          bio_allowance_seconds?: number | null
+          bio_time_remaining_seconds?: number | null
           current_status?: string
           id?: string
           profile_id?: string
