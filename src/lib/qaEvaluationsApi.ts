@@ -453,36 +453,60 @@ export async function deleteQAEvaluation(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// Scoring categories structure
+// Scoring categories structure - NEW structure with all-or-nothing scoring
+// Total max points: 52 (Accuracy: 21, Compliance: 17, Customer Experience: 14)
+// Pass threshold: 96% or above with no critical errors
 export const SCORING_CATEGORIES = [
   {
-    category: 'Communication and Professionalism',
+    category: 'Accuracy',
+    feedbackField: 'accuracy_feedback',
     subcategories: [
-      { subcategory: 'Tone and Empathy', behavior: 'Demonstrates empathy and uses appropriate tone', maxPoints: 6, isCritical: false },
-      { subcategory: 'Clarity and Structure', behavior: 'Provides clear and well-structured responses', maxPoints: 6, isCritical: false },
-      { subcategory: 'Spelling and Grammar', behavior: 'Uses correct spelling and grammar', maxPoints: 6, isCritical: false },
-      { subcategory: 'Critical Error: Sharing Internal Info', behavior: 'Did the agent share internal information with the customer?', maxPoints: 0, isCritical: true },
-    ],
-  },
-  {
-    category: 'Issue Resolution and Deliverables',
-    subcategories: [
-      { subcategory: 'Understanding the Issue', behavior: 'Correctly identifies the customer issue', maxPoints: 6, isCritical: false },
+      // Critical error first
+      { subcategory: 'Incorrect Critical Info', behavior: 'Did the agent provide incorrect critical information?', maxPoints: 0, isCritical: true },
+      // Regular scoring items (all-or-nothing: 0 or maxPoints)
+      { subcategory: 'Language & Grammar', behavior: 'Uses correct spelling, grammar, and language', maxPoints: 3, isCritical: false },
+      { subcategory: 'Clarity & Structure', behavior: 'Provides clear and well-structured responses', maxPoints: 2, isCritical: false },
+      { subcategory: 'Understanding the Issue', behavior: 'Correctly identifies and understands the customer issue', maxPoints: 5, isCritical: false },
       { subcategory: 'Solution Accuracy', behavior: 'Provides accurate and appropriate solutions', maxPoints: 6, isCritical: false },
-      { subcategory: 'First Contact Resolution', behavior: 'Resolves the issue in one interaction when possible', maxPoints: 6, isCritical: false },
-      { subcategory: 'Critical Error: Incorrect Critical Info', behavior: 'Did the agent provide incorrect critical information?', maxPoints: 0, isCritical: true },
+      { subcategory: 'First Contact Resolution', behavior: 'Resolves the issue in one interaction when possible', maxPoints: 3, isCritical: false },
+      { subcategory: 'Timeliness', behavior: 'Responds within expected timeframes', maxPoints: 2, isCritical: false },
     ],
   },
   {
-    category: 'Process and Policy Adherence',
+    category: 'Compliance',
+    feedbackField: 'compliance_feedback',
     subcategories: [
-      { subcategory: 'Policy Compliance', behavior: 'Follows company policies and procedures', maxPoints: 6, isCritical: false },
-      { subcategory: 'Customer Experience', behavior: 'Enhances overall customer experience', maxPoints: 6, isCritical: false },
-      { subcategory: 'Active Listening', behavior: 'Demonstrates active listening and addresses all concerns', maxPoints: 6, isCritical: false },
-      { subcategory: 'Critical Error: Policy Breach', behavior: 'Did the agent breach a critical policy?', maxPoints: 0, isCritical: true },
+      // Critical errors first
+      { subcategory: 'Policy and Process Breach', behavior: 'Did the agent breach a critical policy or process?', maxPoints: 0, isCritical: true },
+      { subcategory: 'Security Breach', behavior: 'Did the agent commit a security breach?', maxPoints: 0, isCritical: true },
+      // Regular scoring items
+      { subcategory: 'Account Verification', behavior: 'Properly verifies customer account before making changes', maxPoints: 4, isCritical: false },
+      { subcategory: 'Policy Compliance', behavior: 'Follows company policies and procedures', maxPoints: 4, isCritical: false },
+      { subcategory: 'Escalation Handling', behavior: 'Escalates issues appropriately when needed', maxPoints: 3, isCritical: false },
+      { subcategory: 'Documentation', behavior: 'Properly documents interactions and actions taken', maxPoints: 3, isCritical: false },
+      { subcategory: 'Confidentiality', behavior: 'Maintains customer confidentiality and data privacy', maxPoints: 3, isCritical: false },
+    ],
+  },
+  {
+    category: 'Customer Experience',
+    feedbackField: 'customer_exp_feedback',
+    subcategories: [
+      // Critical error first
+      { subcategory: 'Rude / Disrespectful Behavior', behavior: 'Was the agent rude or disrespectful to the customer?', maxPoints: 0, isCritical: true },
+      // Regular scoring items
+      { subcategory: 'Greeting & Introduction', behavior: 'Properly greets and introduces themselves', maxPoints: 2, isCritical: false },
+      { subcategory: 'Tone & Empathy', behavior: 'Demonstrates empathy and uses appropriate tone', maxPoints: 3, isCritical: false },
+      { subcategory: 'Active Listening / Acknowledgement', behavior: 'Actively listens and acknowledges customer concerns', maxPoints: 3, isCritical: false },
+      { subcategory: 'Proactive Assistance', behavior: 'Proactively offers additional help or information', maxPoints: 4, isCritical: false },
+      { subcategory: 'Positive Language', behavior: 'Uses positive and professional language', maxPoints: 3, isCritical: false },
+      { subcategory: 'Rapport Building', behavior: 'Builds rapport with the customer', maxPoints: 2, isCritical: false },
+      { subcategory: 'Closure', behavior: 'Properly closes the interaction', maxPoints: 2, isCritical: false },
     ],
   },
 ];
+
+// Category type for reference
+export type ScoringCategory = typeof SCORING_CATEGORIES[number];
 
 // Interaction types
 export const INTERACTION_TYPES = [
@@ -497,11 +521,13 @@ export const INTERACTION_TYPES = [
 export type InteractionType = typeof INTERACTION_TYPES[number];
 
 // Calculate rating based on percentage and critical fails
-// Pass: 80% or above with no critical errors
-// Fail: Below 80% OR has any critical error
+// Pass: 96% or above with no critical errors
+// Fail: Below 96% OR has any critical error
+export const PASS_THRESHOLD = 96;
+
 export function calculateRating(percentage: number, hasCriticalFail: boolean): 'Pass' | 'Fail' {
   if (hasCriticalFail) return 'Fail';
-  return percentage >= 80 ? 'Pass' : 'Fail';
+  return percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail';
 }
 
 // Calculate totals from scores
