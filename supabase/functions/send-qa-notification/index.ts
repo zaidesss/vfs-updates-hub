@@ -105,7 +105,7 @@ const handler = async (req: Request): Promise<Response> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'Agent Portal <noreply@vfsresources.com>',
+          from: 'Agent Portal <noreply@virtualfreelancesolutions.com>',
           to: [evaluation.agent_email],
           cc: filteredCcEmails.length > 0 ? filteredCcEmails : undefined,
           subject,
@@ -166,7 +166,7 @@ const handler = async (req: Request): Promise<Response> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'Agent Portal <noreply@vfsresources.com>',
+          from: 'Agent Portal <noreply@virtualfreelancesolutions.com>',
           to: filteredCcEmails.length > 0 ? filteredCcEmails : [evaluation.agent_email],
           cc: filteredCcEmails.length > 0 ? [evaluation.agent_email] : undefined,
           subject,
