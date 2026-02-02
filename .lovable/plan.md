@@ -1,286 +1,315 @@
 
-# Performance Optimization Plan
+# Agent Reports + Enhanced Status Controls Plan
 
 ## Overview
-This plan implements the performance optimizations identified in the previous analysis, excluding QA Evaluations as requested. The changes focus on caching strategies, query consolidation, and loading optimizations across the portal.
+This plan implements two interconnected features:
+1. **Agent Reports** - A behavioral compliance investigation page for Team Leads
+2. **Enhanced Status Controls** - Timer-based Device Restart (5 min limit) and Bio Break (consumable time based on shift length)
+3. **Auto-Logout System** - Automatically logs out agents who forgot to log out from the previous day
 
 ---
 
-## Phase 1: Global Query Client Configuration
+## Part 1: Agent Reports Page
 
-### 1.1 Configure TanStack Query with Smart Defaults
-**File:** `src/App.tsx`
+### Database Schema
 
-Update the QueryClient initialization with optimized defaults:
-- Set `staleTime: 5 * 60 * 1000` (5 minutes) - prevents refetching data that was just fetched
-- Set `gcTime: 10 * 60 * 1000` (10 minutes) - keeps cached data longer
-- Disable `refetchOnWindowFocus` - prevents unnecessary refetches when user switches tabs
-- Set `retry: 1` - reduces retry attempts for faster failure feedback
-
-```text
-Current:
-const queryClient = new QueryClient();
-
-Updated:
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
-```
-
-**Impact:** 20-30% improvement on repeated page visits
-
----
-
-## Phase 2: Cache User Profile ID in AuthContext
-
-### 2.1 Move Profile ID Fetch from Layout to AuthContext
-**Files:** `src/context/AuthContext.tsx`, `src/components/Layout.tsx`
-
-**Problem:** Currently, `Layout.tsx` fetches the user's profile ID on every page navigation (lines 46-62), adding 50-100ms latency to every single page load.
-
-**Solution:** 
-1. Add `profileId` state to AuthContext
-2. Fetch profile ID once during login/session restoration
-3. Expose `profileId` via context
-4. Remove the useEffect fetch from Layout and use context value instead
-
-**AuthContext Changes:**
-- Add `profileId: string | null` to AuthContextType
-- Fetch profile ID alongside role checks in the auth state listener
-- Return profileId in context value
-
-**Layout Changes:**
-- Remove the `useEffect` that fetches `userProfileId`
-- Get `profileId` directly from `useAuth()` hook
-- Use context value for dashboard navigation links
-
-**Impact:** Eliminates 50-100ms latency on every page navigation
-
----
-
-## Phase 3: Lazy Load UpdatesContext
-
-### 3.1 Convert UpdatesContext to Lazy Loading Pattern
-**Files:** `src/context/UpdatesContext.tsx`, `src/App.tsx`
-
-**Problem:** UpdatesProvider loads ALL updates and acknowledgements on initial app load, even when visiting pages that don't need this data.
-
-**Solution:** Implement lazy initialization - only fetch data when first accessed by a component.
-
-**UpdatesContext Changes:**
-```text
-Current behavior:
-- useEffect fetches on mount
-- All pages wait for updates to load
-
-New behavior:
-- Add `initialized` state flag
-- Replace automatic useEffect with on-demand loading
-- First component that calls useUpdates() triggers the fetch
-- Subsequent calls use cached data
-```
-
-Key changes:
-1. Add `initialized: boolean` state (starts false)
-2. Export a `ensureLoaded()` function that fetches if not initialized
-3. Pages that need updates call `ensureLoaded()` 
-4. Other pages skip the wait entirely
-
-**Impact:** 200-500ms faster load on non-update pages (Dashboard, Calendar, Profile, etc.)
-
----
-
-## Phase 4: Parallelize Agent Dashboard Fetches
-
-### 4.1 Restructure Agent Dashboard Data Loading
-**File:** `src/pages/AgentDashboard.tsx`
-
-**Problem:** The dashboard has a 4-stage sequential waterfall:
-1. Fetch profile + status
-2. Wait, then fetch events + leaves
-3. Wait, then fetch agent tag
-4. Wait, then fetch ticket count + gap data + Upwork time
-
-**Solution:** Restructure to maximize parallelization using Promise.all and remove unnecessary sequential dependencies.
-
-**Changes:**
-1. Combine profile fetch with agent_directory lookup in a single database call or parallel Promise.all
-2. Fetch agent tag in parallel with events/leaves (it only depends on email, not the full profile)
-3. Pre-fetch ticket data and Upwork data in the same parallel batch
-4. Move late-login auto-generation to a non-blocking background task
-
-**Optimized Flow:**
-```text
-Stage 1 (parallel):
-- fetchDashboardProfile(profileId)
-- getProfileStatus(profileId)
-
-Stage 2 (parallel, needs profile.email):
-- getWeekLoginEvents(profileId, weekStart, weekEnd)
-- getWeekAllEvents(profileId, weekStart, weekEnd)
-- getApprovedLeavesForWeek(email, weekStart, weekEnd)
-- getAgentTagByEmail(email)
-
-Stage 3 (parallel, needs agentTag OR upworkContractId):
-- getTodayTicketCount(agentTag)
-- getTodayGapData(agentTag)
-- fetchUpworkTime(upworkContractId, date, email)
-```
-
-**Impact:** 40-60% faster Agent Dashboard load
-
----
-
-## Phase 5: Consolidate Ticket Dashboard Queries
-
-### 5.1 Create Optimized Database Function for Ticket Dashboard
-**Database Migration**
-
-**Problem:** `fetchDashboardData()` in `ticketLogsApi.ts` makes 5 sequential queries:
-1. ticket_logs
-2. ticket_gap_daily
-3. agent_directory
-4. agent_profiles  
-5. profile_status
-
-**Solution:** Create a database function that returns pre-aggregated dashboard data in a single call.
-
-**SQL Function:**
+**New Table: `agent_reports`**
 ```sql
-CREATE OR REPLACE FUNCTION get_ticket_dashboard_data(
-  p_zd_instance text,
-  p_start_date date,
-  p_end_date date
-)
-RETURNS TABLE (
-  agent_name text,
-  agent_email text,
-  log_date date,
-  email_count bigint,
-  chat_count bigint,
-  call_count bigint,
-  avg_gap_seconds numeric,
-  is_logged_in boolean
-) AS $$
-BEGIN
-  RETURN QUERY
-  WITH ticket_counts AS (
-    SELECT 
-      tl.agent_name,
-      tl.agent_email,
-      (tl.timestamp AT TIME ZONE 'America/New_York')::date as log_date,
-      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'email') as email_count,
-      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'chat') as chat_count,
-      COUNT(*) FILTER (WHERE LOWER(tl.ticket_type) = 'call') as call_count
-    FROM ticket_logs tl
-    WHERE tl.zd_instance = p_zd_instance
-      AND tl.timestamp >= (p_start_date::text || 'T00:00:00Z')::timestamptz
-      AND tl.timestamp <= (p_end_date::text || 'T23:59:59.999Z')::timestamptz
-    GROUP BY tl.agent_name, tl.agent_email, log_date
-  ),
-  agent_status AS (
-    SELECT 
-      ad.agent_tag,
-      ad.email,
-      ps.current_status = 'LOGGED_IN' as is_logged_in
-    FROM agent_directory ad
-    LEFT JOIN agent_profiles ap ON LOWER(ad.email) = LOWER(ap.email)
-    LEFT JOIN profile_status ps ON ap.id = ps.profile_id
-    WHERE ad.agent_tag IS NOT NULL
-  ),
-  gaps AS (
-    SELECT 
-      tgd.agent_name,
-      tgd.date as log_date,
-      tgd.avg_gap_seconds
-    FROM ticket_gap_daily tgd
-    WHERE tgd.date >= p_start_date AND tgd.date <= p_end_date
-  )
-  SELECT 
-    tc.agent_name,
-    tc.agent_email,
-    tc.log_date,
-    tc.email_count,
-    tc.chat_count,
-    tc.call_count,
-    g.avg_gap_seconds,
-    COALESCE(ast.is_logged_in, false)
-  FROM ticket_counts tc
-  LEFT JOIN gaps g ON tc.agent_name = g.agent_name AND tc.log_date = g.log_date
-  LEFT JOIN agent_status ast ON LOWER(tc.agent_name) = LOWER(ast.agent_tag)
-  ORDER BY tc.agent_name, tc.log_date;
-END;
-$$ LANGUAGE plpgsql STABLE;
+CREATE TABLE public.agent_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_email text NOT NULL,
+  agent_name text NOT NULL,
+  profile_id uuid REFERENCES public.agent_profiles(id),
+  incident_type text NOT NULL,
+  incident_date date NOT NULL,
+  severity text DEFAULT 'medium',
+  status text DEFAULT 'open',
+  details jsonb DEFAULT '{}',
+  frequency_count integer DEFAULT 1,
+  reviewed_by text,
+  reviewed_at timestamptz,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
 ```
 
-### 5.2 Update ticketLogsApi.ts to Use New Function
-**File:** `src/lib/ticketLogsApi.ts`
+**Incident Types:**
+| Type | Detection Rule |
+|------|----------------|
+| `QUOTA_NOT_MET` | Daily ticket count below agent's quota |
+| `NO_LOGOUT` | LOGIN event exists but no LOGOUT for the day |
+| `HIGH_GAP` | Avg gap > threshold AND quota not met |
+| `EXCESSIVE_RESTARTS` | Device restart > 5 mins OR > 3x/day |
+| `TIME_NOT_MET` | Portal/Upwork time below required hours |
+| `LATE_LOGIN` | Login > 10 min after scheduled start |
+| `EARLY_OUT` | Logout before scheduled end time |
+| `BIO_OVERUSE` | Bio break exceeded allowed time |
 
-Replace the `fetchDashboardData()` function to call the new database function instead of making 5 separate queries.
+### UI Components
 
-**Impact:** 50%+ faster Ticket Logs page load
+**List Page (`/team-performance/agent-reports`):**
+- Year/Month/Week dropdown filters (matching QA Evaluations style)
+- Agent filter dropdown
+- Incident type filter
+- Status filter (Open/Reviewed/Validated/Dismissed)
+- Summary cards: Total Reports, Open, Reviewed this month
+- Sortable table with Agent, Incident Type, Date, Severity, Frequency, Status
+
+**Detail Dialog:**
+- Agent info header
+- Incident summary with contextual metrics
+- Timeline of related events
+- Status update controls
+- Notes input for Team Lead comments
+
+**Agent Analytics Panel:**
+- Incidents over time chart
+- Breakdown by incident type
+- Trend indicators
+
+### Files to Create
+- `src/pages/AgentReports.tsx`
+- `src/lib/agentReportsApi.ts`
+- `src/components/agent-reports/ReportFilters.tsx`
+- `src/components/agent-reports/ReportDetailDialog.tsx`
+- `src/components/agent-reports/ReportSummaryCards.tsx`
+- `src/components/agent-reports/AgentAnalyticsPanel.tsx`
 
 ---
 
-## Phase 6: Code Splitting for Heavy Pages
+## Part 2: Enhanced Status Controls
 
-### 6.1 Lazy Load Heavy Components
-**File:** `src/App.tsx`
+### A. Device Restart Timer (5 min limit)
 
-Use React.lazy() for pages with heavy dependencies that aren't always needed:
+**Current State:** Device Restart is a toggle button with no time limit.
 
+**New Behavior:**
+1. When "Device Restart" is clicked, start a 5-minute countdown timer
+2. Display timer inside the button (e.g., "4:32" remaining)
+3. Button changes to "End Restart (4:32)" format
+4. If 5 minutes exceeded:
+   - Auto-generate `EXCESSIVE_RESTARTS` report in `agent_reports`
+   - Send email + Slack notification to Team Leads
+   - Change button color to red/warning state
+   - Agent can still click to end, but violation is recorded
+
+**Implementation:**
+- Store restart start time in `profile_status.status_since`
+- Add real-time timer in `StatusButtons.tsx`
+- Create edge function `send-status-alert-notification` for Team Lead alerts
+- Modify `updateProfileStatus` to check duration on `DEVICE_RESTART_END`
+
+### B. Bio Break (New Status Type)
+
+**New Status:** `ON_BIO` (similar to `ON_BREAK` but with consumable time)
+
+**Rules:**
+- For shifts >= 8 hours: 2 breaks × 2 mins = 4 mins total (consumable)
+- For shifts < 8 hours: 1 break × 2 mins = 2 mins total
+- Timer starts when Bio is clicked and pauses when Bio ends
+- Remaining time persists across the workday
+- If all time used, button becomes disabled
+- If exceeded, generate `BIO_OVERUSE` report + notify Team Leads
+
+**New Database Column:**
+- Add `bio_time_remaining_seconds` to `profile_status` table
+- Reset daily (or on LOGIN event)
+
+**UI Changes:**
+- Add "Bio" button next to Device Restart in `StatusButtons.tsx`
+- Show countdown timer when active: "Bio (1:45)"
+- Show remaining time when not active: "Bio (2:00 left)"
+- Button disabled when 0 time remaining
+
+**State Machine Updates:**
 ```text
-Current:
-import MasterDirectory from "./pages/MasterDirectory";
-import TicketLogs from "./pages/TicketLogs";
-import TeamStatusBoard from "./pages/TeamStatusBoard";
-
-Updated:
-const MasterDirectory = lazy(() => import("./pages/MasterDirectory"));
-const TicketLogs = lazy(() => import("./pages/TicketLogs"));
-const TeamStatusBoard = lazy(() => import("./pages/TeamStatusBoard"));
+LOGGED_IN → BIO_START → ON_BIO
+ON_BIO → BIO_END → LOGGED_IN
 ```
 
-Wrap routes in Suspense with a loading fallback.
+### C. Auto-Logout for No Logout
 
-**Impact:** 100-300ms faster initial bundle load
+**Problem:** Agents who forget to log out remain in `LOGGED_IN` status, blocking their next login.
+
+**Solution:**
+1. Create scheduled edge function `auto-logout-agents` running daily at 6:00 AM EST
+2. Find all agents with:
+   - `profile_status.current_status` NOT `LOGGED_OUT`
+   - `status_since` is from the previous day or earlier
+3. For each agent:
+   - Insert `LOGOUT` event with `triggered_by: 'system_auto_logout'`
+   - Update `profile_status` to `LOGGED_OUT`
+   - Create `NO_LOGOUT` report in `agent_reports`
+   - Agent can now log in normally for their next shift
+
+**Alternative Approach (Simpler):**
+- Instead of scheduled function, perform auto-logout check during LOGIN attempt
+- If agent tries to log in while still "logged in" from previous day, auto-generate logout first
+- This is more reliable and doesn't require scheduled jobs
+
+### Database Changes Summary
+
+**Modify `profile_status` table:**
+```sql
+ALTER TABLE public.profile_status 
+ADD COLUMN bio_time_remaining_seconds integer DEFAULT NULL,
+ADD COLUMN bio_allowance_seconds integer DEFAULT NULL;
+```
+
+**Modify `profile_events` table - add new event types:**
+- `BIO_START`
+- `BIO_END`
+
+**Update state machine in code:**
+```typescript
+export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO';
+export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END';
+```
+
+---
+
+## Part 3: Notification System
+
+### Edge Function: `send-status-alert-notification`
+
+Triggered when:
+- Device Restart exceeds 5 minutes
+- Bio Break exceeds allowed time
+
+Sends to:
+- All users with `admin`, `hr`, or `super_admin` roles
+- Via Email (Resend)
+- Via Slack (webhook)
+
+### Edge Function: `generate-agent-reports`
+
+Scheduled daily to scan for:
+- Agents with NO_LOGOUT (already auto-logged out)
+- Quota not met
+- High gap (only when quota not met)
+- Excessive restarts (from profile_events)
+- Time not met (portal hours vs scheduled hours)
+- Late login / Early out (from attendance calculation)
 
 ---
 
 ## Implementation Order
 
-| Step | Change | Files Affected | Risk |
-|------|--------|----------------|------|
-| 1 | Query Client defaults | App.tsx | Low |
-| 2 | Cache profile ID in AuthContext | AuthContext.tsx, Layout.tsx | Low |
-| 3 | Lazy UpdatesContext | UpdatesContext.tsx | Low |
-| 4 | Parallelize Agent Dashboard | AgentDashboard.tsx | Medium |
-| 5 | Create ticket dashboard DB function | SQL migration, ticketLogsApi.ts | Medium |
-| 6 | Code splitting | App.tsx | Low |
+| Step | Change | Files |
+|------|--------|-------|
+| 1 | Create `agent_reports` table + RLS | SQL migration |
+| 2 | Add `bio_time_remaining_seconds` to `profile_status` | SQL migration |
+| 3 | Update state machine types | `agentDashboardApi.ts` |
+| 4 | Create `agentReportsApi.ts` | New file |
+| 5 | Implement Device Restart timer | `StatusButtons.tsx` |
+| 6 | Implement Bio Break button + timer | `StatusButtons.tsx` |
+| 7 | Create Agent Reports page | `AgentReports.tsx` + components |
+| 8 | Add navigation link | `Layout.tsx`, `App.tsx` |
+| 9 | Create notification edge function | `send-status-alert-notification/index.ts` |
+| 10 | Create report generator function | `generate-agent-reports/index.ts` |
+| 11 | Implement auto-logout logic | `updateProfileStatus` modification |
 
 ---
 
-## Technical Notes
+## Technical Details
 
-### Files to Modify:
-- `src/App.tsx` - Query client config + code splitting
-- `src/context/AuthContext.tsx` - Add profileId caching
-- `src/components/Layout.tsx` - Remove profile fetch
-- `src/context/UpdatesContext.tsx` - Lazy initialization
-- `src/pages/AgentDashboard.tsx` - Parallel data loading
-- `src/lib/ticketLogsApi.ts` - Use consolidated DB function
-- New SQL migration - Ticket dashboard function
+### Timer Implementation in StatusButtons
 
-### Expected Overall Impact:
-- **Page navigation:** 50-150ms faster (profile ID caching)
-- **Non-update pages:** 200-500ms faster (lazy UpdatesContext)
-- **Agent Dashboard:** 40-60% faster
-- **Ticket Logs:** 50%+ faster
-- **Initial load:** 100-300ms faster (code splitting)
+```typescript
+// Use useState for timer display
+const [restartElapsed, setRestartElapsed] = useState(0);
+const [bioRemaining, setBioRemaining] = useState(0);
+
+// useEffect with interval when in RESTARTING or ON_BIO status
+useEffect(() => {
+  if (currentStatus === 'RESTARTING' && statusSince) {
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - new Date(statusSince).getTime()) / 1000);
+      setRestartElapsed(elapsed);
+      
+      // Check if exceeded 5 minutes (300 seconds)
+      if (elapsed >= 300 && !hasExceededNotified) {
+        triggerExceededNotification();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }
+}, [currentStatus, statusSince]);
+```
+
+### Bio Break Allowance Calculation
+
+```typescript
+function calculateBioAllowance(schedule: string | null): number {
+  if (!schedule) return 2 * 60; // Default 2 minutes
+  
+  const parsed = parseScheduleRange(schedule);
+  if (!parsed) return 2 * 60;
+  
+  let durationMinutes = parsed.endMinutes - parsed.startMinutes;
+  if (durationMinutes < 0) durationMinutes += 24 * 60;
+  
+  // 8+ hours = 4 mins, less = 2 mins
+  return durationMinutes >= 480 ? 4 * 60 : 2 * 60; // Return seconds
+}
+```
+
+### Auto-Logout on Login Attempt
+
+```typescript
+// In updateProfileStatus, before LOGIN event:
+if (eventType === 'LOGIN') {
+  const { data: currentStatusData } = await getProfileStatus(profileId);
+  
+  if (currentStatusData?.current_status !== 'LOGGED_OUT') {
+    const statusSince = new Date(currentStatusData?.status_since || '');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // If status_since is from before today, auto-logout first
+    if (statusSince < today) {
+      await forceLogout(profileId, 'system_auto_logout');
+      await createAgentReport({
+        agent_email: triggeredBy,
+        incident_type: 'NO_LOGOUT',
+        incident_date: format(statusSince, 'yyyy-MM-dd'),
+        details: { auto_logged_out: true }
+      });
+    }
+  }
+}
+```
+
+---
+
+## Access Control
+
+**Agent Reports Page:**
+- Team Leads, Admins, HR, Super Admins: Full access (view all, update status, add notes)
+- Regular agents: Can view only their own reports (read-only)
+
+**Bio Break Rules:**
+- Enforced per-agent based on their daily schedule
+- Allowance resets on each new LOGIN event
+
+---
+
+## Files Summary
+
+### New Files
+- `src/pages/AgentReports.tsx`
+- `src/lib/agentReportsApi.ts`
+- `src/components/agent-reports/ReportFilters.tsx`
+- `src/components/agent-reports/ReportDetailDialog.tsx`
+- `src/components/agent-reports/ReportSummaryCards.tsx`
+- `src/components/agent-reports/AgentAnalyticsPanel.tsx`
+- `supabase/functions/send-status-alert-notification/index.ts`
+- `supabase/functions/generate-agent-reports/index.ts`
+
+### Modified Files
+- `src/App.tsx` - Add route for Agent Reports
+- `src/components/Layout.tsx` - Add nav item under Team Performance
+- `src/components/dashboard/StatusButtons.tsx` - Add Bio button + timers
+- `src/lib/agentDashboardApi.ts` - Update types, state machine, add bio/auto-logout logic
+- `src/pages/AgentDashboard.tsx` - Pass schedule info for bio allowance calculation
