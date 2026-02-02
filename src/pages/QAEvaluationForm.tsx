@@ -17,6 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, 
@@ -26,8 +39,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  ChevronsUpDown,
+  Check
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import {
   createQAEvaluation,
@@ -42,6 +58,7 @@ import {
   SCORING_CATEGORIES,
   INTERACTION_TYPES,
   ZD_INSTANCES,
+  PASS_THRESHOLD,
   type ZDInstance,
   type QAActionPlan,
   type CreateQAScoreInput,
@@ -67,6 +84,12 @@ interface AgentProfile {
   agent_name: string | null;
 }
 
+// Action plan selections per category
+interface CategoryActionState {
+  selectedActions: string[];
+  customAction: string;
+}
+
 export default function QAEvaluationForm() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -75,6 +98,7 @@ export default function QAEvaluationForm() {
 
   // Form state
   const [selectedAgent, setSelectedAgent] = useState<AgentProfile | null>(null);
+  const [agentComboboxOpen, setAgentComboboxOpen] = useState(false);
   const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0]);
   const [zdInstance, setZdInstance] = useState<ZDInstance | ''>('');
   const [ticketId, setTicketId] = useState('');
@@ -87,17 +111,20 @@ export default function QAEvaluationForm() {
   const [workWeekEnd, setWorkWeekEnd] = useState<string>('');
   const [coachingDate, setCoachingDate] = useState<string>('');
 
-  // Feedback state
+  // Feedback state - per category
   const [accuracyFeedback, setAccuracyFeedback] = useState('');
   const [complianceFeedback, setComplianceFeedback] = useState('');
   const [customerExpFeedback, setCustomerExpFeedback] = useState('');
 
+  // Action plans per category
+  const [categoryActions, setCategoryActions] = useState<Record<string, CategoryActionState>>({
+    'Accuracy': { selectedActions: [], customAction: '' },
+    'Compliance': { selectedActions: [], customAction: '' },
+    'Customer Experience': { selectedActions: [], customAction: '' },
+  });
+
   // Scores state
   const [scores, setScores] = useState<ScoreState>({});
-
-  // Selected action plans
-  const [selectedActions, setSelectedActions] = useState<string[]>([]);
-  const [customAction, setCustomAction] = useState('');
 
   // AI state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -135,6 +162,30 @@ export default function QAEvaluationForm() {
     enabled: !!selectedAgent?.email,
   });
 
+  // Fetch action plan occurrence counts for the selected agent
+  const { data: actionPlanOccurrences = {} } = useQuery({
+    queryKey: ['action-plan-occurrences', selectedAgent?.email],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('qa_action_plan_occurrences')
+        .select('subcategory, action_plan_id')
+        .eq('agent_email', selectedAgent!.email);
+      
+      if (error) throw error;
+      
+      // Count occurrences by subcategory
+      const counts: Record<string, number> = {};
+      (data || []).forEach(row => {
+        const key = row.subcategory || row.action_plan_id;
+        if (key) {
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: !!selectedAgent?.email,
+  });
+
   // Initialize scores from categories
   useEffect(() => {
     const initialScores: ScoreState = {};
@@ -152,13 +203,16 @@ export default function QAEvaluationForm() {
     setScores(initialScores);
   }, []);
 
-  // Calculate totals
+  // Calculate totals - NOW with proper critical error behavior
   const totals = useMemo(() => {
     let totalScore = 0;
     let totalMax = 0;
     let hasCriticalFail = false;
+    const categoryScores: Record<string, { earned: number; max: number; hasCritical: boolean }> = {};
 
     SCORING_CATEGORIES.forEach(cat => {
+      categoryScores[cat.category] = { earned: 0, max: 0, hasCritical: false };
+      
       cat.subcategories.forEach(sub => {
         const key = `${cat.category}|${sub.subcategory}`;
         const scoreData = scores[key];
@@ -166,28 +220,30 @@ export default function QAEvaluationForm() {
         if (sub.isCritical) {
           if (scoreData?.criticalError === true) {
             hasCriticalFail = true;
+            categoryScores[cat.category].hasCritical = true;
           }
         } else {
           totalMax += sub.maxPoints;
+          categoryScores[cat.category].max += sub.maxPoints;
           if (scoreData?.score !== null && scoreData?.score !== undefined) {
             totalScore += scoreData.score;
+            categoryScores[cat.category].earned += scoreData.score;
           }
         }
       });
     });
 
-    // If critical fail, force 0
-    if (hasCriticalFail) {
-      totalScore = 0;
-    }
-
-    const percentage = totalMax > 0 ? (totalScore / totalMax) * 100 : 0;
+    // If critical fail, total score becomes 0 but category scores are preserved for coaching
+    const finalTotalScore = hasCriticalFail ? 0 : totalScore;
+    const percentage = hasCriticalFail ? 0 : (totalMax > 0 ? (totalScore / totalMax) * 100 : 0);
 
     return {
-      totalScore: hasCriticalFail ? 0 : totalScore,
+      totalScore: finalTotalScore,
+      rawTotalScore: totalScore, // Preserved for coaching visibility
       totalMax,
       percentage: Math.round(percentage * 100) / 100,
       hasCriticalFail,
+      categoryScores,
     };
   }, [scores]);
 
@@ -326,12 +382,45 @@ export default function QAEvaluationForm() {
     }));
   };
 
+  // Handle category action selection
+  const handleCategoryActionChange = (category: string, selectedIds: string[]) => {
+    setCategoryActions(prev => ({
+      ...prev,
+      [category]: { ...prev[category], selectedActions: selectedIds },
+    }));
+  };
+
+  const handleCategoryCustomAction = (category: string, customAction: string) => {
+    setCategoryActions(prev => ({
+      ...prev,
+      [category]: { ...prev[category], customAction },
+    }));
+  };
+
+  // Get feedback setter by category
+  const getFeedbackValue = (category: string) => {
+    switch (category) {
+      case 'Accuracy': return accuracyFeedback;
+      case 'Compliance': return complianceFeedback;
+      case 'Customer Experience': return customerExpFeedback;
+      default: return '';
+    }
+  };
+
+  const setFeedbackValue = (category: string, value: string) => {
+    switch (category) {
+      case 'Accuracy': setAccuracyFeedback(value); break;
+      case 'Compliance': setComplianceFeedback(value); break;
+      case 'Customer Experience': setCustomerExpFeedback(value); break;
+    }
+  };
+
   // Validate form
   const isFormValid = useMemo(() => {
     if (!selectedAgent || !zdInstance || !ticketId || !interactionType || !coachingDate) {
       return false;
     }
-    // Check all non-critical scores are filled
+    // Check all scores are filled
     return SCORING_CATEGORIES.every(cat =>
       cat.subcategories.every(sub => {
         const key = `${cat.category}|${sub.subcategory}`;
@@ -343,7 +432,7 @@ export default function QAEvaluationForm() {
     );
   }, [selectedAgent, zdInstance, ticketId, interactionType, coachingDate, scores]);
 
-  // Save as draft
+  // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (status: 'draft' | 'sent') => {
       // Create evaluation
@@ -367,7 +456,7 @@ export default function QAEvaluationForm() {
         coaching_date: coachingDate || undefined,
       });
 
-      // Create scores
+      // Create scores - preserve category scores even if critical fail
       const scoreInputs: CreateQAScoreInput[] = [];
       SCORING_CATEGORIES.forEach(cat => {
         cat.subcategories.forEach(sub => {
@@ -379,7 +468,8 @@ export default function QAEvaluationForm() {
             subcategory: sub.subcategory,
             behavior_identifier: sub.behavior,
             is_critical: sub.isCritical,
-            score_earned: sub.isCritical ? 0 : (totals.hasCriticalFail ? 0 : scoreData?.score ?? null),
+            // Preserve actual scores for coaching visibility
+            score_earned: sub.isCritical ? 0 : (scoreData?.score ?? null),
             max_points: sub.maxPoints,
             ai_suggested_score: scoreData?.aiSuggested ?? null,
             ai_accepted: scoreData?.aiAccepted ?? null,
@@ -389,32 +479,62 @@ export default function QAEvaluationForm() {
       });
       await createQAScores(scoreInputs);
 
-      // Create action needed entries
-      if (selectedActions.length > 0 || customAction) {
-        const actions = selectedActions.map(id => ({
-          evaluation_id: evaluation.id,
-          action_plan_id: id,
-        }));
-        if (customAction) {
-          actions.push({
-            evaluation_id: evaluation.id,
-            action_plan_id: undefined,
-            custom_action: customAction,
-          } as any);
+      // Create action needed entries from all categories
+      const allActions: { evaluation_id: string; action_plan_id?: string; custom_action?: string }[] = [];
+      Object.entries(categoryActions).forEach(([category, state]) => {
+        state.selectedActions.forEach(id => {
+          allActions.push({ evaluation_id: evaluation.id, action_plan_id: id });
+        });
+        if (state.customAction) {
+          allActions.push({ evaluation_id: evaluation.id, custom_action: state.customAction });
         }
-        await createActionsNeeded(actions);
+      });
+      
+      if (allActions.length > 0) {
+        await createActionsNeeded(allActions);
+      }
+
+      // Record action plan occurrences for tracking repeat violations
+      if (status === 'sent') {
+        const occurrences: { agent_email: string; evaluation_id: string; action_plan_id?: string; subcategory?: string }[] = [];
+        
+        // Track by subcategory for any failing scores
+        SCORING_CATEGORIES.forEach(cat => {
+          cat.subcategories.forEach(sub => {
+            const key = `${cat.category}|${sub.subcategory}`;
+            const scoreData = scores[key];
+            
+            if (sub.isCritical && scoreData?.criticalError === true) {
+              occurrences.push({
+                agent_email: selectedAgent!.email,
+                evaluation_id: evaluation.id,
+                subcategory: sub.subcategory,
+              });
+            } else if (!sub.isCritical && scoreData?.score === 0) {
+              occurrences.push({
+                agent_email: selectedAgent!.email,
+                evaluation_id: evaluation.id,
+                subcategory: sub.subcategory,
+              });
+            }
+          });
+        });
+
+        if (occurrences.length > 0) {
+          await supabase.from('qa_action_plan_occurrences').insert(occurrences);
+        }
       }
 
       // Update totals on evaluation
+      const rating = totals.hasCriticalFail ? 'Fail' : (totals.percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail');
       await updateQAEvaluation(evaluation.id, {
         total_score: totals.totalScore,
         total_max: totals.totalMax,
         percentage: totals.percentage,
         has_critical_fail: totals.hasCriticalFail,
-        rating: totals.hasCriticalFail ? 'Fail' : (totals.percentage >= 80 ? 'Pass' : 'Fail'),
+        rating,
       });
 
-      // Return both evaluation and status for onSuccess
       return { evaluation, status };
     },
     onSuccess: async ({ evaluation, status }) => {
@@ -424,7 +544,6 @@ export default function QAEvaluationForm() {
           await sendQANotification(evaluation.id, 'new_evaluation');
         } catch (notifError) {
           console.error('Failed to send notification:', notifError);
-          // Don't block the success flow, just log the error
         }
       }
 
@@ -501,26 +620,52 @@ export default function QAEvaluationForm() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Agent Combobox with Search */}
               <div className="space-y-2">
                 <Label htmlFor="agent">Agent</Label>
-                <Select 
-                  value={selectedAgent?.id || ''} 
-                  onValueChange={(v) => {
-                    const agent = agents.find(a => a.id === v);
-                    setSelectedAgent(agent || null);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agents.map(agent => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.full_name || agent.agent_name || agent.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={agentComboboxOpen} onOpenChange={setAgentComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={agentComboboxOpen}
+                      className="w-full justify-between"
+                    >
+                      {selectedAgent 
+                        ? (selectedAgent.full_name || selectedAgent.agent_name || selectedAgent.email)
+                        : "Select agent..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 z-50" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search agent by name..." />
+                      <CommandList>
+                        <CommandEmpty>No agent found.</CommandEmpty>
+                        <CommandGroup>
+                          {agents.map(agent => (
+                            <CommandItem
+                              key={agent.id}
+                              value={agent.full_name || agent.agent_name || agent.email}
+                              onSelect={() => {
+                                setSelectedAgent(agent);
+                                setAgentComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedAgent?.id === agent.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {agent.full_name || agent.agent_name || agent.email}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="space-y-2">
@@ -645,21 +790,34 @@ export default function QAEvaluationForm() {
           <QAPendingActions actions={pendingActions} />
         )}
 
-        {/* Scoring Sections */}
-        {SCORING_CATEGORIES.map((category, catIndex) => (
-          <Card key={catIndex}>
-            <CardHeader>
-              <CardTitle>{category.category}</CardTitle>
-              <CardDescription>
-                Rate each subcategory from 2 (Needs Improvement) to 6 (Excellent)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {category.subcategories.map((sub, subIndex) => {
-                const key = `${category.category}|${sub.subcategory}`;
-                const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null };
+        {/* Scoring Sections - With Critical Errors at Top, Feedback & Action Plans Nested */}
+        {SCORING_CATEGORIES.map((category, catIndex) => {
+          const criticalItems = category.subcategories.filter(s => s.isCritical);
+          const regularItems = category.subcategories.filter(s => !s.isCritical);
+          const catActionState = categoryActions[category.category] || { selectedActions: [], customAction: '' };
+          const categoryFeedback = getFeedbackValue(category.category);
+          const catScore = totals.categoryScores[category.category];
 
-                if (sub.isCritical) {
+          return (
+            <Card key={catIndex} className={catScore?.hasCritical ? 'border-destructive' : ''}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>{category.category}</CardTitle>
+                  <Badge variant={catScore?.hasCritical ? 'destructive' : 'secondary'}>
+                    {catScore?.earned ?? 0} / {catScore?.max ?? 0}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  All-or-nothing scoring: 0 (Fail) or Max Points (Pass)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Critical Errors First */}
+                {criticalItems.map((sub, subIndex) => {
+                  const key = `${category.category}|${sub.subcategory}`;
+                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null };
+                  const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
+
                   return (
                     <QACriticalRow
                       key={subIndex}
@@ -669,100 +827,62 @@ export default function QAEvaluationForm() {
                       aiSuggested={scoreData.criticalError}
                       onCriticalChange={(v) => handleCriticalChange(key, v)}
                       onAcceptAI={(accept) => handleAcceptCriticalAI(key, accept)}
+                      occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
                     />
                   );
-                }
+                })}
 
-                return (
-                  <QAScoreRow
-                    key={subIndex}
-                    subcategory={sub.subcategory}
-                    behavior={sub.behavior}
-                    maxPoints={sub.maxPoints}
-                    score={scoreData.score}
-                    aiSuggested={scoreData.aiSuggested}
-                    aiAccepted={scoreData.aiAccepted}
-                    onScoreChange={(v) => handleScoreChange(key, v)}
-                    onAcceptAI={() => handleAcceptAI(key)}
+                {/* Regular Scoring Items */}
+                {regularItems.map((sub, subIndex) => {
+                  const key = `${category.category}|${sub.subcategory}`;
+                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null };
+                  const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
+
+                  return (
+                    <QAScoreRow
+                      key={subIndex}
+                      subcategory={sub.subcategory}
+                      behavior={sub.behavior}
+                      maxPoints={sub.maxPoints}
+                      score={scoreData.score}
+                      aiSuggested={scoreData.aiSuggested}
+                      aiAccepted={scoreData.aiAccepted}
+                      onScoreChange={(v) => handleScoreChange(key, v)}
+                      onAcceptAI={() => handleAcceptAI(key)}
+                      occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
+                    />
+                  );
+                })}
+
+                {/* Category Feedback */}
+                <div className="space-y-2 pt-4 border-t">
+                  <Label>{category.category} Feedback</Label>
+                  <Textarea
+                    placeholder={`Provide feedback on ${category.category.toLowerCase()}...`}
+                    value={categoryFeedback}
+                    onChange={(e) => setFeedbackValue(category.category, e.target.value)}
+                    rows={3}
                   />
-                );
-              })}
-            </CardContent>
-          </Card>
-        ))}
+                </div>
 
-        {/* Feedback Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Feedback</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="accuracyFeedback">Accuracy Feedback</Label>
-                {totals.percentage === 100 && !totals.hasCriticalFail && (
-                  <Badge className="bg-chart-2 text-primary-foreground">
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Perfect Score!
-                  </Badge>
-                )}
-              </div>
-              <Textarea
-                id="accuracyFeedback"
-                placeholder="Provide feedback on accuracy..."
-                value={accuracyFeedback}
-                onChange={(e) => setAccuracyFeedback(e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="complianceFeedback">Compliance Feedback</Label>
-              <Textarea
-                id="complianceFeedback"
-                placeholder="Provide feedback on compliance..."
-                value={complianceFeedback}
-                onChange={(e) => setComplianceFeedback(e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="customerExpFeedback">Customer Experience Feedback</Label>
-              <Textarea
-                id="customerExpFeedback"
-                placeholder="Provide feedback on customer experience..."
-                value={customerExpFeedback}
-                onChange={(e) => setCustomerExpFeedback(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Action Plans */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Action Needed</CardTitle>
-            <CardDescription>Select action items for the agent to address</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <QAActionPlanSelect
-              actionPlans={actionPlans}
-              selectedIds={selectedActions}
-              onSelectionChange={setSelectedActions}
-            />
-            <div className="space-y-2">
-              <Label htmlFor="customAction">Custom Action (optional)</Label>
-              <Input
-                id="customAction"
-                placeholder="Add a custom action item..."
-                value={customAction}
-                onChange={(e) => setCustomAction(e.target.value)}
-              />
-            </div>
-          </CardContent>
-        </Card>
+                {/* Category Action Plans */}
+                <div className="space-y-2">
+                  <Label>Action Needed ({category.category})</Label>
+                  <QAActionPlanSelect
+                    actionPlans={actionPlans.filter(ap => !ap.category || ap.category === category.category)}
+                    selectedIds={catActionState.selectedActions}
+                    onSelectionChange={(ids) => handleCategoryActionChange(category.category, ids)}
+                  />
+                  <Input
+                    placeholder="Custom action (optional)..."
+                    value={catActionState.customAction}
+                    onChange={(e) => handleCategoryCustomAction(category.category, e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
 
         {/* Summary */}
         <Card className={totals.hasCriticalFail ? 'border-destructive' : ''}>
@@ -774,10 +894,14 @@ export default function QAEvaluationForm() {
               <div className="text-center p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Score</p>
                 <p className="text-3xl font-bold">{totals.totalScore} / {totals.totalMax}</p>
+                {totals.hasCriticalFail && (
+                  <p className="text-xs text-muted-foreground mt-1">(Raw: {totals.rawTotalScore})</p>
+                )}
               </div>
               <div className="text-center p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Percentage</p>
                 <p className="text-3xl font-bold">{totals.percentage}%</p>
+                <p className="text-xs text-muted-foreground mt-1">Pass: ≥{PASS_THRESHOLD}%</p>
               </div>
               <div className="text-center p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Critical Fail</p>
@@ -787,8 +911,8 @@ export default function QAEvaluationForm() {
               </div>
               <div className="text-center p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Rating</p>
-                <p className={`text-3xl font-bold ${totals.hasCriticalFail || totals.percentage < 80 ? 'text-destructive' : 'text-chart-2'}`}>
-                  {totals.hasCriticalFail ? 'Fail' : (totals.percentage >= 80 ? 'Pass' : 'Fail')}
+                <p className={`text-3xl font-bold ${totals.hasCriticalFail || totals.percentage < PASS_THRESHOLD ? 'text-destructive' : 'text-chart-2'}`}>
+                  {totals.hasCriticalFail ? 'Fail' : (totals.percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail')}
                 </p>
               </div>
             </div>

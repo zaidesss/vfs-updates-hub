@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
-import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { DatePicker } from '@/components/ui/date-picker';
