@@ -38,6 +38,7 @@ import {
   fetchAgentViolationHistory,
   fetchPendingActionsForAgent,
   generateTicketUrl,
+  sendQANotification,
   SCORING_CATEGORIES,
   INTERACTION_TYPES,
   ZD_INSTANCES,
@@ -402,12 +403,23 @@ export default function QAEvaluationForm() {
         total_max: totals.totalMax,
         percentage: totals.percentage,
         has_critical_fail: totals.hasCriticalFail,
-        rating: totals.hasCriticalFail ? 'Fail' : (totals.percentage >= 80 ? 'Pass' : 'Fail'), // Default rating logic
+        rating: totals.hasCriticalFail ? 'Fail' : (totals.percentage >= 80 ? 'Pass' : 'Fail'),
       });
 
-      return evaluation;
+      // Return both evaluation and status for onSuccess
+      return { evaluation, status };
     },
-    onSuccess: (evaluation, status) => {
+    onSuccess: async ({ evaluation, status }) => {
+      // Send email notification if status is 'sent'
+      if (status === 'sent') {
+        try {
+          await sendQANotification(evaluation.id, 'new_evaluation');
+        } catch (notifError) {
+          console.error('Failed to send notification:', notifError);
+          // Don't block the success flow, just log the error
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
       toast({
         title: status === 'sent' ? 'Evaluation sent' : 'Draft saved',
