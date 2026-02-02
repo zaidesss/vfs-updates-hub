@@ -74,6 +74,7 @@ interface ScoreState {
     aiSuggested: number | null;
     aiAccepted: boolean | null;
     criticalError: boolean | null;
+    aiJustification: string | null;
   };
 }
 
@@ -125,7 +126,9 @@ export default function QAEvaluationForm() {
 
   // Scores state
   const [scores, setScores] = useState<ScoreState>({});
-
+  
+  // AI suggested action plan IDs
+  const [aiSuggestedActionIds, setAiSuggestedActionIds] = useState<string[]>([]);
   // AI state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -197,6 +200,7 @@ export default function QAEvaluationForm() {
           aiSuggested: null,
           aiAccepted: null,
           criticalError: sub.isCritical ? null : null,
+          aiJustification: null,
         };
       });
     });
@@ -307,7 +311,11 @@ export default function QAEvaluationForm() {
     setIsAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-qa-ticket', {
-        body: { ticketContent, categories: SCORING_CATEGORIES },
+        body: { 
+          ticketContent, 
+          categories: SCORING_CATEGORIES,
+          actionPlans: actionPlans.map(ap => ({ id: ap.id, action_text: ap.action_text, category: ap.category })),
+        },
       });
 
       if (error) throw error;
@@ -318,15 +326,22 @@ export default function QAEvaluationForm() {
           if (newScores[key]) {
             newScores[key] = {
               ...newScores[key],
-              aiSuggested: value.score,
+              aiSuggested: value.score ?? null,
               criticalError: value.criticalError ?? null,
+              aiJustification: value.justification ?? null,
             };
           }
         });
         setScores(newScores);
+        
+        // Set AI suggested action plan IDs
+        if (data.suggestedActionPlanIds && Array.isArray(data.suggestedActionPlanIds)) {
+          setAiSuggestedActionIds(data.suggestedActionPlanIds);
+        }
+        
         toast({
           title: 'AI analysis complete',
-          description: 'Review the suggested scores and accept or modify them.',
+          description: 'Review the suggested scores and action plans.',
         });
       }
     } catch (err: any) {
@@ -474,6 +489,7 @@ export default function QAEvaluationForm() {
             ai_suggested_score: scoreData?.aiSuggested ?? null,
             ai_accepted: scoreData?.aiAccepted ?? null,
             critical_error_detected: sub.isCritical ? scoreData?.criticalError ?? null : null,
+            ai_justification: scoreData?.aiJustification ?? undefined,
           });
         });
       });
@@ -544,6 +560,26 @@ export default function QAEvaluationForm() {
           await sendQANotification(evaluation.id, 'new_evaluation');
         } catch (notifError) {
           console.error('Failed to send notification:', notifError);
+        }
+        
+        // Send custom action notification if any custom actions were used
+        const customActions = Object.entries(categoryActions)
+          .filter(([_, state]) => state.customAction.trim())
+          .map(([category, state]) => ({ category, action: state.customAction.trim() }));
+        
+        if (customActions.length > 0) {
+          try {
+            await supabase.functions.invoke('send-custom-action-notification', {
+              body: {
+                evaluationId: evaluation.id,
+                customActions,
+                evaluatorEmail: user!.email,
+                evaluatorName: user!.name,
+              },
+            });
+          } catch (customActionErr) {
+            console.error('Failed to send custom action notification:', customActionErr);
+          }
         }
       }
 
@@ -815,7 +851,7 @@ export default function QAEvaluationForm() {
                 {/* Critical Errors First */}
                 {criticalItems.map((sub, subIndex) => {
                   const key = `${category.category}|${sub.subcategory}`;
-                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null };
+                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null, aiJustification: null };
                   const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
 
                   return (
@@ -825,6 +861,7 @@ export default function QAEvaluationForm() {
                       behavior={sub.behavior}
                       hasCritical={scoreData.criticalError}
                       aiSuggested={scoreData.criticalError}
+                      aiJustification={scoreData.aiJustification}
                       onCriticalChange={(v) => handleCriticalChange(key, v)}
                       onAcceptAI={(accept) => handleAcceptCriticalAI(key, accept)}
                       occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
@@ -835,7 +872,7 @@ export default function QAEvaluationForm() {
                 {/* Regular Scoring Items */}
                 {regularItems.map((sub, subIndex) => {
                   const key = `${category.category}|${sub.subcategory}`;
-                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null };
+                  const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null, aiJustification: null };
                   const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
 
                   return (
@@ -847,6 +884,7 @@ export default function QAEvaluationForm() {
                       score={scoreData.score}
                       aiSuggested={scoreData.aiSuggested}
                       aiAccepted={scoreData.aiAccepted}
+                      aiJustification={scoreData.aiJustification}
                       onScoreChange={(v) => handleScoreChange(key, v)}
                       onAcceptAI={() => handleAcceptAI(key)}
                       occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
@@ -871,6 +909,7 @@ export default function QAEvaluationForm() {
                   <QAActionPlanSelect
                     actionPlans={actionPlans.filter(ap => !ap.category || ap.category === category.category)}
                     selectedIds={catActionState.selectedActions}
+                    suggestedIds={aiSuggestedActionIds.filter(id => actionPlans.find(ap => ap.id === id && (!ap.category || ap.category === category.category)))}
                     onSelectionChange={(ids) => handleCategoryActionChange(category.category, ids)}
                   />
                   <Input

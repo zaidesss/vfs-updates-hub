@@ -15,9 +15,16 @@ interface ScoringCategory {
   }[];
 }
 
+interface ActionPlan {
+  id: string;
+  action_text: string;
+  category: string | null;
+}
+
 interface RequestBody {
   ticketContent: string;
   categories: ScoringCategory[];
+  actionPlans?: ActionPlan[];
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -26,7 +33,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { ticketContent, categories }: RequestBody = await req.json();
+    const { ticketContent, categories, actionPlans = [] }: RequestBody = await req.json();
 
     if (!ticketContent || !categories) {
       return new Response(
@@ -43,7 +50,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Build the prompt with ALL-OR-NOTHING scoring instructions
+    // Build the prompt with ALL-OR-NOTHING scoring instructions + justifications
     const systemPrompt = `You are an expert Quality Assurance evaluator for customer service interactions. 
 Analyze the provided ticket conversation and score the agent's performance.
 
@@ -53,6 +60,12 @@ IMPORTANT - ALL-OR-NOTHING SCORING:
 - Award the FULL points if the agent met the standard for that behavior.
 - Award 0 points if the agent failed to meet the standard.
 
+JUSTIFICATION REQUIREMENTS:
+- When you assign 0 points (FAIL), you MUST provide a brief justification explaining why the agent failed.
+- When you detect a critical error (true), you MUST provide a justification explaining what the agent did wrong.
+- When you assign full points (PASS) or no critical error (false), do NOT include a justification.
+- Justifications should be 1-2 sentences, specific to the ticket content.
+
 Critical Error Detection:
 - For critical error categories, return true ONLY if the agent clearly violated the policy.
 - "Incorrect Critical Info" = Agent provided factually wrong critical information
@@ -60,7 +73,23 @@ Critical Error Detection:
 - "Security Breach" = Agent committed a security violation
 - "Rude / Disrespectful Behavior" = Agent was rude or disrespectful to the customer
 
+ACTION PLAN SUGGESTIONS:
+- Based on the failed scores, suggest relevant action plans from the provided list.
+- Return the IDs of action plans that address the specific failures found.
+
 Be fair and objective. If unsure about a failure, award the full points.`;
+
+    // Format action plans for the prompt
+    const actionPlansByCategory: Record<string, ActionPlan[]> = {};
+    actionPlans.forEach(ap => {
+      const cat = ap.category || 'General';
+      if (!actionPlansByCategory[cat]) actionPlansByCategory[cat] = [];
+      actionPlansByCategory[cat].push(ap);
+    });
+
+    const actionPlansText = Object.entries(actionPlansByCategory).map(([cat, plans]) =>
+      `${cat}:\n${plans.map(p => `- ID: ${p.id} - "${p.action_text}"`).join('\n')}`
+    ).join('\n\n');
 
     const userPrompt = `Analyze this customer service ticket conversation and provide scores for each category.
 
@@ -76,18 +105,38 @@ ${categories.map(cat =>
   ).join('\n')}`
 ).join('\n\n')}
 
-Return a JSON object with keys in format "Category|Subcategory" and values containing:
-- For regular scores: { "score": number } - MUST be either 0 or the exact max points shown above
-- For critical errors: { "criticalError": boolean }
+=== AVAILABLE ACTION PLANS ===
+${actionPlansText || 'No action plans provided'}
 
-IMPORTANT: Scores must be EXACTLY 0 (fail) or the max points value (pass). No other values are valid.
+Return a JSON object with the following structure:
+{
+  "scores": {
+    "Category|Subcategory": { 
+      "score": number,
+      "justification": "string (only if score is 0)" 
+    },
+    "Category|Critical Subcategory": { 
+      "criticalError": boolean,
+      "justification": "string (only if criticalError is true)" 
+    }
+  },
+  "suggestedActionPlanIds": ["id1", "id2"]
+}
+
+IMPORTANT: 
+- Scores must be EXACTLY 0 (fail) or the max points value (pass). No other values are valid.
+- Include justification ONLY for failures (score=0 or criticalError=true).
+- suggestedActionPlanIds should contain action plan IDs that address the specific failures found.
 
 Example response format:
 {
-  "Accuracy|Language & Grammar": { "score": 3 },
-  "Accuracy|Clarity & Structure": { "score": 0 },
-  "Accuracy|Incorrect Critical Info": { "criticalError": false },
-  "Compliance|Policy and Process Breach": { "criticalError": false }
+  "scores": {
+    "Accuracy|Language & Grammar": { "score": 3 },
+    "Accuracy|Clarity & Structure": { "score": 0, "justification": "Response lacked clear structure and mixed multiple topics together." },
+    "Accuracy|Incorrect Critical Info": { "criticalError": false },
+    "Compliance|Policy and Process Breach": { "criticalError": true, "justification": "Agent shared internal process details with the customer." }
+  },
+  "suggestedActionPlanIds": ["abc-123", "def-456"]
 }`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -131,15 +180,19 @@ Example response format:
     const content = aiResponse.choices?.[0]?.message?.content || '';
 
     // Parse the JSON from the response
-    let suggestions: Record<string, { score?: number; criticalError?: boolean }> = {};
+    let suggestions: Record<string, { score?: number; criticalError?: boolean; justification?: string }> = {};
+    let suggestedActionPlanIds: string[] = [];
     
     try {
       // Try to extract JSON from the response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const rawSuggestions = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
         
-        // Validate and clamp scores to be exactly 0 or maxPoints
+        // Handle new format with "scores" wrapper
+        const rawScores = parsed.scores || parsed;
+        suggestedActionPlanIds = parsed.suggestedActionPlanIds || [];
+        
         // Build a map of subcategory -> maxPoints for validation
         const maxPointsMap: Record<string, number> = {};
         categories.forEach(cat => {
@@ -150,18 +203,24 @@ Example response format:
         });
         
         // Validate each suggestion
-        for (const [key, value] of Object.entries(rawSuggestions)) {
+        for (const [key, value] of Object.entries(rawScores)) {
           if (typeof value === 'object' && value !== null) {
-            const typedValue = value as { score?: number; criticalError?: boolean };
+            const typedValue = value as { score?: number; criticalError?: boolean; justification?: string };
             if ('criticalError' in typedValue) {
-              // Critical error - keep as-is
-              suggestions[key] = typedValue;
+              // Critical error - keep as-is with justification
+              suggestions[key] = {
+                criticalError: typedValue.criticalError,
+                justification: typedValue.criticalError ? typedValue.justification : undefined,
+              };
             } else if ('score' in typedValue && typeof typedValue.score === 'number') {
               // Regular score - ensure it's 0 or maxPoints
               const maxPoints = maxPointsMap[key] || 0;
               // If AI returned something other than 0 or maxPoints, interpret as pass/fail
               const normalizedScore = typedValue.score > 0 ? maxPoints : 0;
-              suggestions[key] = { score: normalizedScore };
+              suggestions[key] = { 
+                score: normalizedScore,
+                justification: normalizedScore === 0 ? typedValue.justification : undefined,
+              };
             }
           }
         }
@@ -172,7 +231,7 @@ Example response format:
     }
 
     return new Response(
-      JSON.stringify({ suggestions }),
+      JSON.stringify({ suggestions, suggestedActionPlanIds }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
