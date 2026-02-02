@@ -565,7 +565,13 @@ export async function fetchEvaluationEvents(evaluationId: string): Promise<QAEva
   return (data || []) as QAEvaluationEvent[];
 }
 
-// Resend QA notification
+// Resend QA notification (throws on failure for UI toast)
 export async function resendQANotification(evaluationId: string): Promise<void> {
-  await sendQANotification(evaluationId, 'new_evaluation');
+  const { error } = await supabase.functions.invoke('send-qa-notification', {
+    body: { evaluationId, type: 'new_evaluation' },
+  });
+  
+  if (error) {
+    throw new Error(error.message || 'Failed to send notification');
+  }
 }

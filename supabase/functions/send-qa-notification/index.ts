@@ -71,6 +71,9 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Use the verified subdomain from Resend
+    const senderEmail = 'Agent Portal <noreply@updates.virtualfreelancesolutions.com>';
+
     if (type === 'new_evaluation') {
       subject = `QA Evaluation Completed - ${evaluation.audit_date} - Ticket #${evaluation.ticket_id}`;
       htmlContent = `
@@ -105,7 +108,7 @@ const handler = async (req: Request): Promise<Response> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'Agent Portal <noreply@virtualfreelancesolutions.com>',
+          from: senderEmail,
           to: [evaluation.agent_email],
           cc: filteredCcEmails.length > 0 ? filteredCcEmails : undefined,
           subject,
@@ -116,21 +119,39 @@ const handler = async (req: Request): Promise<Response> => {
       if (!emailRes.ok) {
         const errText = await emailRes.text();
         console.error('Failed to send new evaluation email:', errText);
-      } else {
-        // Log the event
+        
+        // Log failure event
         await supabase
           .from('qa_evaluation_events')
           .insert({
             evaluation_id: evaluationId,
-            event_type: 'notification_sent',
-            event_description: `Notification email sent to ${evaluation.agent_email}`,
+            event_type: 'notification_failed',
+            event_description: `Email failed to send to ${evaluation.agent_email}`,
             actor_email: evaluation.evaluator_email,
             actor_name: evaluation.evaluator_name,
-            metadata: { to: evaluation.agent_email, cc: filteredCcEmails },
+            metadata: { error: errText, to: evaluation.agent_email },
           });
+        
+        // Return error so UI can show toast
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: errText }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+      
+      // Log success event
+      await supabase
+        .from('qa_evaluation_events')
+        .insert({
+          evaluation_id: evaluationId,
+          event_type: 'notification_sent',
+          event_description: `Notification email sent to ${evaluation.agent_email}`,
+          actor_email: evaluation.evaluator_email,
+          actor_name: evaluation.evaluator_name,
+          metadata: { to: evaluation.agent_email, cc: filteredCcEmails },
+        });
 
-      // Mark notification as sent
+      // Mark notification as sent only after success
       await supabase
         .from('qa_evaluations')
         .update({ notification_sent: true })
@@ -166,7 +187,7 @@ const handler = async (req: Request): Promise<Response> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'Agent Portal <noreply@virtualfreelancesolutions.com>',
+          from: senderEmail,
           to: filteredCcEmails.length > 0 ? filteredCcEmails : [evaluation.agent_email],
           cc: filteredCcEmails.length > 0 ? [evaluation.agent_email] : undefined,
           subject,
@@ -177,7 +198,36 @@ const handler = async (req: Request): Promise<Response> => {
       if (!emailRes.ok) {
         const errText = await emailRes.text();
         console.error('Failed to send acknowledgment email:', errText);
+        
+        // Log failure event
+        await supabase
+          .from('qa_evaluation_events')
+          .insert({
+            evaluation_id: evaluationId,
+            event_type: 'notification_failed',
+            event_description: `Acknowledgment email failed to send`,
+            actor_email: evaluation.agent_email,
+            actor_name: evaluation.agent_name,
+            metadata: { error: errText },
+          });
+        
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: errText }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+      
+      // Log success event
+      await supabase
+        .from('qa_evaluation_events')
+        .insert({
+          evaluation_id: evaluationId,
+          event_type: 'acknowledgment_notification_sent',
+          event_description: `Acknowledgment notification sent to admins`,
+          actor_email: evaluation.agent_email,
+          actor_name: evaluation.agent_name,
+          metadata: { to: filteredCcEmails },
+        });
     }
 
     console.log(`QA notification sent successfully: ${type} for ${evaluationId}`);
