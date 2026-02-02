@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { getDay } from 'date-fns';
 import {
   createQAEvaluation,
   createQAScores,
@@ -832,22 +833,52 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
             {/* Work Week & Coaching Date/Time Row - First fields to fill */}
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-2">
-                <Label htmlFor="workWeekStart">Work Week Start</Label>
+                <Label htmlFor="workWeekStart">Work Week Start <span className="text-xs text-muted-foreground">(Monday)</span></Label>
                 <Input
                   id="workWeekStart"
                   type="date"
                   value={workWeekStart}
-                  onChange={(e) => setWorkWeekStart(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) {
+                      const date = new Date(value + 'T00:00:00');
+                      const dayOfWeek = getDay(date);
+                      if (dayOfWeek !== 1) {
+                        toast({
+                          title: 'Invalid Start Date',
+                          description: 'Work Week Start must be a Monday.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                    }
+                    setWorkWeekStart(value);
+                  }}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="workWeekEnd">Work Week End</Label>
+                <Label htmlFor="workWeekEnd">Work Week End <span className="text-xs text-muted-foreground">(Sunday)</span></Label>
                 <Input
                   id="workWeekEnd"
                   type="date"
                   value={workWeekEnd}
-                  onChange={(e) => setWorkWeekEnd(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) {
+                      const date = new Date(value + 'T00:00:00');
+                      const dayOfWeek = getDay(date);
+                      if (dayOfWeek !== 0) {
+                        toast({
+                          title: 'Invalid End Date',
+                          description: 'Work Week End must be a Sunday.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                    }
+                    setWorkWeekEnd(value);
+                  }}
                 />
               </div>
 
