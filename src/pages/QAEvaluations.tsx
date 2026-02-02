@@ -152,6 +152,7 @@ export default function QAEvaluations() {
         ...week,
         evaluationCount: weekEvaluations.length,
         averageScore: Math.round(avgScore * 100) / 100,
+        individualScores: weekEvaluations.map(e => Number(e.percentage)).sort((a, b) => b - a),
       };
     });
   }, [agentFilteredEvaluations]);
