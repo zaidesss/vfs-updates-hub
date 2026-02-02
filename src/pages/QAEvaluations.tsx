@@ -136,10 +136,13 @@ export default function QAEvaluations() {
     }
 
     // Calculate stats for each week using agent-filtered data
+    // Use work_week_start to determine which week an evaluation belongs to
     return weeks.reverse().map(week => {
-      const weekEvaluations = agentFilteredEvaluations.filter(
-        e => e.audit_date >= week.startDateISO && e.audit_date <= week.endDateISO
-      );
+      const weekEvaluations = agentFilteredEvaluations.filter(e => {
+        // Use work_week_start if available, otherwise fall back to audit_date
+        const evalWeekStart = e.work_week_start || e.audit_date;
+        return evalWeekStart >= week.startDateISO && evalWeekStart <= week.endDateISO;
+      });
       
       const avgScore = weekEvaluations.length > 0
         ? weekEvaluations.reduce((sum, e) => sum + Number(e.percentage), 0) / weekEvaluations.length
