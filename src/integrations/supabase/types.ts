@@ -1114,7 +1114,11 @@ export type Database = {
           agent_acknowledged: boolean
           agent_email: string
           agent_name: string
+          agent_remarks: string | null
+          agent_reviewed: boolean
+          agent_reviewed_at: string | null
           audit_date: string
+          coaching_date: string | null
           compliance_feedback: string | null
           compliance_kudos: string | null
           created_at: string
@@ -1136,6 +1140,8 @@ export type Database = {
           total_max: number
           total_score: number
           updated_at: string
+          work_week_end: string | null
+          work_week_start: string | null
           zd_instance: string
         }
         Insert: {
@@ -1145,7 +1151,11 @@ export type Database = {
           agent_acknowledged?: boolean
           agent_email: string
           agent_name: string
+          agent_remarks?: string | null
+          agent_reviewed?: boolean
+          agent_reviewed_at?: string | null
           audit_date?: string
+          coaching_date?: string | null
           compliance_feedback?: string | null
           compliance_kudos?: string | null
           created_at?: string
@@ -1167,6 +1177,8 @@ export type Database = {
           total_max?: number
           total_score?: number
           updated_at?: string
+          work_week_end?: string | null
+          work_week_start?: string | null
           zd_instance: string
         }
         Update: {
@@ -1176,7 +1188,11 @@ export type Database = {
           agent_acknowledged?: boolean
           agent_email?: string
           agent_name?: string
+          agent_remarks?: string | null
+          agent_reviewed?: boolean
+          agent_reviewed_at?: string | null
           audit_date?: string
+          coaching_date?: string | null
           compliance_feedback?: string | null
           compliance_kudos?: string | null
           created_at?: string
@@ -1198,6 +1214,8 @@ export type Database = {
           total_max?: number
           total_score?: number
           updated_at?: string
+          work_week_end?: string | null
+          work_week_start?: string | null
           zd_instance?: string
         }
         Relationships: []
