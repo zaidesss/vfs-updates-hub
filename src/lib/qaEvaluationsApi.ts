@@ -117,6 +117,7 @@ export interface CreateQAScoreInput {
   ai_suggested_score?: number;
   ai_accepted?: boolean;
   critical_error_detected?: boolean;
+  ai_justification?: string;
 }
 
 // Zendesk instance URL mapping

@@ -1101,6 +1101,7 @@ export type Database = {
       qa_evaluation_scores: {
         Row: {
           ai_accepted: boolean | null
+          ai_justification: string | null
           ai_suggested_score: number | null
           behavior_identifier: string | null
           category: string
@@ -1115,6 +1116,7 @@ export type Database = {
         }
         Insert: {
           ai_accepted?: boolean | null
+          ai_justification?: string | null
           ai_suggested_score?: number | null
           behavior_identifier?: string | null
           category: string
@@ -1129,6 +1131,7 @@ export type Database = {
         }
         Update: {
           ai_accepted?: boolean | null
+          ai_justification?: string | null
           ai_suggested_score?: number | null
           behavior_identifier?: string | null
           category?: string
