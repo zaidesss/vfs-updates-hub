@@ -985,6 +985,51 @@ export type Database = {
           },
         ]
       }
+      qa_action_plan_occurrences: {
+        Row: {
+          action_plan_id: string | null
+          agent_email: string
+          created_at: string
+          evaluation_id: string
+          id: string
+          occurred_at: string
+          subcategory: string | null
+        }
+        Insert: {
+          action_plan_id?: string | null
+          agent_email: string
+          created_at?: string
+          evaluation_id: string
+          id?: string
+          occurred_at?: string
+          subcategory?: string | null
+        }
+        Update: {
+          action_plan_id?: string | null
+          agent_email?: string
+          created_at?: string
+          evaluation_id?: string
+          id?: string
+          occurred_at?: string
+          subcategory?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_action_plan_occurrences_action_plan_id_fkey"
+            columns: ["action_plan_id"]
+            isOneToOne: false
+            referencedRelation: "qa_action_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qa_action_plan_occurrences_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "qa_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qa_action_plans: {
         Row: {
           action_text: string

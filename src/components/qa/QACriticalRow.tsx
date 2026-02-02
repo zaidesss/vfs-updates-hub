@@ -17,6 +17,7 @@ interface QACriticalRowProps {
   aiSuggested: boolean | null;
   onCriticalChange: (hasCritical: boolean) => void;
   onAcceptAI: (accept: boolean) => void;
+  occurrenceCount?: number;
 }
 
 export function QACriticalRow({
@@ -26,13 +27,20 @@ export function QACriticalRow({
   aiSuggested,
   onCriticalChange,
   onAcceptAI,
+  occurrenceCount,
 }: QACriticalRowProps) {
   return (
     <div className={`flex flex-col md:flex-row md:items-center gap-4 p-4 border rounded-lg ${hasCritical === true ? 'border-destructive bg-destructive/5' : ''}`}>
       <div className="flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <Label className="font-medium text-destructive">{subcategory}</Label>
+          <Badge variant="destructive" className="text-xs">Critical Error</Badge>
+          {occurrenceCount && occurrenceCount > 1 && (
+            <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+              {occurrenceCount === 2 ? '2nd' : occurrenceCount === 3 ? '3rd' : `${occurrenceCount}th`} occurrence
+            </Badge>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">{behavior}</p>
       </div>
