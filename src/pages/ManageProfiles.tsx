@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, ChevronLeft, Search, Briefcase, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
+import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
@@ -182,6 +183,8 @@ export default function ManageProfilesPage() {
     
     const result = await upsertProfile({
       ...editData,
+      full_name: normalizeNameForStorage(editData.full_name),
+      agent_name: normalizeNameForStorage(editData.agent_name),
       rate_history: rateHistory
     });
     

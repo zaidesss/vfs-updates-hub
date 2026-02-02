@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
+import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
@@ -282,6 +283,8 @@ export default function AgentProfilePage() {
     
     const result = await upsertProfile({
       ...profile,
+      full_name: normalizeNameForStorage(profile.full_name),
+      agent_name: normalizeNameForStorage(profile.agent_name),
       email: user.email.toLowerCase(),
       rate_history: rateHistory
     });
