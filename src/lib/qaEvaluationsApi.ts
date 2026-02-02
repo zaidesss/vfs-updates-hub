@@ -31,6 +31,13 @@ export interface QAEvaluation {
   status: string;
   created_at: string;
   updated_at: string;
+  // New fields for work week and agent review
+  work_week_start: string | null;
+  work_week_end: string | null;
+  coaching_date: string | null;
+  agent_remarks: string | null;
+  agent_reviewed: boolean;
+  agent_reviewed_at: string | null;
 }
 
 export interface QAEvaluationScore {
@@ -273,6 +280,28 @@ export async function acknowledgeEvaluation(id: string): Promise<QAEvaluation> {
     console.error('Failed to send acknowledgment notification:', notifError);
   }
   
+  return data as QAEvaluation;
+}
+
+// Mark evaluation as reviewed by agent
+export async function markAgentReviewed(id: string, remarks?: string): Promise<QAEvaluation> {
+  const updates: Partial<QAEvaluation> = {
+    agent_reviewed: true,
+    agent_reviewed_at: new Date().toISOString(),
+  };
+  
+  if (remarks) {
+    updates.agent_remarks = remarks;
+  }
+  
+  const { data, error } = await supabase
+    .from('qa_evaluations')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
   return data as QAEvaluation;
 }
 

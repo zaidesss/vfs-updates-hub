@@ -33,12 +33,14 @@ import {
   resolveAction,
   fetchEvaluationEvents,
   createEvaluationEvent,
+  markAgentReviewed,
   SCORING_CATEGORIES,
   type QAEvaluation,
   type QAEvaluationScore,
   type QAActionNeeded,
   type QAEvaluationEvent
 } from '@/lib/qaEvaluationsApi';
+import { Textarea } from '@/components/ui/textarea';
 
 const EST_TIMEZONE = 'America/New_York';
 
@@ -58,6 +60,7 @@ export default function QAEvaluationDetail() {
 
   const [acknowledging, setAcknowledging] = useState(false);
   const [acknowledgementChecked, setAcknowledgementChecked] = useState(false);
+  const [agentRemarks, setAgentRemarks] = useState('');
 
   const canViewAll = isAdmin || isHR || isSuperAdmin;
 
@@ -104,6 +107,39 @@ export default function QAEvaluationDetail() {
         title: 'Evaluation acknowledged',
         description: 'Thank you for reviewing this evaluation.',
       });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Mark as reviewed mutation
+  const reviewMutation = useMutation({
+    mutationFn: async ({ remarks }: { remarks?: string }) => {
+      const result = await markAgentReviewed(id!, remarks);
+      await createEvaluationEvent(
+        id!,
+        'agent_reviewed',
+        remarks ? 'Agent reviewed with remarks' : 'Agent marked as reviewed',
+        user?.email || '',
+        user?.name,
+        remarks ? { remarks } : undefined
+      );
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation', id] });
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation-events', id] });
+      toast({
+        title: 'Marked as Reviewed',
+        description: 'Thank you for reviewing this evaluation.',
+      });
+      setAgentRemarks('');
     },
     onError: (error: any) => {
       toast({
@@ -230,6 +266,35 @@ export default function QAEvaluationDetail() {
                 </div>
               </div>
             </div>
+
+            {/* Work Week & Coaching Date Info */}
+            {(evaluation.work_week_start || evaluation.work_week_end || evaluation.coaching_date) && (
+              <>
+                <Separator className="my-4" />
+                <div className="grid gap-4 md:grid-cols-3">
+                  {evaluation.work_week_start && evaluation.work_week_end && (
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Work Week</p>
+                        <p className="font-medium">
+                          {format(new Date(evaluation.work_week_start), 'MMM d')} - {format(new Date(evaluation.work_week_end), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {evaluation.coaching_date && (
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Coaching Date</p>
+                        <p className="font-medium">{format(new Date(evaluation.coaching_date), 'MMM d, yyyy')}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <Separator className="my-4" />
 
@@ -432,6 +497,69 @@ export default function QAEvaluationDetail() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Agent Review Section */}
+        {isAgent && !evaluation.agent_reviewed && evaluation.status === 'sent' && (
+          <Card className="border-chart-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                Review Evaluation
+              </CardTitle>
+              <CardDescription>
+                Mark this evaluation as reviewed and optionally add your remarks
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="agentRemarks">Remarks (Optional)</Label>
+                <Textarea
+                  id="agentRemarks"
+                  placeholder="Add any comments or feedback about this evaluation..."
+                  value={agentRemarks}
+                  onChange={(e) => setAgentRemarks(e.target.value)}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your remarks will be visible to evaluators and admins.
+                </p>
+              </div>
+              <Button 
+                onClick={() => reviewMutation.mutate({ remarks: agentRemarks || undefined })}
+                disabled={reviewMutation.isPending}
+                variant="outline"
+                className="w-full"
+              >
+                {reviewMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
+                Mark as Reviewed
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Agent Reviewed Status Display */}
+        {evaluation.agent_reviewed && (
+          <Card className="bg-chart-2/5 border-chart-2">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-chart-2 mb-2">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">
+                  Reviewed on {evaluation.agent_reviewed_at ? format(new Date(evaluation.agent_reviewed_at), 'MMM d, yyyy \'at\' h:mm a') : 'Unknown'}
+                </span>
+              </div>
+              {evaluation.agent_remarks && (
+                <div className="mt-3 p-3 bg-muted rounded-lg">
+                  <Label className="text-xs text-muted-foreground">Agent Remarks</Label>
+                  <p className="text-sm mt-1 whitespace-pre-wrap">{evaluation.agent_remarks}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
