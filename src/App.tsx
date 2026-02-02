@@ -36,6 +36,7 @@ import TicketLogs from "./pages/TicketLogs";
 import QAEvaluations from "./pages/QAEvaluations";
 import QAEvaluationForm from "./pages/QAEvaluationForm";
 import QAEvaluationDetail from "./pages/QAEvaluationDetail";
+import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -255,6 +256,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <QAEvaluationForm />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/qa-evaluations/edit/:id"
+        element={
+          <ProtectedRoute>
+            <QAEvaluationEdit />
           </ProtectedRoute>
         }
       />
