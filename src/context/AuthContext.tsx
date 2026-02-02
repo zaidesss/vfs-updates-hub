@@ -121,6 +121,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!data?.allowed) {
+        // Check for specific reason (e.g., terminated account)
+        if (data?.reason) {
+          return { success: false, error: data.reason };
+        }
         return { success: false, error: 'Email not recognized. Please contact your administrator to be added.' };
       }
     } catch (err) {

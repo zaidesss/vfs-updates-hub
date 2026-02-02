@@ -45,10 +45,41 @@ serve(async (req) => {
       });
     }
 
-    const allowed = !!data;
-    console.log(`Allowlist result for ${normalizedEmail}: ${allowed ? 'ALLOWED' : 'DENIED'}`);
+    // If not in user_roles, deny access
+    if (!data) {
+      console.log(`Allowlist result for ${normalizedEmail}: DENIED (not in user_roles)`);
+      return new Response(JSON.stringify({ allowed: false, role: null }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    return new Response(JSON.stringify({ allowed, role: data?.role || null }), {
+    // Check if agent has a profile with terminated status
+    const { data: profile, error: profileError } = await supabase
+      .from('agent_profiles')
+      .select('employment_status')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('Error checking profile:', profileError);
+      // Continue anyway - profile check is for terminated agents
+    }
+
+    // If agent has a profile with Terminated status, deny login
+    if (profile?.employment_status === 'Terminated') {
+      console.log(`Allowlist result for ${normalizedEmail}: DENIED (account terminated)`);
+      return new Response(JSON.stringify({ 
+        allowed: false, 
+        role: data.role, 
+        reason: 'Account has been deactivated. Please contact your administrator.' 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log(`Allowlist result for ${normalizedEmail}: ALLOWED`);
+
+    return new Response(JSON.stringify({ allowed: true, role: data.role }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
