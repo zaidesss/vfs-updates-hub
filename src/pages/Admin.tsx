@@ -56,7 +56,7 @@ import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
 
 export default function Admin() {
   const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
-  const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading } = useUpdates();
+  const { updates, acknowledgements, getAcknowledgementCount, getAcknowledgementsForUpdate, createUpdate, editUpdate, updateUpdateStatus, refreshData, isLoading, ensureLoaded } = useUpdates();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [admins, setAdmins] = useState<AdminRole[]>([]);
@@ -116,6 +116,11 @@ export default function Admin() {
     status: 'draft' as Update['status'],
     category: '' as UpdateCategory | '',
   });
+
+  // Trigger lazy loading of updates data
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   // Auto-populate Posted By when user changes
   useEffect(() => {

@@ -4,7 +4,7 @@ import { CATEGORY_CONFIG, UpdateCategory, getCategoryLabel } from '@/lib/categor
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Search, FileText, Clock, ChevronLeft } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Breadcrumb,
@@ -17,8 +17,12 @@ import {
 
 export default function CategoryArticles() {
   const { category } = useParams<{ category: string }>();
-  const { updates } = useUpdates();
+  const { updates, ensureLoaded } = useUpdates();
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   // Validate category
   const isValidCategory = category && category in CATEGORY_CONFIG;

@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useDemoTour } from '@/context/DemoTourContext';
@@ -16,7 +16,6 @@ import {
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
 import ImprovementsTracker from '@/components/ImprovementsTracker';
-import { supabase } from '@/integrations/supabase/client';
 
 interface LayoutProps {
   children: ReactNode;
@@ -36,30 +35,10 @@ interface NavGroup {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { user, logout, isAdmin, isHR, isSuperAdmin } = useAuth();
+  const { user, logout, isAdmin, isHR, isSuperAdmin, profileId: userProfileId } = useAuth();
   const { openTour } = useDemoTour();
   const location = useLocation();
   const [showImprovements, setShowImprovements] = useState(false);
-  const [userProfileId, setUserProfileId] = useState<string | null>(null);
-
-  // Fetch user's profile ID from agent_profiles for dashboard link
-  useEffect(() => {
-    const fetchUserProfileId = async () => {
-      if (!user?.email) return;
-      
-      const { data } = await supabase
-        .from('agent_profiles')
-        .select('id')
-        .eq('email', user.email)
-        .maybeSingle();
-      
-      if (data?.id) {
-        setUserProfileId(data.id);
-      }
-    };
-    
-    fetchUserProfileId();
-  }, [user?.email]);
 
   // Define grouped navigation
   const getNavGroups = (): NavGroup[] => {

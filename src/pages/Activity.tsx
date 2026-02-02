@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
@@ -11,7 +11,11 @@ import { formatDisplayDateTime } from '@/components/ui/date-picker';
 
 export default function Activity() {
   const { user } = useAuth();
-  const { updates, isAcknowledged, getAcknowledgement } = useUpdates();
+  const { updates, isAcknowledged, getAcknowledgement, ensureLoaded } = useUpdates();
+
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   const publishedUpdates = updates.filter(u => u.status === 'published');
 

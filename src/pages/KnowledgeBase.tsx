@@ -4,12 +4,16 @@ import { CATEGORY_CONFIG, UpdateCategory } from '@/lib/categories';
 import { Link } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Search, FileText, Clock, ChevronRight } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function KnowledgeBase() {
-  const { updates } = useUpdates();
+  const { updates, ensureLoaded } = useUpdates();
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   // Only show published updates
   const publishedUpdates = useMemo(() => 

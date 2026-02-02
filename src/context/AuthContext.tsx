@@ -9,6 +9,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   mustChangePassword: boolean;
+  profileId: string | null; // Cached profile ID for dashboard links
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }>;
   logout: () => void;
   isAdmin: boolean;
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hrStatus, setHrStatus] = useState(false);
   const [superAdminStatus, setSuperAdminStatus] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   const loadAdminEmails = async () => {
     const result = await fetchAdminEmails();
@@ -50,15 +52,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Defer admin check to avoid Supabase deadlock
           setTimeout(async () => {
             if (!mounted) return;
-            const isSuperAdminUser = await checkIsSuperAdmin(session.user.email || '');
-            const isAdminUser = await checkIsAdmin(session.user.email || '');
-            const isHRUser = await checkIsHR(session.user.email || '');
+            const userEmail = session.user.email || '';
+            const [isSuperAdminUser, isAdminUser, isHRUser, profileResult] = await Promise.all([
+              checkIsSuperAdmin(userEmail),
+              checkIsAdmin(userEmail),
+              checkIsHR(userEmail),
+              supabase.from('agent_profiles').select('id').eq('email', userEmail).maybeSingle()
+            ]);
             if (!mounted) return;
             setSuperAdminStatus(isSuperAdminUser);
             setHrStatus(isHRUser);
+            setProfileId(profileResult.data?.id || null);
             setUser({
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || session.user.email || '',
+              email: userEmail,
+              name: session.user.user_metadata?.name || userEmail,
               role: isSuperAdminUser ? 'admin' : isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
             });
           }, 0);
@@ -66,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setHrStatus(false);
           setSuperAdminStatus(false);
+          setProfileId(null);
         }
       }
     );
@@ -77,15 +85,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         
         if (session?.user?.email) {
-          const isSuperAdminUser = await checkIsSuperAdmin(session.user.email);
-          const isAdminUser = await checkIsAdmin(session.user.email);
-          const isHRUser = await checkIsHR(session.user.email);
+          const userEmail = session.user.email;
+          const [isSuperAdminUser, isAdminUser, isHRUser, profileResult] = await Promise.all([
+            checkIsSuperAdmin(userEmail),
+            checkIsAdmin(userEmail),
+            checkIsHR(userEmail),
+            supabase.from('agent_profiles').select('id').eq('email', userEmail).maybeSingle()
+          ]);
           if (!mounted) return;
           setSuperAdminStatus(isSuperAdminUser);
           setHrStatus(isHRUser);
+          setProfileId(profileResult.data?.id || null);
           setUser({
-            email: session.user.email,
-            name: session.user.user_metadata?.name || session.user.email,
+            email: userEmail,
+            name: session.user.user_metadata?.name || userEmail,
             role: isSuperAdminUser ? 'admin' : isAdminUser ? 'admin' : isHRUser ? 'admin' : 'agent'
           });
         }
@@ -172,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setHrStatus(false);
     setSuperAdminStatus(false);
     setMustChangePassword(false);
+    setProfileId(null);
   };
 
   const isAdmin = (user?.role === 'admin' && !hrStatus) || superAdminStatus;
@@ -179,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = superAdminStatus;
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, mustChangePassword, login, logout, isAdmin, isHR, isSuperAdmin, clearMustChangePassword }}>
+    <AuthContext.Provider value={{ user, isLoading, mustChangePassword, profileId, login, logout, isAdmin, isHR, isSuperAdmin, clearMustChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

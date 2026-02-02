@@ -208,76 +208,27 @@ export async function fetchTicketGaps(agentName?: string): Promise<TicketGapDail
   return data || [];
 }
 
-// Get dashboard data grouped by agent and date
+// Get dashboard data using optimized database function
 export async function fetchDashboardData(zdInstance?: string): Promise<{ data: AgentDashboardData[]; dateRange: { startDate: string; endDate: string; displayLabel: string } }> {
   const dateRange = getRollingTwoWeekRange();
 
-  // Fetch ticket logs within the rolling 2-week window
-  let logsQuery = supabase
-    .from('ticket_logs')
-    .select('agent_name, agent_email, timestamp, ticket_type')
-    .gte('timestamp', `${dateRange.startDate}T00:00:00.000Z`)
-    .lte('timestamp', `${dateRange.endDate}T23:59:59.999Z`)
-    .order('agent_name');
-
-  if (zdInstance) {
-    logsQuery = logsQuery.eq('zd_instance', zdInstance);
+  if (!zdInstance) {
+    return { data: [], dateRange };
   }
 
-  const { data: logs, error: logsError } = await logsQuery;
+  // Call the optimized database function
+  const { data, error } = await supabase.rpc('get_ticket_dashboard_data', {
+    p_zd_instance: zdInstance,
+    p_start_date: dateRange.startDate,
+    p_end_date: dateRange.endDate,
+  });
 
-  if (logsError) {
-    console.error('Error fetching logs for dashboard:', logsError);
-    throw logsError;
+  if (error) {
+    console.error('Error fetching dashboard data:', error);
+    throw error;
   }
 
-  // Fetch gap data within the rolling 2-week window
-  const { data: gaps, error: gapsError } = await supabase
-    .from('ticket_gap_daily')
-    .select('*')
-    .gte('date', dateRange.startDate)
-    .lte('date', dateRange.endDate);
-
-  if (gapsError) {
-    console.error('Error fetching gaps for dashboard:', gapsError);
-  }
-
-  // Fetch agent_directory to map agent_tag → email
-  const { data: agentDir } = await supabase
-    .from('agent_directory')
-    .select('agent_tag, email');
-
-  const tagToEmail: Record<string, string> = {};
-  for (const agent of agentDir || []) {
-    if (agent.agent_tag && agent.email) {
-      tagToEmail[agent.agent_tag.toLowerCase()] = agent.email.toLowerCase();
-    }
-  }
-
-  // Fetch agent_profiles to get profile IDs
-  const { data: profiles } = await supabase
-    .from('agent_profiles')
-    .select('id, email');
-
-  const emailToProfileId: Record<string, string> = {};
-  for (const p of profiles || []) {
-    if (p.email) {
-      emailToProfileId[p.email.toLowerCase()] = p.id;
-    }
-  }
-
-  // Fetch profile_status to get current login status
-  const { data: statusData } = await supabase
-    .from('profile_status')
-    .select('profile_id, current_status');
-
-  const profileIdToStatus: Record<string, string> = {};
-  for (const s of statusData || []) {
-    profileIdToStatus[s.profile_id] = s.current_status;
-  }
-
-  // Generate date range from startDate to endDate
-  // Parse dates correctly to avoid timezone issues
+  // Generate date range for the grid
   const dates: string[] = [];
   const [startYear, startMonth, startDay] = dateRange.startDate.split('-').map(Number);
   const [endYear, endMonth, endDay] = dateRange.endDate.split('-').map(Number);
@@ -288,57 +239,55 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
     dates.push(format(new Date(d), 'yyyy-MM-dd'));
   }
 
-  // Group by agent
-  const agentMap: Record<string, { email: string | null; counts: Record<string, { email: number; chat: number; call: number }> }> = {};
+  // Group the flat data by agent
+  const agentMap: Record<string, { 
+    email: string | null; 
+    isActive: boolean;
+    counts: Record<string, { email: number; chat: number; call: number; avgGapSeconds: number | null }> 
+  }> = {};
 
-  for (const log of logs || []) {
-    if (!agentMap[log.agent_name]) {
-      agentMap[log.agent_name] = { email: log.agent_email, counts: {} };
+  for (const row of data || []) {
+    const agentName = row.agent_name;
+    const logDate = row.log_date; // Already a date string from the DB
+
+    if (!agentMap[agentName]) {
+      agentMap[agentName] = { 
+        email: row.agent_email, 
+        isActive: row.is_logged_in,
+        counts: {} 
+      };
     }
 
-    // Format timestamp in EST to bucket correctly by EST day
-    const logDate = formatTimestampAsESTDate(log.timestamp);
-    if (!agentMap[log.agent_name].counts[logDate]) {
-      agentMap[log.agent_name].counts[logDate] = { email: 0, chat: 0, call: 0 };
+    if (!agentMap[agentName].counts[logDate]) {
+      agentMap[agentName].counts[logDate] = { 
+        email: 0, 
+        chat: 0, 
+        call: 0, 
+        avgGapSeconds: null 
+      };
     }
 
-    const type = log.ticket_type.toLowerCase();
-    if (type === 'email') {
-      agentMap[log.agent_name].counts[logDate].email++;
-    } else if (type === 'chat') {
-      agentMap[log.agent_name].counts[logDate].chat++;
-    } else if (type === 'call') {
-      agentMap[log.agent_name].counts[logDate].call++;
-    }
-  }
-
-  // Create gap lookup
-  const gapLookup: Record<string, number | null> = {};
-  for (const gap of gaps || []) {
-    gapLookup[`${gap.agent_name}-${gap.date}`] = gap.avg_gap_seconds;
+    agentMap[agentName].counts[logDate] = {
+      email: Number(row.email_count),
+      chat: Number(row.chat_count),
+      call: Number(row.call_count),
+      avgGapSeconds: row.avg_gap_seconds ? Number(row.avg_gap_seconds) : null,
+    };
   }
 
   // Build result
-  const result: AgentDashboardData[] = Object.entries(agentMap).map(([agentName, data]) => {
-    // Use lookup chain: agent_name → agent_tag → email → profile_id → current_status
-    const agentEmail = tagToEmail[agentName.toLowerCase()];
-    const profileId = agentEmail ? emailToProfileId[agentEmail] : null;
-    const currentStatus = profileId ? profileIdToStatus[profileId] : null;
-    const isActive = currentStatus === 'LOGGED_IN';
-
-    return {
-      agent_name: agentName,
-      agent_email: data.email,
-      dates: dates.map(date => ({
-        date,
-        email: data.counts[date]?.email || 0,
-        chat: data.counts[date]?.chat || 0,
-        call: data.counts[date]?.call || 0,
-        avgGapSeconds: gapLookup[`${agentName}-${date}`] ?? null,
-        isActive,
-      })),
-    };
-  });
+  const result: AgentDashboardData[] = Object.entries(agentMap).map(([agentName, agentData]) => ({
+    agent_name: agentName,
+    agent_email: agentData.email,
+    dates: dates.map(date => ({
+      date,
+      email: agentData.counts[date]?.email || 0,
+      chat: agentData.counts[date]?.chat || 0,
+      call: agentData.counts[date]?.call || 0,
+      avgGapSeconds: agentData.counts[date]?.avgGapSeconds ?? null,
+      isActive: agentData.isActive,
+    })),
+  }));
 
   return {
     data: result.sort((a, b) => a.agent_name.localeCompare(b.agent_name)),

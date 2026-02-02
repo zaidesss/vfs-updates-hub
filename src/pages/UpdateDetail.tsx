@@ -40,12 +40,16 @@ export default function UpdateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate } = useUpdates();
+  const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate, ensureLoaded, isLoading } = useUpdates();
 
   const [question, setQuestion] = useState('');
   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false);
   const [changeHistory, setChangeHistory] = useState<UpdateChangeHistory[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   const update = getUpdateById(id || '');
   const acknowledged = user ? isAcknowledged(id || '', user.email) : false;
@@ -77,6 +81,17 @@ export default function UpdateDetail() {
     }
     return null;
   }, [update?.body]);
+
+  // Show loading while data is being fetched
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!update) {
     return (

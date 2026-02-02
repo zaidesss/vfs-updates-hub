@@ -18,6 +18,7 @@ interface UpdatesContextType {
   editUpdate: (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>, changedBy?: string) => Promise<void>;
   updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
   refreshData: () => Promise<void>;
+  ensureLoaded: () => void; // Trigger lazy loading
 }
 
 const UpdatesContext = createContext<UpdatesContextType | undefined>(undefined);
@@ -25,10 +26,13 @@ const UpdatesContext = createContext<UpdatesContextType | undefined>(undefined);
 export function UpdatesProvider({ children }: { children: ReactNode }) {
   const [updates, setUpdates] = useState<Update[]>([]);
   const [acknowledgements, setAcknowledgements] = useState<Acknowledgement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const { toast } = useToast();
 
   const loadData = async () => {
+    if (initialized) return; // Already loaded
+    
     setIsLoading(true);
     
     const [updatesResult, acksResult] = await Promise.all([
@@ -49,14 +53,21 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     }
 
     setIsLoading(false);
+    setInitialized(true);
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Lazy initialization - don't fetch on mount, wait for first access
 
   const refreshData = async () => {
+    setInitialized(false); // Force reload
     await loadData();
+  };
+
+  // Ensure data is loaded - call this before accessing updates
+  const ensureLoaded = () => {
+    if (!initialized && !isLoading) {
+      loadData();
+    }
   };
 
   const getUpdateById = (id: string) => updates.find(u => u.id === id);
@@ -191,6 +202,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       editUpdate,
       updateUpdateStatus,
       refreshData,
+      ensureLoaded,
     }}>
       {children}
     </UpdatesContext.Provider>
