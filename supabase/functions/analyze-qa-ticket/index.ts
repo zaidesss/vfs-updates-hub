@@ -43,46 +43,51 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Build the prompt
+    // Build the prompt with ALL-OR-NOTHING scoring instructions
     const systemPrompt = `You are an expert Quality Assurance evaluator for customer service interactions. 
 Analyze the provided ticket conversation and score the agent's performance.
 
-Scoring Guidelines:
-- Regular scores range from 2 (Needs Improvement) to 6 (Excellent)
-- 2 = Major issues, needs significant improvement
-- 3 = Below expectations, multiple issues
-- 4 = Meets basic expectations
-- 5 = Good performance, minor areas for improvement  
-- 6 = Excellent, exceeds expectations
+IMPORTANT - ALL-OR-NOTHING SCORING:
+- This is a binary scoring system. For each subcategory, the agent either PASSES (full points) or FAILS (0 points).
+- There are NO partial scores. Each subcategory has a maximum point value - the agent gets either 0 or that max value.
+- Award the FULL points if the agent met the standard for that behavior.
+- Award 0 points if the agent failed to meet the standard.
 
 Critical Error Detection:
-- For critical error categories, return true ONLY if the agent clearly violated the policy
-- "Sharing Internal Info" = Agent shared internal processes, system issues, or company-only information
-- "Incorrect Critical Info" = Agent provided factually wrong information about orders, refunds, or policies
-- "Policy Breach" = Agent violated a major company policy
+- For critical error categories, return true ONLY if the agent clearly violated the policy.
+- "Incorrect Critical Info" = Agent provided factually wrong critical information
+- "Policy and Process Breach" = Agent violated a major company policy or process
+- "Security Breach" = Agent committed a security violation
+- "Rude / Disrespectful Behavior" = Agent was rude or disrespectful to the customer
 
-Be fair and objective. If unsure, err on the side of the agent.`;
+Be fair and objective. If unsure about a failure, award the full points.`;
 
     const userPrompt = `Analyze this customer service ticket conversation and provide scores for each category.
 
 === TICKET CONTENT ===
 ${ticketContent}
 
-=== SCORING CATEGORIES ===
+=== SCORING CATEGORIES (ALL-OR-NOTHING) ===
 ${categories.map(cat => 
   `${cat.category}:\n${cat.subcategories.map(sub => 
-    `- ${sub.subcategory}: ${sub.behavior} (${sub.isCritical ? 'Critical Error: Yes/No' : `Score 2-${sub.maxPoints}`})`
+    sub.isCritical 
+      ? `- ${sub.subcategory}: ${sub.behavior} (Critical Error: Yes/No)`
+      : `- ${sub.subcategory}: ${sub.behavior} (ALL-OR-NOTHING: 0 or ${sub.maxPoints} points)`
   ).join('\n')}`
 ).join('\n\n')}
 
 Return a JSON object with keys in format "Category|Subcategory" and values containing:
-- For regular scores: { "score": number (2-6) }
+- For regular scores: { "score": number } - MUST be either 0 or the exact max points shown above
 - For critical errors: { "criticalError": boolean }
+
+IMPORTANT: Scores must be EXACTLY 0 (fail) or the max points value (pass). No other values are valid.
 
 Example response format:
 {
-  "Communication and Professionalism|Tone and Empathy": { "score": 5 },
-  "Communication and Professionalism|Critical Error: Sharing Internal Info": { "criticalError": false }
+  "Accuracy|Language & Grammar": { "score": 3 },
+  "Accuracy|Clarity & Structure": { "score": 0 },
+  "Accuracy|Incorrect Critical Info": { "criticalError": false },
+  "Compliance|Policy and Process Breach": { "criticalError": false }
 }`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -132,7 +137,34 @@ Example response format:
       // Try to extract JSON from the response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        suggestions = JSON.parse(jsonMatch[0]);
+        const rawSuggestions = JSON.parse(jsonMatch[0]);
+        
+        // Validate and clamp scores to be exactly 0 or maxPoints
+        // Build a map of subcategory -> maxPoints for validation
+        const maxPointsMap: Record<string, number> = {};
+        categories.forEach(cat => {
+          cat.subcategories.forEach(sub => {
+            const key = `${cat.category}|${sub.subcategory}`;
+            maxPointsMap[key] = sub.maxPoints;
+          });
+        });
+        
+        // Validate each suggestion
+        for (const [key, value] of Object.entries(rawSuggestions)) {
+          if (typeof value === 'object' && value !== null) {
+            const typedValue = value as { score?: number; criticalError?: boolean };
+            if ('criticalError' in typedValue) {
+              // Critical error - keep as-is
+              suggestions[key] = typedValue;
+            } else if ('score' in typedValue && typeof typedValue.score === 'number') {
+              // Regular score - ensure it's 0 or maxPoints
+              const maxPoints = maxPointsMap[key] || 0;
+              // If AI returned something other than 0 or maxPoints, interpret as pass/fail
+              const normalizedScore = typedValue.score > 0 ? maxPoints : 0;
+              suggestions[key] = { score: normalizedScore };
+            }
+          }
+        }
       }
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
