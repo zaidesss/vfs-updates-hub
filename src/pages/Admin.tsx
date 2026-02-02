@@ -46,6 +46,7 @@ import { deleteUpdate } from '@/lib/requestApi';
 import { toast } from 'sonner';
 import { getDefaultDeadline } from '@/lib/dateUtils';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
+import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 import { SimilarUpdatesModal } from '@/components/SimilarUpdatesModal';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
@@ -259,7 +260,7 @@ export default function Admin() {
     const { data, error } = await createUserWithPassword(
       newUserData.email.trim(),
       newUserData.password.trim(),
-      newUserData.name.trim(),
+      normalizeNameForStorage(newUserData.name.trim()),
       newUserData.role
     );
     setIsCreatingUser(false);

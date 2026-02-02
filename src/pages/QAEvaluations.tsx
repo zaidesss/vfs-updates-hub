@@ -47,6 +47,7 @@ import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
 import { DatePicker } from '@/components/ui/date-picker';
+import { toProperCase } from '@/lib/stringUtils';
 
 type FilterTab = 'all' | 'current_week' | 'previous_week' | 'monthly' | 'quarterly' | 'custom';
 
@@ -513,13 +514,13 @@ export default function QAEvaluations() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span>{formatInEST(evaluation.created_at, 'MMM d, yyyy')}</span>
+                          <span>{formatInEST(evaluation.created_at, 'MM-dd-yy')}</span>
                           <span className="text-xs text-muted-foreground">
                             {formatInEST(evaluation.created_at, 'h:mm a')} EST
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">{evaluation.agent_name}</TableCell>
+                      <TableCell className="font-medium">{toProperCase(evaluation.agent_name)}</TableCell>
                       <TableCell>
                         {evaluation.ticket_url ? (
                           <a 
@@ -534,7 +535,7 @@ export default function QAEvaluations() {
                           `#${evaluation.ticket_id}`
                         )}
                       </TableCell>
-                      <TableCell>{evaluation.evaluator_name || evaluation.evaluator_email}</TableCell>
+                      <TableCell>{toProperCase(evaluation.evaluator_name) || evaluation.evaluator_email}</TableCell>
                       <TableCell>
                         <span className={evaluation.has_critical_fail ? 'text-destructive font-medium' : ''}>
                           {evaluation.percentage}%
