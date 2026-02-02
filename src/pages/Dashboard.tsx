@@ -6,11 +6,12 @@ import { useUpdates } from '@/context/UpdatesContext';
 
 export default function Dashboard() {
   const { isAdmin } = useAuth();
-  const { updates, acknowledgements, isLoading } = useUpdates();
+  const { updates, acknowledgements, isLoading, ensureLoaded } = useUpdates();
 
   useEffect(() => {
+    ensureLoaded();
     document.title = 'Dashboard | VFS Updates Hub';
-  }, []);
+  }, [ensureLoaded]);
 
   if (!isAdmin) {
     return (

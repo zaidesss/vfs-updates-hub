@@ -39,7 +39,16 @@ import QAEvaluationDetail from "./pages/QAEvaluationDetail";
 import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes - prevents refetching fresh data
+      gcTime: 10 * 60 * 1000, // 10 minutes - keeps cached data longer
+      refetchOnWindowFocus: false, // Don't refetch on tab focus
+      retry: 1, // Faster failure feedback
+    },
+  },
+});
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();

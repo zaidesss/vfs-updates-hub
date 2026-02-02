@@ -4,16 +4,29 @@ import { PlaybookPage } from '@/components/playbook/PlaybookPage';
 import { PlaybookArticle as PlaybookArticleType } from '@/lib/playbookTypes';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 
 export default function PlaybookArticle() {
   const { category, id } = useParams<{ category: string; id: string }>();
-  const { updates } = useUpdates();
+  const { updates, ensureLoaded, isLoading } = useUpdates();
+
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   const update = useMemo(() => 
     updates.find(u => u.id === id),
     [updates, id]
   );
+
+  // Wait for updates to load before redirecting
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   if (!update) {
     return <Navigate to="/knowledge-base" replace />;

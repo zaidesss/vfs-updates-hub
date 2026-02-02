@@ -1742,6 +1742,23 @@ export type Database = {
     }
     Functions: {
       get_super_admin_count: { Args: never; Returns: number }
+      get_ticket_dashboard_data: {
+        Args: {
+          p_end_date: string
+          p_start_date: string
+          p_zd_instance: string
+        }
+        Returns: {
+          agent_email: string
+          agent_name: string
+          avg_gap_seconds: number
+          call_count: number
+          chat_count: number
+          email_count: number
+          is_logged_in: boolean
+          log_date: string
+        }[]
+      }
       has_role: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean

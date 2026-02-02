@@ -24,11 +24,13 @@ type FilterTab = 'unread' | 'read' | 'all';
 
 export default function Updates() {
   const { user, isAdmin, isHR } = useAuth();
-  const { updates, acknowledgements, isAcknowledged, isLoading, refreshData } = useUpdates();
+  const { updates, acknowledgements, isAcknowledged, isLoading, refreshData, ensureLoaded } = useUpdates();
 
+  // Trigger lazy loading of updates data
   useEffect(() => {
+    ensureLoaded();
     document.title = 'Updates | VFS Updates Hub';
-  }, []);
+  }, [ensureLoaded]);
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
