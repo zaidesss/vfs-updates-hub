@@ -466,6 +466,40 @@ export default function QAEvaluationForm() {
             <CardTitle>Evaluation Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Work Week & Coaching Date Row - First fields to fill */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="workWeekStart">Work Week Start</Label>
+                <Input
+                  id="workWeekStart"
+                  type="date"
+                  value={workWeekStart}
+                  onChange={(e) => setWorkWeekStart(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workWeekEnd">Work Week End</Label>
+                <Input
+                  id="workWeekEnd"
+                  type="date"
+                  value={workWeekEnd}
+                  onChange={(e) => setWorkWeekEnd(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="coachingDate">Coaching Date <span className="text-destructive">*</span></Label>
+                <Input
+                  id="coachingDate"
+                  type="date"
+                  value={coachingDate}
+                  onChange={(e) => setCoachingDate(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Required before sending to agent</p>
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="agent">Agent</Label>
@@ -529,40 +563,6 @@ export default function QAEvaluationForm() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-
-            {/* Work Week & Coaching Date Row */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="workWeekStart">Work Week Start</Label>
-                <Input
-                  id="workWeekStart"
-                  type="date"
-                  value={workWeekStart}
-                  onChange={(e) => setWorkWeekStart(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="workWeekEnd">Work Week End</Label>
-                <Input
-                  id="workWeekEnd"
-                  type="date"
-                  value={workWeekEnd}
-                  onChange={(e) => setWorkWeekEnd(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="coachingDate">Coaching Date <span className="text-destructive">*</span></Label>
-                <Input
-                  id="coachingDate"
-                  type="date"
-                  value={coachingDate}
-                  onChange={(e) => setCoachingDate(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Required before sending to agent</p>
               </div>
             </div>
 
