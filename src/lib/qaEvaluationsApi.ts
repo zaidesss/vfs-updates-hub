@@ -35,6 +35,7 @@ export interface QAEvaluation {
   work_week_start: string | null;
   work_week_end: string | null;
   coaching_date: string | null;
+  coaching_time: string | null;
   agent_remarks: string | null;
   agent_reviewed: boolean;
   agent_reviewed_at: string | null;
@@ -104,6 +105,39 @@ export interface CreateQAEvaluationInput {
   work_week_start?: string;
   work_week_end?: string;
   coaching_date?: string;
+  coaching_time?: string;
+}
+
+// Occurrence with evaluation reference
+export interface OccurrenceWithReference {
+  subcategory: string | null;
+  action_plan_id: string | null;
+  evaluation_id: string;
+  reference_number: string | null;
+  audit_date: string;
+}
+
+// Fetch action plan occurrences with evaluation references for an agent
+export async function fetchActionPlanOccurrencesWithReferences(agentEmail: string): Promise<OccurrenceWithReference[]> {
+  const { data, error } = await supabase
+    .from('qa_action_plan_occurrences')
+    .select(`
+      subcategory,
+      action_plan_id,
+      evaluation_id,
+      evaluation:qa_evaluations!inner(reference_number, audit_date)
+    `)
+    .eq('agent_email', agentEmail);
+
+  if (error) throw error;
+
+  return (data || []).map(row => ({
+    subcategory: row.subcategory,
+    action_plan_id: row.action_plan_id,
+    evaluation_id: row.evaluation_id,
+    reference_number: (row.evaluation as any)?.reference_number || null,
+    audit_date: (row.evaluation as any)?.audit_date || '',
+  }));
 }
 
 export interface CreateQAScoreInput {

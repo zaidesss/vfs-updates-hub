@@ -10,6 +10,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   ArrowLeft, 
   ExternalLink, 
@@ -23,7 +30,10 @@ import {
   Loader2,
   Mail,
   RefreshCw,
-  Eye
+  Eye,
+  Pencil,
+  Send,
+  MessageSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
@@ -34,6 +44,8 @@ import {
   fetchEvaluationEvents,
   createEvaluationEvent,
   markAgentReviewed,
+  updateQAEvaluation,
+  sendQANotification,
   SCORING_CATEGORIES,
   PASS_THRESHOLD,
   type QAEvaluation,
@@ -42,6 +54,7 @@ import {
   type QAEvaluationEvent
 } from '@/lib/qaEvaluationsApi';
 import { Textarea } from '@/components/ui/textarea';
+import { CoachingReminderDialog } from '@/components/qa/CoachingReminderDialog';
 
 const EST_TIMEZONE = 'America/New_York';
 
@@ -52,6 +65,14 @@ function formatInEST(date: Date | string, formatStr: string): string {
   return formatTz(zonedDate, formatStr, { timeZone: EST_TIMEZONE });
 }
 
+// Action status options
+const ACTION_STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending', color: 'bg-amber-100 text-amber-800' },
+  { value: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-800' },
+  { value: 'resolved', label: 'Resolved', color: 'bg-green-100 text-green-800' },
+  { value: 'carried_over', label: 'Carried Over', color: 'bg-purple-100 text-purple-800' },
+];
+
 export default function QAEvaluationDetail() {
   const { id } = useParams<{ id: string }>();
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
@@ -59,9 +80,9 @@ export default function QAEvaluationDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [acknowledging, setAcknowledging] = useState(false);
   const [acknowledgementChecked, setAcknowledgementChecked] = useState(false);
   const [agentRemarks, setAgentRemarks] = useState('');
+  const [showCoachingReminder, setShowCoachingReminder] = useState(false);
 
   const canViewAll = isAdmin || isHR || isSuperAdmin;
 
@@ -108,6 +129,8 @@ export default function QAEvaluationDetail() {
         title: 'Evaluation acknowledged',
         description: 'Thank you for reviewing this evaluation.',
       });
+      // Show coaching reminder popup
+      setShowCoachingReminder(true);
     },
     onError: (error: any) => {
       toast({
@@ -212,11 +235,50 @@ export default function QAEvaluationDetail() {
               ) : (
                 <Badge variant="destructive">Fail</Badge>
               )}
+              {evaluation.status === 'draft' && (
+                <Badge variant="secondary">Draft</Badge>
+              )}
             </div>
             <p className="text-muted-foreground">
               Evaluation for {evaluation.agent_name}
             </p>
           </div>
+          
+          {/* Draft Actions - Edit and Send */}
+          {canViewAll && evaluation.status === 'draft' && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/team-performance/qa-evaluations/edit/${id}`)}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit Draft
+              </Button>
+              <Button
+                onClick={async () => {
+                  try {
+                    await updateQAEvaluation(id!, { status: 'sent' });
+                    await sendQANotification(id!, 'new_evaluation');
+                    queryClient.invalidateQueries({ queryKey: ['qa-evaluation', id] });
+                    queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+                    toast({
+                      title: 'Evaluation sent',
+                      description: 'The agent will receive a notification email.',
+                    });
+                  } catch (err: any) {
+                    toast({
+                      title: 'Error',
+                      description: err.message,
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Send to Agent
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Overview */}
@@ -288,8 +350,13 @@ export default function QAEvaluationDetail() {
                     <div className="flex items-center gap-3">
                       <Calendar className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <p className="text-sm text-muted-foreground">Coaching Date</p>
-                        <p className="font-medium">{format(new Date(evaluation.coaching_date), 'MMM d, yyyy')}</p>
+                        <p className="text-sm text-muted-foreground">Coaching Date & Time</p>
+                        <p className="font-medium">
+                          {format(new Date(evaluation.coaching_date), 'MMM d, yyyy')}
+                          {(evaluation as any).coaching_time && (
+                            <span className="ml-2 text-muted-foreground">at {(evaluation as any).coaching_time}</span>
+                          )}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -465,38 +532,80 @@ export default function QAEvaluationDetail() {
             <CardHeader>
               <CardTitle>Action Items</CardTitle>
               <CardDescription>
-                {isAgent ? 'Check items as you complete them' : 'Action items assigned to the agent'}
+                {isAgent ? 'Check items as you complete them' : 'Track action item progress'}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {actions.map((action) => (
-                  <div 
-                    key={action.id} 
-                    className={`flex items-center gap-3 p-3 rounded-lg ${
-                      action.is_resolved ? 'bg-chart-2/10' : 'bg-muted/50'
-                    }`}
-                  >
-                    {isAgent && !action.is_resolved && (
-                      <Checkbox
-                        checked={action.is_resolved}
-                        onCheckedChange={() => resolveActionMutation.mutate(action.id)}
-                        disabled={resolveActionMutation.isPending}
-                      />
-                    )}
-                    {action.is_resolved && (
-                      <CheckCircle2 className="h-5 w-5 text-chart-2" />
-                    )}
-                    <div className="flex-1">
-                      <p className={action.is_resolved ? 'line-through text-muted-foreground' : ''}>
-                        {action.action_plan?.action_text || action.custom_action}
-                      </p>
+                {actions.map((action) => {
+                  const currentStatus = action.is_resolved ? 'resolved' : 'pending';
+                  const statusOption = ACTION_STATUS_OPTIONS.find(s => s.value === currentStatus);
+                  
+                  return (
+                    <div 
+                      key={action.id} 
+                      className={`flex items-center gap-3 p-3 rounded-lg ${
+                        action.is_resolved ? 'bg-chart-2/10' : 'bg-muted/50'
+                      }`}
+                    >
+                      {isAgent && !action.is_resolved && (
+                        <Checkbox
+                          checked={action.is_resolved}
+                          onCheckedChange={() => resolveActionMutation.mutate(action.id)}
+                          disabled={resolveActionMutation.isPending}
+                        />
+                      )}
+                      {action.is_resolved && (
+                        <CheckCircle2 className="h-5 w-5 text-chart-2" />
+                      )}
+                      <div className="flex-1">
+                        <p className={action.is_resolved ? 'line-through text-muted-foreground' : ''}>
+                          {action.action_plan?.action_text || action.custom_action}
+                        </p>
+                      </div>
+                      {action.action_plan?.category && (
+                        <Badge variant="outline">{action.action_plan.category}</Badge>
+                      )}
+                      
+                      {/* Status indicator/dropdown for leads */}
+                      {canViewAll ? (
+                        <Select
+                          value={currentStatus}
+                          onValueChange={async (value) => {
+                            if (value === 'resolved') {
+                              resolveActionMutation.mutate(action.id);
+                            }
+                            // Track the status change in events
+                            await createEvaluationEvent(
+                              id!,
+                              'action_status_changed',
+                              `Action status changed to ${ACTION_STATUS_OPTIONS.find(s => s.value === value)?.label || value}`,
+                              user?.email || '',
+                              user?.name,
+                              { actionId: action.id, previousStatus: currentStatus, newStatus: value }
+                            );
+                            queryClient.invalidateQueries({ queryKey: ['qa-evaluation-events', id] });
+                          }}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ACTION_STATUS_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge className={statusOption?.color || ''}>
+                          {statusOption?.label || 'Pending'}
+                        </Badge>
+                      )}
                     </div>
-                    {action.action_plan?.category && (
-                      <Badge variant="outline">{action.action_plan.category}</Badge>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -592,8 +701,13 @@ export default function QAEvaluationDetail() {
                       {event.event_type === 'notification_resent' && <RefreshCw className="h-3 w-3 text-primary" />}
                       {event.event_type === 'agent_acknowledged' && <CheckCircle2 className="h-3 w-3 text-chart-2" />}
                       {event.event_type === 'agent_reviewed' && <Eye className="h-3 w-3 text-primary" />}
-                      {event.event_type === 'agent_remarks' && <FileText className="h-3 w-3 text-primary" />}
-                      {!['notification_sent', 'notification_resent', 'agent_acknowledged', 'agent_reviewed', 'agent_remarks'].includes(event.event_type) && (
+                      {event.event_type === 'agent_remarks' && <MessageSquare className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'action_status_changed' && <RefreshCw className="h-3 w-3 text-chart-4" />}
+                      {event.event_type === 'action_resolved' && <CheckCircle2 className="h-3 w-3 text-chart-2" />}
+                      {event.event_type === 'evaluation_created' && <FileText className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'evaluation_sent' && <Send className="h-3 w-3 text-primary" />}
+                      {event.event_type === 'evaluation_edited' && <Pencil className="h-3 w-3 text-chart-4" />}
+                      {!['notification_sent', 'notification_resent', 'agent_acknowledged', 'agent_reviewed', 'agent_remarks', 'action_status_changed', 'action_resolved', 'evaluation_created', 'evaluation_sent', 'evaluation_edited'].includes(event.event_type) && (
                         <Clock className="h-3 w-3 text-muted-foreground" />
                       )}
                     </div>
@@ -663,6 +777,15 @@ export default function QAEvaluationDetail() {
           </div>
         )}
       </div>
+
+      {/* Coaching Reminder Dialog */}
+      <CoachingReminderDialog
+        open={showCoachingReminder}
+        onClose={() => setShowCoachingReminder(false)}
+        coachingDate={evaluation.coaching_date}
+        coachingTime={(evaluation as any).coaching_time}
+        evaluatorName={evaluation.evaluator_name}
+      />
     </Layout>
   );
 }

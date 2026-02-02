@@ -1167,6 +1167,7 @@ export type Database = {
           agent_reviewed_at: string | null
           audit_date: string
           coaching_date: string | null
+          coaching_time: string | null
           compliance_feedback: string | null
           compliance_kudos: string | null
           created_at: string
@@ -1204,6 +1205,7 @@ export type Database = {
           agent_reviewed_at?: string | null
           audit_date?: string
           coaching_date?: string | null
+          coaching_time?: string | null
           compliance_feedback?: string | null
           compliance_kudos?: string | null
           created_at?: string
@@ -1241,6 +1243,7 @@ export type Database = {
           agent_reviewed_at?: string | null
           audit_date?: string
           coaching_date?: string | null
+          coaching_time?: string | null
           compliance_feedback?: string | null
           compliance_kudos?: string | null
           created_at?: string

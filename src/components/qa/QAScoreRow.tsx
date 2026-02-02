@@ -27,6 +27,7 @@ interface QAScoreRowProps {
   onScoreChange: (score: number) => void;
   onAcceptAI: () => void;
   occurrenceCount?: number;
+  occurrenceReferences?: string[]; // QA-XXXX references from previous occurrences
 }
 
 export function QAScoreRow({
@@ -40,6 +41,7 @@ export function QAScoreRow({
   onScoreChange,
   onAcceptAI,
   occurrenceCount,
+  occurrenceReferences = [],
 }: QAScoreRowProps) {
   const [justificationOpen, setJustificationOpen] = useState(false);
   
@@ -56,8 +58,17 @@ export function QAScoreRow({
           <div className="flex items-center gap-2">
             <Label className="font-medium">{subcategory}</Label>
             {occurrenceCount && occurrenceCount > 1 && (
-              <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-amber-100 text-amber-800 border-amber-300"
+                title={occurrenceReferences.length > 0 ? `Previous: ${occurrenceReferences.join(', ')}` : undefined}
+              >
                 {occurrenceCount === 2 ? '2nd' : occurrenceCount === 3 ? '3rd' : `${occurrenceCount}th`} occurrence
+                {occurrenceReferences.length > 0 && (
+                  <span className="ml-1 text-amber-600">
+                    ({occurrenceReferences.slice(0, 3).join(', ')}{occurrenceReferences.length > 3 ? '...' : ''})
+                  </span>
+                )}
               </Badge>
             )}
           </div>

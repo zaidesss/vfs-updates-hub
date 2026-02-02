@@ -107,10 +107,11 @@ export default function QAEvaluationForm() {
   const [ticketContent, setTicketContent] = useState('');
   const [isFetchingTicket, setIsFetchingTicket] = useState(false);
   
-  // Work week and coaching date
+  // Work week and coaching date/time
   const [workWeekStart, setWorkWeekStart] = useState<string>('');
   const [workWeekEnd, setWorkWeekEnd] = useState<string>('');
   const [coachingDate, setCoachingDate] = useState<string>('');
+  const [coachingTime, setCoachingTime] = useState<string>('');
 
   // Feedback state - per category
   const [accuracyFeedback, setAccuracyFeedback] = useState('');
@@ -165,29 +166,44 @@ export default function QAEvaluationForm() {
     enabled: !!selectedAgent?.email,
   });
 
-  // Fetch action plan occurrence counts for the selected agent
-  const { data: actionPlanOccurrences = {} } = useQuery({
-    queryKey: ['action-plan-occurrences', selectedAgent?.email],
+  // Fetch action plan occurrences with evaluation references for the selected agent
+  const { data: occurrenceData = { counts: {}, references: {} } } = useQuery({
+    queryKey: ['action-plan-occurrences-with-refs', selectedAgent?.email],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('qa_action_plan_occurrences')
-        .select('subcategory, action_plan_id')
-        .eq('agent_email', selectedAgent!.email);
+        .select(`
+          subcategory,
+          action_plan_id,
+          evaluation:qa_evaluations!inner(reference_number, audit_date)
+        `)
+        .eq('agent_email', selectedAgent!.email)
+        .order('occurred_at', { ascending: true });
       
       if (error) throw error;
       
-      // Count occurrences by subcategory
+      // Count occurrences and collect references by subcategory
       const counts: Record<string, number> = {};
+      const references: Record<string, string[]> = {};
+      
       (data || []).forEach(row => {
         const key = row.subcategory || row.action_plan_id;
         if (key) {
           counts[key] = (counts[key] || 0) + 1;
+          if (!references[key]) references[key] = [];
+          const refNum = (row.evaluation as any)?.reference_number;
+          if (refNum && !references[key].includes(refNum)) {
+            references[key].push(refNum);
+          }
         }
       });
-      return counts;
+      return { counts, references };
     },
     enabled: !!selectedAgent?.email,
   });
+
+  const actionPlanOccurrences = occurrenceData.counts;
+  const occurrenceReferences = occurrenceData.references;
 
   // Initialize scores from categories
   useEffect(() => {
@@ -469,6 +485,7 @@ export default function QAEvaluationForm() {
         work_week_start: workWeekStart || undefined,
         work_week_end: workWeekEnd || undefined,
         coaching_date: coachingDate || undefined,
+        coaching_time: coachingTime || undefined,
       });
 
       // Create scores - preserve category scores even if critical fail
@@ -621,8 +638,8 @@ export default function QAEvaluationForm() {
             <CardTitle>Evaluation Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Work Week & Coaching Date Row - First fields to fill */}
-            <div className="grid gap-4 md:grid-cols-3">
+            {/* Work Week & Coaching Date/Time Row - First fields to fill */}
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="workWeekStart">Work Week Start</Label>
                 <Input
@@ -651,7 +668,17 @@ export default function QAEvaluationForm() {
                   value={coachingDate}
                   onChange={(e) => setCoachingDate(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Required before sending to agent</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="coachingTime">Coaching Time</Label>
+                <Input
+                  id="coachingTime"
+                  type="time"
+                  value={coachingTime}
+                  onChange={(e) => setCoachingTime(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Optional</p>
               </div>
             </div>
 
@@ -853,6 +880,7 @@ export default function QAEvaluationForm() {
                   const key = `${category.category}|${sub.subcategory}`;
                   const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null, aiJustification: null };
                   const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
+                  const references = occurrenceReferences[sub.subcategory] || [];
 
                   return (
                     <QACriticalRow
@@ -865,6 +893,7 @@ export default function QAEvaluationForm() {
                       onCriticalChange={(v) => handleCriticalChange(key, v)}
                       onAcceptAI={(accept) => handleAcceptCriticalAI(key, accept)}
                       occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
+                      occurrenceReferences={references}
                     />
                   );
                 })}
@@ -874,6 +903,7 @@ export default function QAEvaluationForm() {
                   const key = `${category.category}|${sub.subcategory}`;
                   const scoreData = scores[key] || { score: null, aiSuggested: null, aiAccepted: null, criticalError: null, aiJustification: null };
                   const occurrenceCount = (actionPlanOccurrences[sub.subcategory] || 0) + 1;
+                  const references = occurrenceReferences[sub.subcategory] || [];
 
                   return (
                     <QAScoreRow
@@ -888,6 +918,7 @@ export default function QAEvaluationForm() {
                       onScoreChange={(v) => handleScoreChange(key, v)}
                       onAcceptAI={() => handleAcceptAI(key)}
                       occurrenceCount={occurrenceCount > 1 ? occurrenceCount : undefined}
+                      occurrenceReferences={references}
                     />
                   );
                 })}
