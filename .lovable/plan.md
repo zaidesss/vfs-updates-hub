@@ -1,295 +1,315 @@
 
 
-# Schema-Safe Upwork GraphQL Integration Fix
+# QA Evaluation System Enhancement - Implementation Plan
 
-## Current Status
+## Overview
 
-The `cellIndex` field has already been removed from the GraphQL query in the last edit. However, the implementation needs additional hardening to ensure:
-
-1. **No field guessing** - Only use fields confirmed via introspection
-2. **Explicit null handling** - Return `null` for start/end times (never infer from array position)
-3. **Schema discovery** - Add introspection capability to validate fields before use
-4. **Guardrails** - Add runtime validation to prevent future invalid field additions
+This plan implements 17 confirmed requirements for the QA Evaluation system, organized into logical phases for step-by-step implementation.
 
 ---
 
-## Implementation Plan
+## Phase 1: Database Schema Updates
 
-### Phase 1: Add GraphQL Schema Introspection
+### New Columns for `qa_evaluations` Table
 
-**File:** `supabase/functions/fetch-upwork-time/index.ts`
+| Column | Type | Purpose |
+|--------|------|---------|
+| `work_week_start` | DATE | Start date of the work week (e.g., Jan 26, 2026) |
+| `work_week_end` | DATE | End date of the work week (e.g., Feb 1, 2026) |
+| `coaching_date` | DATE | Required date for coaching session |
+| `agent_remarks` | TEXT | Agent's written response/reaction to violations |
+| `agent_reviewed` | BOOLEAN | Whether agent clicked "Reviewed" button |
+| `agent_reviewed_at` | TIMESTAMPTZ | When agent clicked "Reviewed" |
 
-Add an introspection query and execution to discover valid fields in the `Cell` type before querying:
+### New Table: `qa_action_plan_occurrences`
+
+Track repeat violations of the same action plan:
 
 ```text
-+------------------------------------+
-| INTROSPECTION QUERY                |
-+------------------------------------+
-| query IntrospectCell {             |
-|   __type(name: "Cell") {           |
-|     name                           |
-|     fields { name }                |
-|   }                                |
-| }                                  |
-+------------------------------------+
-         |
-         v
-+------------------------------------+
-| DISCOVERED FIELDS                  |
-| (e.g., memo, time, startTime, ...) |
-+------------------------------------+
-         |
-         v
-+------------------------------------+
-| USE ONLY CONFIRMED FIELDS          |
-| in production query                |
-+------------------------------------+
++---------------------------+
+| qa_action_plan_occurrences|
++---------------------------+
+| id: UUID (PK)             |
+| agent_email: TEXT         |
+| action_plan_id: UUID (FK) |
+| evaluation_id: UUID (FK)  |
+| occurrence_number: INT    |
+| created_at: TIMESTAMPTZ   |
++---------------------------+
 ```
-
-This will:
-- Run once per request (cached in logs for analysis)
-- Log discovered fields for debugging
-- Provide evidence-based field availability
-
-### Phase 2: Update GraphQL Query to Schema-Safe Baseline
-
-**Current Query (Already Fixed):**
-```graphql
-workDiary {
-  cells {
-    memo
-  }
-}
-```
-
-**Enhanced with __typename for safety:**
-```graphql
-workDiary {
-  cells {
-    __typename
-    memo
-  }
-}
-```
-
-The `__typename` field:
-- Always exists in GraphQL (built-in)
-- Confirms the type we're working with
-- Safe baseline that cannot cause validation errors
-
-### Phase 3: Fix First/Last Time Tracking Logic
-
-**Critical Principle:** DO NOT infer time-of-day from array index.
-
-The current code already sets `firstCellIndex` and `lastCellIndex` to `undefined`. We need to:
-
-1. Remove the `cellIndexToTime` function usage when no actual index exists
-2. Explicitly return `null` for `firstCellTime` and `lastCellTime` in the response
-3. Add comments explaining WHY we cannot compute these values
-4. Log the introspection results so we can discover if any time fields exist
-
-### Phase 4: Add Runtime Schema Validation
-
-Add a function that validates the response structure and logs anomalies:
-
-```typescript
-function validateCellStructure(cell: unknown): boolean {
-  // Log actual cell structure for discovery
-  // Validate only known-safe fields are accessed
-  // Return false if structure is unexpected
-}
-```
-
-### Phase 5: Update Response Contract
-
-Ensure the response explicitly communicates data availability:
-
-| Field | Value | Meaning |
-|-------|-------|---------|
-| `hours` | number | Total hours (cell count × 10 min) - RELIABLE |
-| `totalCells` | number | Raw cell count - RELIABLE |
-| `firstCellTime` | `null` | Not available - no time field in schema |
-| `lastCellTime` | `null` | Not available - no time field in schema |
-| `error` | string | Only set on actual errors |
 
 ---
 
-## Detailed Code Changes
+## Phase 2: Scoring Logic Changes
 
-### Step 1: Add Introspection Query Constant
+### 2.1 Update SCORING_CATEGORIES
 
-Add after line 210 (after `SIMPLE_CONTRACT_QUERY`):
+Based on the provided scoring sheet, update `src/lib/qaEvaluationsApi.ts`:
 
-```typescript
-// Introspection query to discover available Cell type fields
-// This is the ONLY source of truth for valid field names
-const INTROSPECT_CELL_QUERY = `
-  query IntrospectCell {
-    __type(name: "Cell") {
-      name
-      fields {
-        name
-        type {
-          name
-          kind
-        }
-      }
-    }
-  }
-`;
+```text
+Category: Communication and Professionalism
++---------------------------------------+------------+
+| Subcategory                           | Max Points |
++---------------------------------------+------------+
+| Critical Error: Sharing Internal Info | Yes/No     |
+| Tone and Empathy                      | 5          |
+| Clarity & Structure                   | 2          |
+| Uses correct spelling and grammar     | 3          |
++---------------------------------------+------------+
+| Accuracy Feedback (grouped here)      | Textarea   |
+| Accuracy Action Plans (grouped here)  | Selection  |
++---------------------------------------+------------+
+
+Category: Issue Resolution and Deliverables
++---------------------------------------+------------+
+| Subcategory                           | Max Points |
++---------------------------------------+------------+
+| Critical Error: Incorrect Critical    | Yes/No     |
+| Probes to identify root cause         | 5          |
+| Offers appropriate solution           | 3          |
+| Shows ownership                       | 2          |
+| Follows proper ticket handling        | 2          |
+| Applies FCR principle                 | 5          |
++---------------------------------------+------------+
+| Compliance Feedback (grouped here)    | Textarea   |
+| Compliance Action Plans (grouped)     | Selection  |
++---------------------------------------+------------+
+
+Category: Process and Policy Adherence
++---------------------------------------+------------+
+| Subcategory                           | Max Points |
++---------------------------------------+------------+
+| Critical Error: Policy Breach         | Yes/No     |
+| Follows established processes         | 3          |
+| Accurately identifies & escalates     | 3          |
++---------------------------------------+------------+
+| Customer Exp Feedback (grouped here)  | Textarea   |
+| Process Action Plans (grouped here)   | Selection  |
++---------------------------------------+------------+
+
+TOTAL MAX: 33 points
 ```
 
-### Step 2: Add Schema Introspection Function
+### 2.2 Critical Error Behavior
 
-Add new function after `executeGraphQLQuery`:
+When agent commits a critical error:
+- Total Score = 0 (automatic fail)
+- Category scores in the **affected category** = 0
+- **Other category scores are RETAINED** for visibility
+- Rating = "Fail"
+- Percentage = 0%
+
+### 2.3 Passing Score Threshold
+
+Update from 80% to **96%**:
+- Pass: >= 96% AND no critical errors
+- Fail: < 96% OR has critical error
+
+### 2.4 All-or-Nothing Scoring
+
+Each subcategory score is binary:
+- Example: "Clarity & Structure" (max 2) → score is either **0** or **2**
+- Example: "Tone and Empathy" (max 5) → score is either **0** or **5**
+
+---
+
+## Phase 3: AI Scoring Updates
+
+### Update Edge Function: `analyze-qa-ticket`
+
+Modify the AI prompt to suggest only binary scores:
+
+```text
+Current: "Score 2-6"
+Updated: "Score 0 (did not meet) or MAX_POINTS (met requirement)"
+```
+
+The AI will suggest:
+- For max 5: either 0 or 5
+- For max 3: either 0 or 3
+- For max 2: either 0 or 2
+
+---
+
+## Phase 4: Form UI Reorganization
+
+### 4.1 Category Section Structure
+
+Reorder each category section to show:
+
+```text
++------------------------------------------+
+| Category: Communication and Professional |
++------------------------------------------+
+| 1. Critical Error: Sharing Internal Info | ← Critical FIRST
+| 2. Tone and Empathy (0 or 5)             |
+| 3. Clarity & Structure (0 or 2)          |
+| 4. Uses correct spelling/grammar (0 or 3)|
++------------------------------------------+
+| Accuracy Feedback: [textarea]            | ← Feedback within category
++------------------------------------------+
+| Action Needed: [action plan select]      | ← Actions within category
++------------------------------------------+
+```
+
+### 4.2 QAScoreRow Component Update
+
+Update to show only valid score options (0 or max):
+
+```text
+Current dropdown: 2, 3, 4, 5, 6
+New dropdown: 0, [MAX_POINTS]
+```
+
+---
+
+## Phase 5: New Form Fields
+
+### 5.1 Work Week Field
+
+Add date range picker for work week selection:
+
+```text
+Work Week: [Jan 26, 2026] to [Feb 1, 2026]
+```
+
+- Two date pickers: start date and end date
+- Displayed as "January 26 - February 1, 2026"
+
+### 5.2 Coaching Date Field (Footer)
+
+Add required date picker before "Send to Agent" button:
+
+```text
++------------------------------------------+
+| Coaching Date: [Date Picker] *Required   |
++------------------------------------------+
+| [Cancel] [Save Draft] [Send to Agent]    |
++------------------------------------------+
+```
+
+- Must be selected before "Send to Agent" is enabled
+- Not required for "Save Draft"
+
+### 5.3 Agent Selection - Searchable Combobox
+
+Replace dropdown with searchable combobox:
+- User can type to filter agents by name
+- Autocomplete suggestions appear as user types
+
+---
+
+## Phase 6: Agent View Enhancements
+
+### 6.1 Reviewed Button & Remarks Section
+
+Add to `QAEvaluationDetail.tsx`:
+
+```text
++------------------------------------------+
+| Your Response                            |
++------------------------------------------+
+| Remarks (optional):                      |
+| [textarea for agent's reaction]          |
+|                                          |
+| [Reviewed] button                        |
++------------------------------------------+
+| Acknowledgement Required                 |
+| [checkbox] I acknowledge that I have...  |
+| [Acknowledge] button                     |
++------------------------------------------+
+```
+
+- "Reviewed" = soft confirmation, allows adding remarks
+- "Acknowledge" = final mandatory confirmation
+
+---
+
+## Phase 7: Email Notification Fix
+
+### Bug Identified
+
+The `saveMutation` in `QAEvaluationForm.tsx` does not call `sendQANotification()` after saving with status `'sent'`.
+
+**Evidence:**
+- Database shows `notification_sent: false` for evaluation QA-0002
+- Edge function logs show no invocations
+- Email to `merfmartinez15@gmail.com` never triggered
+
+### Fix
+
+Add notification call in `saveMutation.onSuccess`:
 
 ```typescript
-// Discover available fields on the Cell type via introspection
-// Returns array of field names or null if introspection fails
-async function introspectCellFields(
-  accessToken: string,
-  organizationId: string | null
-): Promise<string[] | null> {
-  try {
-    const result = await executeGraphQLQuery(
-      INTROSPECT_CELL_QUERY,
-      {},
-      accessToken,
-      organizationId
-    );
-    
-    if (result.errors || !result.data?.__type?.fields) {
-      console.log('Cell type introspection failed or no fields found');
-      return null;
+onSuccess: async (evaluation, status) => {
+  if (status === 'sent') {
+    try {
+      await sendQANotification(evaluation.id, 'new_evaluation');
+    } catch (notifError) {
+      console.error('Failed to send notification:', notifError);
     }
-    
-    const fieldNames = result.data.__type.fields.map(f => f.name);
-    console.log(`[INTROSPECTION] Cell type has fields: ${fieldNames.join(', ')}`);
-    
-    // Check for time-related fields that could enable start/end tracking
-    const timeFields = fieldNames.filter(name => 
-      name.toLowerCase().includes('time') || 
-      name.toLowerCase().includes('start') ||
-      name.toLowerCase().includes('index')
-    );
-    
-    if (timeFields.length > 0) {
-      console.log(`[INTROSPECTION] Potential time fields found: ${timeFields.join(', ')}`);
-    } else {
-      console.log('[INTROSPECTION] No time-related fields found on Cell type');
-    }
-    
-    return fieldNames;
-  } catch (error) {
-    console.error('Introspection query failed:', error);
-    return null;
   }
+  // ... rest of success handler
 }
 ```
 
-### Step 3: Update Work Days Query with __typename
+---
 
-Update `CONTRACT_WORK_DAYS_QUERY` (around line 182):
+## Phase 8: Weekly/Monthly Averaging
 
-```typescript
-const CONTRACT_WORK_DAYS_QUERY = `
-  query GetContractWorkDays($id: ID!, $timeRange: DateTimeRange!) {
-    contract(id: $id) {
-      id
-      title
-      status
-      workDays(timeRange: $timeRange) {
-        date
-        workDiary {
-          cells {
-            __typename
-            memo
-          }
-        }
-      }
-    }
-  }
-`;
+### 8.1 Weekly Average (5 Tickets per Week)
+
+Display average score for 5 tickets in a work week:
+- Group evaluations by `work_week_start` and `work_week_end`
+- Calculate: `SUM(percentage) / COUNT(evaluations)`
+
+### 8.2 Monthly Average (4-5 Weeks per Month)
+
+Display monthly average:
+- Support months with 4 or 5 weeks
+- Show breakdown by work week within the month
+- Calculate: `SUM(weekly_averages) / COUNT(weeks)`
+
+### UI Location
+
+Add new summary section in QAEvaluations dashboard:
+- "Weekly Summary" card showing current week average
+- "Monthly Summary" card showing month-to-date average
+
+---
+
+## Phase 9: Repeat Action Plan Tracking
+
+### Logic
+
+When assigning an action plan:
+1. Check `qa_action_plan_occurrences` for existing records with same `agent_email` and `action_plan_id`
+2. Count total occurrences
+3. Insert new occurrence record with incremented `occurrence_number`
+4. Display warning in UI: "This is occurrence #X for this action plan"
+
+### Display
+
+In the form, show badge next to repeated action plans:
+```text
+[Action Plan Text] (2nd occurrence)
 ```
 
-### Step 4: Update fetchWorkDaysGraphQL to Use Introspection
+---
 
-Modify the function (around line 304) to:
-1. Run introspection first (for logging/discovery)
-2. Process cells with explicit null for time fields
-3. Add detailed comments explaining the limitation
+## Phase 10: Super Admin Delete Capability
 
-```typescript
-async function fetchWorkDaysGraphQL(
-  contractId: string,
-  date: string,
-  accessToken: string,
-  organizationId: string | null
-): Promise<WorkDaysResult> {
-  console.log(`Fetching work days via GraphQL for contract: ${contractId}, date: ${date}`);
+### Add Delete Button
 
-  try {
-    // SCHEMA DISCOVERY: Run introspection to log available Cell fields
-    // This does NOT block the request - it's for debugging/logging only
-    const cellFields = await introspectCellFields(accessToken, organizationId);
-    
-    // Check if any time-tracking field exists in the Cell schema
-    const hasTimeField = cellFields?.some(field => 
-      field === 'time' || field === 'startTime' || field === 'cellIndex' || field === 'index'
-    ) || false;
-    
-    if (!hasTimeField) {
-      console.log('[SCHEMA] No time-tracking field available on Cell type - first/last time will be null');
-    }
+In `QAEvaluations.tsx` table row actions:
+- Only visible to super admins
+- Confirmation dialog before deletion
+- Uses existing `deleteQAEvaluation()` function
 
-    // ... rest of existing contract verification code ...
-```
+### UI
 
-### Step 5: Update Cell Processing with Explicit Null
-
-Update the cell processing logic (around line 397-424):
-
-```typescript
-    // Calculate total hours from workDiary.cells
-    // SAFE: Cell count is reliable - each cell = 10 minutes
-    let totalCells = 0;
-    
-    for (const day of workDays) {
-      if (day.workDiary?.cells) {
-        totalCells += day.workDiary.cells.length;
-      }
-    }
-    
-    // CRITICAL: First/Last cell time tracking
-    // We CANNOT determine time-of-day without an explicit time field in the schema.
-    // Array position does NOT indicate time slot - Upwork may return cells in any order.
-    // These values MUST remain null until we discover a valid time field via introspection.
-    const firstCellIndex: number | undefined = undefined;
-    const lastCellIndex: number | undefined = undefined;
-    
-    // Convert cells to hours (each cell = 10 minutes = 1/6 hour)
-    // This calculation is RELIABLE regardless of time field availability
-    const totalHours = totalCells / 6;
-    
-    console.log(`[RESULT] Total hours: ${totalHours.toFixed(2)} (${totalCells} cells × 10 min)`);
-    console.log(`[RESULT] First/Last time: NOT AVAILABLE (no time field in Cell schema)`);
-```
-
-### Step 6: Clean Up Unused Code
-
-Remove or deprecate the `cellIndexToTime` and `cellIndexToDbTime` functions since they rely on having cell indices. Keep them but add deprecation comments:
-
-```typescript
-// DEPRECATED: These functions require cell index data which is not available
-// in the current Upwork API Cell schema. Kept for future use if schema changes.
-// DO NOT USE until introspection confirms a time/index field exists.
-function cellIndexToTime(cellIndex: number): string {
-  // ... existing code ...
-}
-
-function cellIndexToDbTime(cellIndex: number): string {
-  // ... existing code ...
-}
+```text
+Actions: [View] [Delete] ← Delete only for super_admin
 ```
 
 ---
@@ -298,31 +318,53 @@ function cellIndexToDbTime(cellIndex: number): string {
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/fetch-upwork-time/index.ts` | Add introspection query, update work days query with `__typename`, add introspection function, update cell processing with explicit null handling |
+| `src/lib/qaEvaluationsApi.ts` | Update SCORING_CATEGORIES, calculateRating (96%), add new types |
+| `src/pages/QAEvaluationForm.tsx` | Work week field, coaching date, searchable agent, reorganized categories, fix notification |
+| `src/pages/QAEvaluationDetail.tsx` | Reviewed button, remarks section |
+| `src/pages/QAEvaluations.tsx` | Super admin delete, weekly/monthly averages display |
+| `src/components/qa/QAScoreRow.tsx` | Binary score options (0 or max) |
+| `src/components/qa/QAActionPlanSelect.tsx` | Show occurrence count badge |
+| `supabase/functions/analyze-qa-ticket/index.ts` | Binary AI suggestions |
+| `supabase/functions/send-qa-notification/index.ts` | No changes needed (already working) |
+
+### New Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/qa/AgentSearchCombobox.tsx` | Searchable agent selector |
+| `src/components/qa/CategorySection.tsx` | Reorganized category with feedback + actions |
+| `src/components/qa/WorkWeekPicker.tsx` | Date range picker for work week |
+
+### Database Migration
+
+New columns and table as described in Phase 1.
 
 ---
 
-## Expected Outcome
+## Implementation Order
 
-After implementation:
+We will implement step-by-step:
 
-| Aspect | Behavior |
-|--------|----------|
-| GraphQL queries | Will not fail validation (only schema-confirmed fields) |
-| Total hours | Calculated correctly from cell count |
-| First/Last logged time | Explicitly `null` (never guessed or inferred) |
-| Introspection logs | Will reveal if any time fields exist for future enhancement |
-| Schema guardrails | Introspection runs each request, logging available fields |
+1. **Email Fix** (#11) - Quick win, unblocks testing
+2. **Database Schema** - Foundation for new features
+3. **Scoring Categories Update** (#3) - Core logic change
+4. **Passing Score 96%** (#10) - Simple config change
+5. **Binary AI Scoring** (#4) - Edge function update
+6. **Form Reorganization** (#5, #6, #7) - UI restructure
+7. **Work Week Field** (#8) - New form field
+8. **Weekly/Monthly Averaging** (#1, #9) - Reporting feature
+9. **Coaching Date** (#12) - Form footer addition
+10. **Agent Reviewed + Remarks** (#13) - Agent view enhancement
+11. **Searchable Agent** (#17) - Combobox component
+12. **Repeat Action Plan Tracking** (#14) - Occurrence counting
+13. **Super Admin Delete** (#15) - Admin capability
 
 ---
 
-## Future Enhancement Path
+## Notes
 
-If the introspection reveals time-related fields (e.g., `time`, `startTime`, `cellIndex`), a follow-up change would:
-
-1. Update the GraphQL query to request that field
-2. Extract time-of-day from the actual field value
-3. Enable the first/last time tracking feature
-
-This approach ensures we **never guess** - we only use what the API explicitly provides.
+- **Critical Error Scoring**: When critical error detected in one category, that category's scores become 0, but other categories retain actual scores. Total is still 0.
+- **Work Week**: Uses actual date range, not "Week 1/2/3/4" labels
+- **Action Plan Occurrences**: Only tracks count, no auto-escalation
+- **Combined Performance Form (#16)**: Deferred to future phase
 
