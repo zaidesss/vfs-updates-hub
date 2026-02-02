@@ -110,59 +110,6 @@ export default function QAEvaluations() {
     return filtered;
   }, [evaluations, canViewAll, user?.email, selectedAgent]);
 
-  // Calculate weekly stats from agent-filtered evaluations (client-side)
-  // Weeks are Monday to Sunday - we match evaluations by their work_week_start field
-  const weeklyStats = useMemo(() => {
-    const now = new Date();
-    const weeks: { week: string; startDate: string; endDate: string; startDateISO: string; endDateISO: string }[] = [];
-    
-    // Calculate last 4 weeks (Monday to Sunday)
-    for (let i = 0; i < 4; i++) {
-      // Get Sunday of week (i weeks ago)
-      const weekEnd = new Date(now);
-      weekEnd.setDate(now.getDate() - now.getDay() - (i * 7));
-      if (now.getDay() === 0) {
-        // If today is Sunday, go back one more week
-        weekEnd.setDate(weekEnd.getDate() - 7);
-      }
-      
-      // Monday is 6 days before Sunday
-      const weekStart = new Date(weekEnd);
-      weekStart.setDate(weekEnd.getDate() - 6);
-      
-      weeks.push({
-        week: `Week ${4 - i}`,
-        startDate: format(weekStart, 'MM-dd-yy'),
-        endDate: format(weekEnd, 'MM-dd-yy'),
-        startDateISO: format(weekStart, 'yyyy-MM-dd'),
-        endDateISO: format(weekEnd, 'yyyy-MM-dd'),
-      });
-    }
-
-    // Calculate stats for each week using agent-filtered data
-    // Match evaluations where work_week_start equals this week's Monday
-    return weeks.reverse().map(week => {
-      const weekEvaluations = agentFilteredEvaluations.filter(e => {
-        // Use work_week_start to determine week membership
-        const evalWeekStart = e.work_week_start || e.audit_date;
-        // Match if work_week_start is exactly this Monday OR falls within this week's range
-        return evalWeekStart === week.startDateISO || 
-               (evalWeekStart >= week.startDateISO && evalWeekStart <= week.endDateISO);
-      });
-      
-      const avgScore = weekEvaluations.length > 0
-        ? weekEvaluations.reduce((sum, e) => sum + Number(e.percentage), 0) / weekEvaluations.length
-        : 0;
-
-      return {
-        ...week,
-        evaluationCount: weekEvaluations.length,
-        averageScore: Math.round(avgScore * 100) / 100,
-        individualScores: weekEvaluations.map(e => Number(e.percentage)).sort((a, b) => b - a),
-      };
-    });
-  }, [agentFilteredEvaluations]);
-
   // Filter evaluations based on date tab
   const filteredEvaluations = useMemo(() => {
     const now = new Date();
@@ -247,6 +194,49 @@ export default function QAEvaluations() {
 
     return filtered;
   }, [agentFilteredEvaluations, activeTab, customStartDate, customEndDate, searchQuery]);
+
+  // Calculate weekly stats from filtered evaluations (based on date range)
+  // Group evaluations by their work_week_start to show weeks dynamically
+  const weeklyStats = useMemo(() => {
+    // Group evaluations by work week
+    const weekGroups = new Map<string, QAEvaluation[]>();
+    
+    filteredEvaluations.forEach(e => {
+      if (e.work_week_start && e.work_week_end) {
+        const key = `${e.work_week_start}|${e.work_week_end}`;
+        if (!weekGroups.has(key)) {
+          weekGroups.set(key, []);
+        }
+        weekGroups.get(key)!.push(e);
+      }
+    });
+    
+    // Convert to array and sort by start date
+    const weeks = Array.from(weekGroups.entries())
+      .map(([key, evals]) => {
+        const [startISO, endISO] = key.split('|');
+        const avgScore = evals.reduce((sum, e) => sum + Number(e.percentage), 0) / evals.length;
+        
+        return {
+          week: '', // Will be assigned after sorting
+          startDate: format(new Date(startISO + 'T12:00:00'), 'MM-dd-yy'),
+          endDate: format(new Date(endISO + 'T12:00:00'), 'MM-dd-yy'),
+          startDateISO: startISO,
+          endDateISO: endISO,
+          evaluationCount: evals.length,
+          averageScore: Math.round(avgScore * 100) / 100,
+          individualScores: evals.map(e => Number(e.percentage)).sort((a, b) => b - a),
+        };
+      })
+      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
+    
+    // Assign week numbers and take last 4 weeks
+    const lastFourWeeks = weeks.slice(-4);
+    return lastFourWeeks.map((week, idx) => ({
+      ...week,
+      week: `Week ${idx + 1}`,
+    }));
+  }, [filteredEvaluations]);
 
   // Calculate stats from filtered evaluations
   const stats = useMemo(() => {
@@ -460,8 +450,8 @@ export default function QAEvaluations() {
           </Card>
         </div>
 
-        {/* Weekly/Monthly Performance Summary */}
-        <QAPerformanceSummary evaluations={agentFilteredEvaluations} />
+        {/* Weekly/Monthly Performance Summary - uses filtered evaluations */}
+        <QAPerformanceSummary evaluations={filteredEvaluations} />
 
         {/* Weekly Comparison Chart */}
         {weeklyStats.length > 0 && (
