@@ -146,7 +146,7 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
               </span>
               <Badge 
                 variant={currentWeekSummary.isPassing ? 'default' : 'destructive'}
-                className={currentWeekSummary.isPassing ? 'bg-chart-2 hover:bg-chart-2/90' : ''}
+                className={currentWeekSummary.isPassing ? 'bg-chart-2/20 text-chart-2 border-chart-2/50 hover:bg-chart-2/30' : ''}
               >
                 {currentWeekSummary.isPassing ? 'Passing' : 'Below Target'}
               </Badge>
@@ -184,7 +184,7 @@ export function QAPerformanceSummary({ evaluations }: QAPerformanceSummaryProps)
               </span>
               <Badge 
                 variant={monthlySummary.isPassing ? 'default' : 'destructive'}
-                className={monthlySummary.isPassing ? 'bg-chart-2 hover:bg-chart-2/90' : ''}
+                className={monthlySummary.isPassing ? 'bg-chart-2/20 text-chart-2 border-chart-2/50 hover:bg-chart-2/30' : ''}
               >
                 {monthlySummary.isPassing ? 'Passing' : 'Below Target'}
               </Badge>
