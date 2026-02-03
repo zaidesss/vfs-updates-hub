@@ -1,76 +1,227 @@
 
-# Plan: Fix Team Status Board Visibility for All Users
+# Plan: Split Daily Work Tracker by Ticket Type and Quotas
 
-## Problem Identified
+## Summary
 
-The `agent_profiles_team_status` view was created with `security_invoker = on`, which forces the view to respect the RLS policies of the underlying `agent_profiles` table. 
-
-Current `agent_profiles` RLS policies only allow:
-- Super Admins, HR, Admins: view all profiles
-- Regular agents: view only their **own** profile
-
-This is why regular agents can only see team members who match their own profile (effectively just themselves or profiles that happen to get through other policies).
-
-## Solution
-
-Recreate the `agent_profiles_team_status` view **without** `security_invoker = on`. This allows the view to bypass the base table's RLS while still only exposing the intentionally limited, non-sensitive fields (id, email, full_name, position).
-
-This is a secure pattern because:
-1. The view only exposes non-sensitive fields needed for team coordination
-2. Full profile data (with sensitive fields) remains protected by RLS on the base table
-3. The use case (seeing who is online) requires all team members to see each other
+This plan enhances the Daily Work Tracker to display ticket counts broken down by type (Email, Chat, Call) with individual progress bars based on the agent's support type and position-specific quotas (`quota_email`, `quota_chat`, `quota_phone`).
 
 ---
 
-## Database Migration
+## Current State
 
+- **DailyWorkTracker** shows a single "Tickets Handled" bar with an aggregate count against a single `quota` value
+- **DashboardProfile** only fetches aggregate `quota` from `agent_directory`
+- **getTodayTicketCount()** returns a single total count (no type breakdown)
+- **agent_profiles** table already has `quota_email`, `quota_chat`, `quota_phone` fields
+- **ticket_logs** table has a `ticket_type` column with values: `Email`, `Chat`, `Call`
+
+---
+
+## Proposed Changes
+
+### 1. Update DashboardProfile Interface
+
+Add individual quota fields and position to the interface:
+
+```text
+DashboardProfile {
+  ...existing fields...
+  position: string | null;      // NEW: agent's position
+  quota_email: number | null;   // NEW: Email quota
+  quota_chat: number | null;    // NEW: Chat quota  
+  quota_phone: number | null;   // NEW: Phone quota
+  // Keep quota for backward compatibility (will be deprecated)
+}
+```
+
+### 2. Update fetchDashboardProfile()
+
+Fetch `quota_email`, `quota_chat`, `quota_phone`, and `position` from `agent_profiles` (source of truth):
+
+```text
+Changes to agentDashboardApi.ts:
+- Add quota_email, quota_chat, quota_phone, position to SELECT from agent_profiles
+- Map these to DashboardProfile
+```
+
+### 3. Create New API Function: getTodayTicketCountByType()
+
+Replace the aggregate count function with one that returns a breakdown:
+
+```text
+New function signature:
+getTodayTicketCountByType(agentTag: string): Promise<{
+  data: { email: number; chat: number; call: number; total: number };
+  error: string | null;
+}>
+```
+
+This uses SQL like:
 ```sql
--- Drop the existing view with security_invoker = on
-DROP VIEW IF EXISTS public.agent_profiles_team_status;
-
--- Recreate without security_invoker (defaults to off = bypasses RLS)
--- This is safe because we only expose non-sensitive fields
-CREATE VIEW public.agent_profiles_team_status AS
 SELECT 
-  id,
-  email,
-  full_name,
-  position
-FROM public.agent_profiles;
+  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'email') as email_count,
+  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'chat') as chat_count,
+  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'call') as call_count
+FROM ticket_logs
+WHERE agent_name ILIKE $1 
+  AND timestamp >= today_start 
+  AND timestamp <= today_end
+```
 
--- Grant SELECT access to authenticated users
-GRANT SELECT ON public.agent_profiles_team_status TO authenticated;
+### 4. Update DailyWorkTracker Component
+
+Redesign the "Tickets Handled" section to show:
+
+| Support Type | Display |
+|-------------|---------|
+| Email Support | Single bar: "Email: X/Y" |
+| Chat Support | Two rows: "Email: X/Y" + "Chat: X/Y" (if quota_chat set) |
+| Phone Support | Two rows: "Email: X/Y" + "Calls: X/Y" (if quota_phone set) |
+| Hybrid Support | Up to three rows: "Email", "Chat", "Calls" (only show quotas that are set) |
+
+**Logic:**
+- Always show Email count (label: "Email")
+- Show Chat count only if `quota_chat > 0` OR agent is Chat/Hybrid Support
+- Show Call count only if `quota_phone > 0` OR agent is Phone/Hybrid Support
+- If no quota is set for a type, show count without progress bar (just "X tickets")
+
+### 5. Update AgentDashboard.tsx
+
+Pass the new quota and ticket data to DailyWorkTracker:
+
+```text
+Changes:
+- Fetch ticket counts by type instead of aggregate
+- Pass individual quotas: quota_email, quota_chat, quota_phone
+- Pass position to determine which bars to show
 ```
 
 ---
 
-## Why This Is Safe
+## UI Mockups
 
-| Concern | Answer |
-|---------|--------|
-| Sensitive data exposure? | No - view only includes id, email, full_name, position |
-| PII concerns? | Email and name are needed for team coordination and are visible in the app anyway |
-| Password/auth data? | Not included in view |
-| Financial data? | Not included in view |
-| Personal schedules/details? | Not included - those stay protected on base table |
+### Email Support Agent (quota_email: 50)
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ✉ Email                                         35/50   │
+│ [████████████████████░░░░░░░░░] 70% of quota            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Chat Support Agent (quota_email: 30, quota_chat: 20)
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ✉ Email                                         25/30   │
+│ [████████████████████████░░░░░] 83% of quota            │
+├─────────────────────────────────────────────────────────┤
+│ 💬 Chat                                         15/20   │
+│ [███████████████████░░░░░░░░░░] 75% of quota            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Chat Support Agent (quota_email: 30, quota_chat: null)
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ✉ Email                                         25/30   │
+│ [████████████████████████░░░░░] 83% of quota            │
+├─────────────────────────────────────────────────────────┤
+│ 💬 Chat                                         15      │
+│ (no quota set)                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Hybrid Support Agent (all quotas set)
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ✉ Email                                         40/50   │
+│ [████████████████░░░░░░░░░░░░░] 80% of quota            │
+├─────────────────────────────────────────────────────────┤
+│ 💬 Chat                                         18/20   │
+│ [█████████████████████████████] 90% of quota            │
+├─────────────────────────────────────────────────────────┤
+│ 📞 Calls                                        12/15   │
+│ [████████████████████░░░░░░░░░] 80% of quota            │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Files Changed
+## Files to Modify
 
-| File | Change |
-|------|--------|
-| New migration | Recreate view without `security_invoker` |
-
-No code changes needed - the `teamStatusApi.ts` already queries this view correctly.
+| File | Changes |
+|------|---------|
+| `src/lib/agentDashboardApi.ts` | Add quota fields to DashboardProfile, update fetchDashboardProfile(), add getTodayTicketCountByType() |
+| `src/components/dashboard/DailyWorkTracker.tsx` | Redesign Tickets Handled section with multiple progress bars |
+| `src/pages/AgentDashboard.tsx` | Use new ticket count function, pass quota fields to DailyWorkTracker |
 
 ---
 
-## After This Fix
+## Technical Details
 
-All authenticated users will be able to:
-1. See all team members on the Team Status Board
-2. View members across all support types (Phone, Chat, Email, Hybrid, Team Leads, Tech Support)
-3. See status, shift schedule, and break schedule for online colleagues
+### DailyWorkTrackerProps Changes
 
-The full `agent_profiles` table remains protected by existing RLS policies.
+```typescript
+interface DailyWorkTrackerProps {
+  // OLD: quota: number | null;
+  // OLD: ticketsHandled: number;
+  
+  // NEW: Individual quotas and counts
+  position: string | null;
+  quotaEmail: number | null;
+  quotaChat: number | null;
+  quotaPhone: number | null;
+  ticketCounts: {
+    email: number;
+    chat: number;
+    call: number;
+  };
+  
+  // ... rest unchanged
+}
+```
+
+### Visibility Logic
+
+```typescript
+function shouldShowTicketType(
+  type: 'email' | 'chat' | 'call',
+  position: string | null,
+  quota: number | null
+): boolean {
+  const pos = position?.toLowerCase() || '';
+  
+  if (type === 'email') {
+    // Always show email for support roles
+    return pos.includes('support') || pos.includes('hybrid');
+  }
+  
+  if (type === 'chat') {
+    return pos.includes('chat') || pos.includes('hybrid') || (quota && quota > 0);
+  }
+  
+  if (type === 'call') {
+    return pos.includes('phone') || pos.includes('hybrid') || (quota && quota > 0);
+  }
+  
+  return false;
+}
+```
+
+---
+
+## Backward Compatibility
+
+- The aggregate `quota` field will remain in DashboardProfile for any legacy usage
+- If an agent has no individual quotas set but has aggregate quota, fall back to showing single aggregate bar
+- Non-support roles (Team Lead, Logistics, Technical Support) will continue showing no quota bars
+
+---
+
+## Implementation Steps
+
+1. **Step 1**: Update `DashboardProfile` interface and `fetchDashboardProfile()` in `agentDashboardApi.ts`
+2. **Step 2**: Add `getTodayTicketCountByType()` function in `agentDashboardApi.ts`
+3. **Step 3**: Update `DailyWorkTrackerProps` interface in `DailyWorkTracker.tsx`
+4. **Step 4**: Redesign the Tickets Handled section with conditional multi-bar layout
+5. **Step 5**: Update `AgentDashboard.tsx` to use new functions and pass new props
+6. **Step 6**: Test across different support types (Email, Chat, Phone, Hybrid)
