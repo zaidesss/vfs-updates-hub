@@ -499,6 +499,10 @@ export async function updateProfileStatus(
       if (eventType === 'LOGIN') {
         checkAndAlertLateLogin(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
           .catch((err) => console.error('Failed to check late login:', err));
+        
+        // Trigger automatic ticket assignment on login
+        triggerTicketAssignment(profileId, agentProfile.email)
+          .catch((err) => console.error('Failed to trigger ticket assignment:', err));
       } else if (eventType === 'LOGOUT') {
         checkAndAlertEarlyOut(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
           .catch((err) => console.error('Failed to check early out:', err));
@@ -1722,5 +1726,42 @@ export async function autoGenerateLateLoginRequest(
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Error auto-generating late login request:', errorMessage);
     return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Trigger automatic ticket assignment when agent logs in.
+ * Calls the assign-tickets-on-login edge function.
+ * This is fire-and-forget - errors are logged but don't block login.
+ */
+async function triggerTicketAssignment(profileId: string, agentEmail: string): Promise<void> {
+  try {
+    console.log('Triggering ticket assignment for:', agentEmail);
+    
+    const { data, error } = await supabase.functions.invoke('assign-tickets-on-login', {
+      body: {
+        agentEmail,
+        profileId,
+      },
+    });
+
+    if (error) {
+      console.error('Ticket assignment edge function error:', error);
+      return;
+    }
+
+    if (data?.skipped) {
+      console.log('Ticket assignment skipped:', data.reason);
+      return;
+    }
+
+    if (data?.success && data.ticketsAssigned > 0) {
+      console.log(`Ticket assignment successful: ${data.ticketsAssigned} tickets from ${data.viewName}`);
+      // Note: Toast notification is handled by the caller if needed
+    } else if (!data?.success) {
+      console.error('Ticket assignment failed:', data?.error);
+    }
+  } catch (err) {
+    console.error('Failed to trigger ticket assignment:', err);
   }
 }

@@ -1460,6 +1460,105 @@ export type Database = {
           },
         ]
       }
+      ticket_assignment_locks: {
+        Row: {
+          expires_at: string
+          locked_at: string
+          locked_by: string
+          view_id: string
+        }
+        Insert: {
+          expires_at?: string
+          locked_at?: string
+          locked_by: string
+          view_id: string
+        }
+        Update: {
+          expires_at?: string
+          locked_at?: string
+          locked_by?: string
+          view_id?: string
+        }
+        Relationships: []
+      }
+      ticket_assignment_logs: {
+        Row: {
+          agent_email: string
+          agent_name: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          status: string
+          ticket_ids: string[] | null
+          tickets_assigned: number
+          tickets_requested: number
+          view_id: string | null
+          view_name: string | null
+          zendesk_instance: string | null
+        }
+        Insert: {
+          agent_email: string
+          agent_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          ticket_ids?: string[] | null
+          tickets_assigned?: number
+          tickets_requested?: number
+          view_id?: string | null
+          view_name?: string | null
+          zendesk_instance?: string | null
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          ticket_ids?: string[] | null
+          tickets_assigned?: number
+          tickets_requested?: number
+          view_id?: string | null
+          view_name?: string | null
+          zendesk_instance?: string | null
+        }
+        Relationships: []
+      }
+      ticket_assignment_view_config: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          support_type_pattern: string
+          updated_at: string
+          view_id: string | null
+          view_name: string
+          zendesk_instance: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          support_type_pattern: string
+          updated_at?: string
+          view_id?: string | null
+          view_name: string
+          zendesk_instance: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          support_type_pattern?: string
+          updated_at?: string
+          view_id?: string | null
+          view_name?: string
+          zendesk_instance?: string
+        }
+        Relationships: []
+      }
       ticket_gap_daily: {
         Row: {
           agent_email: string | null
