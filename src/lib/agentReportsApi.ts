@@ -9,7 +9,8 @@ export type IncidentType =
   | 'TIME_NOT_MET' 
   | 'LATE_LOGIN' 
   | 'EARLY_OUT' 
-  | 'BIO_OVERUSE';
+  | 'BIO_OVERUSE'
+  | 'OVERBREAK';
 
 export type ReportSeverity = 'low' | 'medium' | 'high';
 export type ReportStatus = 'open' | 'reviewed' | 'validated' | 'dismissed';
@@ -59,6 +60,7 @@ export const INCIDENT_TYPE_CONFIG: Record<IncidentType, { label: string; color: 
   LATE_LOGIN: { label: 'Late Login', color: 'text-yellow-600', icon: 'log-in' },
   EARLY_OUT: { label: 'Early Out', color: 'text-orange-600', icon: 'door-open' },
   BIO_OVERUSE: { label: 'Bio Overuse', color: 'text-blue-600', icon: 'user' },
+  OVERBREAK: { label: 'Over Break', color: 'text-pink-600', icon: 'coffee' },
 };
 
 export const SEVERITY_CONFIG: Record<ReportSeverity, { label: string; color: string }> = {
