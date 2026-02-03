@@ -25,7 +25,7 @@ const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
 const BACKUP_INTERNET_TYPES = ['Mobile Data', 'Neighbor\'s WiFi', 'Backup Fiber', 'Pocket WiFi', 'Other'];
 
 export default function AgentProfilePage() {
-  const { user, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(true);
@@ -592,6 +592,7 @@ export default function AgentProfilePage() {
                 profile={profile}
                 onInputChange={handleInputChange}
                 isSuperAdmin={isSuperAdmin}
+                isAdmin={isAdmin}
               />
 
               {/* Team Lead and Clients - still in this section */}
@@ -603,8 +604,8 @@ export default function AgentProfilePage() {
                     value={profile.team_lead}
                     onChange={(e) => handleInputChange('team_lead', e.target.value)}
                     placeholder="Name of your team lead"
-                    disabled={!isSuperAdmin}
-                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                    disabled={!isAdmin}
+                    className={!isAdmin ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -615,8 +616,8 @@ export default function AgentProfilePage() {
                     value={profile.clients}
                     onChange={(e) => handleInputChange('clients', e.target.value)}
                     placeholder="e.g., VFS Global, Other Client"
-                    disabled={!isSuperAdmin}
-                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                    disabled={!isAdmin}
+                    className={!isAdmin ? 'bg-muted' : ''}
                   />
                 </div>
 
@@ -625,9 +626,9 @@ export default function AgentProfilePage() {
                   <Select
                     value={profile.employment_status}
                     onValueChange={(value) => handleInputChange('employment_status', value)}
-                    disabled={!isSuperAdmin}
+                    disabled={!isAdmin}
                   >
-                    <SelectTrigger id="employment_status" className={!isSuperAdmin ? 'bg-muted' : ''}>
+                    <SelectTrigger id="employment_status" className={!isAdmin ? 'bg-muted' : ''}>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -645,8 +646,8 @@ export default function AgentProfilePage() {
                     value={profile.start_date}
                     onChange={(value) => handleInputChange('start_date', value)}
                     placeholder="Select start date"
-                    disabled={!isSuperAdmin}
-                    className={!isSuperAdmin ? 'bg-muted' : ''}
+                    disabled={!isAdmin}
+                    className={!isAdmin ? 'bg-muted' : ''}
                   />
                 </div>
               </div>
