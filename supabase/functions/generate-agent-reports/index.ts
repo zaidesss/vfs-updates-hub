@@ -19,6 +19,11 @@ interface AgentProfile {
   id: string;
   email: string;
   full_name: string | null;
+  position: string | null;
+  upwork_contract_id: string | null;
+  quota_email: number | null;
+  quota_chat: number | null;
+  quota_phone: number | null;
 }
 
 interface AgentDirectory {
@@ -33,6 +38,46 @@ interface AgentDirectory {
   sun_schedule: string | null;
   day_off: string[] | null;
   break_schedule: string | null;
+}
+
+interface ProfileStatus {
+  profile_id: string;
+  current_status: string;
+  status_since: string | null;
+}
+
+// =======================
+// SEVERITY HELPER FUNCTIONS
+// =======================
+
+/**
+ * Calculate dynamic severity for time-based violations
+ * 1-5 mins = low, 6-15 mins = medium, 16+ mins = high
+ */
+function calculateTimeSeverity(minutes: number): 'low' | 'medium' | 'high' {
+  if (minutes <= 5) return 'low';
+  if (minutes <= 15) return 'medium';
+  return 'high';
+}
+
+/**
+ * Calculate severity for quota shortfall
+ * 1-10 tickets = low, 11-19 tickets = medium, 20+ tickets = high
+ */
+function calculateQuotaSeverity(ticketsShort: number): 'low' | 'medium' | 'high' {
+  if (ticketsShort <= 10) return 'low';
+  if (ticketsShort < 20) return 'medium';
+  return 'high';
+}
+
+/**
+ * Calculate severity for average ticket gap (Email Support only)
+ * <5 mins = null (no violation), 5-10 mins = medium, 10+ mins = high
+ */
+function calculateGapSeverity(avgGapMinutes: number): 'medium' | 'high' | null {
+  if (avgGapMinutes < 5) return null;
+  if (avgGapMinutes < 10) return 'medium';
+  return 'high';
 }
 
 /**
@@ -91,6 +136,35 @@ function isDayOff(directory: AgentDirectory, dayName: string): boolean {
   return dayOff.some(d => d.toLowerCase() === dayName.toLowerCase());
 }
 
+/**
+ * Calculate expected quota based on agent's position
+ */
+function calculateExpectedQuota(profile: AgentProfile): number {
+  const position = profile.position?.toLowerCase() || '';
+  const quotaEmail = profile.quota_email || 0;
+  const quotaChat = profile.quota_chat || 0;
+  const quotaPhone = profile.quota_phone || 0;
+
+  if (position.includes('hybrid')) {
+    return quotaEmail + quotaChat + quotaPhone;
+  } else if (position.includes('chat')) {
+    return quotaEmail + quotaChat;
+  } else if (position.includes('phone')) {
+    return quotaEmail + quotaPhone;
+  } else if (position.includes('email')) {
+    return quotaEmail;
+  }
+  return 0; // No quota for Team Lead, Logistics, Technical Support, etc.
+}
+
+/**
+ * Check if agent is Email Support (for HIGH_GAP violation)
+ */
+function isEmailSupport(profile: AgentProfile): boolean {
+  const position = profile.position?.toLowerCase() || '';
+  return position === 'email support';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -126,10 +200,10 @@ Deno.serve(async (req) => {
 
     console.log(`Generating agent reports for ${targetDateStr} (${dayName})`);
 
-    // Fetch all agent profiles with their directories
+    // Fetch all agent profiles with their directories and quota info
     const { data: profiles } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name');
+      .select('id, email, full_name, position, upwork_contract_id, quota_email, quota_chat, quota_phone');
 
     if (!profiles || profiles.length === 0) {
       return new Response(
@@ -156,6 +230,55 @@ Deno.serve(async (req) => {
       .gte('created_at', startOfDay)
       .lte('created_at', endOfDay)
       .order('created_at', { ascending: true });
+
+    // Fetch ticket logs for the target date (for QUOTA_NOT_MET)
+    const { data: ticketLogs } = await supabase
+      .from('ticket_logs')
+      .select('agent_email, ticket_type')
+      .gte('timestamp', startOfDay)
+      .lte('timestamp', endOfDay);
+
+    // Aggregate ticket counts by agent
+    const ticketCountsByAgent = new Map<string, { email: number; chat: number; call: number }>();
+    ticketLogs?.forEach(log => {
+      const email = log.agent_email?.toLowerCase();
+      if (!email) return;
+      
+      if (!ticketCountsByAgent.has(email)) {
+        ticketCountsByAgent.set(email, { email: 0, chat: 0, call: 0 });
+      }
+      const counts = ticketCountsByAgent.get(email)!;
+      const ticketType = log.ticket_type?.toLowerCase();
+      if (ticketType === 'email') counts.email++;
+      else if (ticketType === 'chat') counts.chat++;
+      else if (ticketType === 'call') counts.call++;
+    });
+
+    // Fetch ticket gap data for the target date (for HIGH_GAP)
+    const { data: ticketGaps } = await supabase
+      .from('ticket_gap_daily')
+      .select('agent_email, avg_gap_seconds')
+      .eq('date', targetDateStr);
+
+    const ticketGapByAgent = new Map<string, number>();
+    ticketGaps?.forEach(gap => {
+      if (gap.agent_email && gap.avg_gap_seconds !== null) {
+        ticketGapByAgent.set(gap.agent_email.toLowerCase(), gap.avg_gap_seconds);
+      }
+    });
+
+    // Fetch Upwork daily logs for the target date (for TIME_NOT_MET)
+    const { data: upworkLogs } = await supabase
+      .from('upwork_daily_logs')
+      .select('agent_email, total_hours')
+      .eq('date', targetDateStr);
+
+    const upworkHoursByAgent = new Map<string, number>();
+    upworkLogs?.forEach(log => {
+      if (log.agent_email && log.total_hours !== null) {
+        upworkHoursByAgent.set(log.agent_email.toLowerCase(), log.total_hours);
+      }
+    });
 
     // Fetch existing reports for the target date to avoid duplicates
     const { data: existingReports } = await supabase
@@ -193,11 +316,32 @@ Deno.serve(async (req) => {
       const schedule = directory ? getScheduleForDay(directory, dayOfWeek) : null;
       const parsedSchedule = schedule ? parseScheduleRange(schedule) : null;
 
-      // Check for NO_LOGOUT: Had LOGIN but no LOGOUT
+      // ========================
+      // Check for NO_LOGOUT
+      // Updated: Only trigger if 3+ hours past scheduled shift end AND still not logged out
+      // ========================
       const loginEvents = profileEvents.filter(e => e.event_type === 'LOGIN');
       const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
       
-      if (loginEvents.length > 0 && logoutEvents.length === 0) {
+      if (loginEvents.length > 0 && logoutEvents.length === 0 && parsedSchedule) {
+        // Calculate how many hours past shift end (using the target date's scheduled end time)
+        // Since this runs the next day for yesterday, we check if 3+ hours passed after shift end
+        const lastLogin = new Date(loginEvents[loginEvents.length - 1].created_at);
+        const lastLoginHour = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          hour12: false,
+        }).format(lastLogin));
+        const lastLoginMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          minute: '2-digit',
+        }).format(lastLogin));
+        const lastLoginMinutes = lastLoginHour * 60 + lastLoginMinute;
+        
+        // If logged in and shift should have ended, calculate hours past
+        // For end-of-day report, anyone still logged in after their shift end is a violation
+        // The 3+ hour threshold is more relevant for real-time detection
+        // For daily reports, if no logout exists and they had a schedule, it's a NO_LOGOUT
         const reportKey = `${profile.email.toLowerCase()}_NO_LOGOUT`;
         if (!existingReportSet.has(reportKey)) {
           reportsToCreate.push({
@@ -206,20 +350,22 @@ Deno.serve(async (req) => {
             profile_id: profile.id,
             incident_date: targetDateStr,
             incident_type: 'NO_LOGOUT',
-            severity: 'medium',
+            severity: 'high', // Always high for NO_LOGOUT
             details: {
               loginTime: loginEvents[0].created_at,
-              message: 'Agent logged in but did not log out by end of day',
+              scheduledEnd: parsedSchedule.endMinutes,
+              message: 'Agent logged in but did not log out',
             },
             status: 'open',
           });
         }
       }
 
-      // Check for LATE_LOGIN
+      // ========================
+      // Check for LATE_LOGIN with dynamic severity
+      // ========================
       if (parsedSchedule && loginEvents.length > 0) {
         const firstLogin = new Date(loginEvents[0].created_at);
-        // Convert to EST for comparison
         const loginHour = parseInt(new Intl.DateTimeFormat('en-US', {
           timeZone: 'America/New_York',
           hour: '2-digit',
@@ -242,7 +388,7 @@ Deno.serve(async (req) => {
               profile_id: profile.id,
               incident_date: targetDateStr,
               incident_type: 'LATE_LOGIN',
-              severity: 'low',
+              severity: calculateTimeSeverity(lateMinutes),
               details: {
                 scheduledStart: parsedSchedule.startMinutes,
                 actualLogin: loginMinutes,
@@ -254,7 +400,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Check for EXCESSIVE_RESTART: Total restart time > 5 minutes
+      // ========================
+      // Check for EXCESSIVE_RESTART with dynamic severity
+      // ========================
       const restartStartEvents = profileEvents.filter(e => e.event_type === 'DEVICE_RESTART_START');
       const restartEndEvents = profileEvents.filter(e => e.event_type === 'DEVICE_RESTART_END');
       
@@ -272,23 +420,27 @@ Deno.serve(async (req) => {
       if (totalRestartSeconds > 300) { // More than 5 minutes total
         const reportKey = `${profile.email.toLowerCase()}_EXCESSIVE_RESTARTS`;
         if (!existingReportSet.has(reportKey)) {
+          const overageMinutes = Math.floor((totalRestartSeconds - 300) / 60);
           reportsToCreate.push({
             agent_email: profile.email.toLowerCase(),
             agent_name: agentName,
             profile_id: profile.id,
             incident_date: targetDateStr,
             incident_type: 'EXCESSIVE_RESTARTS',
-            severity: 'medium',
+            severity: calculateTimeSeverity(overageMinutes),
             details: {
               totalRestartSeconds,
               restartCount: restartStartEvents.length,
+              overageMinutes,
             },
             status: 'open',
           });
         }
       }
 
-      // Check for BIO_OVERUSE: Total bio time exceeded allowance
+      // ========================
+      // Check for BIO_OVERUSE with dynamic severity
+      // ========================
       const bioStartEvents = profileEvents.filter(e => e.event_type === 'BIO_START');
       const bioEndEvents = profileEvents.filter(e => e.event_type === 'BIO_END');
       
@@ -314,24 +466,29 @@ Deno.serve(async (req) => {
       if (totalBioSeconds > bioAllowance) {
         const reportKey = `${profile.email.toLowerCase()}_BIO_OVERUSE`;
         if (!existingReportSet.has(reportKey)) {
+          const overageSeconds = totalBioSeconds - bioAllowance;
+          const overageMinutes = Math.ceil(overageSeconds / 60);
           reportsToCreate.push({
             agent_email: profile.email.toLowerCase(),
             agent_name: agentName,
             profile_id: profile.id,
             incident_date: targetDateStr,
             incident_type: 'BIO_OVERUSE',
-            severity: 'low',
+            severity: calculateTimeSeverity(overageMinutes),
             details: {
               totalBioSeconds,
               bioAllowance,
-              overageSeconds: totalBioSeconds - bioAllowance,
+              overageSeconds,
+              overageMinutes,
             },
             status: 'open',
           });
         }
       }
 
-      // Check for EARLY_OUT: Logged out before scheduled end time
+      // ========================
+      // Check for EARLY_OUT with dynamic severity
+      // ========================
       if (logoutEvents.length > 0 && parsedSchedule) {
         const lastLogout = logoutEvents[logoutEvents.length - 1];
         const logoutTime = new Date(lastLogout.created_at);
@@ -356,7 +513,7 @@ Deno.serve(async (req) => {
               profile_id: profile.id,
               incident_date: targetDateStr,
               incident_type: 'EARLY_OUT',
-              severity: 'medium',
+              severity: calculateTimeSeverity(earlyByMinutes),
               details: {
                 scheduledEnd: parsedSchedule.endMinutes,
                 actualLogout: logoutMinutes,
@@ -368,7 +525,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Check for OVERBREAK: Total break time exceeded allowance
+      // ========================
+      // Check for OVERBREAK with dynamic severity
+      // ========================
       if (directory?.break_schedule) {
         const breakParsed = parseScheduleRange(directory.break_schedule);
         if (breakParsed) {
@@ -398,18 +557,19 @@ Deno.serve(async (req) => {
           if (totalBreakMinutes > maxAllowedMinutes) {
             const reportKey = `${profile.email.toLowerCase()}_OVERBREAK`;
             if (!existingReportSet.has(reportKey)) {
+              const overageMinutes = totalBreakMinutes - allowedBreakMinutes;
               reportsToCreate.push({
                 agent_email: profile.email.toLowerCase(),
                 agent_name: agentName,
                 profile_id: profile.id,
                 incident_date: targetDateStr,
                 incident_type: 'OVERBREAK',
-                severity: 'low',
+                severity: calculateTimeSeverity(overageMinutes),
                 details: {
                   allowedMinutes: allowedBreakMinutes,
                   graceMinutes,
                   totalBreakMinutes,
-                  overageMinutes: totalBreakMinutes - allowedBreakMinutes,
+                  overageMinutes,
                 },
                 status: 'open',
               });
@@ -418,33 +578,116 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Check for TIME_NOT_MET: Logged hours less than scheduled
-      if (loginEvents.length > 0 && logoutEvents.length > 0 && parsedSchedule) {
-        const firstLogin = new Date(loginEvents[0].created_at);
-        const lastLogout = new Date(logoutEvents[logoutEvents.length - 1].created_at);
-        const loggedMinutes = Math.floor((lastLogout.getTime() - firstLogin.getTime()) / (1000 * 60));
-
+      // ========================
+      // Check for TIME_NOT_MET with Upwork priority and dynamic severity
+      // ========================
+      if (parsedSchedule) {
         let requiredMinutes = parsedSchedule.endMinutes - parsedSchedule.startMinutes;
         if (requiredMinutes < 0) requiredMinutes += 24 * 60;
 
+        let loggedMinutes: number | null = null;
+        let timeSource: string = 'portal';
+
+        // Check Upwork first if agent has upwork_contract_id
+        if (profile.upwork_contract_id) {
+          const upworkHours = upworkHoursByAgent.get(profile.email.toLowerCase());
+          if (upworkHours !== undefined) {
+            loggedMinutes = Math.floor(upworkHours * 60);
+            timeSource = 'upwork';
+          }
+        }
+
+        // Fall back to Portal time if no Upwork data
+        if (loggedMinutes === null && loginEvents.length > 0 && logoutEvents.length > 0) {
+          const firstLogin = new Date(loginEvents[0].created_at);
+          const lastLogout = new Date(logoutEvents[logoutEvents.length - 1].created_at);
+          loggedMinutes = Math.floor((lastLogout.getTime() - firstLogin.getTime()) / (1000 * 60));
+          timeSource = 'portal';
+        }
+
         // If logged less than 90% of required hours
-        if (loggedMinutes < requiredMinutes * 0.9) {
+        if (loggedMinutes !== null && loggedMinutes < requiredMinutes * 0.9) {
           const reportKey = `${profile.email.toLowerCase()}_TIME_NOT_MET`;
           if (!existingReportSet.has(reportKey)) {
+            const shortfallMinutes = requiredMinutes - loggedMinutes;
             reportsToCreate.push({
               agent_email: profile.email.toLowerCase(),
               agent_name: agentName,
               profile_id: profile.id,
               incident_date: targetDateStr,
               incident_type: 'TIME_NOT_MET',
-              severity: 'medium',
+              severity: calculateTimeSeverity(shortfallMinutes),
               details: {
                 loggedHours: loggedMinutes / 60,
                 requiredHours: requiredMinutes / 60,
-                shortfallMinutes: requiredMinutes - loggedMinutes,
+                shortfallMinutes,
+                timeSource,
               },
               status: 'open',
             });
+          }
+        }
+      }
+
+      // ========================
+      // Check for QUOTA_NOT_MET
+      // ========================
+      const expectedQuota = calculateExpectedQuota(profile);
+      if (expectedQuota > 0) {
+        const agentTickets = ticketCountsByAgent.get(profile.email.toLowerCase()) || { email: 0, chat: 0, call: 0 };
+        const actualTotal = agentTickets.email + agentTickets.chat + agentTickets.call;
+
+        if (actualTotal < expectedQuota) {
+          const reportKey = `${profile.email.toLowerCase()}_QUOTA_NOT_MET`;
+          if (!existingReportSet.has(reportKey)) {
+            const shortfall = expectedQuota - actualTotal;
+            reportsToCreate.push({
+              agent_email: profile.email.toLowerCase(),
+              agent_name: agentName,
+              profile_id: profile.id,
+              incident_date: targetDateStr,
+              incident_type: 'QUOTA_NOT_MET',
+              severity: calculateQuotaSeverity(shortfall),
+              details: {
+                expectedQuota,
+                actualTotal,
+                shortfall,
+                breakdown: agentTickets,
+                position: profile.position,
+              },
+              status: 'open',
+            });
+          }
+        }
+      }
+
+      // ========================
+      // Check for HIGH_GAP (Email Support only)
+      // ========================
+      if (isEmailSupport(profile)) {
+        const avgGapSeconds = ticketGapByAgent.get(profile.email.toLowerCase());
+        if (avgGapSeconds !== undefined) {
+          const avgGapMinutes = avgGapSeconds / 60;
+          const gapSeverity = calculateGapSeverity(avgGapMinutes);
+
+          if (gapSeverity !== null) {
+            const reportKey = `${profile.email.toLowerCase()}_HIGH_GAP`;
+            if (!existingReportSet.has(reportKey)) {
+              reportsToCreate.push({
+                agent_email: profile.email.toLowerCase(),
+                agent_name: agentName,
+                profile_id: profile.id,
+                incident_date: targetDateStr,
+                incident_type: 'HIGH_GAP',
+                severity: gapSeverity,
+                details: {
+                  avgGapMinutes: Math.round(avgGapMinutes * 10) / 10,
+                  avgGapSeconds,
+                  threshold: 5,
+                },
+                status: 'open',
+              });
+            }
           }
         }
       }
