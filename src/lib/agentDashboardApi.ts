@@ -279,7 +279,63 @@ export async function updateProfileStatus(
       return { success: false, newStatus: null, error: fetchError };
     }
 
-    const currentStatus = currentStatusData?.current_status || 'LOGGED_OUT';
+    let currentStatus = currentStatusData?.current_status || 'LOGGED_OUT';
+    const now = new Date();
+    const nowISO = now.toISOString();
+    
+    // Handle stale login detection on LOGIN attempt
+    // If agent is not LOGGED_OUT but their status_since is from a previous day, auto-logout first
+    if (eventType === 'LOGIN' && currentStatus !== 'LOGGED_OUT' && currentStatusData?.status_since) {
+      const statusDate = new Date(currentStatusData.status_since);
+      const todayStr = format(now, 'yyyy-MM-dd');
+      const statusDateStr = format(statusDate, 'yyyy-MM-dd');
+      
+      if (statusDateStr !== todayStr) {
+        // Stale login detected - auto-logout and create NO_LOGOUT report
+        console.log(`Stale login detected for profile ${profileId}. Auto-logging out from ${statusDateStr}`);
+        
+        // Create auto-logout event at end of previous day (11:59 PM)
+        const autoLogoutTime = new Date(statusDateStr + 'T23:59:59.000Z');
+        
+        // Record the auto-logout event
+        await supabase.from('profile_events').insert({
+          profile_id: profileId,
+          event_type: 'LOGOUT',
+          prev_status: currentStatus,
+          new_status: 'LOGGED_OUT',
+          triggered_by: 'SYSTEM_AUTO_LOGOUT',
+          created_at: autoLogoutTime.toISOString(),
+        });
+        
+        // Get agent info for the report
+        const { data: agentProfile } = await supabase
+          .from('agent_profiles')
+          .select('email, full_name')
+          .eq('id', profileId)
+          .single();
+        
+        // Create NO_LOGOUT agent report
+        if (agentProfile) {
+          await supabase.from('agent_reports').insert({
+            agent_email: agentProfile.email.toLowerCase(),
+            agent_name: agentProfile.full_name || agentProfile.email,
+            profile_id: profileId,
+            incident_date: statusDateStr,
+            incident_type: 'NO_LOGOUT',
+            severity: 'warning',
+            details: {
+              lastStatus: currentStatus,
+              lastStatusSince: currentStatusData.status_since,
+              autoLogoutTime: autoLogoutTime.toISOString(),
+            },
+            status: 'pending',
+          });
+        }
+        
+        // Update current status to LOGGED_OUT so LOGIN can proceed
+        currentStatus = 'LOGGED_OUT';
+      }
+    }
     
     // Validate transition
     const newStatus = isValidTransition(currentStatus, eventType);
@@ -291,7 +347,6 @@ export async function updateProfileStatus(
       };
     }
 
-    const now = new Date().toISOString();
     let bioTimeRemaining = currentStatusData?.bio_time_remaining_seconds ?? null;
     let bioAllowance = currentStatusData?.bio_allowance_seconds ?? null;
 
@@ -299,7 +354,7 @@ export async function updateProfileStatus(
     if (eventType === 'BIO_END' && currentStatusData?.status_since) {
       // Calculate how much bio time was consumed
       const bioStartTime = new Date(currentStatusData.status_since).getTime();
-      const bioEndTime = new Date(now).getTime();
+      const bioEndTime = now.getTime();
       const consumedSeconds = Math.floor((bioEndTime - bioStartTime) / 1000);
       
       const currentRemaining = currentStatusData.bio_time_remaining_seconds ?? 0;
@@ -323,7 +378,7 @@ export async function updateProfileStatus(
     // Build update/insert payload
     const statusPayload: Record<string, unknown> = {
       current_status: newStatus,
-      status_since: now,
+      status_since: nowISO,
     };
 
     // Include bio fields when relevant
@@ -368,7 +423,7 @@ export async function updateProfileStatus(
         prev_status: currentStatus,
         new_status: newStatus,
         triggered_by: triggeredBy,
-        created_at: now,
+        created_at: nowISO,
       });
 
     if (eventError) {
@@ -379,7 +434,7 @@ export async function updateProfileStatus(
     // Send device restart notifications if applicable
     if (eventType === 'DEVICE_RESTART_START' || eventType === 'DEVICE_RESTART_END') {
       // Fire and forget - don't block on notification errors
-      sendDeviceRestartNotifications(profileId, eventType, triggeredBy, now).catch((err) => {
+      sendDeviceRestartNotifications(profileId, eventType, triggeredBy, nowISO).catch((err) => {
         console.error('Failed to send device restart notifications:', err);
       });
     }
