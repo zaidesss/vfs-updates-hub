@@ -1,13 +1,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { BarChart3, RefreshCw, Ticket, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle } from 'lucide-react';
+import { BarChart3, RefreshCw, Mail, MessageCircle, Phone, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle } from 'lucide-react';
 import { formatGapTime } from '@/lib/agentDashboardApi';
 import { cn } from '@/lib/utils';
 
+interface TicketCountByType {
+  email: number;
+  chat: number;
+  call: number;
+}
+
 interface DailyWorkTrackerProps {
-  quota: number | null;
-  ticketsHandled: number;
+  // Position-specific quotas and counts
+  position: string | null;
+  quotaEmail: number | null;
+  quotaChat: number | null;
+  quotaPhone: number | null;
+  ticketCounts: TicketCountByType;
   avgGapSeconds: number | null;
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -21,9 +31,74 @@ interface DailyWorkTrackerProps {
   hasUpworkContract?: boolean;
 }
 
+/**
+ * Determine which ticket types to show based on position
+ */
+function getVisibleTicketTypes(
+  position: string | null,
+  quotaChat: number | null,
+  quotaPhone: number | null
+): { showEmail: boolean; showChat: boolean; showCall: boolean } {
+  const pos = (position || '').toLowerCase();
+  
+  // Email is always shown for support roles
+  const showEmail = pos.includes('support') || pos.includes('hybrid') || pos === '';
+  
+  // Chat: show if Chat Support, Hybrid Support, or if quota_chat is set
+  const showChat = pos.includes('chat') || pos.includes('hybrid') || (quotaChat !== null && quotaChat > 0);
+  
+  // Call: show if Phone Support, Hybrid Support, or if quota_phone is set
+  const showCall = pos.includes('phone') || pos.includes('hybrid') || (quotaPhone !== null && quotaPhone > 0);
+  
+  return { showEmail, showChat, showCall };
+}
+
+interface TicketProgressBarProps {
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+  quota: number | null;
+  colorClass?: string;
+}
+
+function TicketProgressBar({ icon, label, count, quota, colorClass = 'text-primary' }: TicketProgressBarProps) {
+  const hasQuota = quota !== null && quota > 0;
+  const progressPercent = hasQuota ? Math.min((count / quota) * 100, 100) : 0;
+  const isOverQuota = hasQuota && count > quota;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className={cn("flex items-center gap-2 text-sm text-muted-foreground", colorClass)}>
+          {icon}
+          {label}
+        </div>
+        <span className={cn("text-sm font-medium", isOverQuota && 'text-green-600')}>
+          {hasQuota ? `${count}/${quota}` : count}
+        </span>
+      </div>
+      {hasQuota ? (
+        <>
+          <Progress value={progressPercent} className="h-2" />
+          <p className="text-xs text-muted-foreground text-right">
+            {isOverQuota 
+              ? `${(progressPercent - 100).toFixed(0)}% over quota!` 
+              : `${progressPercent.toFixed(0)}% of quota`}
+          </p>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">No quota set</p>
+      )}
+    </div>
+  );
+}
+
 export function DailyWorkTracker({ 
-  quota, 
-  ticketsHandled,
+  position,
+  quotaEmail, 
+  quotaChat,
+  quotaPhone,
+  ticketCounts,
   avgGapSeconds,
   onRefresh,
   isRefreshing,
@@ -34,9 +109,7 @@ export function DailyWorkTracker({
   upworkStartTime,
   hasUpworkContract,
 }: DailyWorkTrackerProps) {
-  const quotaValue = quota || 50; // Default quota
-  const progressPercent = Math.min((ticketsHandled / quotaValue) * 100, 100);
-  const isOverQuota = ticketsHandled > quotaValue;
+  const { showEmail, showChat, showCall } = getVisibleTicketTypes(position, quotaChat, quotaPhone);
 
   // Calculate variance between portal and Upwork hours (only if both are available)
   const hasUpworkData = upworkHours !== null && upworkHours !== undefined;
@@ -63,12 +136,11 @@ export function DailyWorkTracker({
     return `${h}h ${m}m`;
   };
 
-  // Determine grid columns based on what we're showing
-  // Always show: Tickets, Avg Gap, Portal Time
-  // Conditionally show: Upwork Time (when hasUpworkContract)
-  const gridCols = hasUpworkContract 
-    ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" 
-    : "grid-cols-1 md:grid-cols-3";
+  // Count how many ticket type bars we're showing
+  const ticketBarsCount = [showEmail, showChat, showCall].filter(Boolean).length;
+
+  // Determine grid columns for the bottom row (Avg Gap, Portal Time, Upwork Time)
+  const timeMetricsCount = hasUpworkContract ? 3 : 2;
 
   return (
     <Card>
@@ -90,27 +162,52 @@ export function DailyWorkTracker({
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className={cn("grid gap-6", gridCols)}>
-          {/* Tickets Handled */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Ticket className="h-4 w-4" />
-                Tickets Handled
-              </div>
-              <span className={`text-sm font-medium ${isOverQuota ? 'text-green-600' : ''}`}>
-                {ticketsHandled}/{quotaValue}
-              </span>
-            </div>
-            <Progress value={progressPercent} className="h-2" />
-            <p className="text-xs text-muted-foreground text-right">
-              {isOverQuota 
-                ? `${(progressPercent - 100).toFixed(0)}% over quota!` 
-                : `${progressPercent.toFixed(0)}% of daily quota`}
-            </p>
+      <CardContent className="space-y-6">
+        {/* Tickets Handled Section */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium text-muted-foreground">Tickets Handled</h4>
+          <div className={cn(
+            "grid gap-4",
+            ticketBarsCount === 1 && "grid-cols-1",
+            ticketBarsCount === 2 && "grid-cols-1 md:grid-cols-2",
+            ticketBarsCount >= 3 && "grid-cols-1 md:grid-cols-3"
+          )}>
+            {showEmail && (
+              <TicketProgressBar
+                icon={<Mail className="h-4 w-4" />}
+                label="Email"
+                count={ticketCounts.email}
+                quota={quotaEmail}
+                colorClass="text-blue-600"
+              />
+            )}
+            {showChat && (
+              <TicketProgressBar
+                icon={<MessageCircle className="h-4 w-4" />}
+                label="Chat"
+                count={ticketCounts.chat}
+                quota={quotaChat}
+                colorClass="text-green-600"
+              />
+            )}
+            {showCall && (
+              <TicketProgressBar
+                icon={<Phone className="h-4 w-4" />}
+                label="Calls"
+                count={ticketCounts.call}
+                quota={quotaPhone}
+                colorClass="text-amber-600"
+              />
+            )}
           </div>
+        </div>
 
+        {/* Time Metrics Row */}
+        <div className={cn(
+          "grid gap-6",
+          timeMetricsCount === 2 && "grid-cols-1 md:grid-cols-2",
+          timeMetricsCount === 3 && "grid-cols-1 md:grid-cols-3"
+        )}>
           {/* Average Gap */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">

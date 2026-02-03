@@ -26,7 +26,7 @@ import {
   getWeekAllEvents,
   calculateAttendanceForWeek,
   getAgentTagByEmail,
-  getTodayTicketCount,
+  getTodayTicketCountByType,
   getTodayGapData,
   fetchUpworkTime,
   autoGenerateLateLoginRequest,
@@ -37,6 +37,7 @@ import {
   type DayAttendance,
   type ProfileEvent,
   type ApprovedLeave,
+  type TicketCountByType,
 } from '@/lib/agentDashboardApi';
 import { format } from 'date-fns';
 
@@ -94,7 +95,7 @@ export default function AgentDashboard() {
   
   // Daily Work Tracker state
   const [agentTag, setAgentTag] = useState<string | null>(null);
-  const [ticketsHandled, setTicketsHandled] = useState(0);
+  const [ticketCounts, setTicketCounts] = useState<TicketCountByType>({ email: 0, chat: 0, call: 0, total: 0 });
   const [avgGapSeconds, setAvgGapSeconds] = useState<number | null>(null);
   const [isRefreshingTracker, setIsRefreshingTracker] = useState(false);
   
@@ -217,12 +218,12 @@ export default function AgentDashboard() {
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
         setAgentTag(tag);
-        // Fetch initial ticket data
+        // Fetch initial ticket data by type
         const [ticketResult, gapResult] = await Promise.all([
-          getTodayTicketCount(tag),
+          getTodayTicketCountByType(tag),
           getTodayGapData(tag),
         ]);
-        setTicketsHandled(ticketResult.data);
+        setTicketCounts(ticketResult.data);
         setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
       }
       
@@ -273,10 +274,10 @@ export default function AgentDashboard() {
     setIsRefreshingTracker(true);
     try {
       const [ticketResult, gapResult] = await Promise.all([
-        getTodayTicketCount(agentTag),
+        getTodayTicketCountByType(agentTag),
         getTodayGapData(agentTag),
       ]);
-      setTicketsHandled(ticketResult.data);
+      setTicketCounts(ticketResult.data);
       setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
     } catch (err) {
       console.error('Failed to refresh tracker:', err);
@@ -471,8 +472,11 @@ export default function AgentDashboard() {
 
         {/* Daily Work Tracker */}
         <DailyWorkTracker 
-          quota={profile.quota}
-          ticketsHandled={ticketsHandled}
+          position={profile.position}
+          quotaEmail={profile.quota_email}
+          quotaChat={profile.quota_chat}
+          quotaPhone={profile.quota_phone}
+          ticketCounts={ticketCounts}
           avgGapSeconds={avgGapSeconds}
           onRefresh={handleRefreshTracker}
           isRefreshing={isRefreshingTracker}
