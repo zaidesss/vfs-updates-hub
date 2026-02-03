@@ -1,8 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 
-export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING';
-export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END';
+export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO';
+export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END';
 
 export type AttendanceStatus = 
   | 'present'     // Green - logged in on time
@@ -84,6 +84,8 @@ export interface ProfileStatusRecord {
   profile_id: string;
   current_status: ProfileStatus;
   status_since: string | null;
+  bio_time_remaining_seconds: number | null;
+  bio_allowance_seconds: number | null;
 }
 
 export interface ProfileEvent {
@@ -107,6 +109,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     COACHING_END: null,
     DEVICE_RESTART_START: null,
     DEVICE_RESTART_END: null,
+    BIO_START: null,
+    BIO_END: null,
   },
   LOGGED_IN: {
     LOGIN: null,
@@ -117,6 +121,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     COACHING_END: null,
     DEVICE_RESTART_START: 'RESTARTING',
     DEVICE_RESTART_END: null,
+    BIO_START: 'ON_BIO',
+    BIO_END: null,
   },
   ON_BREAK: {
     LOGIN: null,
@@ -127,6 +133,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     COACHING_END: null,
     DEVICE_RESTART_START: null,
     DEVICE_RESTART_END: null,
+    BIO_START: null,
+    BIO_END: null,
   },
   COACHING: {
     LOGIN: null,
@@ -137,6 +145,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     COACHING_END: 'LOGGED_IN',
     DEVICE_RESTART_START: null,
     DEVICE_RESTART_END: null,
+    BIO_START: null,
+    BIO_END: null,
   },
   RESTARTING: {
     LOGIN: null,
@@ -147,6 +157,20 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     COACHING_END: null,
     DEVICE_RESTART_START: null,
     DEVICE_RESTART_END: 'LOGGED_IN',
+    BIO_START: null,
+    BIO_END: null,
+  },
+  ON_BIO: {
+    LOGIN: null,
+    LOGOUT: null,
+    BREAK_IN: null,
+    BREAK_OUT: null,
+    COACHING_START: null,
+    COACHING_END: null,
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: null,
+    BIO_START: null,
+    BIO_END: 'LOGGED_IN',
   },
 };
 
@@ -229,6 +253,8 @@ export async function getProfileStatus(profileId: string): Promise<{ data: Profi
           profile_id: profileId,
           current_status: 'LOGGED_OUT' as ProfileStatus,
           status_since: null,
+          bio_time_remaining_seconds: null,
+          bio_allowance_seconds: null,
         }, 
         error: null 
       };

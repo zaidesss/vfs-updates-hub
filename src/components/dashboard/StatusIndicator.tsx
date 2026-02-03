@@ -34,6 +34,11 @@ const STATUS_CONFIG: Record<ProfileStatus, { label: string; color: string; bgCol
     color: 'text-orange-700 dark:text-orange-400', 
     bgColor: 'bg-orange-100 dark:bg-orange-900/30' 
   },
+  ON_BIO: { 
+    label: 'Bio Break', 
+    color: 'text-cyan-700 dark:text-cyan-400', 
+    bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' 
+  },
 };
 
 /**
