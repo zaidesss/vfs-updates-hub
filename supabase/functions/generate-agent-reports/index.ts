@@ -32,6 +32,7 @@ interface AgentDirectory {
   sat_schedule: string | null;
   sun_schedule: string | null;
   day_off: string[] | null;
+  break_schedule: string | null;
 }
 
 /**
@@ -140,7 +141,7 @@ Deno.serve(async (req) => {
     // Fetch all agent directories
     const { data: directories } = await supabase
       .from('agent_directory')
-      .select('email, agent_name, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off');
+      .select('email, agent_name, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off, break_schedule');
 
     const directoryMap = new Map<string, AgentDirectory>();
     directories?.forEach(d => directoryMap.set(d.email.toLowerCase(), d));
@@ -327,6 +328,124 @@ Deno.serve(async (req) => {
             },
             status: 'open',
           });
+        }
+      }
+
+      // Check for EARLY_OUT: Logged out before scheduled end time
+      if (logoutEvents.length > 0 && parsedSchedule) {
+        const lastLogout = logoutEvents[logoutEvents.length - 1];
+        const logoutTime = new Date(lastLogout.created_at);
+        const logoutHour = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          hour12: false,
+        }).format(logoutTime));
+        const logoutMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          minute: '2-digit',
+        }).format(logoutTime));
+        const logoutMinutes = logoutHour * 60 + logoutMinute;
+
+        if (logoutMinutes < parsedSchedule.endMinutes) {
+          const reportKey = `${profile.email.toLowerCase()}_EARLY_OUT`;
+          if (!existingReportSet.has(reportKey)) {
+            const earlyByMinutes = parsedSchedule.endMinutes - logoutMinutes;
+            reportsToCreate.push({
+              agent_email: profile.email.toLowerCase(),
+              agent_name: agentName,
+              profile_id: profile.id,
+              incident_date: targetDateStr,
+              incident_type: 'EARLY_OUT',
+              severity: 'medium',
+              details: {
+                scheduledEnd: parsedSchedule.endMinutes,
+                actualLogout: logoutMinutes,
+                earlyByMinutes,
+              },
+              status: 'open',
+            });
+          }
+        }
+      }
+
+      // Check for OVERBREAK: Total break time exceeded allowance
+      if (directory?.break_schedule) {
+        const breakParsed = parseScheduleRange(directory.break_schedule);
+        if (breakParsed) {
+          let allowedBreakMinutes = breakParsed.endMinutes - breakParsed.startMinutes;
+          if (allowedBreakMinutes < 0) allowedBreakMinutes += 24 * 60;
+          
+          const graceMinutes = Math.ceil(allowedBreakMinutes / 6);
+          const maxAllowedMinutes = allowedBreakMinutes + graceMinutes;
+
+          // Calculate total break time from events
+          const breakInEvents = profileEvents.filter(e => e.event_type === 'BREAK_IN');
+          const breakOutEvents = profileEvents.filter(e => e.event_type === 'BREAK_OUT');
+          
+          let totalBreakSeconds = 0;
+          for (const startEvent of breakInEvents) {
+            const matchingEnd = breakOutEvents.find(e => 
+              new Date(e.created_at) > new Date(startEvent.created_at)
+            );
+            if (matchingEnd) {
+              const duration = (new Date(matchingEnd.created_at).getTime() - new Date(startEvent.created_at).getTime()) / 1000;
+              totalBreakSeconds += duration;
+            }
+          }
+
+          const totalBreakMinutes = Math.floor(totalBreakSeconds / 60);
+
+          if (totalBreakMinutes > maxAllowedMinutes) {
+            const reportKey = `${profile.email.toLowerCase()}_OVERBREAK`;
+            if (!existingReportSet.has(reportKey)) {
+              reportsToCreate.push({
+                agent_email: profile.email.toLowerCase(),
+                agent_name: agentName,
+                profile_id: profile.id,
+                incident_date: targetDateStr,
+                incident_type: 'OVERBREAK',
+                severity: 'low',
+                details: {
+                  allowedMinutes: allowedBreakMinutes,
+                  graceMinutes,
+                  totalBreakMinutes,
+                  overageMinutes: totalBreakMinutes - allowedBreakMinutes,
+                },
+                status: 'open',
+              });
+            }
+          }
+        }
+      }
+
+      // Check for TIME_NOT_MET: Logged hours less than scheduled
+      if (loginEvents.length > 0 && logoutEvents.length > 0 && parsedSchedule) {
+        const firstLogin = new Date(loginEvents[0].created_at);
+        const lastLogout = new Date(logoutEvents[logoutEvents.length - 1].created_at);
+        const loggedMinutes = Math.floor((lastLogout.getTime() - firstLogin.getTime()) / (1000 * 60));
+
+        let requiredMinutes = parsedSchedule.endMinutes - parsedSchedule.startMinutes;
+        if (requiredMinutes < 0) requiredMinutes += 24 * 60;
+
+        // If logged less than 90% of required hours
+        if (loggedMinutes < requiredMinutes * 0.9) {
+          const reportKey = `${profile.email.toLowerCase()}_TIME_NOT_MET`;
+          if (!existingReportSet.has(reportKey)) {
+            reportsToCreate.push({
+              agent_email: profile.email.toLowerCase(),
+              agent_name: agentName,
+              profile_id: profile.id,
+              incident_date: targetDateStr,
+              incident_type: 'TIME_NOT_MET',
+              severity: 'medium',
+              details: {
+                loggedHours: loggedMinutes / 60,
+                requiredHours: requiredMinutes / 60,
+                shortfallMinutes: requiredMinutes - loggedMinutes,
+              },
+              status: 'open',
+            });
+          }
         }
       }
     }
