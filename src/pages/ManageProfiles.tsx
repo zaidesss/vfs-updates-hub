@@ -118,6 +118,7 @@ export default function ManageProfilesPage() {
       weekday_ot_schedule: profile?.weekday_ot_schedule || '',
       weekend_ot_schedule: profile?.weekend_ot_schedule || '',
       day_off: profile?.day_off || [],
+      ot_enabled: profile?.ot_enabled || false,
     });
     
     const existingHistory = profile?.rate_history || [];

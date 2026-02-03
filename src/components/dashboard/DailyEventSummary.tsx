@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw, Droplet } from 'lucide-react';
+import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw, Droplet, Clock } from 'lucide-react';
 import type { ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatTimeInEST } from '@/lib/agentDashboardApi';
 import { format, parseISO, isToday } from 'date-fns';
@@ -61,6 +61,16 @@ const EVENT_CONFIG: Record<string, { label: string; icon: typeof LogIn; color: s
     label: 'Bio Ended', 
     icon: Droplet, 
     color: 'text-cyan-600 dark:text-cyan-400' 
+  },
+  OT_LOGIN: { 
+    label: 'OT Started', 
+    icon: Clock, 
+    color: 'text-purple-600 dark:text-purple-400' 
+  },
+  OT_LOGOUT: { 
+    label: 'OT Ended', 
+    icon: Clock, 
+    color: 'text-purple-600 dark:text-purple-400' 
   },
 };
 

@@ -1,8 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 
-export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO';
-export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END';
+export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO' | 'ON_OT';
+export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END' | 'OT_LOGIN' | 'OT_LOGOUT';
 
 export type AttendanceStatus = 
   | 'present'     // Green - logged in on time
@@ -70,6 +70,7 @@ export interface DashboardProfile {
   weekend_schedule: string | null;
   day_off: string[];
   upwork_contract_id: string | null;
+  ot_enabled: boolean;
   mon_schedule: string | null;
   tue_schedule: string | null;
   wed_schedule: string | null;
@@ -111,6 +112,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: null,
     BIO_START: null,
     BIO_END: null,
+    OT_LOGIN: null,
+    OT_LOGOUT: null,
   },
   LOGGED_IN: {
     LOGIN: null,
@@ -123,6 +126,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: null,
     BIO_START: 'ON_BIO',
     BIO_END: null,
+    OT_LOGIN: 'ON_OT',
+    OT_LOGOUT: null,
   },
   ON_BREAK: {
     LOGIN: null,
@@ -135,6 +140,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: null,
     BIO_START: null,
     BIO_END: null,
+    OT_LOGIN: null,
+    OT_LOGOUT: null,
   },
   COACHING: {
     LOGIN: null,
@@ -147,6 +154,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: null,
     BIO_START: null,
     BIO_END: null,
+    OT_LOGIN: null,
+    OT_LOGOUT: null,
   },
   RESTARTING: {
     LOGIN: null,
@@ -159,6 +168,8 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: 'LOGGED_IN',
     BIO_START: null,
     BIO_END: null,
+    OT_LOGIN: null,
+    OT_LOGOUT: null,
   },
   ON_BIO: {
     LOGIN: null,
@@ -171,6 +182,22 @@ const VALID_TRANSITIONS: Record<ProfileStatus, Record<EventType, ProfileStatus |
     DEVICE_RESTART_END: null,
     BIO_START: null,
     BIO_END: 'LOGGED_IN',
+    OT_LOGIN: null,
+    OT_LOGOUT: null,
+  },
+  ON_OT: {
+    LOGIN: null,
+    LOGOUT: null,
+    BREAK_IN: null,
+    BREAK_OUT: null,
+    COACHING_START: null,
+    COACHING_END: null,
+    DEVICE_RESTART_START: null,
+    DEVICE_RESTART_END: null,
+    BIO_START: null,
+    BIO_END: null,
+    OT_LOGIN: null,
+    OT_LOGOUT: 'LOGGED_IN',
   },
 };
 
@@ -180,10 +207,10 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
 
 export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
-    // 1. Fetch identity AND upwork_contract_id from agent_profiles (source of truth)
+    // 1. Fetch identity AND upwork_contract_id AND ot_enabled from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, upwork_contract_id')
+      .select('id, email, full_name, upwork_contract_id, ot_enabled')
       .eq('id', profileId)
       .single();
 
@@ -202,7 +229,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       .eq('email', profile.email)
       .maybeSingle();
 
-    // 3. Merge and return - use agent_profiles.upwork_contract_id as source of truth
+    // 3. Merge and return - use agent_profiles.upwork_contract_id and ot_enabled as source of truth
     const dashboardProfile: DashboardProfile = {
       id: profile.id,
       email: profile.email,
@@ -218,6 +245,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       weekend_schedule: directory?.weekend_schedule || null,
       day_off: directory?.day_off || [],
       upwork_contract_id: profile.upwork_contract_id || null, // Use agent_profiles as source of truth
+      ot_enabled: profile.ot_enabled || false, // Use agent_profiles as source of truth
       mon_schedule: directory?.mon_schedule || null,
       tue_schedule: directory?.tue_schedule || null,
       wed_schedule: directory?.wed_schedule || null,
