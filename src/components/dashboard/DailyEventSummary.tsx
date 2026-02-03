@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw } from 'lucide-react';
+import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw, Droplet } from 'lucide-react';
 import type { ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatTimeInEST } from '@/lib/agentDashboardApi';
 import { format, parseISO, isToday } from 'date-fns';
@@ -51,6 +51,16 @@ const EVENT_CONFIG: Record<string, { label: string; icon: typeof LogIn; color: s
     label: 'Device Restored', 
     icon: RotateCcw, 
     color: 'text-orange-600 dark:text-orange-400' 
+  },
+  BIO_START: { 
+    label: 'Bio Break', 
+    icon: Droplet, 
+    color: 'text-cyan-600 dark:text-cyan-400' 
+  },
+  BIO_END: { 
+    label: 'Bio Ended', 
+    icon: Droplet, 
+    color: 'text-cyan-600 dark:text-cyan-400' 
   },
 };
 

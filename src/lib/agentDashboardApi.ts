@@ -431,6 +431,25 @@ export async function updateProfileStatus(
       // Don't fail the operation for event logging errors
     }
 
+    // Get agent info for Slack notification
+    const { data: agentProfile } = await supabase
+      .from('agent_profiles')
+      .select('email, full_name')
+      .eq('id', profileId)
+      .single();
+
+    // Send Slack notification for ALL events (fire and forget)
+    if (agentProfile) {
+      sendProfileStatusNotification(
+        agentProfile.full_name || agentProfile.email,
+        agentProfile.email,
+        eventType,
+        nowISO
+      ).catch((err) => {
+        console.error('Failed to send profile status notification:', err);
+      });
+    }
+
     // Send device restart notifications if applicable
     if (eventType === 'DEVICE_RESTART_START' || eventType === 'DEVICE_RESTART_END') {
       // Fire and forget - don't block on notification errors
@@ -497,6 +516,34 @@ async function calculateBioAllowanceForProfile(profileId: string): Promise<numbe
   } catch (err) {
     console.error('Error calculating bio allowance:', err);
     return 2 * 60; // Default 2 minutes on error
+  }
+}
+
+/**
+ * Send profile status notification to Slack
+ * Routes LOGIN/LOGOUT to a_cyrus_li-lo, other events to a_cyrus_cs-all
+ */
+async function sendProfileStatusNotification(
+  agentName: string,
+  agentEmail: string,
+  eventType: EventType,
+  timestamp: string
+): Promise<void> {
+  try {
+    const response = await supabase.functions.invoke('send-profile-status-notification', {
+      body: {
+        agentName,
+        agentEmail,
+        eventType,
+        timestamp,
+      },
+    });
+
+    if (response.error) {
+      console.error('Failed to send profile status notification:', response.error);
+    }
+  } catch (err: any) {
+    console.error('Error calling send-profile-status-notification:', err.message);
   }
 }
 

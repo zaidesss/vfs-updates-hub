@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
+    const slackBotToken = Deno.env.get('SLACK_BOT_TOKEN');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -161,48 +161,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Send Slack notification (if configured)
-    if (slackWebhookUrl) {
+    // 5. Send Slack notification to a_pb_mgt channel (if configured)
+    if (slackBotToken) {
       try {
-        const slackPayload = {
-          text: title,
-          blocks: [
-            {
-              type: 'header',
-              text: {
-                type: 'plain_text',
-                text: title,
-                emoji: true,
-              },
-            },
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: message,
-              },
-            },
-            {
-              type: 'context',
-              elements: [
-                {
-                  type: 'mrkdwn',
-                  text: `*Agent:* ${agentName} | *Email:* ${agentEmail} | *Time:* ${formattedTime} EST`,
-                },
-              ],
-            },
-          ],
-        };
+        // Build subtle, creative message with hyperlink
+        const agentReportsUrl = 'https://vfs-updates-hub.lovable.app/team-performance/agent-reports';
+        let slackMessage: string;
+        
+        if (alertType === 'BIO_OVERUSE') {
+          slackMessage = `🚿 *Bio Break Overuse* • ${agentName} has exceeded their bio break allowance (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
+        } else if (alertType === 'EXCESSIVE_RESTART') {
+          slackMessage = `🔄 *Excessive Restart* • ${agentName} has exceeded the 5-min restart limit (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
+        } else {
+          slackMessage = `⚠️ *${alertType}* • ${agentName} - ${message}. <${agentReportsUrl}|Review in Agent Reports>`;
+        }
 
-        const slackResponse = await fetch(slackWebhookUrl, {
+        const slackResponse = await fetch('https://slack.com/api/chat.postMessage', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(slackPayload),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${slackBotToken}`,
+          },
+          body: JSON.stringify({
+            channel: 'a_pb_mgt',
+            text: slackMessage,
+          }),
         });
 
-        if (!slackResponse.ok) {
-          const slackError = await slackResponse.text();
-          console.error('Slack notification failed:', slackError);
+        const slackResult = await slackResponse.json();
+        if (!slackResult.ok) {
+          console.error('Slack notification failed:', slackResult.error);
         }
       } catch (slackErr) {
         console.error('Slack send error:', slackErr);
