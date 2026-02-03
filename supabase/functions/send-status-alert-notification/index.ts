@@ -8,7 +8,7 @@ const corsHeaders = {
 interface AlertRequest {
   agentEmail: string;
   agentName: string;
-  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET';
+  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET' | 'QUOTA_NOT_MET' | 'HIGH_GAP';
   details: Record<string, any>;
 }
 
@@ -18,9 +18,11 @@ const ALERT_CONFIGS: Record<string, { emoji: string; label: string; defaultSever
   BIO_OVERUSE: { emoji: '🚿', label: 'Bio Break Overuse', defaultSeverity: 'low' },
   LATE_LOGIN: { emoji: '🕐', label: 'Late Login', defaultSeverity: 'low' },
   EARLY_OUT: { emoji: '🚪', label: 'Early Out', defaultSeverity: 'medium' },
-  NO_LOGOUT: { emoji: '🔴', label: 'No Logout', defaultSeverity: 'medium' },
+  NO_LOGOUT: { emoji: '🔴', label: 'No Logout', defaultSeverity: 'high' },
   OVERBREAK: { emoji: '☕', label: 'Overbreak', defaultSeverity: 'low' },
   TIME_NOT_MET: { emoji: '⏱️', label: 'Hours Not Met', defaultSeverity: 'medium' },
+  QUOTA_NOT_MET: { emoji: '📊', label: 'Quota Not Met', defaultSeverity: 'medium' },
+  HIGH_GAP: { emoji: '⏳', label: 'High Ticket Gap', defaultSeverity: 'medium' },
 };
 
 Deno.serve(async (req) => {
@@ -107,6 +109,18 @@ Deno.serve(async (req) => {
         const requiredHours = details.requiredHours || 0;
         title = `⚠️ Hours Not Met: ${agentName}`;
         message = `${agentName} logged ${loggedHours.toFixed(1)}h of ${requiredHours.toFixed(1)}h required.`;
+        break;
+      case 'QUOTA_NOT_MET':
+        const expectedQuota = details.expectedQuota || 0;
+        const actualTotal = details.actualTotal || 0;
+        const shortfall = details.shortfall || 0;
+        title = `⚠️ Quota Not Met: ${agentName}`;
+        message = `${agentName} completed ${actualTotal} of ${expectedQuota} tickets (${shortfall} short).`;
+        break;
+      case 'HIGH_GAP':
+        const avgGapMinutes = details.avgGapMinutes || 0;
+        title = `⚠️ High Ticket Gap: ${agentName}`;
+        message = `${agentName} had an average ticket gap of ${avgGapMinutes.toFixed(1)} minutes.`;
         break;
       default:
         title = `⚠️ ${label}: ${agentName}`;
@@ -234,6 +248,12 @@ Deno.serve(async (req) => {
             break;
           case 'TIME_NOT_MET':
             slackMessage = `${emoji} *${label}* • ${agentName} logged ${(details.loggedHours || 0).toFixed(1)}h/${(details.requiredHours || 0).toFixed(1)}h required (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
+            break;
+          case 'QUOTA_NOT_MET':
+            slackMessage = `${emoji} *${label}* • ${agentName} completed ${details.actualTotal || 0}/${details.expectedQuota || 0} tickets (${details.shortfall || 0} short, ${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
+            break;
+          case 'HIGH_GAP':
+            slackMessage = `${emoji} *${label}* • ${agentName} avg ticket gap ${(details.avgGapMinutes || 0).toFixed(1)} mins (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
             break;
           default:
             slackMessage = `${emoji} *${label}* • ${agentName} - ${message} (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;

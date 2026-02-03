@@ -642,12 +642,22 @@ async function sendDeviceRestartNotifications(
 }
 
 /**
+ * Calculate dynamic severity for time-based violations
+ * 1-5 mins = low, 6-15 mins = medium, 16+ mins = high
+ */
+function calculateTimeSeverity(minutes: number): 'low' | 'medium' | 'high' {
+  if (minutes <= 5) return 'low';
+  if (minutes <= 15) return 'medium';
+  return 'high';
+}
+
+/**
  * Send status alert notification to Slack (a_pb_mgt channel) for violations
  */
 async function sendStatusAlertNotification(
   agentEmail: string,
   agentName: string,
-  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET',
+  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET' | 'QUOTA_NOT_MET' | 'HIGH_GAP',
   details: Record<string, any>
 ): Promise<void> {
   try {
@@ -718,6 +728,8 @@ async function checkAndAlertLateLogin(
         .maybeSingle();
 
       if (!existingReport) {
+        const severity = calculateTimeSeverity(lateByMinutes);
+        
         // Create agent_reports record
         await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
@@ -725,7 +737,7 @@ async function checkAndAlertLateLogin(
           profile_id: profileId,
           incident_date: todayStr,
           incident_type: 'LATE_LOGIN',
-          severity: 'low',
+          severity,
           details: {
             scheduledStart: parsed.startMinutes,
             actualLogin: loginMinutes,
@@ -737,7 +749,7 @@ async function checkAndAlertLateLogin(
         // Send Slack alert
         await sendStatusAlertNotification(agentEmail, agentName, 'LATE_LOGIN', {
           lateByMinutes,
-          severity: 'low',
+          severity,
         });
       }
     }
@@ -801,6 +813,8 @@ async function checkAndAlertEarlyOut(
         .maybeSingle();
 
       if (!existingReport) {
+        const severity = calculateTimeSeverity(earlyByMinutes);
+        
         // Create agent_reports record
         await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
@@ -808,7 +822,7 @@ async function checkAndAlertEarlyOut(
           profile_id: profileId,
           incident_date: todayStr,
           incident_type: 'EARLY_OUT',
-          severity: 'medium',
+          severity,
           details: {
             scheduledEnd: parsed.endMinutes,
             actualLogout: logoutMinutes,
@@ -820,7 +834,7 @@ async function checkAndAlertEarlyOut(
         // Send Slack alert
         await sendStatusAlertNotification(agentEmail, agentName, 'EARLY_OUT', {
           earlyByMinutes,
-          severity: 'medium',
+          severity,
         });
       }
     }
@@ -905,6 +919,8 @@ async function checkAndAlertOverbreak(
         .maybeSingle();
 
       if (!existingReport) {
+        const severity = calculateTimeSeverity(overageMinutes);
+        
         // Create agent_reports record
         await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
@@ -912,7 +928,7 @@ async function checkAndAlertOverbreak(
           profile_id: profileId,
           incident_date: todayStr,
           incident_type: 'OVERBREAK',
-          severity: 'low',
+          severity,
           details: {
             allowedMinutes,
             graceMinutes,
@@ -925,7 +941,7 @@ async function checkAndAlertOverbreak(
         // Send Slack alert
         await sendStatusAlertNotification(agentEmail, agentName, 'OVERBREAK', {
           overageMinutes,
-          severity: 'low',
+          severity,
         });
       }
     }
