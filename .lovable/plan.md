@@ -1,77 +1,119 @@
 
-# Fix Plan: Severity Values + Bio Button Constraint
 
-## Issues Identified
+# Implementation Plan: Bio Events, Slack Notifications, and Daily Report Cleanup
 
-### Issue 1: Edge Function Severity Mismatch
-Both `send-status-alert-notification` and `generate-agent-reports` use incorrect severity values:
-- **Current**: `'warning'`, `'info'`
-- **Required by DB**: `'low'`, `'medium'`, `'high'`
-
-### Issue 2: Edge Function Status Mismatch
-Both edge functions use `'pending'` for report status:
-- **Current**: `'pending'`
-- **Required by DB**: `'open'`, `'reviewed'`, `'validated'`, `'dismissed'`
-
-### Issue 3: Incident Type Typo
-Using `'EXCESSIVE_RESTART'` (singular) but DB constraint requires `'EXCESSIVE_RESTARTS'` (plural).
-
-### Issue 4: Bio Button Constraint (The Error Screenshot)
-The `profile_status` table has a check constraint that doesn't include `'ON_BIO'`:
-- **Current allowed**: `['LOGGED_OUT', 'LOGGED_IN', 'ON_BREAK', 'COACHING', 'RESTARTING']`
-- **Missing**: `'ON_BIO'`
+## Overview
+This plan adds Bio events to Today's Activity, implements channel-specific Slack notifications for all profile events, and updates the Agent Reports alert format while disabling the Daily Agent Report Slack notification.
 
 ---
 
-## Fix Steps
+## Changes Summary
 
-### Step 1: Update Database Constraint
-Add `'ON_BIO'` to the `valid_status` check constraint on `profile_status` table.
+| Area | Changes |
+|------|---------|
+| Today's Activity | Add BIO_START and BIO_END events to the display |
+| New Edge Function | Create `send-profile-status-notification` for posting status changes to Slack channels |
+| Frontend API | Update `updateProfileStatus` to call the new edge function for all events |
+| Agent Reports Alerts | Update format, target `a_pb_mgt` channel, make message subtle |
+| Daily Reports | Disable Slack notification (keep email and in-app) |
 
-```sql
--- Drop old constraint and create new one with ON_BIO
-ALTER TABLE profile_status DROP CONSTRAINT valid_status;
-ALTER TABLE profile_status ADD CONSTRAINT valid_status 
-  CHECK (current_status = ANY (ARRAY['LOGGED_OUT', 'LOGGED_IN', 'ON_BREAK', 'COACHING', 'RESTARTING', 'ON_BIO']));
+---
+
+## Step 1: Add Bio Events to Today's Activity
+
+**File:** `src/components/dashboard/DailyEventSummary.tsx`
+
+Add two new entries to `EVENT_CONFIG`:
+- `BIO_START` → "Bio Break" with a suitable icon (e.g., `Droplet` or reuse `Coffee`)
+- `BIO_END` → "Bio Ended" with the same icon
+
+---
+
+## Step 2: Create New Edge Function for Profile Status Notifications
+
+**New File:** `supabase/functions/send-profile-status-notification/index.ts`
+
+This function will:
+1. Accept `agentName`, `agentEmail`, `eventType`, and `timestamp`
+2. Determine the target Slack channel:
+   - **LOGIN / LOGOUT** → `a_cyrus_li-lo`
+   - **All other events** (BREAK_IN, BREAK_OUT, COACHING_START, COACHING_END, DEVICE_RESTART_START, DEVICE_RESTART_END, BIO_START, BIO_END) → `a_cyrus_cs-all`
+3. Use Slack API with bot token to post a **subtle, single-line message** like:
+   - `John Doe logged in at 9:15 AM EST`
+   - `Jane Smith started a break at 2:30 PM EST`
+4. No blocks, headers, or context sections - just clean text
+
+**Slack API Format (subtle):**
+```json
+{
+  "channel": "a_cyrus_li-lo",
+  "text": "John Doe logged in at 9:15 AM EST"
+}
 ```
 
-### Step 2: Fix `send-status-alert-notification` Edge Function
-Update severity and status values:
-
-| Current Value | New Value |
-|---------------|-----------|
-| `severity: 'warning'` | `severity: 'medium'` |
-| `status: 'pending'` | `status: 'open'` |
-| `incidentType: 'EXCESSIVE_RESTART'` | `incidentType: 'EXCESSIVE_RESTARTS'` |
-
-### Step 3: Fix `generate-agent-reports` Edge Function
-Update all severity mappings and status:
-
-| Incident Type | Current Severity | New Severity |
-|---------------|------------------|--------------|
-| NO_LOGOUT | `'warning'` | `'medium'` |
-| LATE_LOGIN | `'info'` | `'low'` |
-| EXCESSIVE_RESTART | `'warning'` | `'medium'` |
-| BIO_OVERUSE | `'warning'` | `'low'` |
-
-Also fix:
-- All `incident_type: 'EXCESSIVE_RESTART'` → `'EXCESSIVE_RESTARTS'`
-- All `status: 'pending'` → `'open'`
+**Required Secret:** `SLACK_BOT_TOKEN`
 
 ---
 
-## Files to Modify
+## Step 3: Update Frontend to Call New Edge Function
 
-| File | Changes |
-|------|---------|
-| Database migration | Add `'ON_BIO'` to valid_status constraint |
-| `supabase/functions/send-status-alert-notification/index.ts` | Fix severity, status, incident_type values |
-| `supabase/functions/generate-agent-reports/index.ts` | Fix all severity, status, incident_type values |
+**File:** `src/lib/agentDashboardApi.ts`
+
+Modify `updateProfileStatus` to:
+1. After successfully recording the event, call `send-profile-status-notification` for **all** event types
+2. Fire-and-forget (don't block on response)
 
 ---
 
-## Severity Mapping Logic
-- **`'high'`**: Critical violations requiring immediate attention
-- **`'medium'`**: Standard violations (NO_LOGOUT, EXCESSIVE_RESTARTS)
-- **`'low'`**: Minor issues (LATE_LOGIN, BIO_OVERUSE)
+## Step 4: Update Agent Reports Alert Format
+
+**File:** `supabase/functions/send-status-alert-notification/index.ts`
+
+1. Target channel `a_pb_mgt` for incident alerts
+2. Update message format to be subtle and creative:
+   - **BIO_OVERUSE:** `Bio Break Overuse • John Doe has exceeded their bio break allowance (low severity). <https://vfs-updates-hub.lovable.app/team-performance/agent-reports|Review in Agent Reports>`
+   - **EXCESSIVE_RESTART:** `Excessive Restart • Jane Smith has exceeded the 5-min restart limit (medium severity). <https://vfs-updates-hub.lovable.app/team-performance/agent-reports|Review in Agent Reports>`
+
+---
+
+## Step 5: Disable Daily Agent Report Slack Notification
+
+**File:** `supabase/functions/generate-agent-reports/index.ts`
+
+Comment out or remove the Slack notification block (lines 424-456) while keeping:
+- Email notifications (Resend)
+- In-app notifications
+
+---
+
+## Technical Details
+
+### New Environment Variable Needed
+You'll need to provide a `SLACK_BOT_TOKEN` with the following scopes:
+- `chat:write` - Post messages to channels
+- `channels:read` - Look up channel IDs by name (optional if using channel names)
+
+The bot must be added to the channels: `a_cyrus_li-lo`, `a_cyrus_cs-all`, and `a_pb_mgt`.
+
+### Event Type to Message Mapping
+| Event Type | Label | Channel |
+|------------|-------|---------|
+| LOGIN | logged in | a_cyrus_li-lo |
+| LOGOUT | logged out | a_cyrus_li-lo |
+| BREAK_IN | started a break | a_cyrus_cs-all |
+| BREAK_OUT | ended their break | a_cyrus_cs-all |
+| COACHING_START | started coaching | a_cyrus_cs-all |
+| COACHING_END | ended coaching | a_cyrus_cs-all |
+| DEVICE_RESTART_START | is restarting device | a_cyrus_cs-all |
+| DEVICE_RESTART_END | device restored | a_cyrus_cs-all |
+| BIO_START | started bio break | a_cyrus_cs-all |
+| BIO_END | ended bio break | a_cyrus_cs-all |
+
+### Files to Create/Modify
+1. **Create:** `supabase/functions/send-profile-status-notification/index.ts`
+2. **Modify:** `src/components/dashboard/DailyEventSummary.tsx`
+3. **Modify:** `src/lib/agentDashboardApi.ts`
+4. **Modify:** `supabase/functions/send-status-alert-notification/index.ts`
+5. **Modify:** `supabase/functions/generate-agent-reports/index.ts`
+6. **Modify:** `supabase/config.toml` (register new function)
 
