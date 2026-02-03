@@ -1,164 +1,130 @@
 
 
-# Complete Violations & Real-time Slack Alerts Implementation
-**(QUOTA_NOT_MET and HIGH_GAP DISABLED per your request)**
+# Plan: Downgrade "Managed by HR" Field Permissions to Admin Role
 
 ## Overview
-Expand the `send-status-alert-notification` edge function to handle ALL violation types **except** QUOTA_NOT_MET and HIGH_GAP, and add real-time Slack detection for violations that currently only exist in the daily report.
+Change the Work Configuration section and related fields to be editable by both **Admin** and **Super Admin** roles, while keeping the **Compensation** section restricted to **Super Admin only**.
 
 ---
 
-## Violations Status - Updated
+## Current vs Proposed Permissions
 
-| Violation | Real-time Slack? | Daily Report? | Action |
-|-----------|------------------|---------------|--------|
-| BIO_OVERUSE | ✅ Working | ✅ | Keep as-is |
-| EXCESSIVE_RESTARTS | ✅ Working | ✅ | Keep as-is |
-| NO_LOGOUT | ❌ | ✅ | Add real-time Slack |
-| LATE_LOGIN | ❌ | ✅ | Add real-time Slack on LOGIN |
-| EARLY_OUT | ❌ | ❌ | Add real-time + daily detection |
-| OVERBREAK | ❌ | ❌ | Add real-time + daily detection |
-| TIME_NOT_MET | ❌ | ❌ | Add daily detection only |
-| ~~QUOTA_NOT_MET~~ | ❌ | ❌ | **DISABLED** - pending quota finalization |
-| ~~HIGH_GAP~~ | ❌ | ❌ | **DISABLED** - pending quota finalization |
+| Section/Fields | Current Access | Proposed Access |
+|----------------|----------------|-----------------|
+| Work Configuration (Position, Agent Name, Zendesk, Schedules, Quotas, etc.) | Super Admin only | Admin + Super Admin |
+| Team Lead, Clients | Super Admin only | Admin + Super Admin |
+| Employment Status, Start Date | Super Admin only | Admin + Super Admin |
+| **Compensation** (Payment Frequency, Hourly Rate, Rate History) | Super Admin only | **Super Admin only (unchanged)** |
 
 ---
 
-## Implementation Steps
+## Files to Modify
 
-### Step 1: Expand `send-status-alert-notification` Edge Function
+### 1. `src/pages/ManageProfiles.tsx`
+**Line 243**: Change `canEditWorkInfo` from `isSuperAdmin` to `isAdmin`
+```typescript
+// Current
+const canEditWorkInfo = isSuperAdmin;
 
-**File:** `supabase/functions/send-status-alert-notification/index.ts`
+// Proposed
+const canEditWorkInfo = isAdmin;
+```
 
-Add support for new alert types with Slack message templates:
+**Lines 801-869 (Compensation section)**: Keep using `canEditWorkInfo` for the non-compensation Work Configuration fields, but add a separate `canEditCompensation` variable for Compensation:
+```typescript
+const canEditWorkInfo = isAdmin;        // NEW: Admins can edit work config
+const canEditCompensation = isSuperAdmin; // Compensation stays Super Admin only
+```
 
-| Alert Type | Emoji | Slack Message Format |
-|------------|-------|---------------------|
-| BIO_OVERUSE | 🚿 | Already configured |
-| EXCESSIVE_RESTART | 🔄 | Already configured |
-| LATE_LOGIN | 🕐 | `*Late Login* • {name} logged in {X} mins late ({severity}). [Review]` |
-| EARLY_OUT | 🚪 | `*Early Out* • {name} logged out {X} mins early ({severity}). [Review]` |
-| NO_LOGOUT | 🔴 | `*No Logout* • {name} did not log out from previous session ({severity}). [Review]` |
-| OVERBREAK | ☕ | `*Overbreak* • {name} exceeded break by {X} mins ({severity}). [Review]` |
-| TIME_NOT_MET | ⏱️ | `*Hours Not Met* • {name} logged {X}h/{Y}h required ({severity}). [Review]` |
-
----
-
-### Step 2: Add Real-time LATE_LOGIN Detection
-
-**File:** `src/lib/agentDashboardApi.ts`
-
-In `updateProfileStatus`, after a successful LOGIN:
-1. Get the agent's schedule for today from `agent_directory`
-2. Compare current login time vs scheduled start time (in EST)
-3. If more than 10 minutes late → call `send-status-alert-notification` with `LATE_LOGIN`
+Then update the Compensation section (lines 801-869) to use `canEditCompensation` instead of `canEditWorkInfo`.
 
 ---
 
-### Step 3: Add Real-time EARLY_OUT Detection
+### 2. `src/components/profile/WorkConfigurationSection.tsx`
+**Line 43**: Change the `canEdit` variable to accept an `isAdmin` prop instead of only `isSuperAdmin`
+```typescript
+// Current
+const canEdit = isSuperAdmin;
 
-**File:** `src/lib/agentDashboardApi.ts`
+// Proposed - Already receives isSuperAdmin prop, rename logic to accept isAdmin
+```
 
-In `updateProfileStatus`, after a successful LOGOUT:
-1. Get the agent's schedule for today
-2. Compare logout time vs scheduled end time (in EST)
-3. If logout is before shift end → call `send-status-alert-notification` with `EARLY_OUT`
-4. Create an `agent_reports` record
+**Interface update (line 24)**: Add `isAdmin` prop alongside `isSuperAdmin`:
+```typescript
+interface WorkConfigurationSectionProps {
+  profile: AgentProfileInput;
+  onInputChange: (field: keyof AgentProfileInput, value: any) => void;
+  isSuperAdmin: boolean;
+  isAdmin?: boolean; // NEW: Allow admin access
+  // ...
+}
 
----
-
-### Step 4: Add Real-time NO_LOGOUT Slack Alert
-
-**File:** `src/lib/agentDashboardApi.ts`
-
-The stale login detection (lines 288-337) already creates an `agent_reports` record. Add a Slack notification by calling `send-status-alert-notification` with `NO_LOGOUT` immediately after creating the report.
-
----
-
-### Step 5: Add Real-time OVERBREAK Detection
-
-**File:** `src/lib/agentDashboardApi.ts`
-
-In `updateProfileStatus`, after a successful BREAK_OUT:
-1. Calculate total break duration for the day from `profile_events`
-2. Get allowed break from `agent_directory.break_schedule`
-3. If exceeded by more than 5-minute grace → call `send-status-alert-notification` with `OVERBREAK`
-4. Create an `agent_reports` record
-
-**Database Migration Required:**
-```sql
--- Add OVERBREAK to valid incident types
-ALTER TABLE agent_reports 
-DROP CONSTRAINT IF EXISTS valid_incident_type;
-
-ALTER TABLE agent_reports
-ADD CONSTRAINT valid_incident_type CHECK (incident_type IN (
-  'QUOTA_NOT_MET', 'NO_LOGOUT', 'HIGH_GAP', 'EXCESSIVE_RESTARTS',
-  'TIME_NOT_MET', 'LATE_LOGIN', 'EARLY_OUT', 'BIO_OVERUSE', 'OVERBREAK'
-));
+// Then update canEdit:
+const canEdit = isAdmin || isSuperAdmin;
 ```
 
 ---
 
-### Step 6: Update Daily Report for Missing Violations
+### 3. `src/pages/AgentProfile.tsx` (Individual Profile Page)
+Update the following fields to use `isAdmin` instead of `isSuperAdmin`:
+- **Lines 600-651**: Team Lead, Clients, Employment Status, Start Date fields
+- **WorkConfigurationSection** component call
 
-**File:** `supabase/functions/generate-agent-reports/index.ts`
-
-Add end-of-day detection for:
-- **EARLY_OUT**: Compare last logout time against scheduled end time
-- **OVERBREAK**: Calculate total break time vs allowed (from break_schedule)
-- **TIME_NOT_MET**: Compare total logged hours against required shift hours
-
-**NOT implementing** (disabled per request):
-- ~~QUOTA_NOT_MET~~
-- ~~HIGH_GAP~~
+Keep Compensation section (lines 668-750) using `isSuperAdmin`.
 
 ---
 
-## Technical Notes
+## Technical Implementation Details
 
-### Break Allowance Parsing
-The `break_schedule` field in `agent_directory` contains values like "15 mins" or "30 mins". Parse this to compare against actual break duration.
+### ManageProfiles.tsx Changes
 
-### Severity Mapping
-| Violation | Severity |
-|-----------|----------|
-| LATE_LOGIN | low |
-| EARLY_OUT | medium |
-| NO_LOGOUT | medium |
-| OVERBREAK | low |
-| TIME_NOT_MET | medium |
+1. **Add `isAdmin` to destructuring** (line 29 already has it)
+2. **Split permission variables** (around line 243):
+   ```typescript
+   const canEditWorkInfo = isAdmin;        // Work config: admin+
+   const canEditCompensation = isSuperAdmin; // Compensation: super_admin only
+   ```
+3. **Update ProfilesGrid props** to pass both permissions
+4. **Update Compensation section** to use `canEditCompensation`
 
-### Time Calculations
-All time comparisons use EST/EDT timezone via `Intl.DateTimeFormat` with `timeZone: 'America/New_York'`.
+### WorkConfigurationSection.tsx Changes
+
+1. **Update interface** to accept `isAdmin` prop
+2. **Update `canEdit`** to `isAdmin || isSuperAdmin` (or just use the passed prop)
+3. **Keep badge as "hr"** but the lock icon will only show when user cannot edit
+
+### AgentProfile.tsx Changes
+
+1. **Add `isAdmin` from useAuth**
+2. **Update work fields** to check `isAdmin` instead of `isSuperAdmin`
+3. **Keep Compensation** locked to `isSuperAdmin`
+
+---
+
+## Badge Display Update
+
+The "Managed by HR" badge will still display on these sections, but:
+- For **Admins**: Fields will be editable (no lock icon)
+- For **Regular users**: Fields remain locked with lock icon
+- **Compensation**: Only Super Admins see it unlocked
 
 ---
 
 ## Summary of Changes
 
-| File | Changes |
-|------|---------|
-| `send-status-alert-notification/index.ts` | Add 5 new violation types (LATE_LOGIN, EARLY_OUT, NO_LOGOUT, OVERBREAK, TIME_NOT_MET) |
-| `src/lib/agentDashboardApi.ts` | Add real-time detection for LATE_LOGIN, EARLY_OUT, NO_LOGOUT Slack, OVERBREAK |
-| `generate-agent-reports/index.ts` | Add EARLY_OUT, OVERBREAK, TIME_NOT_MET detection in daily run |
-| Database migration | Add OVERBREAK to valid incident types |
+| File | What Changes |
+|------|--------------|
+| `ManageProfiles.tsx` | Split `canEditWorkInfo` into work + compensation permissions |
+| `WorkConfigurationSection.tsx` | Accept `isAdmin` prop, update `canEdit` logic |
+| `AgentProfile.tsx` | Update work config fields to use `isAdmin`, keep compensation as `isSuperAdmin` |
+| `ProfileSectionHeader.tsx` | No changes needed (badge logic unchanged) |
 
 ---
 
 ## Testing Plan
 
-After implementation, I'll test each violation type:
-
-### Real-time Violations (can test immediately via dashboard):
-1. **BIO_OVERUSE** - Already working ✅
-2. **EXCESSIVE_RESTARTS** - Already working ✅
-3. **LATE_LOGIN** - Login after scheduled start time
-4. **EARLY_OUT** - Logout before scheduled end time
-5. **NO_LOGOUT** - Login when previous session didn't logout
-6. **OVERBREAK** - Take break exceeding allowance + 5 min grace
-
-### Daily-only Violations (test by calling edge function):
-7. **TIME_NOT_MET** - Manually invoke `generate-agent-reports` with a test date
-
-All alerts will be sent to `a_pb_mgt` Slack channel with the hyperlinked "Review in Agent Reports" text.
+After implementation, test with:
+1. **Regular User**: All "Managed by HR" fields should be read-only
+2. **Admin**: Work Configuration editable, Compensation read-only
+3. **Super Admin**: Everything editable including Compensation
 
