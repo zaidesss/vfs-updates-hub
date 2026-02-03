@@ -5,6 +5,7 @@ import { Layout } from '@/components/Layout';
 import { UpdateCard } from '@/components/UpdateCard';
 import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
 import { QuestionThreadDialog } from '@/components/QuestionThreadDialog';
+import { CreateUpdateDialog } from '@/components/admin/CreateUpdateDialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -138,15 +139,23 @@ export default function Updates() {
               Review the latest process updates and acknowledge when complete
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={cn("h-4 w-4 mr-2", isRefreshing && "animate-spin")} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-2", isRefreshing && "animate-spin")} />
+              Refresh
+            </Button>
+            {(isAdmin || isHR) && (
+              <CreateUpdateDialog 
+                onUpdateCreated={handleRefresh}
+                buttonSize="sm"
+              />
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-4">
