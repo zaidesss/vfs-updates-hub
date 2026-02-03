@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { PlaybookPage } from './playbook/PlaybookPage';
 import { PlaybookArticle } from '@/lib/playbookTypes';
-import { Wand2, Loader2 } from 'lucide-react';
+import { Wand2, Loader2, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface MarkdownEditorProps {
@@ -26,6 +26,9 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [isFormatting, setIsFormatting] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [formattedContent, setFormattedContent] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Parse content as Playbook JSON if possible
@@ -52,7 +55,10 @@ export function MarkdownEditor({
       return;
     }
 
+    // Store original content before formatting
+    setOriginalContent(value);
     setIsFormatting(true);
+    
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/format-update`,
@@ -73,16 +79,21 @@ export function MarkdownEditor({
       }
 
       if (data.formattedContent) {
+        // Store formatted content but don't apply yet
+        setFormattedContent(data.formattedContent);
+        // Temporarily show the formatted content in preview
         onChange(data.formattedContent);
-        // Auto-switch to Preview mode after formatting
+        // Switch to preview and show approval buttons
         setMode('preview');
+        setPendingApproval(true);
         toast({
-          title: "Content formatted",
-          description: "Your article has been rewritten for clarity. Check the preview!",
+          title: "Review formatted content",
+          description: "Check the preview and choose to Accept or Edit.",
         });
       }
     } catch (error) {
       console.error('Format error:', error);
+      setOriginalContent(null);
       toast({
         title: "Formatting failed",
         description: error instanceof Error ? error.message : "Please try again.",
@@ -93,6 +104,32 @@ export function MarkdownEditor({
     }
   };
 
+  const handleAccept = () => {
+    // Keep the formatted content (already applied)
+    setPendingApproval(false);
+    setOriginalContent(null);
+    setFormattedContent(null);
+    toast({
+      title: "Content accepted",
+      description: "The formatted content has been applied.",
+    });
+  };
+
+  const handleEdit = () => {
+    // Revert to original content
+    if (originalContent !== null) {
+      onChange(originalContent);
+    }
+    setPendingApproval(false);
+    setOriginalContent(null);
+    setFormattedContent(null);
+    setMode('write');
+    toast({
+      title: "Reverted to original",
+      description: "You can continue editing your original content.",
+    });
+  };
+
   return (
     <div className={cn("border rounded-lg overflow-hidden", className)} data-color-mode="light">
       <Tabs value={mode} onValueChange={(v) => setMode(v as 'write' | 'preview')}>
@@ -101,6 +138,7 @@ export function MarkdownEditor({
             <TabsTrigger 
               value="write" 
               className="text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              disabled={pendingApproval}
             >
               Write
             </TabsTrigger>
@@ -112,21 +150,45 @@ export function MarkdownEditor({
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAIFormat}
-              disabled={isFormatting || !value.trim()}
-              className="h-7 text-xs gap-1.5"
-            >
-              {isFormatting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Wand2 className="h-3.5 w-3.5" />
-              )}
-              AI Format
-            </Button>
+            {pendingApproval ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEdit}
+                  className="h-7 text-xs gap-1.5"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAccept}
+                  className="h-7 text-xs gap-1.5"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Accept
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAIFormat}
+                disabled={isFormatting || !value.trim()}
+                className="h-7 text-xs gap-1.5"
+              >
+                {isFormatting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                AI Format
+              </Button>
+            )}
             <span className="text-xs text-muted-foreground">
               Supports Markdown
             </span>
