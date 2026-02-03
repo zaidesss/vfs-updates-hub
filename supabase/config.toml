@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.check-user-profile-mismatch]
 verify_jwt = false
+
+[functions.send-status-alert-notification]
+verify_jwt = false

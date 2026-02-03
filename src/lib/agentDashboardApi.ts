@@ -270,7 +270,7 @@ export async function updateProfileStatus(
   profileId: string,
   eventType: EventType,
   triggeredBy: string
-): Promise<{ success: boolean; newStatus: ProfileStatus | null; error: string | null }> {
+): Promise<{ success: boolean; newStatus: ProfileStatus | null; error: string | null; bioTimeRemaining?: number | null }> {
   try {
     // First get current status
     const { data: currentStatusData, error: fetchError } = await getProfileStatus(profileId);
@@ -292,6 +292,26 @@ export async function updateProfileStatus(
     }
 
     const now = new Date().toISOString();
+    let bioTimeRemaining = currentStatusData?.bio_time_remaining_seconds ?? null;
+    let bioAllowance = currentStatusData?.bio_allowance_seconds ?? null;
+
+    // Handle bio-specific logic
+    if (eventType === 'BIO_END' && currentStatusData?.status_since) {
+      // Calculate how much bio time was consumed
+      const bioStartTime = new Date(currentStatusData.status_since).getTime();
+      const bioEndTime = new Date(now).getTime();
+      const consumedSeconds = Math.floor((bioEndTime - bioStartTime) / 1000);
+      
+      const currentRemaining = currentStatusData.bio_time_remaining_seconds ?? 0;
+      bioTimeRemaining = Math.max(0, currentRemaining - consumedSeconds);
+    }
+
+    // Handle LOGIN - initialize bio allowance based on schedule
+    if (eventType === 'LOGIN') {
+      const calculatedAllowance = await calculateBioAllowanceForProfile(profileId);
+      bioAllowance = calculatedAllowance;
+      bioTimeRemaining = calculatedAllowance;
+    }
 
     // Check if status record exists
     const { data: existingStatus } = await supabase
@@ -300,14 +320,25 @@ export async function updateProfileStatus(
       .eq('profile_id', profileId)
       .single();
 
+    // Build update/insert payload
+    const statusPayload: Record<string, unknown> = {
+      current_status: newStatus,
+      status_since: now,
+    };
+
+    // Include bio fields when relevant
+    if (eventType === 'LOGIN') {
+      statusPayload.bio_allowance_seconds = bioAllowance;
+      statusPayload.bio_time_remaining_seconds = bioTimeRemaining;
+    } else if (eventType === 'BIO_END') {
+      statusPayload.bio_time_remaining_seconds = bioTimeRemaining;
+    }
+
     if (existingStatus) {
       // Update existing status with optimistic locking
       const { error: updateError } = await supabase
         .from('profile_status')
-        .update({
-          current_status: newStatus,
-          status_since: now,
-        })
+        .update(statusPayload)
         .eq('profile_id', profileId)
         .eq('current_status', currentStatus); // Optimistic lock
 
@@ -320,8 +351,7 @@ export async function updateProfileStatus(
         .from('profile_status')
         .insert({
           profile_id: profileId,
-          current_status: newStatus,
-          status_since: now,
+          ...statusPayload,
         });
 
       if (insertError) {
@@ -354,9 +384,64 @@ export async function updateProfileStatus(
       });
     }
 
-    return { success: true, newStatus, error: null };
+    return { success: true, newStatus, error: null, bioTimeRemaining };
   } catch (err: any) {
     return { success: false, newStatus: null, error: err.message };
+  }
+}
+
+/**
+ * Calculate bio allowance for a profile based on their schedule
+ * 8+ hours shift = 4 minutes, otherwise 2 minutes
+ */
+async function calculateBioAllowanceForProfile(profileId: string): Promise<number> {
+  try {
+    // Get the profile email
+    const { data: profile } = await supabase
+      .from('agent_profiles')
+      .select('email')
+      .eq('id', profileId)
+      .single();
+
+    if (!profile?.email) return 2 * 60; // Default 2 minutes
+
+    // Get schedule from agent_directory
+    const { data: directory } = await supabase
+      .from('agent_directory')
+      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+      .eq('email', profile.email)
+      .maybeSingle();
+
+    if (!directory) return 2 * 60;
+
+    // Get today's schedule
+    const dayMap: Record<number, string> = {
+      0: 'sun_schedule',
+      1: 'mon_schedule',
+      2: 'tue_schedule',
+      3: 'wed_schedule',
+      4: 'thu_schedule',
+      5: 'fri_schedule',
+      6: 'sat_schedule',
+    };
+
+    const today = new Date().getDay();
+    const scheduleKey = dayMap[today] as keyof typeof directory;
+    const schedule = directory[scheduleKey] as string | null;
+
+    if (!schedule) return 2 * 60;
+
+    const parsed = parseScheduleRange(schedule);
+    if (!parsed) return 2 * 60;
+
+    let durationMinutes = parsed.endMinutes - parsed.startMinutes;
+    if (durationMinutes < 0) durationMinutes += 24 * 60;
+
+    // 8+ hours (480 mins) = 4 mins (240 secs), otherwise 2 mins (120 secs)
+    return durationMinutes >= 480 ? 4 * 60 : 2 * 60;
+  } catch (err) {
+    console.error('Error calculating bio allowance:', err);
+    return 2 * 60; // Default 2 minutes on error
   }
 }
 
@@ -638,7 +723,7 @@ function parseTimeToMinutes(timeStr: string): number | null {
 /**
  * Parse schedule string "9:00 AM-5:00 PM" and return start and end times
  */
-function parseScheduleRange(scheduleTime: string): { startTime: string; endTime: string; startMinutes: number; endMinutes: number } | null {
+export function parseScheduleRange(scheduleTime: string): { startTime: string; endTime: string; startMinutes: number; endMinutes: number } | null {
   const parts = scheduleTime.split('-');
   if (parts.length !== 2) return null;
   
