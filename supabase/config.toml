@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.send-profile-status-notification]
 verify_jwt = false
+
+[functions.assign-tickets-on-login]
+verify_jwt = false

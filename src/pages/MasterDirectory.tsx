@@ -24,6 +24,12 @@ import {
   syncAllProfilesToDirectory,
 } from '@/lib/masterDirectoryApi';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export default function MasterDirectory() {
   const { user, isAdmin } = useAuth();
@@ -306,43 +312,106 @@ export default function MasterDirectory() {
                       </div>
                     </TableCell>
                     
-                    {/* Ticket Assignment Toggle - EDITABLE */}
+                    {/* Ticket Assignment Toggle - EDITABLE (disabled for ZD2) */}
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={entry.ticket_assignment_enabled || false}
-                          onCheckedChange={(checked) => handleTicketAssignmentToggle(entry.email, checked)}
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {entry.ticket_assignment_enabled ? 'On' : 'Off'}
-                        </span>
-                      </div>
+                      {(() => {
+                        const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+                        return (
+                          <div className="flex items-center gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>
+                                    <Switch
+                                      checked={!isZD2orNull && (entry.ticket_assignment_enabled || false)}
+                                      onCheckedChange={(checked) => handleTicketAssignmentToggle(entry.email, checked)}
+                                      disabled={isZD2orNull}
+                                      className={cn(isZD2orNull && 'opacity-50 cursor-not-allowed')}
+                                    />
+                                  </div>
+                                </TooltipTrigger>
+                                {isZD2orNull && (
+                                  <TooltipContent>
+                                    <p>Not available for ZD2</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
+                            <span className={cn(
+                              "text-xs",
+                              isZD2orNull ? "text-amber-600" : "text-muted-foreground"
+                            )}>
+                              {isZD2orNull ? 'ZD2' : (entry.ticket_assignment_enabled ? 'On' : 'Off')}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     
                     {/* Weekday Schedule - read-only */}
                     <TableCell className="text-muted-foreground text-xs">{entry.weekday_schedule || '-'}</TableCell>
                     <TableCell className="text-center font-medium">{entry.weekday_total_hours.toFixed(1)}</TableCell>
                     
-                    {/* WD Ticket Assign - EDITABLE */}
+                    {/* WD Ticket Assign - EDITABLE (disabled for ZD2) */}
                     <TableCell>
-                      <Input
-                        value={entry.wd_ticket_assign || ''}
-                        onChange={(e) => updateField(entry.email, 'wd_ticket_assign', e.target.value)}
-                        className="h-8 w-[90px]"
-                      />
+                      {(() => {
+                        const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Input
+                                    value={isZD2orNull ? '' : (entry.wd_ticket_assign || '')}
+                                    onChange={(e) => updateField(entry.email, 'wd_ticket_assign', e.target.value)}
+                                    className={cn("h-8 w-[90px]", isZD2orNull && "opacity-50 cursor-not-allowed bg-muted")}
+                                    disabled={isZD2orNull}
+                                    placeholder={isZD2orNull ? '-' : ''}
+                                  />
+                                </div>
+                              </TooltipTrigger>
+                              {isZD2orNull && (
+                                <TooltipContent>
+                                  <p>Not available for ZD2</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })()}
                     </TableCell>
                     
                     {/* Weekend Schedule - read-only */}
                     <TableCell className="text-muted-foreground text-xs">{entry.weekend_schedule || '-'}</TableCell>
                     <TableCell className="text-center font-medium">{entry.weekend_total_hours.toFixed(1)}</TableCell>
                     
-                    {/* WE Ticket Assign - EDITABLE */}
+                    {/* WE Ticket Assign - EDITABLE (disabled for ZD2) */}
                     <TableCell>
-                      <Input
-                        value={entry.we_ticket_assign || ''}
-                        onChange={(e) => updateField(entry.email, 'we_ticket_assign', e.target.value)}
-                        className="h-8 w-[90px]"
-                      />
+                      {(() => {
+                        const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Input
+                                    value={isZD2orNull ? '' : (entry.we_ticket_assign || '')}
+                                    onChange={(e) => updateField(entry.email, 'we_ticket_assign', e.target.value)}
+                                    className={cn("h-8 w-[90px]", isZD2orNull && "opacity-50 cursor-not-allowed bg-muted")}
+                                    disabled={isZD2orNull}
+                                    placeholder={isZD2orNull ? '-' : ''}
+                                  />
+                                </div>
+                              </TooltipTrigger>
+                              {isZD2orNull && (
+                                <TooltipContent>
+                                  <p>Not available for ZD2</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })()}
                     </TableCell>
                     
                     {/* Break & OT Schedules - read-only */}
