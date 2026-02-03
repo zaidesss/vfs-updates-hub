@@ -322,14 +322,22 @@ export async function updateProfileStatus(
             profile_id: profileId,
             incident_date: statusDateStr,
             incident_type: 'NO_LOGOUT',
-            severity: 'warning',
+            severity: 'medium',
             details: {
               lastStatus: currentStatus,
               lastStatusSince: currentStatusData.status_since,
               autoLogoutTime: autoLogoutTime.toISOString(),
             },
-            status: 'pending',
+            status: 'open',
           });
+          
+          // Send real-time Slack notification for NO_LOGOUT
+          sendStatusAlertNotification(
+            agentProfile.email,
+            agentProfile.full_name || agentProfile.email,
+            'NO_LOGOUT',
+            { lastStatusDate: statusDateStr, severity: 'medium' }
+          ).catch((err) => console.error('Failed to send NO_LOGOUT alert:', err));
         }
         
         // Update current status to LOGGED_OUT so LOGIN can proceed
@@ -448,6 +456,18 @@ export async function updateProfileStatus(
       ).catch((err) => {
         console.error('Failed to send profile status notification:', err);
       });
+      
+      // Check for real-time violations on LOGIN, LOGOUT, and BREAK_OUT
+      if (eventType === 'LOGIN') {
+        checkAndAlertLateLogin(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
+          .catch((err) => console.error('Failed to check late login:', err));
+      } else if (eventType === 'LOGOUT') {
+        checkAndAlertEarlyOut(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
+          .catch((err) => console.error('Failed to check early out:', err));
+      } else if (eventType === 'BREAK_OUT') {
+        checkAndAlertOverbreak(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email)
+          .catch((err) => console.error('Failed to check overbreak:', err));
+      }
     }
 
     // Send device restart notifications if applicable
@@ -619,6 +639,316 @@ async function sendDeviceRestartNotifications(
   } catch (err: any) {
     console.error('Error sending device restart notifications:', err.message);
   }
+}
+
+/**
+ * Send status alert notification to Slack (a_pb_mgt channel) for violations
+ */
+async function sendStatusAlertNotification(
+  agentEmail: string,
+  agentName: string,
+  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET',
+  details: Record<string, any>
+): Promise<void> {
+  try {
+    const response = await supabase.functions.invoke('send-status-alert-notification', {
+      body: { agentEmail, agentName, alertType, details },
+    });
+
+    if (response.error) {
+      console.error('Failed to send status alert notification:', response.error);
+    }
+  } catch (err: any) {
+    console.error('Error calling send-status-alert-notification:', err.message);
+  }
+}
+
+/**
+ * Check if agent logged in late and send alert if so
+ */
+async function checkAndAlertLateLogin(
+  profileId: string,
+  agentEmail: string,
+  agentName: string,
+  loginTime: Date
+): Promise<void> {
+  try {
+    // Get schedule from agent_directory
+    const { data: directory } = await supabase
+      .from('agent_directory')
+      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off')
+      .eq('email', agentEmail.toLowerCase())
+      .maybeSingle();
+
+    if (!directory) return;
+
+    // Check if today is a day off
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayName = dayNames[loginTime.getDay()];
+    if (directory.day_off?.includes(todayName)) return;
+
+    // Get today's schedule
+    const dayMap: Record<number, string> = {
+      0: 'sun_schedule', 1: 'mon_schedule', 2: 'tue_schedule', 3: 'wed_schedule',
+      4: 'thu_schedule', 5: 'fri_schedule', 6: 'sat_schedule',
+    };
+    const scheduleKey = dayMap[loginTime.getDay()] as keyof typeof directory;
+    const schedule = directory[scheduleKey] as string | null;
+
+    if (!schedule) return;
+
+    const parsed = parseScheduleRange(schedule);
+    if (!parsed) return;
+
+    // Get login time in EST minutes
+    const loginMinutes = getTimeInESTMinutesInternal(loginTime);
+    const lateThreshold = parsed.startMinutes + 10;
+
+    if (loginMinutes > lateThreshold) {
+      const lateByMinutes = loginMinutes - parsed.startMinutes;
+      const todayStr = format(loginTime, 'yyyy-MM-dd');
+
+      // Check if we already have a LATE_LOGIN report for today
+      const { data: existingReport } = await supabase
+        .from('agent_reports')
+        .select('id')
+        .eq('agent_email', agentEmail.toLowerCase())
+        .eq('incident_date', todayStr)
+        .eq('incident_type', 'LATE_LOGIN')
+        .maybeSingle();
+
+      if (!existingReport) {
+        // Create agent_reports record
+        await supabase.from('agent_reports').insert({
+          agent_email: agentEmail.toLowerCase(),
+          agent_name: agentName,
+          profile_id: profileId,
+          incident_date: todayStr,
+          incident_type: 'LATE_LOGIN',
+          severity: 'low',
+          details: {
+            scheduledStart: parsed.startMinutes,
+            actualLogin: loginMinutes,
+            lateByMinutes,
+          },
+          status: 'open',
+        });
+
+        // Send Slack alert
+        await sendStatusAlertNotification(agentEmail, agentName, 'LATE_LOGIN', {
+          lateByMinutes,
+          severity: 'low',
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error('Error checking late login:', err.message);
+  }
+}
+
+/**
+ * Check if agent logged out early and send alert if so
+ */
+async function checkAndAlertEarlyOut(
+  profileId: string,
+  agentEmail: string,
+  agentName: string,
+  logoutTime: Date
+): Promise<void> {
+  try {
+    // Get schedule from agent_directory
+    const { data: directory } = await supabase
+      .from('agent_directory')
+      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off')
+      .eq('email', agentEmail.toLowerCase())
+      .maybeSingle();
+
+    if (!directory) return;
+
+    // Check if today is a day off
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayName = dayNames[logoutTime.getDay()];
+    if (directory.day_off?.includes(todayName)) return;
+
+    // Get today's schedule
+    const dayMap: Record<number, string> = {
+      0: 'sun_schedule', 1: 'mon_schedule', 2: 'tue_schedule', 3: 'wed_schedule',
+      4: 'thu_schedule', 5: 'fri_schedule', 6: 'sat_schedule',
+    };
+    const scheduleKey = dayMap[logoutTime.getDay()] as keyof typeof directory;
+    const schedule = directory[scheduleKey] as string | null;
+
+    if (!schedule) return;
+
+    const parsed = parseScheduleRange(schedule);
+    if (!parsed) return;
+
+    // Get logout time in EST minutes
+    const logoutMinutes = getTimeInESTMinutesInternal(logoutTime);
+
+    // Early out if logged out before scheduled end time
+    if (logoutMinutes < parsed.endMinutes) {
+      const earlyByMinutes = parsed.endMinutes - logoutMinutes;
+      const todayStr = format(logoutTime, 'yyyy-MM-dd');
+
+      // Check if we already have an EARLY_OUT report for today
+      const { data: existingReport } = await supabase
+        .from('agent_reports')
+        .select('id')
+        .eq('agent_email', agentEmail.toLowerCase())
+        .eq('incident_date', todayStr)
+        .eq('incident_type', 'EARLY_OUT')
+        .maybeSingle();
+
+      if (!existingReport) {
+        // Create agent_reports record
+        await supabase.from('agent_reports').insert({
+          agent_email: agentEmail.toLowerCase(),
+          agent_name: agentName,
+          profile_id: profileId,
+          incident_date: todayStr,
+          incident_type: 'EARLY_OUT',
+          severity: 'medium',
+          details: {
+            scheduledEnd: parsed.endMinutes,
+            actualLogout: logoutMinutes,
+            earlyByMinutes,
+          },
+          status: 'open',
+        });
+
+        // Send Slack alert
+        await sendStatusAlertNotification(agentEmail, agentName, 'EARLY_OUT', {
+          earlyByMinutes,
+          severity: 'medium',
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error('Error checking early out:', err.message);
+  }
+}
+
+/**
+ * Check if agent exceeded break allowance and send alert if so
+ */
+async function checkAndAlertOverbreak(
+  profileId: string,
+  agentEmail: string,
+  agentName: string
+): Promise<void> {
+  try {
+    const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+
+    // Get break schedule from agent_directory
+    const { data: directory } = await supabase
+      .from('agent_directory')
+      .select('break_schedule')
+      .eq('email', agentEmail.toLowerCase())
+      .maybeSingle();
+
+    if (!directory?.break_schedule) return;
+
+    // Parse allowed break minutes
+    const parsed = parseScheduleRange(directory.break_schedule);
+    if (!parsed) return;
+
+    let allowedMinutes = parsed.endMinutes - parsed.startMinutes;
+    if (allowedMinutes < 0) allowedMinutes += 24 * 60;
+
+    // Grace period: 5 minutes or 1/6 of allowed
+    const graceMinutes = Math.ceil(allowedMinutes / 6);
+    const maxAllowedMinutes = allowedMinutes + graceMinutes;
+
+    // Get all break events for today
+    const startOfDay = `${todayStr}T00:00:00.000Z`;
+    const endOfDay = `${todayStr}T23:59:59.999Z`;
+
+    const { data: breakEvents } = await supabase
+      .from('profile_events')
+      .select('*')
+      .eq('profile_id', profileId)
+      .in('event_type', ['BREAK_IN', 'BREAK_OUT'])
+      .gte('created_at', startOfDay)
+      .lte('created_at', endOfDay)
+      .order('created_at', { ascending: true });
+
+    if (!breakEvents || breakEvents.length === 0) return;
+
+    // Calculate total break time
+    let totalBreakMinutes = 0;
+    let breakStartTime: Date | null = null;
+
+    for (const event of breakEvents) {
+      if (event.event_type === 'BREAK_IN') {
+        breakStartTime = new Date(event.created_at);
+      } else if (event.event_type === 'BREAK_OUT' && breakStartTime) {
+        const breakEndTime = new Date(event.created_at);
+        const durationMs = breakEndTime.getTime() - breakStartTime.getTime();
+        totalBreakMinutes += Math.floor(durationMs / (1000 * 60));
+        breakStartTime = null;
+      }
+    }
+
+    // Check if overbreak
+    if (totalBreakMinutes > maxAllowedMinutes) {
+      const overageMinutes = totalBreakMinutes - allowedMinutes;
+
+      // Check if we already have an OVERBREAK report for today
+      const { data: existingReport } = await supabase
+        .from('agent_reports')
+        .select('id')
+        .eq('agent_email', agentEmail.toLowerCase())
+        .eq('incident_date', todayStr)
+        .eq('incident_type', 'OVERBREAK')
+        .maybeSingle();
+
+      if (!existingReport) {
+        // Create agent_reports record
+        await supabase.from('agent_reports').insert({
+          agent_email: agentEmail.toLowerCase(),
+          agent_name: agentName,
+          profile_id: profileId,
+          incident_date: todayStr,
+          incident_type: 'OVERBREAK',
+          severity: 'low',
+          details: {
+            allowedMinutes,
+            graceMinutes,
+            totalBreakMinutes,
+            overageMinutes,
+          },
+          status: 'open',
+        });
+
+        // Send Slack alert
+        await sendStatusAlertNotification(agentEmail, agentName, 'OVERBREAK', {
+          overageMinutes,
+          severity: 'low',
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error('Error checking overbreak:', err.message);
+  }
+}
+
+/**
+ * Internal helper to get time in EST as minutes from midnight
+ */
+function getTimeInESTMinutesInternal(date: Date): number {
+  const estParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  
+  const hour = parseInt(estParts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(estParts.find(p => p.type === 'minute')?.value || '0', 10);
+  
+  return hour * 60 + minute;
 }
 
 export async function getProfileEvents(
