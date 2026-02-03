@@ -1,227 +1,352 @@
 
-# Plan: Split Daily Work Tracker by Ticket Type and Quotas
+# Plan: Connect Ticket Assignment to Zendesk (ZD1 Only - ZD2 Disabled)
 
 ## Summary
 
-This plan enhances the Daily Work Tracker to display ticket counts broken down by type (Email, Chat, Call) with individual progress bars based on the agent's support type and position-specific quotas (`quota_email`, `quota_chat`, `quota_phone`).
+This feature automatically assigns tickets from Zendesk to agents when they log in. The system checks if it's a weekday (Mon-Fri) or weekend (Sat-Sun), reads the corresponding ticket count from `WD Ticket Assign` or `WE Ticket Assign`, fetches unassigned tickets from the appropriate Zendesk View, and adds the agent's `agent_tag` to those tickets.
+
+**ZD2 is currently disabled** until View IDs are provided.
 
 ---
 
-## Current State
+## View ID Configuration (ZD1 Only)
 
-- **DailyWorkTracker** shows a single "Tickets Handled" bar with an aggregate count against a single `quota` value
-- **DashboardProfile** only fetches aggregate `quota` from `agent_directory`
-- **getTodayTicketCount()** returns a single total count (no type breakdown)
-- **agent_profiles** table already has `quota_email`, `quota_chat`, `quota_phone` fields
-- **ticket_logs** table has a `ticket_type` column with values: `Email`, `Chat`, `Call`
+| Zendesk Instance | Support Type Contains | View Name | View ID |
+|------------------|----------------------|-----------|---------|
+| ZD1 | Email or Hybrid | OpenAssign | (You'll provide) |
+| ZD1 | Chat or Phone | NewAssign | (You'll provide) |
+| ZD2 | * | DISABLED | N/A |
+
+**Logic for determining View:**
+- If `support_type` contains "Email" OR "Hybrid" → Use **OpenAssign** view
+- If `support_type` contains "Chat" OR "Phone" (without Email/Hybrid) → Use **NewAssign** view
 
 ---
 
-## Proposed Changes
-
-### 1. Update DashboardProfile Interface
-
-Add individual quota fields and position to the interface:
+## Core Logic Flow
 
 ```text
-DashboardProfile {
-  ...existing fields...
-  position: string | null;      // NEW: agent's position
-  quota_email: number | null;   // NEW: Email quota
-  quota_chat: number | null;    // NEW: Chat quota  
-  quota_phone: number | null;   // NEW: Phone quota
-  // Keep quota for backward compatibility (will be deprecated)
-}
+Agent Logs In
+     |
+     v
+Check: zendesk_instance = 'ZD1'?
+     |
+     +-- No (ZD2 or null) --> Skip assignment (ZD2 disabled)
+     |
+     v Yes
+Check: ticket_assignment_enabled = true?
+     |
+     +-- No --> Skip assignment
+     |
+     v Yes
+Get agent config:
+  - agent_tag
+  - support_type --> Determine View (OpenAssign or NewAssign)
+     |
+     v
+Check: Is today Mon-Fri (weekday)?
+     |
+     +-- Yes --> ticket_count = wd_ticket_assign
+     |
+     +-- No --> ticket_count = we_ticket_assign
+     |
+     v
+ticket_count > 0?
+     |
+     +-- No --> Skip assignment
+     |
+     v Yes
+Acquire lock for this View ID
+     |
+     +-- Lock busy? --> Wait 2s, retry (max 3 attempts)
+     |
+     v Lock acquired
+Fetch N tickets from View
+     |
+     v
+For each ticket: Add agent_tag to ticket tags
+     |
+     +-- Success --> Continue to next
+     |
+     +-- Failure --> Retry once
+           |
+           +-- Still fails --> Abort, email admin, notify agent, log error
+     |
+     v
+Release lock
+Log success to database
 ```
 
-### 2. Update fetchDashboardProfile()
+---
 
-Fetch `quota_email`, `quota_chat`, `quota_phone`, and `position` from `agent_profiles` (source of truth):
+## Master Directory UI Changes
 
+### Disable Controls for ZD2 Users
+
+For agents with `zendesk_instance = 'ZD2'` or no instance set:
+
+| Control | State | Visual |
+|---------|-------|--------|
+| Ticket Assignment toggle | Disabled + OFF | Grayed out with tooltip "Not available for ZD2" |
+| WD Ticket Assign input | Disabled | Grayed out, non-editable |
+| WE Ticket Assign input | Disabled | Grayed out, non-editable |
+
+**Implementation:**
 ```text
-Changes to agentDashboardApi.ts:
-- Add quota_email, quota_chat, quota_phone, position to SELECT from agent_profiles
-- Map these to DashboardProfile
+const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+
+// Toggle
+<Switch
+  disabled={isZD2orNull}
+  checked={!isZD2orNull && entry.ticket_assignment_enabled}
+  ...
+/>
+{isZD2orNull && <span className="text-xs text-amber-600">ZD2 disabled</span>}
+
+// Inputs
+<Input
+  disabled={isZD2orNull}
+  value={isZD2orNull ? '' : entry.wd_ticket_assign}
+  ...
+/>
 ```
 
-### 3. Create New API Function: getTodayTicketCountByType()
+---
 
-Replace the aggregate count function with one that returns a breakdown:
+## Database Changes
 
-```text
-New function signature:
-getTodayTicketCountByType(agentTag: string): Promise<{
-  data: { email: number; chat: number; call: number; total: number };
-  error: string | null;
-}>
-```
+### New Table: `ticket_assignment_view_config`
 
-This uses SQL like:
+Central configuration for View IDs per instance and support type pattern:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| zendesk_instance | text | 'ZD1' or 'ZD2' |
+| support_type_pattern | text | 'email_hybrid' or 'chat_phone' |
+| view_id | text | Zendesk View ID |
+| view_name | text | Display name (e.g., 'OpenAssign') |
+| is_enabled | boolean | Whether this config is active |
+| created_at | timestamptz | Timestamp |
+| updated_at | timestamptz | Timestamp |
+
+**Initial Data:**
 ```sql
-SELECT 
-  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'email') as email_count,
-  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'chat') as chat_count,
-  COUNT(*) FILTER (WHERE LOWER(ticket_type) = 'call') as call_count
-FROM ticket_logs
-WHERE agent_name ILIKE $1 
-  AND timestamp >= today_start 
-  AND timestamp <= today_end
+INSERT INTO ticket_assignment_view_config VALUES
+  ('ZD1', 'email_hybrid', 'YOUR_VIEW_ID_HERE', 'OpenAssign', true),
+  ('ZD1', 'chat_phone', 'YOUR_VIEW_ID_HERE', 'NewAssign', true),
+  ('ZD2', 'email_hybrid', NULL, 'Pending', false),
+  ('ZD2', 'chat_phone', NULL, 'Pending', false);
 ```
 
-### 4. Update DailyWorkTracker Component
+### New Table: `ticket_assignment_locks`
 
-Redesign the "Tickets Handled" section to show:
+Per-view locking to prevent race conditions:
 
-| Support Type | Display |
-|-------------|---------|
-| Email Support | Single bar: "Email: X/Y" |
-| Chat Support | Two rows: "Email: X/Y" + "Chat: X/Y" (if quota_chat set) |
-| Phone Support | Two rows: "Email: X/Y" + "Calls: X/Y" (if quota_phone set) |
-| Hybrid Support | Up to three rows: "Email", "Chat", "Calls" (only show quotas that are set) |
+| Column | Type | Description |
+|--------|------|-------------|
+| view_id | text | Primary key - the View ID being locked |
+| locked_by | text | Email of agent holding the lock |
+| locked_at | timestamptz | When lock was acquired |
+| expires_at | timestamptz | Auto-expire after 60 seconds |
 
-**Logic:**
-- Always show Email count (label: "Email")
-- Show Chat count only if `quota_chat > 0` OR agent is Chat/Hybrid Support
-- Show Call count only if `quota_phone > 0` OR agent is Phone/Hybrid Support
-- If no quota is set for a type, show count without progress bar (just "X tickets")
+### New Table: `ticket_assignment_logs`
 
-### 5. Update AgentDashboard.tsx
+Audit trail for all assignment attempts:
 
-Pass the new quota and ticket data to DailyWorkTracker:
-
-```text
-Changes:
-- Fetch ticket counts by type instead of aggregate
-- Pass individual quotas: quota_email, quota_chat, quota_phone
-- Pass position to determine which bars to show
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| agent_email | text | Agent who triggered assignment |
+| agent_name | text | Agent display name |
+| zendesk_instance | text | ZD1 or ZD2 |
+| view_id | text | View used |
+| view_name | text | OpenAssign or NewAssign |
+| tickets_requested | integer | Number requested |
+| tickets_assigned | integer | Number successfully assigned |
+| ticket_ids | text[] | Array of assigned ticket IDs |
+| status | text | 'success', 'partial', 'failed', 'skipped' |
+| error_message | text | Error details if failed |
+| created_at | timestamptz | Timestamp |
 
 ---
 
-## UI Mockups
+## New Edge Function: `assign-tickets-on-login`
 
-### Email Support Agent (quota_email: 50)
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ✉ Email                                         35/50   │
-│ [████████████████████░░░░░░░░░] 70% of quota            │
-└─────────────────────────────────────────────────────────┘
-```
+### Request Body
 
-### Chat Support Agent (quota_email: 30, quota_chat: 20)
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ✉ Email                                         25/30   │
-│ [████████████████████████░░░░░] 83% of quota            │
-├─────────────────────────────────────────────────────────┤
-│ 💬 Chat                                         15/20   │
-│ [███████████████████░░░░░░░░░░] 75% of quota            │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Chat Support Agent (quota_email: 30, quota_chat: null)
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ✉ Email                                         25/30   │
-│ [████████████████████████░░░░░] 83% of quota            │
-├─────────────────────────────────────────────────────────┤
-│ 💬 Chat                                         15      │
-│ (no quota set)                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Hybrid Support Agent (all quotas set)
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ✉ Email                                         40/50   │
-│ [████████████████░░░░░░░░░░░░░] 80% of quota            │
-├─────────────────────────────────────────────────────────┤
-│ 💬 Chat                                         18/20   │
-│ [█████████████████████████████] 90% of quota            │
-├─────────────────────────────────────────────────────────┤
-│ 📞 Calls                                        12/15   │
-│ [████████████████████░░░░░░░░░] 80% of quota            │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/lib/agentDashboardApi.ts` | Add quota fields to DashboardProfile, update fetchDashboardProfile(), add getTodayTicketCountByType() |
-| `src/components/dashboard/DailyWorkTracker.tsx` | Redesign Tickets Handled section with multiple progress bars |
-| `src/pages/AgentDashboard.tsx` | Use new ticket count function, pass quota fields to DailyWorkTracker |
-
----
-
-## Technical Details
-
-### DailyWorkTrackerProps Changes
-
-```typescript
-interface DailyWorkTrackerProps {
-  // OLD: quota: number | null;
-  // OLD: ticketsHandled: number;
-  
-  // NEW: Individual quotas and counts
-  position: string | null;
-  quotaEmail: number | null;
-  quotaChat: number | null;
-  quotaPhone: number | null;
-  ticketCounts: {
-    email: number;
-    chat: number;
-    call: number;
-  };
-  
-  // ... rest unchanged
+```json
+{
+  "agentEmail": "jane@example.com",
+  "profileId": "uuid-of-profile"
 }
 ```
 
-### Visibility Logic
+### Response (Success)
 
-```typescript
-function shouldShowTicketType(
-  type: 'email' | 'chat' | 'call',
-  position: string | null,
-  quota: number | null
-): boolean {
-  const pos = position?.toLowerCase() || '';
-  
-  if (type === 'email') {
-    // Always show email for support roles
-    return pos.includes('support') || pos.includes('hybrid');
+```json
+{
+  "success": true,
+  "ticketsAssigned": 5,
+  "ticketIds": ["12345", "12346", "12347", "12348", "12349"],
+  "viewName": "OpenAssign"
+}
+```
+
+### Response (ZD2 Disabled)
+
+```json
+{
+  "success": true,
+  "skipped": true,
+  "reason": "Ticket assignment not enabled for ZD2"
+}
+```
+
+### Response (Failure)
+
+```json
+{
+  "success": false,
+  "error": "Failed to assign tickets - admin notified",
+  "ticketsAssigned": 0
+}
+```
+
+### Edge Function Logic
+
+1. **Fetch agent config** from `agent_profiles` and `agent_directory`
+2. **Check ZD1 only** - if `zendesk_instance !== 'ZD1'`, return skipped
+3. **Check enabled** - if `ticket_assignment_enabled !== true`, return skipped
+4. **Determine View** based on `support_type`:
+   - Contains "Email" or "Hybrid" → Query config for `email_hybrid`
+   - Contains "Chat" or "Phone" → Query config for `chat_phone`
+5. **Get ticket count** - Check day of week:
+   - Mon-Fri → Use `wd_ticket_assign`
+   - Sat-Sun → Use `we_ticket_assign`
+6. **Acquire lock** for the View ID (retry 3x with 2s delay)
+7. **Fetch tickets** from Zendesk View API
+8. **Tag tickets** - Add `agent_tag` to each ticket
+9. **Handle failures** - On error: retry once → if still fails: email admin, release lock, log to DB
+10. **Release lock** and log success
+
+### Zendesk API Calls
+
+**Fetch tickets from view:**
+```text
+GET https://customerserviceadvocates.zendesk.com/api/v2/views/{view_id}/tickets.json?per_page={count}
+Authorization: Basic {base64(email/token:api_token)}
+```
+
+**Update ticket (add tag):**
+```text
+PUT https://customerserviceadvocates.zendesk.com/api/v2/tickets/{ticket_id}.json
+Body: {
+  "ticket": {
+    "tags": [...existing_tags, "agent_tag_here"]
   }
-  
-  if (type === 'chat') {
-    return pos.includes('chat') || pos.includes('hybrid') || (quota && quota > 0);
-  }
-  
-  if (type === 'call') {
-    return pos.includes('phone') || pos.includes('hybrid') || (quota && quota > 0);
-  }
-  
-  return false;
 }
 ```
 
 ---
 
-## Backward Compatibility
+## Frontend Changes
 
-- The aggregate `quota` field will remain in DashboardProfile for any legacy usage
-- If an agent has no individual quotas set but has aggregate quota, fall back to showing single aggregate bar
-- Non-support roles (Team Lead, Logistics, Technical Support) will continue showing no quota bars
+### MasterDirectory.tsx
+
+1. **Add ZD2 detection** helper:
+```typescript
+const isTicketAssignDisabled = (entry: DirectoryEntry) => {
+  return !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+};
+```
+
+2. **Disable toggle and inputs** for ZD2 users with visual indicator
+
+3. **Add tooltip** explaining "Ticket assignment not available for ZD2"
+
+### agentDashboardApi.ts
+
+After successful login (status change to `LOGGED_IN`):
+
+1. Call `assign-tickets-on-login` edge function
+2. Handle response:
+   - Success with tickets → Toast: "5 tickets assigned from OpenAssign"
+   - Skipped → No toast (silent)
+   - Failure → Error toast with message
 
 ---
 
-## Implementation Steps
+## Failure Handling
 
-1. **Step 1**: Update `DashboardProfile` interface and `fetchDashboardProfile()` in `agentDashboardApi.ts`
-2. **Step 2**: Add `getTodayTicketCountByType()` function in `agentDashboardApi.ts`
-3. **Step 3**: Update `DailyWorkTrackerProps` interface in `DailyWorkTracker.tsx`
-4. **Step 4**: Redesign the Tickets Handled section with conditional multi-bar layout
-5. **Step 5**: Update `AgentDashboard.tsx` to use new functions and pass new props
-6. **Step 6**: Test across different support types (Email, Chat, Phone, Hybrid)
+| Scenario | Action |
+|----------|--------|
+| ZD2 user logs in | Skip silently, log as 'skipped' |
+| View is empty | Log success with 0 tickets, no notification |
+| Lock timeout (3 retries) | Return "Queue busy, try again shortly" |
+| Zendesk API error | Retry once → If fails: abort all, email malcom@persistbrands.com, toast to agent, log to DB |
+| Partial success | Abort remaining, treat as failure |
+
+### Failure Email Template
+
+```text
+Subject: Ticket Assignment Failed - [Agent Name]
+
+Agent: Jane Doe (jane@example.com)
+Time: 2026-02-03 10:15:00 EST
+Instance: ZD1
+View: OpenAssign (view_id: 12345678)
+Tickets Requested: 5
+Error: Zendesk API returned 429 Rate Limited
+
+Please check the ticket_assignment_logs table for details.
+```
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `supabase/functions/assign-tickets-on-login/index.ts` | **Create** - Main edge function |
+| `src/pages/MasterDirectory.tsx` | **Modify** - Disable ZD2 controls |
+| `src/lib/agentDashboardApi.ts` | **Modify** - Trigger assignment on login |
+| Database migration | **Create** - New tables |
+| `supabase/config.toml` | **Modify** - Add function config |
+
+---
+
+## Configuration Required Before Implementation
+
+**ZD1 View IDs needed:**
+
+1. **OpenAssign View ID** (for Email/Hybrid agents): `___________`
+2. **NewAssign View ID** (for Chat/Phone agents): `___________`
+
+You can find these in Zendesk Admin > Views > click on the view > the ID is in the URL.
+
+---
+
+## Implementation Order
+
+1. Create database tables (migration)
+2. Update Master Directory UI to disable ZD2 controls
+3. Create edge function `assign-tickets-on-login`
+4. Update `agentDashboardApi.ts` to trigger on login
+5. Test with ZD1 agent
+6. Future: Enable ZD2 when you provide View IDs
+
+---
+
+## Enabling ZD2 in the Future
+
+When you have ZD2 View IDs:
+
+1. Update `ticket_assignment_view_config` table:
+```sql
+UPDATE ticket_assignment_view_config 
+SET view_id = 'YOUR_ZD2_VIEW_ID', is_enabled = true 
+WHERE zendesk_instance = 'ZD2';
+```
+
+2. The UI and edge function will automatically enable for ZD2 users (no code changes needed)
