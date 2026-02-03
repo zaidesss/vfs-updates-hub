@@ -205,12 +205,12 @@ Deno.serve(async (req) => {
             profile_id: profile.id,
             incident_date: targetDateStr,
             incident_type: 'NO_LOGOUT',
-            severity: 'warning',
+            severity: 'medium',
             details: {
               loginTime: loginEvents[0].created_at,
               message: 'Agent logged in but did not log out by end of day',
             },
-            status: 'pending',
+            status: 'open',
           });
         }
       }
@@ -241,13 +241,13 @@ Deno.serve(async (req) => {
               profile_id: profile.id,
               incident_date: targetDateStr,
               incident_type: 'LATE_LOGIN',
-              severity: 'info',
+              severity: 'low',
               details: {
                 scheduledStart: parsedSchedule.startMinutes,
                 actualLogin: loginMinutes,
                 lateByMinutes: lateMinutes,
               },
-              status: 'pending',
+              status: 'open',
             });
           }
         }
@@ -269,20 +269,20 @@ Deno.serve(async (req) => {
       }
 
       if (totalRestartSeconds > 300) { // More than 5 minutes total
-        const reportKey = `${profile.email.toLowerCase()}_EXCESSIVE_RESTART`;
+        const reportKey = `${profile.email.toLowerCase()}_EXCESSIVE_RESTARTS`;
         if (!existingReportSet.has(reportKey)) {
           reportsToCreate.push({
             agent_email: profile.email.toLowerCase(),
             agent_name: agentName,
             profile_id: profile.id,
             incident_date: targetDateStr,
-            incident_type: 'EXCESSIVE_RESTART',
-            severity: 'warning',
+            incident_type: 'EXCESSIVE_RESTARTS',
+            severity: 'medium',
             details: {
               totalRestartSeconds,
               restartCount: restartStartEvents.length,
             },
-            status: 'pending',
+            status: 'open',
           });
         }
       }
@@ -319,13 +319,13 @@ Deno.serve(async (req) => {
             profile_id: profile.id,
             incident_date: targetDateStr,
             incident_type: 'BIO_OVERUSE',
-            severity: 'warning',
+            severity: 'low',
             details: {
               totalBioSeconds,
               bioAllowance,
               overageSeconds: totalBioSeconds - bioAllowance,
             },
-            status: 'pending',
+            status: 'open',
           });
         }
       }
