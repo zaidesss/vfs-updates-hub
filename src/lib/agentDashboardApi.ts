@@ -78,6 +78,11 @@ export interface DashboardProfile {
   fri_schedule: string | null;
   sat_schedule: string | null;
   sun_schedule: string | null;
+  // Position-specific quotas from agent_profiles
+  position: string | null;
+  quota_email: number | null;
+  quota_chat: number | null;
+  quota_phone: number | null;
 }
 
 export interface ProfileStatusRecord {
@@ -207,10 +212,10 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
 
 export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
-    // 1. Fetch identity AND upwork_contract_id AND ot_enabled from agent_profiles (source of truth)
+    // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, upwork_contract_id, ot_enabled')
+      .select('id, email, full_name, upwork_contract_id, ot_enabled, position, quota_email, quota_chat, quota_phone')
       .eq('id', profileId)
       .single();
 
@@ -229,7 +234,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       .eq('email', profile.email)
       .maybeSingle();
 
-    // 3. Merge and return - use agent_profiles.upwork_contract_id and ot_enabled as source of truth
+    // 3. Merge and return - use agent_profiles fields as source of truth
     const dashboardProfile: DashboardProfile = {
       id: profile.id,
       email: profile.email,
@@ -244,8 +249,8 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       weekday_schedule: directory?.weekday_schedule || null,
       weekend_schedule: directory?.weekend_schedule || null,
       day_off: directory?.day_off || [],
-      upwork_contract_id: profile.upwork_contract_id || null, // Use agent_profiles as source of truth
-      ot_enabled: profile.ot_enabled || false, // Use agent_profiles as source of truth
+      upwork_contract_id: profile.upwork_contract_id || null,
+      ot_enabled: profile.ot_enabled || false,
       mon_schedule: directory?.mon_schedule || null,
       tue_schedule: directory?.tue_schedule || null,
       wed_schedule: directory?.wed_schedule || null,
@@ -253,6 +258,11 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       fri_schedule: directory?.fri_schedule || null,
       sat_schedule: directory?.sat_schedule || null,
       sun_schedule: directory?.sun_schedule || null,
+      // Position-specific quotas from agent_profiles
+      position: profile.position || null,
+      quota_email: profile.quota_email || null,
+      quota_chat: profile.quota_chat || null,
+      quota_phone: profile.quota_phone || null,
     };
 
     return { data: dashboardProfile, error: null };
@@ -1466,9 +1476,64 @@ export async function getTodayTicketCount(agentTag: string): Promise<{ data: num
   }
 }
 
+export interface TicketCountByType {
+  email: number;
+  chat: number;
+  call: number;
+  total: number;
+}
+
 /**
- * Fetch today's gap data for an agent from ticket_gap_daily
+ * Fetch today's ticket count broken down by type (Email, Chat, Call)
  */
+export async function getTodayTicketCountByType(agentTag: string): Promise<{ data: TicketCountByType; error: string | null }> {
+  try {
+    // Get today's date range in UTC
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Fetch all tickets for today to count by type
+    const { data, error } = await supabase
+      .from('ticket_logs')
+      .select('ticket_type')
+      .ilike('agent_name', agentTag)
+      .gte('timestamp', startOfDay.toISOString())
+      .lte('timestamp', endOfDay.toISOString());
+
+    if (error) {
+      return { data: { email: 0, chat: 0, call: 0, total: 0 }, error: error.message };
+    }
+
+    // Count by type (case-insensitive)
+    let emailCount = 0;
+    let chatCount = 0;
+    let callCount = 0;
+
+    (data || []).forEach((row) => {
+      const type = (row.ticket_type || '').toLowerCase();
+      if (type === 'email') emailCount++;
+      else if (type === 'chat') chatCount++;
+      else if (type === 'call') callCount++;
+    });
+
+    return {
+      data: {
+        email: emailCount,
+        chat: chatCount,
+        call: callCount,
+        total: emailCount + chatCount + callCount,
+      },
+      error: null,
+    };
+  } catch (err: any) {
+    return { data: { email: 0, chat: 0, call: 0, total: 0 }, error: err.message };
+  }
+}
+
+
 export async function getTodayGapData(agentTag: string): Promise<{ 
   data: { avgGapSeconds: number | null; ticketCount: number } | null; 
   error: string | null 
