@@ -73,8 +73,10 @@ Deno.serve(async (req) => {
       ? LOGIN_LOGOUT_CHANNEL
       : OTHER_STATUS_CHANNEL;
 
-    // Build subtle message
-    const message = `${agentName} ${label} at ${formattedTime} EST`;
+    // Build message - add @channel for non-login/logout events (only a_cyrus_cs-all channel)
+    const isLoginLogout = eventType === 'LOGIN' || eventType === 'LOGOUT';
+    const channelMention = isLoginLogout ? '' : '<!channel> ';
+    const message = `${channelMention}${agentName} ${label} at ${formattedTime} EST`;
 
     // Post to Slack using Bot Token
     const slackResponse = await fetch('https://slack.com/api/chat.postMessage', {
