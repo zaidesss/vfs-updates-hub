@@ -1,81 +1,77 @@
-# Agent Reports + Enhanced Status Controls - Implementation Complete
 
-## ✅ All Core Features Implemented
+# Fix Plan: Severity Values + Bio Button Constraint
 
-### 1. Edge Functions
-- **`send-status-alert-notification`**: Real-time alerts for EXCESSIVE_RESTART and BIO_OVERUSE
-  - Email via Resend, Slack webhook, in-app notifications
-  - Creates agent_report records automatically
-  
-- **`generate-agent-reports`**: Daily automated report generation
-  - Scheduled via pg_cron at 5:00 AM UTC (12:00 AM EST)
-  - Detects: NO_LOGOUT, LATE_LOGIN, EXCESSIVE_RESTART, BIO_OVERUSE
-  - Sends daily digest to admins via email/Slack
+## Issues Identified
 
-### 2. AgentDashboard Integration
-- Bio state management with `bioTimeRemaining` and `bioAllowance`
-- Callback handlers for exceeded events (`handleRestartExceeded`, `handleBioExceeded`)
-- Props passed to StatusButtons for timer display
+### Issue 1: Edge Function Severity Mismatch
+Both `send-status-alert-notification` and `generate-agent-reports` use incorrect severity values:
+- **Current**: `'warning'`, `'info'`
+- **Required by DB**: `'low'`, `'medium'`, `'high'`
 
-### 3. API Bio Handling (`agentDashboardApi.ts`)
-- **LOGIN**: Initializes bio allowance based on shift duration (4 mins for 8+ hours, 2 mins otherwise)
-- **BIO_END**: Calculates and deducts consumed time from remaining allowance
-- **Auto-logout**: Detects stale logins from previous days, auto-logs out, creates NO_LOGOUT report
+### Issue 2: Edge Function Status Mismatch
+Both edge functions use `'pending'` for report status:
+- **Current**: `'pending'`
+- **Required by DB**: `'open'`, `'reviewed'`, `'validated'`, `'dismissed'`
 
-### 4. StatusButtons Timers
-- Device Restart: 5-minute countdown with red pulsing alert when exceeded
-- Bio Break: Consumable timer showing remaining allowance, disables button when depleted
+### Issue 3: Incident Type Typo
+Using `'EXCESSIVE_RESTART'` (singular) but DB constraint requires `'EXCESSIVE_RESTARTS'` (plural).
+
+### Issue 4: Bio Button Constraint (The Error Screenshot)
+The `profile_status` table has a check constraint that doesn't include `'ON_BIO'`:
+- **Current allowed**: `['LOGGED_OUT', 'LOGGED_IN', 'ON_BREAK', 'COACHING', 'RESTARTING']`
+- **Missing**: `'ON_BIO'`
 
 ---
 
-## Cron Schedule
+## Fix Steps
 
-The `generate-agent-reports` function runs daily at:
-- **5:00 AM UTC** (12:00 AM EST)
-- Analyzes the previous day's events
-- Creates reports for any detected violations
+### Step 1: Update Database Constraint
+Add `'ON_BIO'` to the `valid_status` check constraint on `profile_status` table.
 
----
-
-## Manual Testing
-
-You can test the edge functions manually:
-
-```bash
-# Test status alert
-curl -X POST https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/send-status-alert-notification \
-  -H "Content-Type: application/json" \
-  -d '{"agentEmail": "test@example.com", "agentName": "Test Agent", "alertType": "BIO_OVERUSE", "details": {}}'
-
-# Test daily report generation (for yesterday)
-curl -X POST https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/generate-agent-reports \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# Test for specific date
-curl -X POST https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/generate-agent-reports \
-  -H "Content-Type: application/json" \
-  -d '{"date": "2026-02-02"}'
+```sql
+-- Drop old constraint and create new one with ON_BIO
+ALTER TABLE profile_status DROP CONSTRAINT valid_status;
+ALTER TABLE profile_status ADD CONSTRAINT valid_status 
+  CHECK (current_status = ANY (ARRAY['LOGGED_OUT', 'LOGGED_IN', 'ON_BREAK', 'COACHING', 'RESTARTING', 'ON_BIO']));
 ```
 
+### Step 2: Fix `send-status-alert-notification` Edge Function
+Update severity and status values:
+
+| Current Value | New Value |
+|---------------|-----------|
+| `severity: 'warning'` | `severity: 'medium'` |
+| `status: 'pending'` | `status: 'open'` |
+| `incidentType: 'EXCESSIVE_RESTART'` | `incidentType: 'EXCESSIVE_RESTARTS'` |
+
+### Step 3: Fix `generate-agent-reports` Edge Function
+Update all severity mappings and status:
+
+| Incident Type | Current Severity | New Severity |
+|---------------|------------------|--------------|
+| NO_LOGOUT | `'warning'` | `'medium'` |
+| LATE_LOGIN | `'info'` | `'low'` |
+| EXCESSIVE_RESTART | `'warning'` | `'medium'` |
+| BIO_OVERUSE | `'warning'` | `'low'` |
+
+Also fix:
+- All `incident_type: 'EXCESSIVE_RESTART'` → `'EXCESSIVE_RESTARTS'`
+- All `status: 'pending'` → `'open'`
+
 ---
 
-## Technical Notes
+## Files to Modify
 
-### Timer Accuracy
-Client-side timers run at 1-second intervals. Server-side verification uses `status_since` timestamp for accuracy.
+| File | Changes |
+|------|---------|
+| Database migration | Add `'ON_BIO'` to valid_status constraint |
+| `supabase/functions/send-status-alert-notification/index.ts` | Fix severity, status, incident_type values |
+| `supabase/functions/generate-agent-reports/index.ts` | Fix all severity, status, incident_type values |
 
-### Notification De-duplication
-- Refs prevent duplicate real-time alerts per session
-- `generate-agent-reports` checks existing reports before creating new ones
+---
 
-### Bio Allowance Rules
-- 8+ hour shift: 4 minutes (240 seconds)
-- Less than 8 hours: 2 minutes (120 seconds)
-- Resets on each LOGIN event
+## Severity Mapping Logic
+- **`'high'`**: Critical violations requiring immediate attention
+- **`'medium'`**: Standard violations (NO_LOGOUT, EXCESSIVE_RESTARTS)
+- **`'low'`**: Minor issues (LATE_LOGIN, BIO_OVERUSE)
 
-### Stale Login Detection
-On LOGIN attempt, if current status is not LOGGED_OUT and `status_since` is from a previous day:
-1. Auto-insert LOGOUT event at 11:59 PM of that day
-2. Create NO_LOGOUT agent_report
-3. Proceed with new LOGIN
