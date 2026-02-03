@@ -54,13 +54,13 @@ Deno.serve(async (req) => {
     if (alertType === 'EXCESSIVE_RESTART') {
       title = `⚠️ Excessive Device Restart: ${agentName}`;
       message = `${agentName} has exceeded the 5-minute device restart limit at ${formattedTime} EST.`;
-      incidentType = 'EXCESSIVE_RESTART';
-      severity = 'warning';
+      incidentType = 'EXCESSIVE_RESTARTS';
+      severity = 'medium';
     } else if (alertType === 'BIO_OVERUSE') {
       title = `⚠️ Bio Break Overuse: ${agentName}`;
       message = `${agentName} has exceeded their bio break allowance at ${formattedTime} EST.`;
       incidentType = 'BIO_OVERUSE';
-      severity = 'warning';
+      severity = 'low';
     } else {
       return new Response(
         JSON.stringify({ error: `Unknown alert type: ${alertType}` }),
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       incident_type: incidentType,
       severity,
       details,
-      status: 'pending',
+      status: 'open',
     });
 
     if (reportError) {
