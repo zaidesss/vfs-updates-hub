@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
+    // Slack notification disabled - pending finalization of Daily Agent Report details
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -420,39 +420,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Send Slack notification
-      if (slackWebhookUrl) {
-        try {
-          await fetch(slackWebhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: title,
-              blocks: [
-                {
-                  type: 'header',
-                  text: { type: 'plain_text', text: title, emoji: true },
-                },
-                {
-                  type: 'section',
-                  text: { type: 'mrkdwn', text: `*${reportsToCreate.length}* incidents detected for *${targetDateStr}*` },
-                },
-                {
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: Object.entries(reportsByType)
-                      .map(([type, count]) => `• *${type}:* ${count}`)
-                      .join('\n'),
-                  },
-                },
-              ],
-            }),
-          });
-        } catch (slackErr) {
-          console.error('Slack send error:', slackErr);
-        }
-      }
+      // Slack notification disabled - pending finalization of Daily Agent Report details
+      // Will be re-enabled once the format is confirmed
     }
 
     return new Response(

@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.generate-agent-reports]
 verify_jwt = false
+
+[functions.send-profile-status-notification]
+verify_jwt = false
