@@ -240,7 +240,8 @@ export default function ManageProfilesPage() {
   const daysEmployed = editData?.start_date ? calculateDaysEmployed(editData.start_date) : 0;
 
   // Check if user can edit work/compensation sections
-  const canEditWorkInfo = isSuperAdmin;
+  const canEditWorkInfo = isAdmin;        // Admins and Super Admins can edit work config
+  const canEditCompensation = isSuperAdmin; // Only Super Admins can edit compensation
 
   if (!isAdmin) {
     return (
@@ -374,6 +375,7 @@ export default function ManageProfilesPage() {
                 handleSave={handleSave}
                 isSaving={isSaving}
                 canEditWorkInfo={canEditWorkInfo}
+                canEditCompensation={canEditCompensation}
                 daysEmployed={daysEmployed}
                 setSelectedUser={setSelectedUser}
               />
@@ -395,6 +397,7 @@ export default function ManageProfilesPage() {
             handleSave={handleSave}
             isSaving={isSaving}
             canEditWorkInfo={canEditWorkInfo}
+            canEditCompensation={canEditCompensation}
             daysEmployed={daysEmployed}
             setSelectedUser={setSelectedUser}
           />
@@ -418,6 +421,7 @@ interface ProfilesGridProps {
   handleSave: () => void;
   isSaving: boolean;
   canEditWorkInfo: boolean;
+  canEditCompensation: boolean;
   daysEmployed: number;
   setSelectedUser: (user: UserWithProfile | null) => void;
 }
@@ -435,6 +439,7 @@ function ProfilesGrid({
   handleSave,
   isSaving,
   canEditWorkInfo,
+  canEditCompensation,
   daysEmployed,
   setSelectedUser
 }: ProfilesGridProps) {
@@ -800,7 +805,7 @@ function ProfilesGrid({
 
                   {/* Compensation */}
                   <div className="space-y-4">
-                    <ProfileSectionHeader title="Compensation" badge="hr" locked={!canEditWorkInfo} />
+                    <ProfileSectionHeader title="Compensation" badge="hr" locked={!canEditCompensation} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -808,9 +813,9 @@ function ProfilesGrid({
                         <Select
                           value={editData.payment_frequency}
                           onValueChange={(value) => handleInputChange('payment_frequency', value)}
-                          disabled={!canEditWorkInfo}
+                          disabled={!canEditCompensation}
                         >
-                          <SelectTrigger className={!canEditWorkInfo ? 'bg-muted' : ''}>
+                          <SelectTrigger className={!canEditCompensation ? 'bg-muted' : ''}>
                             <SelectValue placeholder="Select frequency" />
                           </SelectTrigger>
                           <SelectContent>
@@ -827,11 +832,11 @@ function ProfilesGrid({
                           <Input
                             type="number"
                             step="0.01"
-                            className={`pl-9 ${!canEditWorkInfo ? 'bg-muted' : ''}`}
+                            className={`pl-9 ${!canEditCompensation ? 'bg-muted' : ''}`}
                             value={editData.hourly_rate ?? ''}
                             onChange={(e) => handleInputChange('hourly_rate', e.target.value ? parseFloat(e.target.value) : null)}
                             placeholder="0.00"
-                            disabled={!canEditWorkInfo}
+                            disabled={!canEditCompensation}
                           />
                         </div>
                       </div>
@@ -846,19 +851,19 @@ function ProfilesGrid({
                               value={entry.date}
                               onChange={(value) => handleRateHistoryChange(index, 'date', value)}
                               placeholder="Select date"
-                              disabled={!canEditWorkInfo}
-                              className={!canEditWorkInfo ? 'bg-muted' : ''}
+                              disabled={!canEditCompensation}
+                              className={!canEditCompensation ? 'bg-muted' : ''}
                             />
                             <div className="relative">
                               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                               <Input
                                 type="number"
                                 step="0.01"
-                                className={`pl-9 ${!canEditWorkInfo ? 'bg-muted' : ''}`}
+                                className={`pl-9 ${!canEditCompensation ? 'bg-muted' : ''}`}
                                 value={entry.rate}
                                 onChange={(e) => handleRateHistoryChange(index, 'rate', e.target.value)}
                                 placeholder="0.00"
-                                disabled={!canEditWorkInfo}
+                                disabled={!canEditCompensation}
                               />
                             </div>
                           </div>

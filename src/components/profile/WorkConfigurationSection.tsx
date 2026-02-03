@@ -22,6 +22,7 @@ interface WorkConfigurationSectionProps {
   profile: AgentProfileInput;
   onInputChange: (field: keyof AgentProfileInput, value: any) => void;
   isSuperAdmin: boolean;
+  isAdmin?: boolean; // Allow admin access to work config fields
   onPositionChange?: (position: string) => void;
   scheduleErrors?: Record<string, string>;
   onScheduleBlur?: (field: string, value: string) => void;
@@ -31,6 +32,7 @@ export function WorkConfigurationSection({
   profile,
   onInputChange,
   isSuperAdmin,
+  isAdmin = false,
   onPositionChange,
   scheduleErrors = {},
   onScheduleBlur,
@@ -40,7 +42,8 @@ export function WorkConfigurationSection({
   const errors = Object.keys(scheduleErrors).length > 0 ? scheduleErrors : localScheduleErrors;
 
   const positionDefaults = getPositionDefaults(profile.position || null);
-  const canEdit = isSuperAdmin;
+  // Admins and Super Admins can edit work configuration fields
+  const canEdit = isAdmin || isSuperAdmin;
 
   // Validation handler for schedule fields
   const handleScheduleBlur = (field: string, value: string) => {
