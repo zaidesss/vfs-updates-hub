@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { cn } from '@/lib/utils';
 import { 
@@ -449,7 +450,7 @@ export function WorkConfigurationSection({
       </div>
 
       {/* Break & OT Schedules */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="space-y-4">
         <div className="space-y-2">
           <Label>Break Schedule</Label>
           <Input
@@ -462,30 +463,49 @@ export function WorkConfigurationSection({
           />
           {errors['break_schedule'] && <p className="text-xs text-destructive">{errors['break_schedule']}</p>}
         </div>
-        <div className="space-y-2">
-          <Label>Weekday OT Schedule</Label>
-          <Input
-            value={profile.weekday_ot_schedule || ''}
-            onChange={(e) => onInputChange('weekday_ot_schedule', e.target.value)}
-            onBlur={(e) => handleScheduleBlur('weekday_ot_schedule', e.target.value)}
-            placeholder="5:00 PM-7:00 PM"
+
+        {/* OT Schedule Toggle */}
+        <div className="flex items-center justify-between p-3 border rounded-md">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">OT Schedule Enabled</Label>
+            <p className="text-xs text-muted-foreground">Enable to configure overtime schedule</p>
+          </div>
+          <Switch
+            checked={profile.ot_enabled || false}
+            onCheckedChange={(checked) => onInputChange('ot_enabled', checked)}
             disabled={!canEdit}
-            className={cn(!canEdit ? 'bg-muted' : '', errors['weekday_ot_schedule'] && 'border-destructive')}
           />
-          {errors['weekday_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekday_ot_schedule']}</p>}
         </div>
-        <div className="space-y-2">
-          <Label>Weekend OT Schedule</Label>
-          <Input
-            value={profile.weekend_ot_schedule || ''}
-            onChange={(e) => onInputChange('weekend_ot_schedule', e.target.value)}
-            onBlur={(e) => handleScheduleBlur('weekend_ot_schedule', e.target.value)}
-            placeholder="5:00 PM-7:00 PM"
-            disabled={!canEdit}
-            className={cn(!canEdit ? 'bg-muted' : '', errors['weekend_ot_schedule'] && 'border-destructive')}
-          />
-          {errors['weekend_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekend_ot_schedule']}</p>}
-        </div>
+
+        {/* OT Schedule Fields - only visible when OT is enabled */}
+        {profile.ot_enabled && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-md bg-muted/30">
+            <div className="space-y-2">
+              <Label>Weekday OT Schedule</Label>
+              <Input
+                value={profile.weekday_ot_schedule || ''}
+                onChange={(e) => onInputChange('weekday_ot_schedule', e.target.value)}
+                onBlur={(e) => handleScheduleBlur('weekday_ot_schedule', e.target.value)}
+                placeholder="5:00 PM-7:00 PM"
+                disabled={!canEdit}
+                className={cn(!canEdit ? 'bg-muted' : '', errors['weekday_ot_schedule'] && 'border-destructive')}
+              />
+              {errors['weekday_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekday_ot_schedule']}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label>Weekend OT Schedule</Label>
+              <Input
+                value={profile.weekend_ot_schedule || ''}
+                onChange={(e) => onInputChange('weekend_ot_schedule', e.target.value)}
+                onBlur={(e) => handleScheduleBlur('weekend_ot_schedule', e.target.value)}
+                placeholder="5:00 PM-7:00 PM"
+                disabled={!canEdit}
+                className={cn(!canEdit ? 'bg-muted' : '', errors['weekend_ot_schedule'] && 'border-destructive')}
+              />
+              {errors['weekend_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekend_ot_schedule']}</p>}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

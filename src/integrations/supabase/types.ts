@@ -201,6 +201,7 @@ export type Database = {
           hourly_rate: number | null
           id: string
           mon_schedule: string | null
+          ot_enabled: boolean | null
           payment_frequency: string | null
           phone_number: string | null
           position: string | null
@@ -256,6 +257,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           mon_schedule?: string | null
+          ot_enabled?: boolean | null
           payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null
@@ -311,6 +313,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           mon_schedule?: string | null
+          ot_enabled?: boolean | null
           payment_frequency?: string | null
           phone_number?: string | null
           position?: string | null

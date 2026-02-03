@@ -156,6 +156,7 @@ export interface AgentProfile {
   weekday_ot_schedule: string | null;
   weekend_ot_schedule: string | null;
   day_off: string[] | null;
+  ot_enabled: boolean | null;
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -218,6 +219,7 @@ export interface AgentProfileInput {
   weekday_ot_schedule?: string;
   weekend_ot_schedule?: string;
   day_off?: string[];
+  ot_enabled?: boolean;
 }
 
 export interface ProfileChangeRequest {

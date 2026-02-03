@@ -39,6 +39,11 @@ const STATUS_CONFIG: Record<ProfileStatus, { label: string; color: string; bgCol
     color: 'text-cyan-700 dark:text-cyan-400', 
     bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' 
   },
+  ON_OT: { 
+    label: 'On OT', 
+    color: 'text-purple-700 dark:text-purple-400', 
+    bgColor: 'bg-purple-100 dark:bg-purple-900/30' 
+  },
 };
 
 /**

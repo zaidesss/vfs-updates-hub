@@ -463,6 +463,7 @@ export default function AgentDashboard() {
                 bioAllowance={bioAllowance ?? (profile ? calculateBioAllowanceFromSchedule(profile) : null)}
                 onRestartExceeded={handleRestartExceeded}
                 onBioExceeded={handleBioExceeded}
+                otEnabled={profile.ot_enabled}
               />
             </CardContent>
           </Card>

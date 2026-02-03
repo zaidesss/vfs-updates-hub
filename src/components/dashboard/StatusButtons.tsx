@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw, User } from 'lucide-react';
+import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw, User, Clock } from 'lucide-react';
 import type { ProfileStatus, EventType } from '@/lib/agentDashboardApi';
 
 interface StatusButtonsProps {
@@ -9,57 +9,12 @@ interface StatusButtonsProps {
   isLoading: boolean;
   onStatusChange: (eventType: EventType) => Promise<void>;
   statusSince?: string | null;
-  bioTimeRemaining?: number | null; // seconds remaining for bio
-  bioAllowance?: number | null; // total bio allowance in seconds
-  onRestartExceeded?: () => void; // callback when restart exceeds 5 mins
-  onBioExceeded?: () => void; // callback when bio time is depleted
+  bioTimeRemaining?: number | null;
+  bioAllowance?: number | null;
+  onRestartExceeded?: () => void;
+  onBioExceeded?: () => void;
+  otEnabled?: boolean;
 }
-
-interface ButtonConfig {
-  eventType: EventType;
-  label: string;
-  activeLabel?: string;
-  icon: typeof LogIn;
-  getEnabled: (status: ProfileStatus) => boolean;
-  getVariant: (status: ProfileStatus) => 'default' | 'destructive' | 'secondary' | 'outline' | 'ghost';
-  getClassName?: (status: ProfileStatus) => string;
-}
-
-const BUTTON_CONFIGS: ButtonConfig[] = [
-  {
-    eventType: 'LOGIN',
-    label: 'Log In',
-    activeLabel: 'Logged In',
-    icon: LogIn,
-    getEnabled: (status) => status === 'LOGGED_OUT',
-    getVariant: (status) => status === 'LOGGED_OUT' ? 'default' : 'secondary',
-    getClassName: (status) => status !== 'LOGGED_OUT' ? 'opacity-50' : '',
-  },
-  {
-    eventType: 'LOGOUT',
-    label: 'Log Out',
-    icon: LogOut,
-    getEnabled: (status) => status === 'LOGGED_IN',
-    getVariant: (status) => status === 'LOGGED_IN' ? 'destructive' : 'secondary',
-    getClassName: (status) => status !== 'LOGGED_IN' ? 'opacity-50' : '',
-  },
-  {
-    eventType: 'BREAK_IN',
-    label: 'Break In',
-    icon: Coffee,
-    getEnabled: (status) => status === 'LOGGED_IN',
-    getVariant: () => 'outline',
-    getClassName: (status) => status !== 'LOGGED_IN' ? 'opacity-50' : 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950',
-  },
-  {
-    eventType: 'BREAK_OUT',
-    label: 'Break Out',
-    icon: Coffee,
-    getEnabled: (status) => status === 'ON_BREAK',
-    getVariant: () => 'outline',
-    getClassName: (status) => status !== 'ON_BREAK' ? 'opacity-50' : 'border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950',
-  },
-];
 
 const DEVICE_RESTART_LIMIT_SECONDS = 5 * 60; // 5 minutes
 
@@ -79,6 +34,7 @@ export function StatusButtons({
   bioAllowance = null,
   onRestartExceeded,
   onBioExceeded,
+  otEnabled = false,
 }: StatusButtonsProps) {
   const [loadingEvent, setLoadingEvent] = useState<EventType | null>(null);
   
@@ -109,7 +65,6 @@ export function StatusButtons({
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setRestartElapsed(elapsed);
         
-        // Check if exceeded 5 minutes
         if (elapsed >= DEVICE_RESTART_LIMIT_SECONDS) {
           setRestartExceeded(true);
           if (!restartExceededNotified.current) {
@@ -138,7 +93,6 @@ export function StatusButtons({
         const remaining = initialRemaining - elapsed;
         setBioRemaining(remaining);
         
-        // Check if bio time depleted
         if (remaining <= 0) {
           setBioExceeded(true);
           if (!bioExceededNotified.current) {
@@ -161,47 +115,80 @@ export function StatusButtons({
     }
   };
 
+  // OT status locks all other buttons
+  const isOnOT = currentStatus === 'ON_OT';
+
+  // Consolidated Login/Logout toggle
+  const isLoggedOut = currentStatus === 'LOGGED_OUT';
+  const isLoggedIn = currentStatus === 'LOGGED_IN';
+  const loginLogoutEnabled = !isOnOT && (isLoggedOut || isLoggedIn);
+  const loginLogoutEvent: EventType = isLoggedOut ? 'LOGIN' : 'LOGOUT';
+
+  // Consolidated Break toggle
+  const isOnBreak = currentStatus === 'ON_BREAK';
+  const breakEnabled = !isOnOT && (isLoggedIn || isOnBreak);
+  const breakEvent: EventType = isOnBreak ? 'BREAK_OUT' : 'BREAK_IN';
+
   // Coaching is a toggle button
   const isCoaching = currentStatus === 'COACHING';
-  const coachingEnabled = currentStatus === 'LOGGED_IN' || currentStatus === 'COACHING';
+  const coachingEnabled = !isOnOT && (isLoggedIn || isCoaching);
 
   // Device Restart is a toggle button with timer
   const isRestarting = currentStatus === 'RESTARTING';
-  const restartEnabled = currentStatus === 'LOGGED_IN' || currentStatus === 'RESTARTING';
+  const restartEnabled = !isOnOT && (isLoggedIn || isRestarting);
   const restartTimeRemaining = DEVICE_RESTART_LIMIT_SECONDS - restartElapsed;
 
   // Bio Break is a toggle button with consumable timer
   const isOnBio = currentStatus === 'ON_BIO';
-  const bioEnabled = (currentStatus === 'LOGGED_IN' && bioRemaining > 0) || currentStatus === 'ON_BIO';
+  const bioEnabled = !isOnOT && ((isLoggedIn && bioRemaining > 0) || isOnBio);
   const hasBioAllowance = bioAllowance !== null && bioAllowance > 0;
+
+  // OT button (only shown when ot_enabled)
+  const otButtonEnabled = isLoggedIn || isOnOT;
 
   return (
     <div className="flex flex-wrap gap-3">
-      {BUTTON_CONFIGS.map((config) => {
-        const enabled = config.getEnabled(currentStatus);
-        const variant = config.getVariant(currentStatus);
-        const className = config.getClassName?.(currentStatus) || '';
-        const isButtonLoading = loadingEvent === config.eventType;
-        const showActiveLabel = config.activeLabel && !enabled && currentStatus !== 'LOGGED_OUT';
+      {/* Consolidated Login/Logout Button */}
+      <Button
+        variant={isLoggedOut ? 'default' : isLoggedIn ? 'destructive' : 'secondary'}
+        disabled={!loginLogoutEnabled || isLoading}
+        onClick={() => handleClick(loginLogoutEvent)}
+        className={cn(
+          'min-w-[100px] sm:min-w-[110px]',
+          !loginLogoutEnabled && 'opacity-50'
+        )}
+      >
+        {loadingEvent === 'LOGIN' || loadingEvent === 'LOGOUT' ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : isLoggedOut ? (
+          <LogIn className="h-4 w-4 mr-2" />
+        ) : (
+          <LogOut className="h-4 w-4 mr-2" />
+        )}
+        <span className="hidden sm:inline">{isLoggedOut ? 'Log In' : 'Log Out'}</span>
+        <span className="sm:hidden">{isLoggedOut ? 'In' : 'Out'}</span>
+      </Button>
 
-        return (
-          <Button
-            key={config.eventType}
-            variant={variant}
-            disabled={!enabled || isLoading}
-            onClick={() => handleClick(config.eventType)}
-            className={cn('min-w-[100px] sm:min-w-[110px]', className)}
-          >
-            {isButtonLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <config.icon className="h-4 w-4 mr-2" />
-            )}
-            <span className="hidden sm:inline">{showActiveLabel ? config.activeLabel : config.label}</span>
-            <span className="sm:hidden">{config.label.split(' ')[0]}</span>
-          </Button>
-        );
-      })}
+      {/* Consolidated Break Button */}
+      <Button
+        variant="outline"
+        disabled={!breakEnabled || isLoading}
+        onClick={() => handleClick(breakEvent)}
+        className={cn(
+          'min-w-[100px] sm:min-w-[110px]',
+          !breakEnabled && 'opacity-50',
+          isOnBreak && 'border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950',
+          !isOnBreak && breakEnabled && 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950'
+        )}
+      >
+        {loadingEvent === 'BREAK_IN' || loadingEvent === 'BREAK_OUT' ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Coffee className="h-4 w-4 mr-2" />
+        )}
+        <span className="hidden sm:inline">{isOnBreak ? 'Break Out' : 'Break In'}</span>
+        <span className="sm:hidden">{isOnBreak ? 'Out' : 'Break'}</span>
+      </Button>
 
       {/* Coaching Toggle Button */}
       <Button
@@ -298,6 +285,29 @@ export function StatusButtons({
               </span>
             </>
           )}
+        </Button>
+      )}
+
+      {/* OT Login/Logout Button - only shown when ot_enabled is true */}
+      {otEnabled && (
+        <Button
+          variant={isOnOT ? 'default' : 'outline'}
+          disabled={!otButtonEnabled || isLoading}
+          onClick={() => handleClick(isOnOT ? 'OT_LOGOUT' : 'OT_LOGIN')}
+          className={cn(
+            'min-w-[100px] sm:min-w-[120px]',
+            !otButtonEnabled && 'opacity-50',
+            isOnOT && 'bg-purple-600 hover:bg-purple-700',
+            !isOnOT && otButtonEnabled && 'border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950'
+          )}
+        >
+          {loadingEvent === 'OT_LOGIN' || loadingEvent === 'OT_LOGOUT' ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Clock className="h-4 w-4 mr-2" />
+          )}
+          <span className="hidden sm:inline">{isOnOT ? 'OT Logout' : 'OT Login'}</span>
+          <span className="sm:hidden">{isOnOT ? 'End OT' : 'OT'}</span>
         </Button>
       )}
     </div>
