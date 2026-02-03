@@ -185,13 +185,6 @@ SCHEMA:
         // Content blocks go here (see types below)
       ]
     }
-  ],
-  "timeline": [
-    {
-      "date": "Today's date",
-      "author": "AI Assistant",
-      "description": "Formatted for clarity"
-    }
   ]
 }
 
