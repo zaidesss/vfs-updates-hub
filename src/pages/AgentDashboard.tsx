@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { startOfWeek, endOfWeek } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
 import { ShiftScheduleTable } from '@/components/dashboard/ShiftScheduleTable';
@@ -29,6 +30,7 @@ import {
   getTodayGapData,
   fetchUpworkTime,
   autoGenerateLateLoginRequest,
+  parseScheduleRange,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -37,6 +39,37 @@ import {
   type ApprovedLeave,
 } from '@/lib/agentDashboardApi';
 import { format } from 'date-fns';
+
+/**
+ * Calculate bio allowance based on shift duration
+ * 8+ hours = 4 mins, less = 2 mins
+ */
+function calculateBioAllowanceFromSchedule(profile: DashboardProfile): number {
+  const dayMap: Record<number, keyof DashboardProfile> = {
+    0: 'sun_schedule',
+    1: 'mon_schedule',
+    2: 'tue_schedule',
+    3: 'wed_schedule',
+    4: 'thu_schedule',
+    5: 'fri_schedule',
+    6: 'sat_schedule',
+  };
+  
+  const today = new Date().getDay();
+  const scheduleKey = dayMap[today];
+  const schedule = profile[scheduleKey] as string | null;
+  
+  if (!schedule) return 2 * 60; // Default 2 mins (120 seconds)
+  
+  const parsed = parseScheduleRange(schedule);
+  if (!parsed) return 2 * 60;
+  
+  let durationMinutes = parsed.endMinutes - parsed.startMinutes;
+  if (durationMinutes < 0) durationMinutes += 24 * 60;
+  
+  // 8+ hours (480 mins) = 4 mins (240 secs), otherwise 2 mins (120 secs)
+  return durationMinutes >= 480 ? 4 * 60 : 2 * 60;
+}
 
 export default function AgentDashboard() {
   const { profileId } = useParams<{ profileId: string }>();
@@ -50,6 +83,14 @@ export default function AgentDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
+  
+  // Bio break state
+  const [bioTimeRemaining, setBioTimeRemaining] = useState<number | null>(null);
+  const [bioAllowance, setBioAllowance] = useState<number | null>(null);
+  
+  // Refs to prevent duplicate notifications
+  const restartExceededNotifiedRef = useRef(false);
+  const bioExceededNotifiedRef = useRef(false);
   
   // Daily Work Tracker state
   const [agentTag, setAgentTag] = useState<string | null>(null);
@@ -96,6 +137,11 @@ export default function AgentDashboard() {
       if (statusResult.data) {
         setStatus(statusResult.data.current_status);
         setStatusSince(statusResult.data.status_since);
+        setBioTimeRemaining(statusResult.data.bio_time_remaining_seconds);
+        setBioAllowance(statusResult.data.bio_allowance_seconds);
+        // Reset notification refs when status changes
+        restartExceededNotifiedRef.current = false;
+        bioExceededNotifiedRef.current = false;
       }
 
       // Calculate week dates
@@ -249,6 +295,20 @@ export default function AgentDashboard() {
     if (result.success && result.newStatus) {
       setStatus(result.newStatus);
       setStatusSince(new Date().toISOString());
+      
+      // Reset notification refs on status change
+      if (result.newStatus !== 'RESTARTING') {
+        restartExceededNotifiedRef.current = false;
+      }
+      if (result.newStatus !== 'ON_BIO') {
+        bioExceededNotifiedRef.current = false;
+      }
+      
+      // Update bio remaining from API result if available
+      if (result.bioTimeRemaining !== undefined) {
+        setBioTimeRemaining(result.bioTimeRemaining);
+      }
+      
       toast({
         title: 'Status Updated',
         description: `Status changed to ${result.newStatus.replace('_', ' ')}`,
@@ -266,6 +326,44 @@ export default function AgentDashboard() {
     
     setIsUpdating(false);
   };
+
+  // Callback when device restart exceeds 5 minutes
+  const handleRestartExceeded = useCallback(async () => {
+    if (restartExceededNotifiedRef.current || !profile) return;
+    restartExceededNotifiedRef.current = true;
+    
+    try {
+      await supabase.functions.invoke('send-status-alert-notification', {
+        body: {
+          agentEmail: profile.email,
+          agentName: profile.full_name || profile.agent_name || profile.email,
+          alertType: 'EXCESSIVE_RESTART',
+          details: { elapsedSeconds: 300 },
+        },
+      });
+    } catch (err) {
+      console.error('Failed to send restart alert:', err);
+    }
+  }, [profile]);
+
+  // Callback when bio break allowance is depleted
+  const handleBioExceeded = useCallback(async () => {
+    if (bioExceededNotifiedRef.current || !profile) return;
+    bioExceededNotifiedRef.current = true;
+    
+    try {
+      await supabase.functions.invoke('send-status-alert-notification', {
+        body: {
+          agentEmail: profile.email,
+          agentName: profile.full_name || profile.agent_name || profile.email,
+          alertType: 'BIO_OVERUSE',
+          details: { allowance: bioAllowance },
+        },
+      });
+    } catch (err) {
+      console.error('Failed to send bio alert:', err);
+    }
+  }, [profile, bioAllowance]);
 
   // Access control - admins, HR, or the agent themselves can view
   const canAccess = isAdmin || isHR || (profile && profile.email === user?.email);
@@ -360,6 +458,11 @@ export default function AgentDashboard() {
                 currentStatus={status}
                 isLoading={isUpdating}
                 onStatusChange={handleStatusChange}
+                statusSince={statusSince}
+                bioTimeRemaining={bioTimeRemaining}
+                bioAllowance={bioAllowance ?? (profile ? calculateBioAllowanceFromSchedule(profile) : null)}
+                onRestartExceeded={handleRestartExceeded}
+                onBioExceeded={handleBioExceeded}
               />
             </CardContent>
           </Card>
