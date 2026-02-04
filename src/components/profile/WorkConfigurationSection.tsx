@@ -105,6 +105,21 @@ export function WorkConfigurationSection({
     if (!isDayOff('Sun')) onInputChange('sun_schedule', value);
   };
 
+  // Handle Monday OT schedule change - auto-populate Tue-Fri OT
+  const handleMondayOTChange = (value: string) => {
+    onInputChange('mon_ot_schedule', value);
+    onInputChange('tue_ot_schedule', value);
+    onInputChange('wed_ot_schedule', value);
+    onInputChange('thu_ot_schedule', value);
+    onInputChange('fri_ot_schedule', value);
+  };
+
+  // Handle Saturday OT schedule change - auto-populate Sunday OT
+  const handleSaturdayOTChange = (value: string) => {
+    onInputChange('sat_ot_schedule', value);
+    onInputChange('sun_ot_schedule', value);
+  };
+
   // Handle day off toggle - clear schedule when day is marked as off
   const handleDayOffToggle = (day: string, checked: boolean) => {
     const currentDaysOff = profile.day_off || [];
@@ -483,13 +498,13 @@ export function WorkConfigurationSection({
             {/* Weekday OT Schedule */}
             <div className="space-y-3">
               <ProfileSectionHeader title="Weekday OT Schedule" badge="hr" locked={!canEdit} />
-              <p className="text-xs text-muted-foreground">Configure OT schedule for each weekday (Mon-Fri)</p>
+              <p className="text-xs text-muted-foreground">Monday OT auto-populates Tue-Fri OT.</p>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Monday OT</Label>
                   <Input
                     value={profile.mon_ot_schedule || ''}
-                    onChange={(e) => onInputChange('mon_ot_schedule', e.target.value)}
+                    onChange={(e) => handleMondayOTChange(e.target.value)}
                     onBlur={(e) => handleScheduleBlur('mon_ot_schedule', e.target.value)}
                     placeholder="5:00 PM-7:00 PM"
                     disabled={!canEdit}
@@ -551,13 +566,13 @@ export function WorkConfigurationSection({
             {/* Weekend OT Schedule */}
             <div className="space-y-3">
               <ProfileSectionHeader title="Weekend OT Schedule" badge="hr" locked={!canEdit} />
-              <p className="text-xs text-muted-foreground">Configure OT schedule for weekend (Sat-Sun)</p>
+              <p className="text-xs text-muted-foreground">Saturday OT auto-populates Sunday OT.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Saturday OT</Label>
                   <Input
                     value={profile.sat_ot_schedule || ''}
-                    onChange={(e) => onInputChange('sat_ot_schedule', e.target.value)}
+                    onChange={(e) => handleSaturdayOTChange(e.target.value)}
                     onBlur={(e) => handleScheduleBlur('sat_ot_schedule', e.target.value)}
                     placeholder="5:00 PM-7:00 PM"
                     disabled={!canEdit}
