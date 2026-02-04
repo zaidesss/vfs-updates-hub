@@ -266,6 +266,10 @@ async function batchFetchTicketMetricsExploreAligned(
           const eventsData = await eventsResponse.json();
           const events: TicketMetricEvent[] = eventsData.ticket_metric_events || [];
           
+          // Log event types for debugging
+          const eventSummary = events.map((e) => `${e.metric}:${e.type}`);
+          console.log(`Ticket ${ticketId} metric events: ${JSON.stringify(eventSummary)}`);
+          
           // Find the last update_status event for agent_work_time
           // This gives cumulative calendar seconds of agent active work
           const workTimeEvents = events.filter(
@@ -276,7 +280,10 @@ async function batchFetchTicketMetricsExploreAligned(
             // Use the last update_status event (cumulative value)
             const lastEvent = workTimeEvents[workTimeEvents.length - 1];
             ahtSeconds = lastEvent.status?.calendar || null;
+            console.log(`Ticket ${ticketId} agent_work_time: ${ahtSeconds}s`);
           }
+        } else {
+          console.log(`Ticket ${ticketId} metric events fetch failed: ${eventsResponse.status}`);
         }
 
         return { ticketId, frtSeconds, ahtSeconds };
