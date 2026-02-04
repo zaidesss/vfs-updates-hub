@@ -35,12 +35,6 @@ interface ZendeskConfig {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Construct Zendesk email from support_account number
-function getZendeskEmail(supportAccount: string | null): string | null {
-  if (!supportAccount || supportAccount.trim() === '') return null;
-  return `support${supportAccount}@virtualfreelancesolutions.com`;
-}
-
 // Calculate previous week's Monday-Sunday range
 function getPreviousWeekRange(): { weekStart: string; weekEnd: string } {
   const now = new Date();
@@ -67,41 +61,18 @@ function getPreviousWeekRange(): { weekStart: string; weekEnd: string } {
   };
 }
 
-// Fetch Call AHT from Zendesk Talk API
+// Fetch Call AHT from Zendesk Talk API using User ID directly
 async function fetchCallMetrics(
   config: ZendeskConfig,
-  agentEmail: string,
+  zendeskUserId: string,
   startDate: string,
   endDate: string
 ): Promise<{ ahtSeconds: number | null; totalCalls: number }> {
   try {
-    // First, get the agent's Zendesk user ID
-    const userSearchUrl = `https://${config.subdomain}.zendesk.com/api/v2/users/search.json?query=email:${encodeURIComponent(agentEmail)}`;
-    const userResponse = await fetch(userSearchUrl, {
-      headers: {
-        'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!userResponse.ok) {
-      console.log(`User search failed for ${agentEmail}: ${userResponse.status}`);
-      return { ahtSeconds: null, totalCalls: 0 };
-    }
-
-    const userData = await userResponse.json();
-    if (!userData.users || userData.users.length === 0) {
-      console.log(`No Zendesk user found for ${agentEmail}`);
-      return { ahtSeconds: null, totalCalls: 0 };
-    }
-
-    const userId = userData.users[0].id;
-
-    // Fetch call legs for this agent within the date range
-    // Note: Zendesk Talk API uses different endpoints based on plan
     const startTime = new Date(startDate).toISOString();
     const endTime = new Date(endDate + 'T23:59:59Z').toISOString();
     
+    // Try agents_activity endpoint first
     const callsUrl = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/agents_activity.json?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`;
     
     const callsResponse = await fetch(callsUrl, {
@@ -112,9 +83,9 @@ async function fetchCallMetrics(
     });
 
     if (!callsResponse.ok) {
-      // Try alternative endpoint for call stats
       console.log(`Talk stats endpoint failed: ${callsResponse.status}, trying calls endpoint...`);
       
+      // Try alternative endpoint for call stats
       const altCallsUrl = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/calls.json?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`;
       const altResponse = await fetch(altCallsUrl, {
         headers: {
@@ -130,10 +101,11 @@ async function fetchCallMetrics(
 
       const altData = await altResponse.json();
       const agentCalls = (altData.calls || []).filter((call: any) => 
-        call.agent_id === userId || call.agent?.id === userId
+        String(call.agent_id) === zendeskUserId || String(call.agent?.id) === zendeskUserId
       );
 
       if (agentCalls.length === 0) {
+        console.log(`No calls found for Zendesk User ID ${zendeskUserId}`);
         return { ahtSeconds: null, totalCalls: 0 };
       }
 
@@ -146,40 +118,45 @@ async function fetchCallMetrics(
       }
 
       const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / agentCalls.length);
+      console.log(`Found ${agentCalls.length} calls for User ID ${zendeskUserId}, AHT: ${ahtSeconds}s`);
       return { ahtSeconds, totalCalls: agentCalls.length };
     }
 
     const statsData = await callsResponse.json();
-    const agentStats = (statsData.agents_activity || []).find((a: any) => a.agent_id === userId);
+    const agentStats = (statsData.agents_activity || []).find((a: any) => String(a.agent_id) === zendeskUserId);
 
     if (!agentStats || !agentStats.calls_count) {
+      console.log(`No agent stats found for Zendesk User ID ${zendeskUserId}`);
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
     // Calculate AHT from agent stats
     const avgHandleTime = agentStats.average_handle_time || agentStats.average_talk_time || null;
+    console.log(`Found stats for User ID ${zendeskUserId}: ${agentStats.calls_count} calls, AHT: ${avgHandleTime}s`);
     return { 
       ahtSeconds: avgHandleTime ? Math.round(avgHandleTime) : null, 
       totalCalls: agentStats.calls_count || 0 
     };
 
   } catch (error) {
-    console.error(`Error fetching call metrics for ${agentEmail}:`, error);
+    console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);
     return { ahtSeconds: null, totalCalls: 0 };
   }
 }
 
-// Fetch Chat AHT and FRT from Zendesk
+// Fetch Chat AHT and FRT from Zendesk using User ID
 async function fetchChatMetrics(
   config: ZendeskConfig,
-  agentEmail: string,
+  zendeskUserId: string,
   startDate: string,
   endDate: string
 ): Promise<{ ahtSeconds: number | null; frtSeconds: number | null; totalChats: number }> {
   try {
-    // Search for chat tickets solved by this agent in the date range
-    const query = `type:ticket channel:chat assignee:${agentEmail} solved>=${startDate} solved<=${endDate}`;
+    // Search for chat tickets solved by this agent using assignee_id
+    const query = `type:ticket channel:chat assignee_id:${zendeskUserId} solved>=${startDate} solved<=${endDate}`;
     const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc`;
+
+    console.log(`Searching chats for User ID ${zendeskUserId}: ${query}`);
 
     const searchResponse = await fetch(searchUrl, {
       headers: {
@@ -189,12 +166,14 @@ async function fetchChatMetrics(
     });
 
     if (!searchResponse.ok) {
-      console.log(`Chat search failed for ${agentEmail}: ${searchResponse.status}`);
+      console.log(`Chat search failed for User ID ${zendeskUserId}: ${searchResponse.status}`);
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
     }
 
     const searchData = await searchResponse.json();
     const tickets = searchData.results || [];
+
+    console.log(`Found ${tickets.length} chat tickets for User ID ${zendeskUserId}`);
 
     if (tickets.length === 0) {
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
@@ -243,6 +222,8 @@ async function fetchChatMetrics(
     const avgFrt = frtCount > 0 ? Math.round(totalFrt / frtCount) : null;
     const avgAht = sampleTickets.length > 0 ? Math.round(totalHandleTime / sampleTickets.length) : null;
 
+    console.log(`Chat metrics for User ID ${zendeskUserId}: AHT=${avgAht}s, FRT=${avgFrt}s, total=${tickets.length}`);
+
     return { 
       ahtSeconds: avgAht, 
       frtSeconds: avgFrt, 
@@ -250,7 +231,7 @@ async function fetchChatMetrics(
     };
 
   } catch (error) {
-    console.error(`Error fetching chat metrics for ${agentEmail}:`, error);
+    console.error(`Error fetching chat metrics for Zendesk User ID ${zendeskUserId}:`, error);
     return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
   }
 }
@@ -258,7 +239,7 @@ async function fetchChatMetrics(
 // Process agents in batches
 async function processAgentsInBatches(
   supabase: any,
-  agents: { email: string; zendesk_instance: string | null; support_account: string | null }[],
+  agents: { email: string; zendesk_instance: string | null; support_account: string | null; zendesk_user_id: string | null }[],
   weekStart: string,
   weekEnd: string,
   zd1Config: ZendeskConfig | null,
@@ -279,18 +260,17 @@ async function processAgentsInBatches(
         continue;
       }
 
-      // Construct Zendesk email from support_account
-      const zendeskEmail = getZendeskEmail(agent.support_account);
-      if (!zendeskEmail) {
-        console.log(`Skipping ${agent.email}: no support_account configured`);
+      // Use Zendesk User ID directly - skip agents without it
+      if (!agent.zendesk_user_id) {
+        console.log(`Skipping ${agent.email}: no zendesk_user_id configured`);
         continue;
       }
 
-      console.log(`Fetching metrics for ${agent.email} using Zendesk account ${zendeskEmail} (${agent.zendesk_instance})`);
+      console.log(`Fetching metrics for ${agent.email} using Zendesk User ID ${agent.zendesk_user_id} (${agent.zendesk_instance})`);
 
       const [callMetrics, chatMetrics] = await Promise.all([
-        fetchCallMetrics(config, zendeskEmail, weekStart, weekEnd),
-        fetchChatMetrics(config, zendeskEmail, weekStart, weekEnd),
+        fetchCallMetrics(config, agent.zendesk_user_id, weekStart, weekEnd),
+        fetchChatMetrics(config, agent.zendesk_user_id, weekStart, weekEnd),
       ]);
 
       const metrics: AgentMetrics = {
@@ -425,7 +405,7 @@ Deno.serve(async (req) => {
     // Fetch agents to process
     let agentsQuery = supabase
       .from('agent_profiles')
-      .select('email, zendesk_instance, support_account')
+      .select('email, zendesk_instance, support_account, zendesk_user_id')
       .not('employment_status', 'eq', 'Terminated')
       .not('zendesk_instance', 'is', null);
 
