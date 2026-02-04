@@ -357,9 +357,10 @@ async function fetchChatMetrics(
     }
     console.log(`Channel distribution for User ID ${zendeskUserId}: ${JSON.stringify(channelCounts)}`);
     
-    // Filter to messaging-related channels only
-    // These are the channels that Explore counts as "Messaging (legacy) tickets"
-    const messagingChannels = ['native_messaging', 'messaging', 'web_messaging', 'chat', 'mobile_sdk', 'facebook', 'twitter', 'instagram'];
+    // Filter to native_messaging ONLY
+    // Explore's "Messaging (legacy) tickets" specifically refers to native_messaging channel
+    // Do NOT include chat, facebook, twitter, instagram etc. as those are separate metrics
+    const messagingChannels = ['native_messaging'];
     const messagingTickets = rawResults.filter((t: any) => 
       t.status !== 'deleted' && 
       messagingChannels.includes(t.via?.channel)
