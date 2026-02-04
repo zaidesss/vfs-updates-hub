@@ -1502,6 +1502,84 @@ export type Database = {
           },
         ]
       }
+      saved_scorecards: {
+        Row: {
+          agent_email: string
+          agent_name: string | null
+          approved_leave_days: number | null
+          call_aht_seconds: number | null
+          chat_aht_seconds: number | null
+          chat_frt_seconds: number | null
+          created_at: string
+          days_present: number | null
+          final_score: number | null
+          id: string
+          is_on_leave: boolean | null
+          ot_productivity: number | null
+          productivity: number | null
+          productivity_count: number | null
+          qa: number | null
+          reliability: number | null
+          revalida: number | null
+          saved_at: string
+          saved_by: string
+          scheduled_days: number | null
+          support_type: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          agent_email: string
+          agent_name?: string | null
+          approved_leave_days?: number | null
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          created_at?: string
+          days_present?: number | null
+          final_score?: number | null
+          id?: string
+          is_on_leave?: boolean | null
+          ot_productivity?: number | null
+          productivity?: number | null
+          productivity_count?: number | null
+          qa?: number | null
+          reliability?: number | null
+          revalida?: number | null
+          saved_at?: string
+          saved_by: string
+          scheduled_days?: number | null
+          support_type: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string | null
+          approved_leave_days?: number | null
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          created_at?: string
+          days_present?: number | null
+          final_score?: number | null
+          id?: string
+          is_on_leave?: boolean | null
+          ot_productivity?: number | null
+          productivity?: number | null
+          productivity_count?: number | null
+          qa?: number | null
+          reliability?: number | null
+          revalida?: number | null
+          saved_at?: string
+          saved_by?: string
+          scheduled_days?: number | null
+          support_type?: string
+          week_end?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
       scorecard_config: {
         Row: {
           created_at: string
