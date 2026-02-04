@@ -112,15 +112,21 @@ export async function fetchScorecardConfig(supportType: string): Promise<Scoreca
 }
 
 // Get eligible agents based on position filter
+// When supportType is 'all', fetch all agents across all support types
 export async function fetchEligibleAgents(supportType: string): Promise<AgentProfile[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('agent_profiles')
     .select('id, email, full_name, agent_name, position, employment_status, quota_email, quota_chat, quota_phone, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
     .neq('employment_status', 'Terminated')
     .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`)
-    .eq('position', supportType)
     .order('full_name');
+    
+  // Only filter by position if not 'all'
+  if (supportType !== 'all') {
+    query = query.eq('position', supportType);
+  }
 
+  const { data, error } = await query;
   if (error) throw error;
   return (data || []) as AgentProfile[];
 }
@@ -275,18 +281,24 @@ export async function fetchSavedScorecard(
   return data || [];
 }
 
-// Check if a week is saved
+// Check if a week is saved (optionally for all support types)
 export async function isWeekSaved(
   weekStart: string,
   weekEnd: string,
   supportType: string
 ): Promise<boolean> {
-  const { count, error } = await supabase
+  let query = supabase
     .from('saved_scorecards')
     .select('id', { count: 'exact', head: true })
     .eq('week_start', weekStart)
-    .eq('week_end', weekEnd)
-    .eq('support_type', supportType);
+    .eq('week_end', weekEnd);
+  
+  // When supportType is 'all', check if any records exist for this week
+  if (supportType !== 'all') {
+    query = query.eq('support_type', supportType);
+  }
+
+  const { count, error } = await query;
 
   if (error) {
     console.error('Error checking saved status:', error);
@@ -297,6 +309,7 @@ export async function isWeekSaved(
 }
 
 // Save scorecard for a week (admin only)
+// Each agent is saved with their own support type (position)
 export async function saveScorecard(
   weekStart: string,
   weekEnd: string,
@@ -309,7 +322,7 @@ export async function saveScorecard(
   const records = scorecards.map(sc => ({
     week_start: weekStart,
     week_end: weekEnd,
-    support_type: supportType,
+    support_type: sc.agent.position || supportType, // Use agent's own position
     agent_email: sc.agent.email.toLowerCase(),
     agent_name: sc.agent.full_name || sc.agent.agent_name,
     productivity: sc.productivity,
@@ -347,6 +360,7 @@ export async function saveScorecard(
 }
 
 // Fetch all data for weekly scorecard
+// When supportType is 'all', fetches all agents and calculates scores using each agent's own position config
 export async function fetchWeeklyScorecard(
   weekStart: Date,
   weekEnd: Date,
@@ -355,10 +369,20 @@ export async function fetchWeeklyScorecard(
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
   const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
 
+  // When 'all', we need to fetch configs for all support types
+  const configPromises = supportType === 'all' 
+    ? SUPPORT_TYPES.map(type => fetchScorecardConfig(type).then(config => ({ type, config })))
+    : [fetchScorecardConfig(supportType).then(config => ({ type: supportType, config }))];
+
+  // When 'all', we need to fetch saved scorecards for all support types
+  const savedPromises = supportType === 'all'
+    ? SUPPORT_TYPES.map(type => fetchSavedScorecard(weekStartStr, weekEndStr, type))
+    : [fetchSavedScorecard(weekStartStr, weekEndStr, supportType)];
+
   // Fetch all required data in parallel
-  const [agentsResult, configResult, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResult] = await Promise.all([
+  const [agentsResult, configResults, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResults] = await Promise.all([
     fetchEligibleAgents(supportType),
-    fetchScorecardConfig(supportType),
+    Promise.all(configPromises),
     supabase
       .from('ticket_logs')
       .select('agent_email, ticket_type, timestamp')
@@ -382,17 +406,20 @@ export async function fetchWeeklyScorecard(
       .lte('start_date', weekEndStr)
       .gte('end_date', weekStartStr),
     fetchZendeskMetrics(weekStartStr, weekEndStr),
-    fetchSavedScorecard(weekStartStr, weekEndStr, supportType)
+    Promise.all(savedPromises)
   ]);
 
   const agents = agentsResult;
-  const config = configResult;
+  // Build config map by support type for 'all' mode
+  const configMap = new Map(configResults.map(r => [r.type, r.config]));
+  const config = supportType === 'all' ? [] : (configResults[0]?.config || []);
   const ticketLogs = ticketLogsResult.data || [];
   const qaEvaluations = qaResult.data || [];
   const profileEvents = eventsResult.data || [];
   const leaveRequests = leaveResult.data || [];
   const zendeskMetrics = zendeskMetricsResult;
-  const savedScorecards = savedResult;
+  // Flatten saved scorecards from all support types
+  const savedScorecards = savedResults.flat();
 
   // Create lookup maps
   const zendeskMap = new Map(zendeskMetrics.map(m => [m.agent_email.toLowerCase(), m]));
@@ -440,6 +467,9 @@ export async function fetchWeeklyScorecard(
     const isOnLeave = approvedLeaveDays >= scheduledDays;
 
     // Calculate ticket counts
+    // Determine which support type to use for this agent's calculations
+    const agentSupportType = agent.position || supportType;
+    
     const agentTickets = ticketLogs.filter(
       t => t.agent_email?.toLowerCase() === agentEmailLower
     );
@@ -448,7 +478,7 @@ export async function fetchWeeklyScorecard(
     const callCount = agentTickets.filter(t => t.ticket_type?.toLowerCase() === 'call').length;
     
     let productivityCount = 0;
-    switch (supportType) {
+    switch (agentSupportType) {
       case 'Email Support':
         productivityCount = emailCount;
         break;
@@ -463,8 +493,8 @@ export async function fetchWeeklyScorecard(
         break;
     }
 
-    // Calculate productivity percentage
-    const weeklyQuota = getWeeklyQuota(agent, supportType, adjustedScheduledDays);
+    // Calculate productivity percentage using agent's own support type
+    const weeklyQuota = getWeeklyQuota(agent, agentSupportType, adjustedScheduledDays);
     const productivity = weeklyQuota > 0 ? (productivityCount / weeklyQuota) * 100 : null;
 
     // Calculate QA average
@@ -480,11 +510,16 @@ export async function fetchWeeklyScorecard(
     const chatAht = zendesk?.chat_aht_seconds ?? null;
     const chatFrt = zendesk?.chat_frt_seconds ?? null;
 
-    // Calculate final score based on config
+    // Calculate final score based on agent's own position config
+    // In 'all' mode, get the config for the agent's specific position
+    const agentConfig = supportType === 'all' 
+      ? (configMap.get(agentSupportType) || [])
+      : config;
+    
     let finalScore = 0;
     let totalWeight = 0;
 
-    for (const c of config) {
+    for (const c of agentConfig) {
       let metricValue: number | null = null;
 
       switch (c.metric_key) {
