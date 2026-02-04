@@ -1502,6 +1502,42 @@ export type Database = {
           },
         ]
       }
+      scorecard_config: {
+        Row: {
+          created_at: string
+          display_order: number
+          goal: number
+          id: string
+          is_enabled: boolean
+          metric_key: string
+          support_type: string
+          updated_at: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          goal?: number
+          id?: string
+          is_enabled?: boolean
+          metric_key: string
+          support_type: string
+          updated_at?: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          goal?: number
+          id?: string
+          is_enabled?: boolean
+          metric_key?: string
+          support_type?: string
+          updated_at?: string
+          weight?: number
+        }
+        Relationships: []
+      }
       ticket_assignment_locks: {
         Row: {
           expires_at: string
@@ -1902,6 +1938,48 @@ export type Database = {
           must_change_password?: boolean | null
           name?: string | null
           role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      zendesk_agent_metrics: {
+        Row: {
+          agent_email: string
+          call_aht_seconds: number | null
+          chat_aht_seconds: number | null
+          chat_frt_seconds: number | null
+          created_at: string
+          fetched_at: string
+          id: string
+          total_calls: number | null
+          total_chats: number | null
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          agent_email: string
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          total_calls?: number | null
+          total_chats?: number | null
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          agent_email?: string
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          total_calls?: number | null
+          total_chats?: number | null
+          week_end?: string
+          week_start?: string
         }
         Relationships: []
       }
