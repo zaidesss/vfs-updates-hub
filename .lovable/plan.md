@@ -1,211 +1,99 @@
 
-
-# Editable AHT/FRT with Actual Value + Percentage Display
+# Fix Call AHT Calculation Using Legs API
 
 ## Summary
-Enhance the Team Scorecard to display both actual time values and calculated percentages for AHT/FRT metrics, allow admins to edit these values inline, and add a "Save Changes" button that syncs edits to the database.
+Update the `fetch-zendesk-metrics` edge function to use the Zendesk Talk **Incremental Legs API** instead of the Incremental Calls API, ensuring AHT calculations match Zendesk Explore reports.
 
-## Technical Context
+## Root Cause
+The current implementation uses `/api/v2/channels/voice/stats/incremental/calls.json` which only attributes calls to the **first agent who answered**. Zendesk Explore uses "Call Legs" which captures **every agent involvement** including transfers and consultations.
 
-### Current State
-- AHT/FRT values are displayed as formatted time only (e.g., `3:43`)
-- Values are read-only, pulled from `zendesk_agent_metrics` table
-- Percentage is calculated but not displayed: `(goal / actual) * 100`
-- Goal values: Call AHT = 300s, Chat AHT = 180s, Chat FRT = 60s
-
-### Goals
-- Call AHT goal: 300 seconds (5 minutes)
-- Chat AHT goal: 180 seconds (3 minutes)  
-- Chat FRT goal: 60 seconds (1 minute)
+**Example - Desiree's data:**
+- Calls API: 40 calls × 150s avg = 6,000s total (incorrect)
+- Legs API: 40 legs × 216s avg = 8,640s total (matches Explore)
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Fix Call AHT Calculation (Talk Time Only)
+### Step 1: Update Call Record Interface
 
-Update the edge function to exclude wrap-up time from AHT calculation to match Zendesk Explore reports.
+Add fields specific to the Legs API response.
 
 **File**: `supabase/functions/fetch-zendesk-metrics/index.ts`
 
-**Change**:
-```
-// Before
-const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / weekCalls.length);
-
-// After  
-const ahtSeconds = Math.round(totalTalkTime / weekCalls.length);
-```
-
----
-
-### Step 2: Update Display to Show Actual + Percentage
-
-**File**: `src/pages/TeamScorecard.tsx`
-
-For each AHT/FRT cell, display:
-- **Line 1**: Actual time value (e.g., `3:43`) - editable for admins
-- **Line 2**: Calculated percentage (e.g., `134.2%`) - color coded
-
-**New Cell Structure**:
-```
-+------------------+
-|     3:43         |  <- Actual (editable input for admins)
-|    134.2%        |  <- Percentage (calculated, color coded)
-|  [edited badge]  |  <- Only if value was modified
-+------------------+
-```
-
-**Percentage Calculation**:
-- Formula: `(goal / actual) * 100`, capped at 100%
-- Color coding:
-  - Green: >= 100%
-  - Yellow: 80-99%
-  - Red: < 80%
-
----
-
-### Step 3: Add Edit State Management
-
-**File**: `src/pages/TeamScorecard.tsx`
-
-Add state to track edits:
 ```typescript
-const [editedMetrics, setEditedMetrics] = useState<Record<string, {
-  callAht?: number | null;
-  chatAht?: number | null;
-  chatFrt?: number | null;
-}>>({});
-
-const hasEdits = Object.keys(editedMetrics).length > 0;
-```
-
-**Edit Handler**:
-```typescript
-const handleMetricEdit = (agentEmail: string, metricKey: string, value: number | null) => {
-  setEditedMetrics(prev => ({
-    ...prev,
-    [agentEmail]: {
-      ...prev[agentEmail],
-      [metricKey]: value
-    }
-  }));
-};
-```
-
----
-
-### Step 4: Create Editable Input Component
-
-**New Component**: Inline editable input for admin users
-
-**Features**:
-- Displays formatted time (mm:ss) when not editing
-- On click (admin only): converts to input field
-- Input accepts mm:ss format (e.g., "3:43") or seconds (e.g., "223")
-- Auto-detection of input format
-- Shows "edited" badge when value differs from original
-
-**Input Parsing Logic**:
-```typescript
-function parseTimeInput(input: string): number | null {
-  // Check for mm:ss format
-  if (input.includes(':')) {
-    const [mins, secs] = input.split(':').map(Number);
-    return mins * 60 + secs;
-  }
-  // Otherwise treat as seconds
-  return parseInt(input) || null;
+// Rename to LegRecord for clarity
+interface LegRecord {
+  id: string | number;
+  call_id: string | number;  // Parent call ID
+  agent_id: string | number;
+  talk_time: number;
+  wrap_up_time: number;
+  type: string;  // "customer", "agent", "external", "supervisor"
+  updated_at?: string;
+  created_at?: string;
 }
 ```
 
 ---
 
-### Step 5: Add "Save Changes" Button
+### Step 2: Change API Endpoint to Legs
 
-**Location**: Inside the Card Header, next to "Save Scorecard" button
+Update the pagination function to fetch from the Legs endpoint.
 
-**Visibility**: Only shown when `hasEdits` is true AND user is admin
-
-**Behavior**:
-1. Collects all edited metrics
-2. Updates `zendesk_agent_metrics` table for each edited agent
-3. Clears edit state on success
-4. Shows success toast
-5. Refetches scorecard data to reflect changes
-
-**API Function** (new in `src/lib/scorecardApi.ts`):
+**Current**:
 ```typescript
-export async function updateZendeskMetrics(
-  weekStart: string,
-  weekEnd: string,
-  agentEmail: string,
-  updates: {
-    call_aht_seconds?: number | null;
-    chat_aht_seconds?: number | null;
-    chat_frt_seconds?: number | null;
-  }
-): Promise<{ success: boolean; error?: string }>
+const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${currentStartTime}`;
+```
+
+**New**:
+```typescript
+const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/legs.json?start_time=${currentStartTime}`;
 ```
 
 ---
 
-### Step 6: Update Database RLS (if needed)
+### Step 3: Filter by Agent Type
 
-Check if `zendesk_agent_metrics` has proper UPDATE policies for admins.
+Only count legs where `type === "agent"` to exclude customer and system legs.
 
-**Required Policy**: Allow admins/super_admins to update rows
-
----
-
-## UI Changes Summary
-
-### Current Cell (AHT/FRT)
-```
-+----------+
-|   3:43   |
-+----------+
-```
-
-### New Cell (Non-Admin View)
-```
-+-------------+
-|    3:43     |  <- Actual value (read-only)
-|   134.2%    |  <- Percentage (green/yellow/red)
-+-------------+
-```
-
-### New Cell (Admin View - Unedited)
-```
-+-------------+
-|  [ 3:43 ]   |  <- Editable input
-|   134.2%    |  <- Auto-updates on edit
-+-------------+
-```
-
-### New Cell (Admin View - Edited)
-```
-+-------------+
-|  [ 2:30 ]   |  <- Modified value
-|   200.0%    |  <- Recalculated
-| [edited]    |  <- Badge indicator
-+-------------+
+```typescript
+const agentLegs = allLegs.filter(leg => 
+  String(leg.agent_id) === zendeskUserId && 
+  leg.type === 'agent'  // Only count agent legs
+);
 ```
 
 ---
 
-## Button Layout
+### Step 4: Update AHT Calculation Logic
 
-### Header (Admin View with Edits)
-```
-+-------------------------------------------------------+
-| Team Scorecard                  [Save Changes] [Save Scorecard] |
-+-------------------------------------------------------+
+The calculation logic stays the same (sum of talk_time / count), but now operates on legs instead of calls.
+
+```typescript
+// Calculate AHT from agent legs
+let totalTalkTime = 0;
+
+for (const leg of weekLegs) {
+  totalTalkTime += leg.talk_time || 0;
+}
+
+const ahtSeconds = Math.round(totalTalkTime / weekLegs.length);
+console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
+
+return { ahtSeconds, totalCalls: weekLegs.length };
 ```
 
-**Button States**:
-- **Save Changes**: Primary button, enabled when edits exist
-- **Save Scorecard**: Secondary/outline, saves entire week to `saved_scorecards`
+---
+
+### Step 5: Update Response Field Parsing
+
+The Legs API returns `legs` array instead of `calls` array.
+
+```typescript
+const data: { legs?: LegRecord[]; end_time?: number; count?: number } = await response.json();
+const legs = data.legs || [];
+```
 
 ---
 
@@ -213,21 +101,22 @@ Check if `zendesk_agent_metrics` has proper UPDATE policies for admins.
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Remove wrap-up time from Call AHT calculation |
-| `src/pages/TeamScorecard.tsx` | Add edit state, editable cells, percentage display, Save Changes button |
-| `src/lib/scorecardApi.ts` | Add `updateZendeskMetrics` function, add `calculatePercentageFromGoal` helper |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Switch from Calls API to Legs API, update interface, add type filter |
 
 ---
 
-## Testing Checklist
+## Expected Result
 
-After implementation:
-1. Verify AHT shows actual time + percentage below
-2. Verify percentage is color-coded correctly
-3. Test admin can click to edit AHT/FRT values
-4. Test input accepts both "3:43" and "223" formats
-5. Verify "edited" badge appears on modified values
-6. Test "Save Changes" button updates database
-7. Verify "Save Scorecard" includes edited values
-8. Test non-admin users see read-only values
+After this change:
+- Desiree's Call AHT should calculate to ~216 seconds (3:36)
+- Matches Zendesk Explore's "Leg talk time (min): 3 min [avg]"
+- Captures all agent interactions including transfers and consultations
 
+---
+
+## Verification Steps
+
+1. Deploy the updated edge function
+2. Trigger a fresh metrics fetch for the week (clear cache or use `scheduled: false`)
+3. Compare new calculated values with Zendesk Explore
+4. Desiree should show ~3:30-3:40 instead of 2:30
