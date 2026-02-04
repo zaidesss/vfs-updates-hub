@@ -1,147 +1,233 @@
 
 
-# Fix Zendesk Metrics Fetch - Use Correct APIs for Historical Data
+# Editable AHT/FRT with Actual Value + Percentage Display
 
 ## Summary
-Rewrite the `fetch-zendesk-metrics` edge function to use the correct Zendesk API endpoints that support historical weekly data queries instead of current-day-only stats endpoints.
+Enhance the Team Scorecard to display both actual time values and calculated percentages for AHT/FRT metrics, allow admins to edit these values inline, and add a "Save Changes" button that syncs edits to the database.
 
-## Problem Identified
-The current implementation uses `/api/v2/channels/voice/stats/agents_activity.json` which only returns **same-day** data (midnight to now in the account's timezone). This is why all weekly queries return null even with correct agent IDs.
+## Technical Context
 
-## Solution Overview
+### Current State
+- AHT/FRT values are displayed as formatted time only (e.g., `3:43`)
+- Values are read-only, pulled from `zendesk_agent_metrics` table
+- Percentage is calculated but not displayed: `(goal / actual) * 100`
+- Goal values: Call AHT = 300s, Chat AHT = 180s, Chat FRT = 60s
 
-| Metric | Current (Broken) | New (Correct) |
-|--------|-----------------|---------------|
-| **Call AHT** | `agents_activity` (same-day only) | `/incremental/calls.json` with pagination |
-| **Chat AHT** | Ticket search (limited) | Ticket metrics aggregation |
-| **Chat FRT** | Ticket search + individual metrics | Ticket metrics aggregation |
+### Goals
+- Call AHT goal: 300 seconds (5 minutes)
+- Chat AHT goal: 180 seconds (3 minutes)  
+- Chat FRT goal: 60 seconds (1 minute)
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Rewrite `fetchCallMetrics` Function
+### Step 1: Fix Call AHT Calculation (Talk Time Only)
 
-Replace the `agents_activity` approach with the Talk Incremental Exports API:
+Update the edge function to exclude wrap-up time from AHT calculation to match Zendesk Explore reports.
 
-**New Logic:**
-1. Convert `weekStart` to Unix epoch timestamp
-2. Call `/api/v2/channels/voice/stats/incremental/calls.json?start_time={epoch}`
-3. Paginate through all results using `next_page` URLs
-4. Filter calls where `agent_id` matches the target Zendesk User ID
-5. Filter calls where timestamp falls within `weekStart` to `weekEnd` range
-6. Calculate: `AHT = sum(talk_time + wrap_up_time) / call_count`
+**File**: `supabase/functions/fetch-zendesk-metrics/index.ts`
 
-**Rate Limiting:** The API allows 10 requests/minute - add 6-second delays between paginated requests.
+**Change**:
+```
+// Before
+const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / weekCalls.length);
 
----
-
-### Step 2: Improve `fetchChatMetrics` Function
-
-Keep the ticket search approach but make it more robust:
-
-**Changes:**
-1. Use `updated>={weekStart} updated<={weekEnd}` for broader date matching
-2. Add `via:chat` OR `channel:messaging` to catch both legacy and new chat
-3. Batch ticket metric requests more efficiently (parallel with concurrency limit)
-4. Calculate AHT from `agent_wait_time_in_minutes.calendar`
-5. Calculate FRT from `reply_time_in_minutes.calendar` (already using this)
-
----
-
-### Step 3: Add Pagination Helper
-
-Create a reusable function for handling Zendesk's incremental export pagination:
-
-```text
-function paginateZendeskExport(initialUrl, config):
-  results = []
-  url = initialUrl
-  while url:
-    response = fetch(url)
-    results.push(...response.calls)
-    url = response.next_page
-    if url: delay(6000)  // Rate limit: 10 req/min
-  return results
+// After  
+const ahtSeconds = Math.round(totalTalkTime / weekCalls.length);
 ```
 
 ---
 
-### Step 4: Update Date Range Filtering
+### Step 2: Update Display to Show Actual + Percentage
 
-Ensure the incremental API results are filtered to only include calls/chats within the exact week boundary:
+**File**: `src/pages/TeamScorecard.tsx`
 
-```text
-For each call in incrementalResults:
-  callDate = new Date(call.updated_at or call.timestamp)
-  if callDate >= weekStart AND callDate <= weekEnd:
-    include in calculations
+For each AHT/FRT cell, display:
+- **Line 1**: Actual time value (e.g., `3:43`) - editable for admins
+- **Line 2**: Calculated percentage (e.g., `134.2%`) - color coded
+
+**New Cell Structure**:
+```
++------------------+
+|     3:43         |  <- Actual (editable input for admins)
+|    134.2%        |  <- Percentage (calculated, color coded)
+|  [edited badge]  |  <- Only if value was modified
++------------------+
+```
+
+**Percentage Calculation**:
+- Formula: `(goal / actual) * 100`, capped at 100%
+- Color coding:
+  - Green: >= 100%
+  - Yellow: 80-99%
+  - Red: < 80%
+
+---
+
+### Step 3: Add Edit State Management
+
+**File**: `src/pages/TeamScorecard.tsx`
+
+Add state to track edits:
+```typescript
+const [editedMetrics, setEditedMetrics] = useState<Record<string, {
+  callAht?: number | null;
+  chatAht?: number | null;
+  chatFrt?: number | null;
+}>>({});
+
+const hasEdits = Object.keys(editedMetrics).length > 0;
+```
+
+**Edit Handler**:
+```typescript
+const handleMetricEdit = (agentEmail: string, metricKey: string, value: number | null) => {
+  setEditedMetrics(prev => ({
+    ...prev,
+    [agentEmail]: {
+      ...prev[agentEmail],
+      [metricKey]: value
+    }
+  }));
+};
 ```
 
 ---
 
-## Updated Function Signatures
+### Step 4: Create Editable Input Component
 
-### `fetchCallMetrics` (rewritten)
-```text
-Input: config, zendeskUserId, weekStart, weekEnd
-Process:
-  1. startEpoch = Date.parse(weekStart) / 1000
-  2. calls = paginateIncrementalCalls(startEpoch)
-  3. agentCalls = calls.filter(c => c.agent_id === zendeskUserId)
-  4. weekCalls = agentCalls.filter(c => inDateRange(c, weekStart, weekEnd))
-  5. AHT = sum(talk_time + wrap_up_time) / count
-Output: { ahtSeconds, totalCalls }
+**New Component**: Inline editable input for admin users
+
+**Features**:
+- Displays formatted time (mm:ss) when not editing
+- On click (admin only): converts to input field
+- Input accepts mm:ss format (e.g., "3:43") or seconds (e.g., "223")
+- Auto-detection of input format
+- Shows "edited" badge when value differs from original
+
+**Input Parsing Logic**:
+```typescript
+function parseTimeInput(input: string): number | null {
+  // Check for mm:ss format
+  if (input.includes(':')) {
+    const [mins, secs] = input.split(':').map(Number);
+    return mins * 60 + secs;
+  }
+  // Otherwise treat as seconds
+  return parseInt(input) || null;
+}
 ```
 
-### `fetchChatMetrics` (improved)
-```text
-Input: config, zendeskUserId, weekStart, weekEnd
-Process:
-  1. Search for chat/messaging tickets assigned to user in date range
-  2. Batch-fetch ticket metrics (5 concurrent requests)
-  3. Calculate avg FRT from reply_time_in_minutes.calendar
-  4. Calculate avg AHT from agent_wait_time_in_minutes.calendar
-Output: { ahtSeconds, frtSeconds, totalChats }
+---
+
+### Step 5: Add "Save Changes" Button
+
+**Location**: Inside the Card Header, next to "Save Scorecard" button
+
+**Visibility**: Only shown when `hasEdits` is true AND user is admin
+
+**Behavior**:
+1. Collects all edited metrics
+2. Updates `zendesk_agent_metrics` table for each edited agent
+3. Clears edit state on success
+4. Shows success toast
+5. Refetches scorecard data to reflect changes
+
+**API Function** (new in `src/lib/scorecardApi.ts`):
+```typescript
+export async function updateZendeskMetrics(
+  weekStart: string,
+  weekEnd: string,
+  agentEmail: string,
+  updates: {
+    call_aht_seconds?: number | null;
+    chat_aht_seconds?: number | null;
+    chat_frt_seconds?: number | null;
+  }
+): Promise<{ success: boolean; error?: string }>
 ```
 
 ---
 
-## Technical Details
+### Step 6: Update Database RLS (if needed)
 
-### Zendesk Talk Incremental Calls API
-- **Endpoint**: `GET /api/v2/channels/voice/stats/incremental/calls.json`
-- **Parameter**: `start_time` (Unix epoch)
-- **Rate Limit**: 10 requests/minute
-- **Key Fields**: `agent_id`, `talk_time`, `wrap_up_time`, `updated_at`
+Check if `zendesk_agent_metrics` has proper UPDATE policies for admins.
 
-### Zendesk Ticket Metrics API
-- **Endpoint**: `GET /api/v2/tickets/{id}/metrics.json`
-- **Key Fields**:
-  - `reply_time_in_minutes.calendar` → FRT
-  - `agent_wait_time_in_minutes.calendar` → AHT component
-
-### Batch Processing
-- Continue processing 10 agents per batch with 5-second delays
-- Within each agent: paginate calls with 6-second delays (rate limit)
-- Chat ticket metrics: 5 concurrent requests with 100ms stagger
+**Required Policy**: Allow admins/super_admins to update rows
 
 ---
 
-## Expected Outcome
+## UI Changes Summary
 
-After this fix:
-1. **Desiree's Call AHT** will be calculated from actual Talk call records for Jan 26 – Feb 1
-2. **Chat AHT/FRT** will aggregate properly from ticket metrics
-3. Weekly cron job (Tuesdays 2:00 AM EST) will fetch accurate historical data
+### Current Cell (AHT/FRT)
+```
++----------+
+|   3:43   |
++----------+
+```
+
+### New Cell (Non-Admin View)
+```
++-------------+
+|    3:43     |  <- Actual value (read-only)
+|   134.2%    |  <- Percentage (green/yellow/red)
++-------------+
+```
+
+### New Cell (Admin View - Unedited)
+```
++-------------+
+|  [ 3:43 ]   |  <- Editable input
+|   134.2%    |  <- Auto-updates on edit
++-------------+
+```
+
+### New Cell (Admin View - Edited)
+```
++-------------+
+|  [ 2:30 ]   |  <- Modified value
+|   200.0%    |  <- Recalculated
+| [edited]    |  <- Badge indicator
++-------------+
+```
 
 ---
 
-## Testing Plan
+## Button Layout
 
-After deployment:
-1. Clear cached metrics for Jan 26 week
-2. Trigger function for Desiree specifically
-3. Verify logs show incremental API pagination
-4. Confirm non-null AHT values are stored in `zendesk_agent_metrics`
+### Header (Admin View with Edits)
+```
++-------------------------------------------------------+
+| Team Scorecard                  [Save Changes] [Save Scorecard] |
++-------------------------------------------------------+
+```
+
+**Button States**:
+- **Save Changes**: Primary button, enabled when edits exist
+- **Save Scorecard**: Secondary/outline, saves entire week to `saved_scorecards`
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Remove wrap-up time from Call AHT calculation |
+| `src/pages/TeamScorecard.tsx` | Add edit state, editable cells, percentage display, Save Changes button |
+| `src/lib/scorecardApi.ts` | Add `updateZendeskMetrics` function, add `calculatePercentageFromGoal` helper |
+
+---
+
+## Testing Checklist
+
+After implementation:
+1. Verify AHT shows actual time + percentage below
+2. Verify percentage is color-coded correctly
+3. Test admin can click to edit AHT/FRT values
+4. Test input accepts both "3:43" and "223" formats
+5. Verify "edited" badge appears on modified values
+6. Test "Save Changes" button updates database
+7. Verify "Save Scorecard" includes edited values
+8. Test non-admin users see read-only values
 
