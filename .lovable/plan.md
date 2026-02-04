@@ -1,53 +1,47 @@
+# Team Scorecard - Zendesk Metrics + Save Feature
 
+## ✅ Completed Steps
 
-# Step 2: Create Cron Job for Weekly Zendesk Metrics Fetch
+### Step 1: Database Migration
+- Created `saved_scorecards` table with unique constraint
+- Added unique constraint to `zendesk_agent_metrics` for upsert
+- Enabled `pg_cron` and `pg_net` extensions
+- Set up RLS policies (public SELECT, admin-only write)
 
-## Schedule Change
-- **Original**: Monday at 2 AM EST
-- **Updated**: Tuesday at 2 AM EST (7 AM UTC)
+### Step 2: Cron Job
+- Created `weekly-zendesk-metrics-fetch` scheduled job
+- Runs every **Tuesday at 2 AM EST** (7 AM UTC)
+- Ensures previous week data is fully processed
 
-This ensures all data from the previous week (Monday-Sunday) has been fully processed before the metrics computation runs.
+### Step 3: Edge Function
+- Updated `fetch-zendesk-metrics` with:
+  - Scheduled mode (`{"scheduled": true}`)
+  - Batch processing (10 agents/batch, 5s delays)
+  - Zendesk Talk & Chat API integration
+  - Minimum date check (Jan 26, 2026)
+  - Upsert to cache table
 
-## Cron Expression
-```
-0 7 * * 2
-```
-- `0` - Minute 0
-- `7` - Hour 7 (UTC) = 2 AM EST
-- `*` - Any day of month
-- `*` - Any month
-- `2` - Tuesday (0=Sunday, 1=Monday, 2=Tuesday)
+### Step 4: Scorecard API
+- Added `saveScorecard()` function
+- Added `fetchSavedScorecard()` function
+- Added `isWeekSaved()` check
+- Added `fetchZendeskMetrics()` for cached AHT/FRT
+- Updated `fetchWeeklyScorecard()` to merge saved/live data
+- Added `isSaved` flag to AgentScorecard type
 
-## SQL to Execute
+### Step 5: TeamScorecard Page
+- Added Save button (admin/super_admin only)
+- Added "Saved" badge when week is frozen
+- Added per-agent saved indicator
+- Added warning for old unsaved weeks
+- Added warning for weeks before Jan 26, 2026
+- Updated legend to include "Saved (frozen)" indicator
 
-```sql
-SELECT cron.schedule(
-  'weekly-zendesk-metrics-fetch',
-  '0 7 * * 2',
-  $$
-  SELECT net.http_post(
-    url := 'https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/fetch-zendesk-metrics',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzamp2Z3lvYnRhenhnZWVkbXZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNzQ0MDEsImV4cCI6MjA4MjY1MDQwMX0.eKpuoZMa9R10NLdJkG7jbNgKKNZPm7z4arog-yjUljk'
-    ),
-    body := '{"scheduled": true}'::jsonb
-  ) AS request_id;
-  $$
-);
-```
+## Summary
 
-## What This Does
-1. Every Tuesday at 2 AM EST, the cron job triggers
-2. It calls the `fetch-zendesk-metrics` edge function with `{"scheduled": true}`
-3. The edge function will:
-   - Calculate the previous week's date range (Monday-Sunday)
-   - Fetch Zendesk Talk and Chat data for all agents
-   - Compute AHT and FRT metrics
-   - Cache results in `zendesk_agent_metrics` table
-
-## Next Steps After This
-- **Step 3**: Update the edge function with full Zendesk API integration
-- **Step 4**: Update scorecard API with save/fetch functions
-- **Step 5**: Update TeamScorecard page with Save button
-
+The system now:
+1. **Weekly Cron**: Every Tuesday 2 AM EST, fetches Zendesk Talk/Chat metrics
+2. **Caches Data**: Stores AHT/FRT in `zendesk_agent_metrics` table
+3. **Displays Metrics**: Shows cached values in scorecard (or "Pending" if not yet fetched)
+4. **Save Feature**: Admins can permanently freeze scorecard values
+5. **Data Preservation**: Saved data persists beyond 2-week log retention
