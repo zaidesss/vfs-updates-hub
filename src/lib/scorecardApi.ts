@@ -570,3 +570,63 @@ export function formatSeconds(seconds: number | null): string {
   const secs = Math.round(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
+
+// Update Zendesk metrics in the database (for admin edits)
+export async function updateZendeskMetrics(
+  weekStart: string,
+  weekEnd: string,
+  agentEmail: string,
+  updates: {
+    call_aht_seconds?: number | null;
+    chat_aht_seconds?: number | null;
+    chat_frt_seconds?: number | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('zendesk_agent_metrics')
+    .update({
+      ...updates,
+      fetched_at: new Date().toISOString(), // Mark as updated
+    })
+    .eq('week_start', weekStart)
+    .eq('week_end', weekEnd)
+    .eq('agent_email', agentEmail.toLowerCase());
+
+  if (error) {
+    console.error('Error updating Zendesk metrics:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+// Upsert Zendesk metrics (create if not exists, update if exists)
+export async function upsertZendeskMetrics(
+  weekStart: string,
+  weekEnd: string,
+  agentEmail: string,
+  updates: {
+    call_aht_seconds?: number | null;
+    chat_aht_seconds?: number | null;
+    chat_frt_seconds?: number | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('zendesk_agent_metrics')
+    .upsert({
+      week_start: weekStart,
+      week_end: weekEnd,
+      agent_email: agentEmail.toLowerCase(),
+      ...updates,
+      fetched_at: new Date().toISOString(),
+    }, {
+      onConflict: 'week_start,week_end,agent_email',
+    });
+
+  if (error) {
+    console.error('Error upserting Zendesk metrics:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
