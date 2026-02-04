@@ -48,6 +48,41 @@ export interface AgentScorecard {
   scheduledDays: number;
   daysPresent: number;
   approvedLeaveDays: number;
+  isSaved?: boolean;
+}
+
+export interface SavedScorecard {
+  id: string;
+  week_start: string;
+  week_end: string;
+  support_type: string;
+  agent_email: string;
+  agent_name: string | null;
+  productivity: number | null;
+  productivity_count: number | null;
+  call_aht_seconds: number | null;
+  chat_aht_seconds: number | null;
+  chat_frt_seconds: number | null;
+  qa: number | null;
+  revalida: number | null;
+  reliability: number | null;
+  ot_productivity: number | null;
+  final_score: number | null;
+  scheduled_days: number | null;
+  days_present: number | null;
+  approved_leave_days: number | null;
+  is_on_leave: boolean | null;
+  saved_by: string;
+  saved_at: string;
+}
+
+export interface ZendeskAgentMetrics {
+  agent_email: string;
+  call_aht_seconds: number | null;
+  chat_aht_seconds: number | null;
+  chat_frt_seconds: number | null;
+  total_calls: number | null;
+  total_chats: number | null;
 }
 
 // Constants
@@ -194,14 +229,134 @@ export function calculateMetricScore(value: number, goal: number, metricKey: str
   return Math.min(100, (value / goal) * 100);
 }
 
+// Fetch Zendesk metrics from cache table
+export async function fetchZendeskMetrics(
+  weekStart: string,
+  weekEnd: string,
+  agentEmails?: string[]
+): Promise<ZendeskAgentMetrics[]> {
+  let query = supabase
+    .from('zendesk_agent_metrics')
+    .select('agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds, total_calls, total_chats')
+    .eq('week_start', weekStart)
+    .eq('week_end', weekEnd);
+
+  if (agentEmails && agentEmails.length > 0) {
+    query = query.in('agent_email', agentEmails.map(e => e.toLowerCase()));
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error fetching Zendesk metrics:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Fetch saved scorecards for a specific week and support type
+export async function fetchSavedScorecard(
+  weekStart: string,
+  weekEnd: string,
+  supportType: string
+): Promise<SavedScorecard[]> {
+  const { data, error } = await supabase
+    .from('saved_scorecards')
+    .select('*')
+    .eq('week_start', weekStart)
+    .eq('week_end', weekEnd)
+    .eq('support_type', supportType);
+
+  if (error) {
+    console.error('Error fetching saved scorecard:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Check if a week is saved
+export async function isWeekSaved(
+  weekStart: string,
+  weekEnd: string,
+  supportType: string
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('saved_scorecards')
+    .select('id', { count: 'exact', head: true })
+    .eq('week_start', weekStart)
+    .eq('week_end', weekEnd)
+    .eq('support_type', supportType);
+
+  if (error) {
+    console.error('Error checking saved status:', error);
+    return false;
+  }
+
+  return (count || 0) > 0;
+}
+
+// Save scorecard for a week (admin only)
+export async function saveScorecard(
+  weekStart: string,
+  weekEnd: string,
+  supportType: string,
+  scorecards: AgentScorecard[],
+  savedBy: string
+): Promise<{ success: boolean; error?: string }> {
+  const now = new Date().toISOString();
+
+  const records = scorecards.map(sc => ({
+    week_start: weekStart,
+    week_end: weekEnd,
+    support_type: supportType,
+    agent_email: sc.agent.email.toLowerCase(),
+    agent_name: sc.agent.full_name || sc.agent.agent_name,
+    productivity: sc.productivity,
+    productivity_count: sc.productivityCount,
+    call_aht_seconds: sc.callAht,
+    chat_aht_seconds: sc.chatAht,
+    chat_frt_seconds: sc.chatFrt,
+    qa: sc.qa,
+    revalida: sc.revalida,
+    reliability: sc.reliability,
+    ot_productivity: sc.otProductivity,
+    final_score: sc.finalScore,
+    scheduled_days: sc.scheduledDays,
+    days_present: sc.daysPresent,
+    approved_leave_days: sc.approvedLeaveDays,
+    is_on_leave: sc.isOnLeave,
+    saved_by: savedBy,
+    saved_at: now,
+  }));
+
+  // Upsert to handle re-saving
+  const { error } = await supabase
+    .from('saved_scorecards')
+    .upsert(records, {
+      onConflict: 'week_start,week_end,support_type,agent_email',
+      ignoreDuplicates: false
+    });
+
+  if (error) {
+    console.error('Error saving scorecard:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
 // Fetch all data for weekly scorecard
 export async function fetchWeeklyScorecard(
   weekStart: Date,
   weekEnd: Date,
   supportType: string
 ): Promise<AgentScorecard[]> {
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
   // Fetch all required data in parallel
-  const [agentsResult, configResult, ticketLogsResult, qaResult, eventsResult, leaveResult] = await Promise.all([
+  const [agentsResult, configResult, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResult] = await Promise.all([
     fetchEligibleAgents(supportType),
     fetchScorecardConfig(supportType),
     supabase
@@ -212,8 +367,8 @@ export async function fetchWeeklyScorecard(
     supabase
       .from('qa_evaluations')
       .select('agent_email, percentage, audit_date')
-      .gte('audit_date', format(weekStart, 'yyyy-MM-dd'))
-      .lte('audit_date', format(weekEnd, 'yyyy-MM-dd')),
+      .gte('audit_date', weekStartStr)
+      .lte('audit_date', weekEndStr),
     supabase
       .from('profile_events')
       .select('profile_id, event_type, created_at')
@@ -224,8 +379,10 @@ export async function fetchWeeklyScorecard(
       .from('leave_requests')
       .select('agent_email, start_date, end_date, status')
       .eq('status', 'approved')
-      .lte('start_date', format(weekEnd, 'yyyy-MM-dd'))
-      .gte('end_date', format(weekStart, 'yyyy-MM-dd'))
+      .lte('start_date', weekEndStr)
+      .gte('end_date', weekStartStr),
+    fetchZendeskMetrics(weekStartStr, weekEndStr),
+    fetchSavedScorecard(weekStartStr, weekEndStr, supportType)
   ]);
 
   const agents = agentsResult;
@@ -234,34 +391,57 @@ export async function fetchWeeklyScorecard(
   const qaEvaluations = qaResult.data || [];
   const profileEvents = eventsResult.data || [];
   const leaveRequests = leaveResult.data || [];
+  const zendeskMetrics = zendeskMetricsResult;
+  const savedScorecards = savedResult;
+
+  // Create lookup maps
+  const zendeskMap = new Map(zendeskMetrics.map(m => [m.agent_email.toLowerCase(), m]));
+  const savedMap = new Map(savedScorecards.map(s => [s.agent_email.toLowerCase(), s]));
 
   // Build scorecard for each agent
   const scorecards: AgentScorecard[] = [];
 
   for (const agent of agents) {
-    // Calculate scheduled days
+    const agentEmailLower = agent.email.toLowerCase();
+    const saved = savedMap.get(agentEmailLower);
+    const zendesk = zendeskMap.get(agentEmailLower);
+
+    // If saved, use saved values
+    if (saved) {
+      scorecards.push({
+        agent,
+        productivity: saved.productivity,
+        productivityCount: saved.productivity_count || 0,
+        callAht: saved.call_aht_seconds,
+        chatAht: saved.chat_aht_seconds,
+        chatFrt: saved.chat_frt_seconds,
+        qa: saved.qa,
+        revalida: saved.revalida,
+        reliability: saved.reliability,
+        otProductivity: saved.ot_productivity,
+        finalScore: saved.final_score,
+        isOnLeave: saved.is_on_leave || false,
+        scheduledDays: saved.scheduled_days || 0,
+        daysPresent: saved.days_present || 0,
+        approvedLeaveDays: saved.approved_leave_days || 0,
+        isSaved: true,
+      });
+      continue;
+    }
+
+    // Calculate live values
     const scheduledDays = getScheduledDays(agent, weekStart, weekEnd);
-    
-    // Calculate approved leave days
     const approvedLeaveDays = countApprovedLeaveDays(leaveRequests, agent.email, weekStart, weekEnd);
-    
-    // Calculate adjusted scheduled days
     const adjustedScheduledDays = Math.max(0, scheduledDays - approvedLeaveDays);
-    
-    // Count days with login
     const daysPresent = countDaysWithLogin(profileEvents, agent.id, weekStart, weekEnd);
-    
-    // Calculate reliability
     const reliability = adjustedScheduledDays > 0
       ? Math.min(100, (daysPresent / adjustedScheduledDays) * 100)
       : 100;
-
-    // Check if on full-week leave
     const isOnLeave = approvedLeaveDays >= scheduledDays;
 
     // Calculate ticket counts
     const agentTickets = ticketLogs.filter(
-      t => t.agent_email?.toLowerCase() === agent.email.toLowerCase()
+      t => t.agent_email?.toLowerCase() === agentEmailLower
     );
     const emailCount = agentTickets.filter(t => t.ticket_type?.toLowerCase() === 'email').length;
     const chatCount = agentTickets.filter(t => t.ticket_type?.toLowerCase() === 'chat').length;
@@ -289,11 +469,16 @@ export async function fetchWeeklyScorecard(
 
     // Calculate QA average
     const agentQA = qaEvaluations.filter(
-      q => q.agent_email?.toLowerCase() === agent.email.toLowerCase()
+      q => q.agent_email?.toLowerCase() === agentEmailLower
     );
     const qa = agentQA.length > 0
       ? agentQA.reduce((sum, q) => sum + (q.percentage || 0), 0) / agentQA.length
       : null;
+
+    // Get Zendesk metrics
+    const callAht = zendesk?.call_aht_seconds ?? null;
+    const chatAht = zendesk?.chat_aht_seconds ?? null;
+    const chatFrt = zendesk?.chat_frt_seconds ?? null;
 
     // Calculate final score based on config
     let finalScore = 0;
@@ -316,9 +501,13 @@ export async function fetchWeeklyScorecard(
           metricValue = null; // Pending
           break;
         case 'call_aht':
+          metricValue = callAht;
+          break;
         case 'chat_aht':
+          metricValue = chatAht;
+          break;
         case 'chat_frt':
-          metricValue = null; // Will be fetched from Zendesk
+          metricValue = chatFrt;
           break;
       }
 
@@ -338,9 +527,9 @@ export async function fetchWeeklyScorecard(
       agent,
       productivity,
       productivityCount,
-      callAht: null, // Pending Zendesk integration
-      chatAht: null,
-      chatFrt: null,
+      callAht,
+      chatAht,
+      chatFrt,
       qa,
       revalida: null, // Pending
       reliability,
@@ -349,7 +538,8 @@ export async function fetchWeeklyScorecard(
       isOnLeave,
       scheduledDays,
       daysPresent,
-      approvedLeaveDays
+      approvedLeaveDays,
+      isSaved: false,
     });
   }
 
