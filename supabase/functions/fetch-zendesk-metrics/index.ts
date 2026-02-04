@@ -10,6 +10,8 @@ const MINIMUM_DATE = new Date('2026-01-26');
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 5000;
 const REQUEST_DELAY_MS = 500;
+const INCREMENTAL_API_DELAY_MS = 6000; // 10 req/min = 6s between requests
+const CHAT_CONCURRENT_LIMIT = 5;
 
 interface MetricsRequest {
   scheduled?: boolean;
@@ -31,6 +33,16 @@ interface ZendeskConfig {
   subdomain: string;
   token: string;
   email: string;
+}
+
+interface CallRecord {
+  id: string | number;
+  agent_id: string | number;
+  talk_time: number;
+  wrap_up_time: number;
+  updated_at?: string;
+  created_at?: string;
+  timestamp?: string;
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -61,82 +73,113 @@ function getPreviousWeekRange(): { weekStart: string; weekEnd: string } {
   };
 }
 
-// Fetch Call AHT from Zendesk Talk API using User ID directly
-async function fetchCallMetrics(
-  config: ZendeskConfig,
-  zendeskUserId: string,
-  startDate: string,
-  endDate: string
-): Promise<{ ahtSeconds: number | null; totalCalls: number }> {
-  try {
-    const startTime = new Date(startDate).toISOString();
-    const endTime = new Date(endDate + 'T23:59:59Z').toISOString();
-    
-    // Try agents_activity endpoint first
-    const callsUrl = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/agents_activity.json?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`;
-    
-    const callsResponse = await fetch(callsUrl, {
-      headers: {
-        'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-        'Content-Type': 'application/json',
-      },
-    });
+// Check if a date falls within the week range
+function isWithinWeek(dateStr: string | undefined, weekStart: string, weekEnd: string): boolean {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  const start = new Date(weekStart);
+  const end = new Date(weekEnd + 'T23:59:59.999Z');
+  return date >= start && date <= end;
+}
 
-    if (!callsResponse.ok) {
-      console.log(`Talk stats endpoint failed: ${callsResponse.status}, trying calls endpoint...`);
-      
-      // Try alternative endpoint for call stats
-      const altCallsUrl = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/calls.json?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`;
-      const altResponse = await fetch(altCallsUrl, {
+// Paginate through Zendesk Incremental Exports API
+async function paginateIncrementalCalls(
+  config: ZendeskConfig,
+  startEpoch: number
+): Promise<CallRecord[]> {
+  const allCalls: CallRecord[] = [];
+  let url: string | null = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${startEpoch}`;
+  let pageCount = 0;
+  const maxPages = 50; // Safety limit
+
+  while (url && pageCount < maxPages) {
+    pageCount++;
+    console.log(`Fetching incremental calls page ${pageCount}: ${url}`);
+
+    try {
+      const response: Response = await fetch(url, {
         headers: {
           'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
           'Content-Type': 'application/json',
         },
       });
 
-      if (!altResponse.ok) {
-        console.log(`Alternative calls endpoint also failed: ${altResponse.status}`);
-        return { ahtSeconds: null, totalCalls: 0 };
+      if (!response.ok) {
+        console.error(`Incremental calls API failed: ${response.status} ${response.statusText}`);
+        break;
       }
 
-      const altData = await altResponse.json();
-      const agentCalls = (altData.calls || []).filter((call: any) => 
-        String(call.agent_id) === zendeskUserId || String(call.agent?.id) === zendeskUserId
-      );
+      const data: { calls?: CallRecord[]; next_page?: string } = await response.json();
+      const calls = data.calls || [];
+      allCalls.push(...calls);
 
-      if (agentCalls.length === 0) {
-        console.log(`No calls found for Zendesk User ID ${zendeskUserId}`);
-        return { ahtSeconds: null, totalCalls: 0 };
+      console.log(`Page ${pageCount}: fetched ${calls.length} calls, total: ${allCalls.length}`);
+
+      // Check for next page
+      url = data.next_page || null;
+
+      // Rate limiting: 10 requests/minute = 6 second delay
+      if (url) {
+        console.log(`Rate limiting: waiting ${INCREMENTAL_API_DELAY_MS}ms before next page...`);
+        await delay(INCREMENTAL_API_DELAY_MS);
       }
-
-      // Calculate AHT: (talk_time + wrap_up_time) / call_count
-      let totalTalkTime = 0;
-      let totalWrapUpTime = 0;
-      for (const call of agentCalls) {
-        totalTalkTime += call.talk_time || call.duration || 0;
-        totalWrapUpTime += call.wrap_up_time || 0;
-      }
-
-      const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / agentCalls.length);
-      console.log(`Found ${agentCalls.length} calls for User ID ${zendeskUserId}, AHT: ${ahtSeconds}s`);
-      return { ahtSeconds, totalCalls: agentCalls.length };
+    } catch (error) {
+      console.error(`Error fetching incremental calls page ${pageCount}:`, error);
+      break;
     }
+  }
 
-    const statsData = await callsResponse.json();
-    const agentStats = (statsData.agents_activity || []).find((a: any) => String(a.agent_id) === zendeskUserId);
+  console.log(`Total calls fetched from incremental API: ${allCalls.length}`);
+  return allCalls;
+}
 
-    if (!agentStats || !agentStats.calls_count) {
-      console.log(`No agent stats found for Zendesk User ID ${zendeskUserId}`);
+// Fetch Call AHT using Talk Incremental Exports API
+async function fetchCallMetrics(
+  config: ZendeskConfig,
+  zendeskUserId: string,
+  weekStart: string,
+  weekEnd: string
+): Promise<{ ahtSeconds: number | null; totalCalls: number }> {
+  try {
+    // Convert weekStart to Unix epoch (seconds)
+    const startEpoch = Math.floor(new Date(weekStart).getTime() / 1000);
+    console.log(`Fetching call metrics for User ID ${zendeskUserId}, week ${weekStart} to ${weekEnd}, epoch: ${startEpoch}`);
+
+    // Fetch all calls from the incremental API starting from weekStart
+    const allCalls = await paginateIncrementalCalls(config, startEpoch);
+
+    // Filter calls for this specific agent
+    const agentCalls = allCalls.filter(call => 
+      String(call.agent_id) === zendeskUserId
+    );
+
+    console.log(`Found ${agentCalls.length} calls for agent ${zendeskUserId} out of ${allCalls.length} total`);
+
+    // Filter calls within the exact week boundary
+    const weekCalls = agentCalls.filter(call => {
+      const callDate = call.updated_at || call.created_at || call.timestamp;
+      return isWithinWeek(callDate, weekStart, weekEnd);
+    });
+
+    console.log(`Calls within week ${weekStart} - ${weekEnd}: ${weekCalls.length}`);
+
+    if (weekCalls.length === 0) {
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
-    // Calculate AHT from agent stats
-    const avgHandleTime = agentStats.average_handle_time || agentStats.average_talk_time || null;
-    console.log(`Found stats for User ID ${zendeskUserId}: ${agentStats.calls_count} calls, AHT: ${avgHandleTime}s`);
-    return { 
-      ahtSeconds: avgHandleTime ? Math.round(avgHandleTime) : null, 
-      totalCalls: agentStats.calls_count || 0 
-    };
+    // Calculate AHT: (talk_time + wrap_up_time) / call_count
+    let totalTalkTime = 0;
+    let totalWrapUpTime = 0;
+
+    for (const call of weekCalls) {
+      totalTalkTime += call.talk_time || 0;
+      totalWrapUpTime += call.wrap_up_time || 0;
+    }
+
+    const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / weekCalls.length);
+    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekCalls.length} calls, talk: ${totalTalkTime}s, wrap: ${totalWrapUpTime}s)`);
+
+    return { ahtSeconds, totalCalls: weekCalls.length };
 
   } catch (error) {
     console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);
@@ -144,17 +187,72 @@ async function fetchCallMetrics(
   }
 }
 
-// Fetch Chat AHT and FRT from Zendesk using User ID
+// Batch fetch ticket metrics with concurrency limit
+async function batchFetchTicketMetrics(
+  config: ZendeskConfig,
+  ticketIds: number[]
+): Promise<Map<number, { frtMinutes: number | null; ahtMinutes: number | null }>> {
+  const results = new Map<number, { frtMinutes: number | null; ahtMinutes: number | null }>();
+
+  // Process in batches of CHAT_CONCURRENT_LIMIT
+  for (let i = 0; i < ticketIds.length; i += CHAT_CONCURRENT_LIMIT) {
+    const batch = ticketIds.slice(i, i + CHAT_CONCURRENT_LIMIT);
+
+    const batchPromises = batch.map(async (ticketId) => {
+      try {
+        const metricsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metrics.json`;
+        const response = await fetch(metricsUrl, {
+          headers: {
+            'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          console.log(`Failed to fetch metrics for ticket ${ticketId}: ${response.status}`);
+          return { ticketId, frtMinutes: null, ahtMinutes: null };
+        }
+
+        const data = await response.json();
+        const metrics = data.ticket_metric;
+
+        return {
+          ticketId,
+          frtMinutes: metrics?.reply_time_in_minutes?.calendar || null,
+          ahtMinutes: metrics?.agent_wait_time_in_minutes?.calendar || null,
+        };
+      } catch (error) {
+        console.log(`Error fetching metrics for ticket ${ticketId}:`, error);
+        return { ticketId, frtMinutes: null, ahtMinutes: null };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    for (const result of batchResults) {
+      results.set(result.ticketId, { frtMinutes: result.frtMinutes, ahtMinutes: result.ahtMinutes });
+    }
+
+    // Small delay between batches
+    if (i + CHAT_CONCURRENT_LIMIT < ticketIds.length) {
+      await delay(100);
+    }
+  }
+
+  return results;
+}
+
+// Fetch Chat AHT and FRT using improved search and batch metrics
 async function fetchChatMetrics(
   config: ZendeskConfig,
   zendeskUserId: string,
-  startDate: string,
-  endDate: string
+  weekStart: string,
+  weekEnd: string
 ): Promise<{ ahtSeconds: number | null; frtSeconds: number | null; totalChats: number }> {
   try {
-    // Search for chat tickets solved by this agent using assignee_id
-    const query = `type:ticket channel:chat assignee_id:${zendeskUserId} solved>=${startDate} solved<=${endDate}`;
-    const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc`;
+    // Search for chat/messaging tickets assigned to this agent
+    // Use updated date range and include both chat channels
+    const query = `type:ticket assignee_id:${zendeskUserId} updated>=${weekStart} updated<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
+    const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=updated_at&sort_order=desc&per_page=100`;
 
     console.log(`Searching chats for User ID ${zendeskUserId}: ${query}`);
 
@@ -173,56 +271,39 @@ async function fetchChatMetrics(
     const searchData = await searchResponse.json();
     const tickets = searchData.results || [];
 
-    console.log(`Found ${tickets.length} chat tickets for User ID ${zendeskUserId}`);
+    console.log(`Found ${tickets.length} chat/messaging tickets for User ID ${zendeskUserId}`);
 
     if (tickets.length === 0) {
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
     }
 
+    // Get ticket IDs for batch metric fetching
+    const ticketIds = tickets.map((t: any) => t.id as number);
+
+    // Batch fetch all ticket metrics
+    const metricsMap = await batchFetchTicketMetrics(config, ticketIds);
+
+    // Calculate averages
     let totalFrt = 0;
     let frtCount = 0;
-    let totalHandleTime = 0;
+    let totalAht = 0;
+    let ahtCount = 0;
 
-    // For a sample of tickets (max 20 to avoid rate limits), fetch detailed metrics
-    const sampleTickets = tickets.slice(0, 20);
-
-    for (const ticket of sampleTickets) {
-      await delay(100); // Small delay between requests
-
-      try {
-        // Fetch ticket metrics for FRT
-        const metricsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticket.id}/metrics.json`;
-        const metricsResponse = await fetch(metricsUrl, {
-          headers: {
-            'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (metricsResponse.ok) {
-          const metricsData = await metricsResponse.json();
-          const metrics = metricsData.ticket_metric;
-
-          // First Reply Time
-          if (metrics?.reply_time_in_minutes?.calendar) {
-            totalFrt += metrics.reply_time_in_minutes.calendar * 60; // Convert to seconds
-            frtCount++;
-          }
-
-          // Agent handle time (if available)
-          if (metrics?.agent_wait_time_in_minutes?.calendar) {
-            totalHandleTime += metrics.agent_wait_time_in_minutes.calendar * 60;
-          }
-        }
-      } catch (err) {
-        console.log(`Failed to fetch metrics for ticket ${ticket.id}`);
+    for (const [ticketId, metrics] of metricsMap) {
+      if (metrics.frtMinutes !== null) {
+        totalFrt += metrics.frtMinutes * 60; // Convert to seconds
+        frtCount++;
+      }
+      if (metrics.ahtMinutes !== null) {
+        totalAht += metrics.ahtMinutes * 60; // Convert to seconds
+        ahtCount++;
       }
     }
 
     const avgFrt = frtCount > 0 ? Math.round(totalFrt / frtCount) : null;
-    const avgAht = sampleTickets.length > 0 ? Math.round(totalHandleTime / sampleTickets.length) : null;
+    const avgAht = ahtCount > 0 ? Math.round(totalAht / ahtCount) : null;
 
-    console.log(`Chat metrics for User ID ${zendeskUserId}: AHT=${avgAht}s, FRT=${avgFrt}s, total=${tickets.length}`);
+    console.log(`Chat metrics for User ID ${zendeskUserId}: AHT=${avgAht}s (${ahtCount} samples), FRT=${avgFrt}s (${frtCount} samples), total=${tickets.length}`);
 
     return { 
       ahtSeconds: avgAht, 
