@@ -25,7 +25,10 @@ export type SectionContent =
   | ChecklistContent
   | ParagraphContent
   | TableContent
-  | ListContent;
+  | ListContent
+  | ImageGalleryContent
+  | DocumentLinksContent
+  | InlineImageContent;
 
 export interface InfoGridContent {
   type: 'info-grid';
@@ -95,6 +98,25 @@ export interface ListContent {
   type: 'list';
   title?: string;
   items: { label?: string; value: string }[];
+}
+
+export interface ImageGalleryContent {
+  type: 'image-gallery';
+  title?: string;
+  images: { url: string; caption?: string }[];
+}
+
+export interface DocumentLinksContent {
+  type: 'document-links';
+  title?: string;
+  files: { name: string; url: string; description?: string }[];
+}
+
+export interface InlineImageContent {
+  type: 'inline-image';
+  url: string;
+  caption?: string;
+  alt?: string;
 }
 
 export interface TimelineEntry {

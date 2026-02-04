@@ -7,6 +7,8 @@ import { MessageTemplate } from './MessageTemplate';
 import { Checklist } from './Checklist';
 import { StepsSection } from './StepsSection';
 import { TimelineSection } from './TimelineSection';
+import { ImageGallery } from './ImageGallery';
+import { DocumentLinks } from './DocumentLink';
 import { Users } from 'lucide-react';
 
 interface PlaybookSectionProps {
@@ -108,6 +110,28 @@ function renderContent(content: SectionContent, index: number) {
             ))}
           </ul>
         </div>
+      );
+
+    case 'image-gallery':
+      return <ImageGallery key={index} gallery={content} />;
+
+    case 'document-links':
+      return <DocumentLinks key={index} documents={content} />;
+
+    case 'inline-image':
+      return (
+        <figure key={index} className="my-4">
+          <img 
+            src={content.url} 
+            alt={content.alt || content.caption || 'Article image'} 
+            className="rounded-lg border border-border max-w-full"
+          />
+          {content.caption && (
+            <figcaption className="text-sm text-muted-foreground mt-2 text-center italic">
+              {content.caption}
+            </figcaption>
+          )}
+        </figure>
       );
 
     default:

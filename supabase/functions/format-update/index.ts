@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { content } = await req.json();
+    const { content, attachments } = await req.json();
     
     if (!content || typeof content !== 'string') {
       return new Response(
@@ -19,6 +19,11 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Process attachments if provided
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    const imageAttachments = hasAttachments ? attachments.filter((a: { type: string }) => a.type === 'image') : [];
+    const documentAttachments = hasAttachments ? attachments.filter((a: { type: string }) => a.type === 'document') : [];
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -275,6 +280,32 @@ CONTENT BLOCK TYPES:
   ]
 }
 
+10. Image Gallery (for multiple reference images, screenshots):
+{
+  "type": "image-gallery",
+  "title": "Reference Images",
+  "images": [
+    { "url": "https://...", "caption": "Optional caption" }
+  ]
+}
+
+11. Document Links (for downloadable PDFs, DOCX files):
+{
+  "type": "document-links",
+  "title": "Related Documents",
+  "files": [
+    { "name": "Filename.pdf", "url": "https://...", "description": "Optional description" }
+  ]
+}
+
+12. Inline Image (for single image embedded in context):
+{
+  "type": "inline-image",
+  "url": "https://...",
+  "caption": "Optional caption",
+  "alt": "Description for accessibility"
+}
+
 SECTION LETTER ASSIGNMENT:
 - Use A, B, C, D, E, F, etc. in order
 - Common patterns:
@@ -283,7 +314,15 @@ SECTION LETTER ASSIGNMENT:
   - C: Step-by-Step Process
   - D: Message Templates (MUST follow FAMILY framework)
   - E: Quick Checklist
-  - F: Need More Help?
+  - F: Reference Images (if images provided)
+  - G: Related Documents (if documents provided)
+  - H: Need More Help?
+
+ATTACHMENT HANDLING:
+- For diagrams, screenshots showing UI, or workflow images: embed as "inline-image" within relevant sections
+- For supplementary reference images: group in an "image-gallery" section near the end
+- For documents (PDFs, DOCX): always place in a "document-links" section
+- Use AI judgment: if an image clearly relates to a step, embed it there; otherwise group in gallery
 
 TAG GUIDELINES:
 - ALWAYS include "Grade-7 Friendly" as the first tag
@@ -293,6 +332,25 @@ TAG GUIDELINES:
 REMEMBER: Your job is to REWRITE for clarity AND warmth. Transform cold, corporate content into something warm, friendly, and easy to understand. Every message template must feel like it's from a helpful friend, not a robot.`;
 
     console.log('Calling Lovable AI for Grade-7 formatting and rewriting...');
+    
+    // Build user prompt with attachment info
+    let userPrompt = `Rewrite and structure the following raw content into a clear, Grade-7 readable knowledge base article. Simplify the language, use short sentences, and make it warm and friendly:\n\n${content}`;
+    
+    if (imageAttachments.length > 0 || documentAttachments.length > 0) {
+      userPrompt += '\n\n--- ATTACHMENTS ---\n';
+      if (imageAttachments.length > 0) {
+        userPrompt += `\nIMAGES (embed inline where relevant, or group in gallery):\n`;
+        imageAttachments.forEach((img: { name: string; url: string }, i: number) => {
+          userPrompt += `${i + 1}. "${img.name}" - ${img.url}\n`;
+        });
+      }
+      if (documentAttachments.length > 0) {
+        userPrompt += `\nDOCUMENTS (include in a "document-links" section):\n`;
+        documentAttachments.forEach((doc: { name: string; url: string }, i: number) => {
+          userPrompt += `${i + 1}. "${doc.name}" - ${doc.url}\n`;
+        });
+      }
+    }
     
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -304,7 +362,7 @@ REMEMBER: Your job is to REWRITE for clarity AND warmth. Transform cold, corpora
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Rewrite and structure the following raw content into a clear, Grade-7 readable knowledge base article. Simplify the language, use short sentences, and make it warm and friendly:\n\n${content}` }
+          { role: 'user', content: userPrompt }
         ],
       }),
     });
