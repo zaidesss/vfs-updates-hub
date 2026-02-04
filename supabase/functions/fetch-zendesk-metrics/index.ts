@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 // Configuration
-const MINIMUM_DATE = new Date('2026-01-26');
+const MINIMUM_DATE = new Date('2025-01-26');
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 5000;
 const REQUEST_DELAY_MS = 500;
@@ -314,7 +314,8 @@ async function fetchChatMetrics(
   try {
     // Use created date for accurate week filtering (Explore aligned)
     // This ensures only tickets created within the week are included
-    const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
+    // Use via: syntax for all messaging channels (channel: syntax doesn't work for legacy messaging)
+    const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR via:messaging OR via:web_messaging OR via:native_messaging OR via:mobile_sdk)`;
     const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc&per_page=100`;
 
     console.log(`Searching chats (Explore aligned) for User ID ${zendeskUserId}: ${query}`);
@@ -333,14 +334,29 @@ async function fetchChatMetrics(
 
     const searchData = await searchResponse.json();
     
-    // Filter out bot-only/abandoned tickets (no agent replies)
-    // comment_count > 1 ensures at least one agent response exists
-    const tickets = (searchData.results || []).filter((t: any) => 
-      t.status !== 'deleted' && 
-      (t.comment_count || 0) > 1
+    // Log raw search results for debugging
+    const rawResults = searchData.results || [];
+    console.log(`Raw search returned ${rawResults.length} tickets for User ID ${zendeskUserId}`);
+    
+    // Log via/channel info for first few tickets to understand data structure
+    if (rawResults.length > 0) {
+      const sampleTickets = rawResults.slice(0, 5).map((t: any) => ({
+        id: t.id,
+        via: t.via?.channel,
+        comment_count: t.comment_count,
+        status: t.status
+      }));
+      console.log(`Sample tickets: ${JSON.stringify(sampleTickets)}`);
+    }
+    
+    // For messaging tickets, comment_count may not be populated correctly
+    // Use a more lenient filter: just exclude deleted tickets
+    // Agent-replied vs bot-only will be distinguished by metric events having agent_work_time
+    const tickets = rawResults.filter((t: any) => 
+      t.status !== 'deleted'
     );
 
-    console.log(`Found ${tickets.length} valid chat/messaging tickets for User ID ${zendeskUserId} (filtered from ${searchData.results?.length || 0})`);
+    console.log(`Found ${tickets.length} valid chat/messaging tickets for User ID ${zendeskUserId} (filtered from ${rawResults.length})`);
 
     if (tickets.length === 0) {
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
