@@ -155,6 +155,14 @@ export interface AgentProfile {
   break_schedule: string | null;
   weekday_ot_schedule: string | null;
   weekend_ot_schedule: string | null;
+  // Per-day OT schedules
+  mon_ot_schedule: string | null;
+  tue_ot_schedule: string | null;
+  wed_ot_schedule: string | null;
+  thu_ot_schedule: string | null;
+  fri_ot_schedule: string | null;
+  sat_ot_schedule: string | null;
+  sun_ot_schedule: string | null;
   day_off: string[] | null;
   ot_enabled: boolean | null;
   // Timestamps
@@ -218,6 +226,14 @@ export interface AgentProfileInput {
   break_schedule?: string;
   weekday_ot_schedule?: string;
   weekend_ot_schedule?: string;
+  // Per-day OT schedules
+  mon_ot_schedule?: string;
+  tue_ot_schedule?: string;
+  wed_ot_schedule?: string;
+  thu_ot_schedule?: string;
+  fri_ot_schedule?: string;
+  sat_ot_schedule?: string;
+  sun_ot_schedule?: string;
   day_off?: string[];
   ot_enabled?: boolean;
 }
@@ -352,6 +368,14 @@ async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
     break_schedule: input.break_schedule || null,
     weekday_ot_schedule: input.weekday_ot_schedule || null,
     weekend_ot_schedule: input.weekend_ot_schedule || null,
+    // Per-day OT schedules
+    mon_ot_schedule: input.mon_ot_schedule || null,
+    tue_ot_schedule: input.tue_ot_schedule || null,
+    wed_ot_schedule: input.wed_ot_schedule || null,
+    thu_ot_schedule: input.thu_ot_schedule || null,
+    fri_ot_schedule: input.fri_ot_schedule || null,
+    sat_ot_schedule: input.sat_ot_schedule || null,
+    sun_ot_schedule: input.sun_ot_schedule || null,
     day_off: input.day_off || [],
     upwork_contract_id: input.upwork_contract_id || null,  // Synced but removed from Master Directory display
     // Computed summary fields for Master Directory display

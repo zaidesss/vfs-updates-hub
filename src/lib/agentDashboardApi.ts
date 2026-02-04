@@ -33,6 +33,12 @@ export interface DayAttendance {
   allowedBreak?: string;          // Formatted allowed break "Xm"
   isOverbreak?: boolean;          // true if break > allowed + grace
   breakOverageMinutes?: number;   // How many minutes over (if overbreak)
+  // OT tracking
+  otSchedule?: string;            // Expected OT schedule for this day
+  otLoginTime?: string;           // Actual OT login time
+  otLogoutTime?: string;          // Actual OT logout time
+  otStatus?: 'present_ot' | 'late_ot' | 'absent_ot' | 'pending_ot';
+  otHoursWorkedMinutes?: number;  // OT hours worked in minutes
 }
 
 /**
@@ -78,6 +84,14 @@ export interface DashboardProfile {
   fri_schedule: string | null;
   sat_schedule: string | null;
   sun_schedule: string | null;
+  // Per-day OT schedules
+  mon_ot_schedule: string | null;
+  tue_ot_schedule: string | null;
+  wed_ot_schedule: string | null;
+  thu_ot_schedule: string | null;
+  fri_ot_schedule: string | null;
+  sat_ot_schedule: string | null;
+  sun_ot_schedule: string | null;
   // Position-specific quotas from agent_profiles
   position: string | null;
   quota_email: number | null;
@@ -230,7 +244,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
     // 2. Fetch operational data from agent_directory using email
     const { data: directory } = await supabase
       .from('agent_directory')
-      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
       .eq('email', profile.email)
       .maybeSingle();
 
@@ -258,6 +272,14 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       fri_schedule: directory?.fri_schedule || null,
       sat_schedule: directory?.sat_schedule || null,
       sun_schedule: directory?.sun_schedule || null,
+      // Per-day OT schedules
+      mon_ot_schedule: directory?.mon_ot_schedule || null,
+      tue_ot_schedule: directory?.tue_ot_schedule || null,
+      wed_ot_schedule: directory?.wed_ot_schedule || null,
+      thu_ot_schedule: directory?.thu_ot_schedule || null,
+      fri_ot_schedule: directory?.fri_ot_schedule || null,
+      sat_ot_schedule: directory?.sat_ot_schedule || null,
+      sun_ot_schedule: directory?.sun_ot_schedule || null,
       // Position-specific quotas from agent_profiles
       position: profile.position || null,
       quota_email: profile.quota_email || null,
@@ -1293,9 +1315,79 @@ export function calculateAttendanceForWeek(
     const isPast = isBefore(date, today);
     const isToday = isEqual(date, today);
 
-    // 1. Check if it's a day off
+    // Helper to calculate OT attendance for this day
+    const calculateOTForDay = () => {
+      // Get OT schedule for this specific day
+      const otScheduleKey = `${day.key}_ot_schedule` as keyof DashboardProfile;
+      const otSchedule = profile[otScheduleKey] as string | null;
+      
+      if (!allEvents) return { otSchedule: otSchedule || undefined };
+      
+      // Find OT events for this date
+      const otLoginEvent = allEvents.find(e => 
+        e.event_type === 'OT_LOGIN' && 
+        format(parseISO(e.created_at), 'yyyy-MM-dd') === dateStr
+      );
+      const otLogoutEvent = allEvents.find(e => 
+        e.event_type === 'OT_LOGOUT' && 
+        format(parseISO(e.created_at), 'yyyy-MM-dd') === dateStr
+      );
+      
+      const otLoginTime = otLoginEvent ? formatTimeInEST(parseISO(otLoginEvent.created_at)) : undefined;
+      const otLogoutTime = otLogoutEvent ? formatTimeInEST(parseISO(otLogoutEvent.created_at)) : undefined;
+      
+      // Calculate OT hours worked
+      let otHoursWorkedMinutes: number | undefined;
+      if (otLoginEvent && otLogoutEvent) {
+        const otLoginMs = parseISO(otLoginEvent.created_at).getTime();
+        const otLogoutMs = parseISO(otLogoutEvent.created_at).getTime();
+        otHoursWorkedMinutes = Math.floor((otLogoutMs - otLoginMs) / (1000 * 60));
+      }
+      
+      // Determine OT status
+      let otStatus: 'present_ot' | 'late_ot' | 'absent_ot' | 'pending_ot' | undefined;
+      
+      if (!otSchedule) {
+        // No OT scheduled - if they logged in for OT, it's voluntary OT
+        if (otLoginEvent) {
+          otStatus = 'present_ot';
+        }
+        return { otSchedule: undefined, otLoginTime, otLogoutTime, otStatus, otHoursWorkedMinutes };
+      }
+      
+      // OT is scheduled for this day
+      if (!otLoginEvent) {
+        // OT scheduled but no login
+        if (isPast) {
+          otStatus = 'absent_ot';
+        } else if (!isToday) {
+          otStatus = 'pending_ot';
+        }
+        return { otSchedule, otLoginTime, otLogoutTime, otStatus, otHoursWorkedMinutes };
+      }
+      
+      // OT login exists - check if late (> 10 min after OT schedule start)
+      const otParsed = parseScheduleRange(otSchedule);
+      if (otParsed) {
+        const otLoginMinutes = getTimeInESTMinutes(parseISO(otLoginEvent.created_at));
+        const isLateOT = otLoginMinutes > otParsed.startMinutes + 10;
+        otStatus = isLateOT ? 'late_ot' : 'present_ot';
+      } else {
+        otStatus = 'present_ot';
+      }
+      
+      return { otSchedule, otLoginTime, otLogoutTime, otStatus, otHoursWorkedMinutes };
+    };
+
+    // 1. Check if it's a day off - but still check for OT
     if (dayOffArray.includes(day.short)) {
-      return { date, dayKey: day.key, status: 'day_off' as AttendanceStatus };
+      const otData = calculateOTForDay();
+      return { 
+        date, 
+        dayKey: day.key, 
+        status: 'day_off' as AttendanceStatus,
+        ...otData,
+      };
     }
 
     // 2. Check for approved leave on this date
@@ -1307,11 +1399,13 @@ export function calculateAttendanceForWeek(
     });
 
     if (leaveForDay) {
+      const otData = calculateOTForDay();
       return {
         date,
         dayKey: day.key,
         status: 'on_leave' as AttendanceStatus,
         leaveType: leaveForDay.outage_reason,
+        ...otData,
       };
     }
 
@@ -1339,6 +1433,9 @@ export function calculateAttendanceForWeek(
       const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
       return eventDate === dateStr && event.event_type === 'LOGOUT';
     });
+
+    // Calculate OT for this day
+    const otData = calculateOTForDay();
 
     if (loginForDay) {
       const loginTime = parseISO(loginForDay.created_at);
@@ -1414,15 +1511,17 @@ export function calculateAttendanceForWeek(
         allowedBreak: allowedBreakMinutes > 0 ? `${allowedBreakMinutes}m` : undefined,
         isOverbreak,
         breakOverageMinutes: isOverbreak ? breakOverageMinutes : undefined,
+        // OT tracking
+        ...otData,
       };
     }
 
     // 6. No login - check if past or pending
     if (isPast) {
-      return { date, dayKey: day.key, status: 'absent' as AttendanceStatus };
+      return { date, dayKey: day.key, status: 'absent' as AttendanceStatus, ...otData };
     }
 
-    return { date, dayKey: day.key, status: 'pending' as AttendanceStatus };
+    return { date, dayKey: day.key, status: 'pending' as AttendanceStatus, ...otData };
   });
 }
 

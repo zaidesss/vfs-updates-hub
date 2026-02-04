@@ -43,18 +43,24 @@ export type Database = {
           created_at: string
           day_off: string[] | null
           email: string
+          fri_ot_schedule: string | null
           fri_schedule: string | null
           id: string
+          mon_ot_schedule: string | null
           mon_schedule: string | null
           ot_total_hours: number | null
           overall_total_hours: number | null
           quota: number | null
+          sat_ot_schedule: string | null
           sat_schedule: string | null
+          sun_ot_schedule: string | null
           sun_schedule: string | null
           support_account: string | null
           support_type: string | null
+          thu_ot_schedule: string | null
           thu_schedule: string | null
           ticket_assignment_view_id: string | null
+          tue_ot_schedule: string | null
           tue_schedule: string | null
           unpaid_break_hours: number | null
           updated_at: string
@@ -62,6 +68,7 @@ export type Database = {
           views: string[] | null
           wd_ticket_assign: string | null
           we_ticket_assign: string | null
+          wed_ot_schedule: string | null
           wed_schedule: string | null
           weekday_ot_schedule: string | null
           weekday_schedule: string | null
@@ -78,18 +85,24 @@ export type Database = {
           created_at?: string
           day_off?: string[] | null
           email: string
+          fri_ot_schedule?: string | null
           fri_schedule?: string | null
           id?: string
+          mon_ot_schedule?: string | null
           mon_schedule?: string | null
           ot_total_hours?: number | null
           overall_total_hours?: number | null
           quota?: number | null
+          sat_ot_schedule?: string | null
           sat_schedule?: string | null
+          sun_ot_schedule?: string | null
           sun_schedule?: string | null
           support_account?: string | null
           support_type?: string | null
+          thu_ot_schedule?: string | null
           thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
+          tue_ot_schedule?: string | null
           tue_schedule?: string | null
           unpaid_break_hours?: number | null
           updated_at?: string
@@ -97,6 +110,7 @@ export type Database = {
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
+          wed_ot_schedule?: string | null
           wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekday_schedule?: string | null
@@ -113,18 +127,24 @@ export type Database = {
           created_at?: string
           day_off?: string[] | null
           email?: string
+          fri_ot_schedule?: string | null
           fri_schedule?: string | null
           id?: string
+          mon_ot_schedule?: string | null
           mon_schedule?: string | null
           ot_total_hours?: number | null
           overall_total_hours?: number | null
           quota?: number | null
+          sat_ot_schedule?: string | null
           sat_schedule?: string | null
+          sun_ot_schedule?: string | null
           sun_schedule?: string | null
           support_account?: string | null
           support_type?: string | null
+          thu_ot_schedule?: string | null
           thu_schedule?: string | null
           ticket_assignment_view_id?: string | null
+          tue_ot_schedule?: string | null
           tue_schedule?: string | null
           unpaid_break_hours?: number | null
           updated_at?: string
@@ -132,6 +152,7 @@ export type Database = {
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
+          wed_ot_schedule?: string | null
           wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekday_schedule?: string | null
@@ -194,12 +215,14 @@ export type Database = {
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
           employment_status: string | null
+          fri_ot_schedule: string | null
           fri_schedule: string | null
           full_name: string | null
           headset_model: string | null
           home_address: string | null
           hourly_rate: number | null
           id: string
+          mon_ot_schedule: string | null
           mon_schedule: string | null
           ot_enabled: boolean | null
           payment_frequency: string | null
@@ -211,21 +234,26 @@ export type Database = {
           quota_email: number | null
           quota_phone: number | null
           rate_history: Json | null
+          sat_ot_schedule: string | null
           sat_schedule: string | null
           start_date: string | null
+          sun_ot_schedule: string | null
           sun_schedule: string | null
           support_account: string | null
           support_type: string[] | null
           team_lead: string | null
+          thu_ot_schedule: string | null
           thu_schedule: string | null
           ticket_assignment_enabled: boolean | null
           ticket_assignment_view_id: string | null
+          tue_ot_schedule: string | null
           tue_schedule: string | null
           updated_at: string | null
           upwork_contract_id: string | null
           upwork_profile_url: string | null
           upwork_username: string | null
           views: string[] | null
+          wed_ot_schedule: string | null
           wed_schedule: string | null
           weekday_ot_schedule: string | null
           weekend_ot_schedule: string | null
@@ -250,12 +278,14 @@ export type Database = {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employment_status?: string | null
+          fri_ot_schedule?: string | null
           fri_schedule?: string | null
           full_name?: string | null
           headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          mon_ot_schedule?: string | null
           mon_schedule?: string | null
           ot_enabled?: boolean | null
           payment_frequency?: string | null
@@ -267,21 +297,26 @@ export type Database = {
           quota_email?: number | null
           quota_phone?: number | null
           rate_history?: Json | null
+          sat_ot_schedule?: string | null
           sat_schedule?: string | null
           start_date?: string | null
+          sun_ot_schedule?: string | null
           sun_schedule?: string | null
           support_account?: string | null
           support_type?: string[] | null
           team_lead?: string | null
+          thu_ot_schedule?: string | null
           thu_schedule?: string | null
           ticket_assignment_enabled?: boolean | null
           ticket_assignment_view_id?: string | null
+          tue_ot_schedule?: string | null
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
+          wed_ot_schedule?: string | null
           wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekend_ot_schedule?: string | null
@@ -306,12 +341,14 @@ export type Database = {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employment_status?: string | null
+          fri_ot_schedule?: string | null
           fri_schedule?: string | null
           full_name?: string | null
           headset_model?: string | null
           home_address?: string | null
           hourly_rate?: number | null
           id?: string
+          mon_ot_schedule?: string | null
           mon_schedule?: string | null
           ot_enabled?: boolean | null
           payment_frequency?: string | null
@@ -323,21 +360,26 @@ export type Database = {
           quota_email?: number | null
           quota_phone?: number | null
           rate_history?: Json | null
+          sat_ot_schedule?: string | null
           sat_schedule?: string | null
           start_date?: string | null
+          sun_ot_schedule?: string | null
           sun_schedule?: string | null
           support_account?: string | null
           support_type?: string[] | null
           team_lead?: string | null
+          thu_ot_schedule?: string | null
           thu_schedule?: string | null
           ticket_assignment_enabled?: boolean | null
           ticket_assignment_view_id?: string | null
+          tue_ot_schedule?: string | null
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
+          wed_ot_schedule?: string | null
           wed_schedule?: string | null
           weekday_ot_schedule?: string | null
           weekend_ot_schedule?: string | null
