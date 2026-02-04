@@ -47,6 +47,19 @@ interface LegRecord {
   created_at?: string;
 }
 
+// Interface for Ticket Metric Events API (used for Chat AHT)
+interface TicketMetricEvent {
+  id: number;
+  ticket_id: number;
+  metric: string;  // "agent_work_time", "reply_time", etc.
+  type: string;    // "activate", "pause", "fulfill", "update_status"
+  time: string;
+  status?: {
+    calendar: number;  // seconds
+    business: number;
+  };
+}
+
 // Excluded statuses for Explore-aligned Avg Talk Time calculation
 const EXCLUDED_COMPLETION_STATUSES = ['agent_missed', 'agent_declined', 'agent_transfer_declined'];
 
@@ -213,12 +226,18 @@ async function fetchCallMetrics(
   }
 }
 
-// Batch fetch ticket metrics with concurrency limit
-async function batchFetchTicketMetrics(
+// Batch fetch ticket metrics with Explore-aligned logic (ZD1 only)
+// Uses Ticket Metric Events API for agent_work_time and ticket metrics for FRT in seconds
+async function batchFetchTicketMetricsExploreAligned(
   config: ZendeskConfig,
   ticketIds: number[]
-): Promise<Map<number, { frtMinutes: number | null; ahtMinutes: number | null }>> {
-  const results = new Map<number, { frtMinutes: number | null; ahtMinutes: number | null }>();
+): Promise<Map<number, { frtSeconds: number | null; ahtSeconds: number | null }>> {
+  const results = new Map<number, { frtSeconds: number | null; ahtSeconds: number | null }>();
+
+  const authHeaders = {
+    'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+    'Content-Type': 'application/json',
+  };
 
   // Process in batches of CHAT_CONCURRENT_LIMIT
   for (let i = 0; i < ticketIds.length; i += CHAT_CONCURRENT_LIMIT) {
@@ -226,48 +245,66 @@ async function batchFetchTicketMetrics(
 
     const batchPromises = batch.map(async (ticketId) => {
       try {
+        // Fetch standard ticket metrics (for FRT in seconds)
         const metricsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metrics.json`;
-        const response = await fetch(metricsUrl, {
-          headers: {
-            'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        const metricsResponse = await fetch(metricsUrl, { headers: authHeaders });
+        
+        // Fetch metric events (for agent_work_time - Chat AHT)
+        const eventsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metric_events.json`;
+        const eventsResponse = await fetch(eventsUrl, { headers: authHeaders });
 
-        if (!response.ok) {
-          console.log(`Failed to fetch metrics for ticket ${ticketId}: ${response.status}`);
-          return { ticketId, frtMinutes: null, ahtMinutes: null };
+        let frtSeconds: number | null = null;
+        let ahtSeconds: number | null = null;
+
+        if (metricsResponse.ok) {
+          const metricsData = await metricsResponse.json();
+          // Use seconds for precision (Explore aligned)
+          frtSeconds = metricsData.ticket_metric?.reply_time_in_seconds?.calendar || null;
         }
 
-        const data = await response.json();
-        const metrics = data.ticket_metric;
+        if (eventsResponse.ok) {
+          const eventsData = await eventsResponse.json();
+          const events: TicketMetricEvent[] = eventsData.ticket_metric_events || [];
+          
+          // Find the last update_status event for agent_work_time
+          // This gives cumulative calendar seconds of agent active work
+          const workTimeEvents = events.filter(
+            (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
+          );
+          
+          if (workTimeEvents.length > 0) {
+            // Use the last update_status event (cumulative value)
+            const lastEvent = workTimeEvents[workTimeEvents.length - 1];
+            ahtSeconds = lastEvent.status?.calendar || null;
+          }
+        }
 
-        return {
-          ticketId,
-          frtMinutes: metrics?.reply_time_in_minutes?.calendar || null,
-          ahtMinutes: metrics?.agent_wait_time_in_minutes?.calendar || null,
-        };
+        return { ticketId, frtSeconds, ahtSeconds };
       } catch (error) {
-        console.log(`Error fetching metrics for ticket ${ticketId}:`, error);
-        return { ticketId, frtMinutes: null, ahtMinutes: null };
+        console.log(`Error fetching Explore-aligned metrics for ticket ${ticketId}:`, error);
+        return { ticketId, frtSeconds: null, ahtSeconds: null };
       }
     });
 
     const batchResults = await Promise.all(batchPromises);
     for (const result of batchResults) {
-      results.set(result.ticketId, { frtMinutes: result.frtMinutes, ahtMinutes: result.ahtMinutes });
+      results.set(result.ticketId, { 
+        frtSeconds: result.frtSeconds, 
+        ahtSeconds: result.ahtSeconds 
+      });
     }
 
-    // Small delay between batches
+    // Rate limiting delay between batches (increased for additional API call)
     if (i + CHAT_CONCURRENT_LIMIT < ticketIds.length) {
-      await delay(100);
+      await delay(200);
     }
   }
 
   return results;
 }
 
-// Fetch Chat AHT and FRT using improved search and batch metrics
+// Fetch Chat AHT and FRT using Explore-aligned logic (ZD1 only)
+// Uses created>= filter, excludes bot-only/abandoned, uses agent_work_time for AHT
 async function fetchChatMetrics(
   config: ZendeskConfig,
   zendeskUserId: string,
@@ -275,12 +312,12 @@ async function fetchChatMetrics(
   weekEnd: string
 ): Promise<{ ahtSeconds: number | null; frtSeconds: number | null; totalChats: number }> {
   try {
-    // Search for chat/messaging tickets assigned to this agent
-    // Use updated date range and include both chat channels
-    const query = `type:ticket assignee_id:${zendeskUserId} updated>=${weekStart} updated<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
-    const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=updated_at&sort_order=desc&per_page=100`;
+    // Use created date for accurate week filtering (Explore aligned)
+    // This ensures only tickets created within the week are included
+    const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
+    const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc&per_page=100`;
 
-    console.log(`Searching chats for User ID ${zendeskUserId}: ${query}`);
+    console.log(`Searching chats (Explore aligned) for User ID ${zendeskUserId}: ${query}`);
 
     const searchResponse = await fetch(searchUrl, {
       headers: {
@@ -295,41 +332,49 @@ async function fetchChatMetrics(
     }
 
     const searchData = await searchResponse.json();
-    const tickets = searchData.results || [];
+    
+    // Filter out bot-only/abandoned tickets (no agent replies)
+    // comment_count > 1 ensures at least one agent response exists
+    const tickets = (searchData.results || []).filter((t: any) => 
+      t.status !== 'deleted' && 
+      (t.comment_count || 0) > 1
+    );
 
-    console.log(`Found ${tickets.length} chat/messaging tickets for User ID ${zendeskUserId}`);
+    console.log(`Found ${tickets.length} valid chat/messaging tickets for User ID ${zendeskUserId} (filtered from ${searchData.results?.length || 0})`);
 
     if (tickets.length === 0) {
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
     }
 
-    // Get ticket IDs for batch metric fetching
+    // Get ticket IDs for Explore-aligned batch metric fetching
     const ticketIds = tickets.map((t: any) => t.id as number);
 
-    // Batch fetch all ticket metrics
-    const metricsMap = await batchFetchTicketMetrics(config, ticketIds);
+    // Use Explore-aligned batch fetch (uses agent_work_time for AHT, reply_time_in_seconds for FRT)
+    const metricsMap = await batchFetchTicketMetricsExploreAligned(config, ticketIds);
 
-    // Calculate averages
+    // Calculate per-conversation averages (Explore aligned)
+    // Formula: AVG(metric_seconds) - round only at final step
     let totalFrt = 0;
     let frtCount = 0;
     let totalAht = 0;
     let ahtCount = 0;
 
-    for (const [ticketId, metrics] of metricsMap) {
-      if (metrics.frtMinutes !== null) {
-        totalFrt += metrics.frtMinutes * 60; // Convert to seconds
+    for (const [_, metrics] of metricsMap) {
+      if (metrics.frtSeconds !== null) {
+        totalFrt += metrics.frtSeconds;
         frtCount++;
       }
-      if (metrics.ahtMinutes !== null) {
-        totalAht += metrics.ahtMinutes * 60; // Convert to seconds
+      if (metrics.ahtSeconds !== null) {
+        totalAht += metrics.ahtSeconds;
         ahtCount++;
       }
     }
 
+    // AVG per conversation - round only at final step
     const avgFrt = frtCount > 0 ? Math.round(totalFrt / frtCount) : null;
     const avgAht = ahtCount > 0 ? Math.round(totalAht / ahtCount) : null;
 
-    console.log(`Chat metrics for User ID ${zendeskUserId}: AHT=${avgAht}s (${ahtCount} samples), FRT=${avgFrt}s (${frtCount} samples), total=${tickets.length}`);
+    console.log(`Chat metrics (Explore aligned) for User ID ${zendeskUserId}: AHT=${avgAht}s (${ahtCount} conversations), FRT=${avgFrt}s (${frtCount} conversations), total=${tickets.length}`);
 
     return { 
       ahtSeconds: avgAht, 

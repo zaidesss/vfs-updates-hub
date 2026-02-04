@@ -690,8 +690,30 @@ export default function TeamScorecard() {
                             </Tooltip>
                           </TableHead>
                         )}
-                        {showChatAht && <TableHead className="text-center">Chat AHT</TableHead>}
-                        {showChatFrt && <TableHead className="text-center">Chat FRT</TableHead>}
+{showChatAht && (
+                          <TableHead className="text-center">
+                            <Tooltip>
+                              <TooltipTrigger className="cursor-help">
+                                Chat AHT
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>per conversation — Explore aligned</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableHead>
+                        )}
+                        {showChatFrt && (
+                          <TableHead className="text-center">
+                            <Tooltip>
+                              <TooltipTrigger className="cursor-help">
+                                Chat FRT
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>first agent reply — Explore aligned</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableHead>
+                        )}
                         {showQA && <TableHead className="text-center">QA</TableHead>}
                         {showRevalida && <TableHead className="text-center">Revalida</TableHead>}
                         <TableHead className="text-center">Reliability</TableHead>
