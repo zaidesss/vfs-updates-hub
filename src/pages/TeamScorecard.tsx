@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -8,33 +8,49 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ChevronLeft, ChevronRight, Calendar, Save, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, isBefore, parseISO } from 'date-fns';
+import { ChevronLeft, ChevronRight, Calendar, Save, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { startOfWeek, endOfWeek, addWeeks, subWeeks, format, isBefore } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
+import { EditableMetricCell } from '@/components/scorecard/EditableMetricCell';
 import {
   fetchWeeklyScorecard,
   fetchScorecardConfig,
   saveScorecard,
   isWeekSaved,
+  upsertZendeskMetrics,
   SUPPORT_TYPES,
   getScoreColor,
   getScoreBgColor,
   formatSeconds,
   type AgentScorecard,
-  type ScorecardConfig
 } from '@/lib/scorecardApi';
 
 const MINIMUM_DATE = new Date('2026-01-26');
 const DATA_RETENTION_WEEKS = 2;
+
+// AHT/FRT goals in seconds
+const METRIC_GOALS = {
+  call_aht: 300,  // 5 minutes
+  chat_aht: 180,  // 3 minutes
+  chat_frt: 60,   // 1 minute
+};
+
+interface EditedMetrics {
+  callAht?: number | null;
+  chatAht?: number | null;
+  chatFrt?: number | null;
+}
 
 export default function TeamScorecard() {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [supportType, setSupportType] = useState<string>('Hybrid Support');
+  const [editedMetrics, setEditedMetrics] = useState<Record<string, EditedMetrics>>({});
 
   const canSave = isAdmin || isSuperAdmin;
+  const hasEdits = Object.keys(editedMetrics).length > 0;
 
   // Calculate week boundaries (Monday to Sunday)
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
@@ -72,17 +88,58 @@ export default function TeamScorecard() {
     enabled: !isBeforeMinimumDate,
   });
 
-  // Save mutation
-  const saveMutation = useMutation({
+  // Save Changes mutation (saves edited metrics to zendesk_agent_metrics)
+  const saveChangesMutation = useMutation({
     mutationFn: async () => {
-      if (!scorecards || !user?.email) {
-        throw new Error('No data to save');
+      const entries = Object.entries(editedMetrics);
+      const results = await Promise.all(
+        entries.map(([agentEmail, edits]) =>
+          upsertZendeskMetrics(weekStartStr, weekEndStr, agentEmail, {
+            call_aht_seconds: edits.callAht,
+            chat_aht_seconds: edits.chatAht,
+            chat_frt_seconds: edits.chatFrt,
+          })
+        )
+      );
+      const failed = results.filter(r => !r.success);
+      if (failed.length > 0) {
+        throw new Error(`Failed to save ${failed.length} metrics`);
       }
-      return saveScorecard(weekStartStr, weekEndStr, supportType, scorecards, user.email);
+      return results;
+    },
+    onSuccess: () => {
+      toast.success('Metrics saved successfully');
+      setEditedMetrics({});
+      queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
+    },
+    onError: (error) => {
+      toast.error(`Error saving metrics: ${error.message}`);
+    },
+  });
+
+  // Save Scorecard mutation
+  const saveScorecardMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.email) throw new Error('Not authenticated');
+      
+      // Apply edits to scorecards before saving
+      const scorecardsWithEdits = scorecards?.map(sc => {
+        const edits = editedMetrics[sc.agent.email.toLowerCase()];
+        if (!edits) return sc;
+        return {
+          ...sc,
+          callAht: edits.callAht !== undefined ? edits.callAht : sc.callAht,
+          chatAht: edits.chatAht !== undefined ? edits.chatAht : sc.chatAht,
+          chatFrt: edits.chatFrt !== undefined ? edits.chatFrt : sc.chatFrt,
+        };
+      }) || [];
+      
+      return saveScorecard(weekStartStr, weekEndStr, supportType, scorecardsWithEdits, user.email);
     },
     onSuccess: (result) => {
       if (result.success) {
         toast.success('Scorecard saved successfully');
+        setEditedMetrics({});
         queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
         queryClient.invalidateQueries({ queryKey: ['scorecard-saved', weekStartStr, weekEndStr, supportType] });
       } else {
@@ -94,9 +151,54 @@ export default function TeamScorecard() {
     },
   });
 
-  const goToPreviousWeek = () => setSelectedDate(prev => subWeeks(prev, 1));
-  const goToNextWeek = () => setSelectedDate(prev => addWeeks(prev, 1));
-  const goToCurrentWeek = () => setSelectedDate(new Date());
+  // Handle metric edit
+  const handleMetricEdit = useCallback((agentEmail: string, metricKey: 'callAht' | 'chatAht' | 'chatFrt', value: number | null) => {
+    const emailLower = agentEmail.toLowerCase();
+    setEditedMetrics(prev => {
+      const current = prev[emailLower] || {};
+      const updated = { ...current, [metricKey]: value };
+      
+      // Check if all edits match original values - if so, remove from edited
+      const scorecard = scorecards?.find(s => s.agent.email.toLowerCase() === emailLower);
+      if (scorecard) {
+        const isOriginal = 
+          (updated.callAht === undefined || updated.callAht === scorecard.callAht) &&
+          (updated.chatAht === undefined || updated.chatAht === scorecard.chatAht) &&
+          (updated.chatFrt === undefined || updated.chatFrt === scorecard.chatFrt);
+        
+        if (isOriginal) {
+          const { [emailLower]: _, ...rest } = prev;
+          return rest;
+        }
+      }
+      
+      return { ...prev, [emailLower]: updated };
+    });
+  }, [scorecards]);
+
+  // Get displayed value (edited or original)
+  const getDisplayValue = useCallback((scorecard: AgentScorecard, metricKey: 'callAht' | 'chatAht' | 'chatFrt'): number | null => {
+    const edits = editedMetrics[scorecard.agent.email.toLowerCase()];
+    if (edits && edits[metricKey] !== undefined) {
+      return edits[metricKey]!;
+    }
+    return scorecard[metricKey];
+  }, [editedMetrics]);
+
+  const goToPreviousWeek = () => {
+    setSelectedDate(prev => subWeeks(prev, 1));
+    setEditedMetrics({});
+  };
+  
+  const goToNextWeek = () => {
+    setSelectedDate(prev => addWeeks(prev, 1));
+    setEditedMetrics({});
+  };
+  
+  const goToCurrentWeek = () => {
+    setSelectedDate(new Date());
+    setEditedMetrics({});
+  };
 
   // Determine which columns to show based on support type
   const showProductivity = ['Hybrid Support', 'Email Support'].includes(supportType);
@@ -130,29 +232,54 @@ export default function TeamScorecard() {
             <p className="text-muted-foreground">Weekly performance metrics by support type</p>
           </div>
 
-          {/* Save Button - Admin Only */}
-          {canSave && scorecards && scorecards.length > 0 && !isBeforeMinimumDate && (
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              variant={weekIsSaved ? 'outline' : 'default'}
-              className="gap-2"
-            >
-              {saveMutation.isPending ? (
-                <>Saving...</>
-              ) : weekIsSaved ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Saved
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Save Scorecard
-                </>
-              )}
-            </Button>
-          )}
+          {/* Buttons */}
+          <div className="flex items-center gap-2">
+            {/* Save Changes Button - Only when there are edits */}
+            {canSave && hasEdits && (
+              <Button
+                onClick={() => saveChangesMutation.mutate()}
+                disabled={saveChangesMutation.isPending}
+                variant="default"
+                className="gap-2"
+              >
+                {saveChangesMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Save Scorecard Button - Admin Only */}
+            {canSave && scorecards && scorecards.length > 0 && !isBeforeMinimumDate && (
+              <Button
+                onClick={() => saveScorecardMutation.mutate()}
+                disabled={saveScorecardMutation.isPending}
+                variant={weekIsSaved ? 'outline' : hasEdits ? 'outline' : 'default'}
+                className="gap-2"
+              >
+                {saveScorecardMutation.isPending ? (
+                  <>Saving...</>
+                ) : weekIsSaved ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save Scorecard
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -179,7 +306,7 @@ export default function TeamScorecard() {
               </div>
 
               {/* Support Type Filter */}
-              <Select value={supportType} onValueChange={setSupportType}>
+              <Select value={supportType} onValueChange={(val) => { setSupportType(val); setEditedMetrics({}); }}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Select support type" />
                 </SelectTrigger>
@@ -228,6 +355,11 @@ export default function TeamScorecard() {
                     <Badge variant="secondary" className="gap-1">
                       <CheckCircle2 className="h-3 w-3" />
                       Saved
+                    </Badge>
+                  )}
+                  {hasEdits && (
+                    <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                      {Object.keys(editedMetrics).length} edited
                     </Badge>
                   )}
                 </CardTitle>
@@ -294,31 +426,40 @@ export default function TeamScorecard() {
 
                           {showCallAht && (
                             <TableCell className="text-center">
-                              <div className={`px-2 py-1 rounded ${scorecard.callAht !== null ? getScoreBgColor(100, 100) : 'bg-muted/30'}`}>
-                                <span className={scorecard.callAht !== null ? 'text-foreground' : 'text-muted-foreground'}>
-                                  {scorecard.callAht !== null ? formatSeconds(scorecard.callAht) : 'Pending'}
-                                </span>
-                              </div>
+                              <EditableMetricCell
+                                value={getDisplayValue(scorecard, 'callAht')}
+                                originalValue={scorecard.callAht}
+                                goal={METRIC_GOALS.call_aht}
+                                isEditable={canSave}
+                                onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'callAht', val)}
+                                formatValue={formatSeconds}
+                              />
                             </TableCell>
                           )}
 
                           {showChatAht && (
                             <TableCell className="text-center">
-                              <div className={`px-2 py-1 rounded ${scorecard.chatAht !== null ? getScoreBgColor(100, 100) : 'bg-muted/30'}`}>
-                                <span className={scorecard.chatAht !== null ? 'text-foreground' : 'text-muted-foreground'}>
-                                  {scorecard.chatAht !== null ? formatSeconds(scorecard.chatAht) : 'Pending'}
-                                </span>
-                              </div>
+                              <EditableMetricCell
+                                value={getDisplayValue(scorecard, 'chatAht')}
+                                originalValue={scorecard.chatAht}
+                                goal={METRIC_GOALS.chat_aht}
+                                isEditable={canSave}
+                                onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatAht', val)}
+                                formatValue={formatSeconds}
+                              />
                             </TableCell>
                           )}
 
                           {showChatFrt && (
                             <TableCell className="text-center">
-                              <div className={`px-2 py-1 rounded ${scorecard.chatFrt !== null ? getScoreBgColor(100, 100) : 'bg-muted/30'}`}>
-                                <span className={scorecard.chatFrt !== null ? 'text-foreground' : 'text-muted-foreground'}>
-                                  {scorecard.chatFrt !== null ? formatSeconds(scorecard.chatFrt) : 'Pending'}
-                                </span>
-                              </div>
+                              <EditableMetricCell
+                                value={getDisplayValue(scorecard, 'chatFrt')}
+                                originalValue={scorecard.chatFrt}
+                                goal={METRIC_GOALS.chat_frt}
+                                isEditable={canSave}
+                                onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatFrt', val)}
+                                formatValue={formatSeconds}
+                              />
                             </TableCell>
                           )}
 
@@ -398,12 +539,16 @@ export default function TeamScorecard() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded bg-muted/30" />
-                <span>Pending data</span>
+                <span>Pending / No data</span>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
-                <span>Saved (frozen)</span>
-              </div>
+              {canSave && (
+                <div className="flex items-center gap-2 ml-4 border-l pl-4">
+                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 text-amber-600 border-amber-300">
+                    edited
+                  </Badge>
+                  <span>Manually edited value</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

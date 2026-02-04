@@ -181,17 +181,15 @@ async function fetchCallMetrics(
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
-    // Calculate AHT: (talk_time + wrap_up_time) / call_count
+    // Calculate AHT: talk_time only (excluding wrap_up_time to match Zendesk Explore)
     let totalTalkTime = 0;
-    let totalWrapUpTime = 0;
 
     for (const call of weekCalls) {
       totalTalkTime += call.talk_time || 0;
-      totalWrapUpTime += call.wrap_up_time || 0;
     }
 
-    const ahtSeconds = Math.round((totalTalkTime + totalWrapUpTime) / weekCalls.length);
-    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekCalls.length} calls, talk: ${totalTalkTime}s, wrap: ${totalWrapUpTime}s)`);
+    const ahtSeconds = Math.round(totalTalkTime / weekCalls.length);
+    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekCalls.length} calls, talk: ${totalTalkTime}s)`);
 
     return { ahtSeconds, totalCalls: weekCalls.length };
 
