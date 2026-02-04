@@ -35,14 +35,15 @@ interface ZendeskConfig {
   email: string;
 }
 
-interface CallRecord {
+interface LegRecord {
   id: string | number;
+  call_id: string | number;  // Parent call ID
   agent_id: string | number;
   talk_time: number;
   wrap_up_time: number;
+  type: string;  // "customer", "agent", "external", "supervisor"
   updated_at?: string;
   created_at?: string;
-  timestamp?: string;
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -82,21 +83,21 @@ function isWithinWeek(dateStr: string | undefined, weekStart: string, weekEnd: s
   return date >= start && date <= end;
 }
 
-// Paginate through Zendesk Incremental Exports API using end_time cursor
-async function paginateIncrementalCalls(
+// Paginate through Zendesk Incremental Legs API using end_time cursor
+async function paginateIncrementalLegs(
   config: ZendeskConfig,
   startEpoch: number,
   endEpoch: number
-): Promise<CallRecord[]> {
-  const allCalls: CallRecord[] = [];
+): Promise<LegRecord[]> {
+  const allLegs: LegRecord[] = [];
   let currentStartTime = startEpoch;
   let pageCount = 0;
   const maxPages = 20; // Safety limit
 
   while (pageCount < maxPages) {
     pageCount++;
-    const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${currentStartTime}`;
-    console.log(`Fetching incremental calls page ${pageCount}: start_time=${currentStartTime}`);
+    const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/legs.json?start_time=${currentStartTime}`;
+    console.log(`Fetching incremental legs page ${pageCount}: start_time=${currentStartTime}`);
 
     try {
       const response: Response = await fetch(url, {
@@ -107,15 +108,15 @@ async function paginateIncrementalCalls(
       });
 
       if (!response.ok) {
-        console.error(`Incremental calls API failed: ${response.status} ${response.statusText}`);
+        console.error(`Incremental legs API failed: ${response.status} ${response.statusText}`);
         break;
       }
 
-      const data: { calls?: CallRecord[]; end_time?: number; count?: number } = await response.json();
-      const calls = data.calls || [];
-      allCalls.push(...calls);
+      const data: { legs?: LegRecord[]; end_time?: number; count?: number } = await response.json();
+      const legs = data.legs || [];
+      allLegs.push(...legs);
 
-      console.log(`Page ${pageCount}: fetched ${calls.length} calls, total: ${allCalls.length}, end_time: ${data.end_time}`);
+      console.log(`Page ${pageCount}: fetched ${legs.length} legs, total: ${allLegs.length}, end_time: ${data.end_time}`);
 
       // Check if we've reached the end or passed our week boundary
       if (!data.end_time || data.end_time >= endEpoch) {
@@ -123,9 +124,9 @@ async function paginateIncrementalCalls(
         break;
       }
 
-      // Check if no more data (count is 0 or calls empty)
-      if (calls.length === 0) {
-        console.log('No more calls in this page, stopping pagination');
+      // Check if no more data (count is 0 or legs empty)
+      if (legs.length === 0) {
+        console.log('No more legs in this page, stopping pagination');
         break;
       }
 
@@ -137,16 +138,16 @@ async function paginateIncrementalCalls(
       await delay(INCREMENTAL_API_DELAY_MS);
 
     } catch (error) {
-      console.error(`Error fetching incremental calls page ${pageCount}:`, error);
+      console.error(`Error fetching incremental legs page ${pageCount}:`, error);
       break;
     }
   }
 
-  console.log(`Total calls fetched from incremental API: ${allCalls.length}`);
-  return allCalls;
+  console.log(`Total legs fetched from incremental API: ${allLegs.length}`);
+  return allLegs;
 }
 
-// Fetch Call AHT using Talk Incremental Exports API
+// Fetch Call AHT using Talk Incremental Legs API
 async function fetchCallMetrics(
   config: ZendeskConfig,
   zendeskUserId: string,
@@ -159,39 +160,40 @@ async function fetchCallMetrics(
     const endEpoch = Math.floor(new Date(weekEnd + 'T23:59:59Z').getTime() / 1000);
     console.log(`Fetching call metrics for User ID ${zendeskUserId}, week ${weekStart} to ${weekEnd}, startEpoch: ${startEpoch}, endEpoch: ${endEpoch}`);
 
-    // Fetch all calls from the incremental API starting from weekStart
-    const allCalls = await paginateIncrementalCalls(config, startEpoch, endEpoch);
+    // Fetch all legs from the incremental API starting from weekStart
+    const allLegs = await paginateIncrementalLegs(config, startEpoch, endEpoch);
 
-    // Filter calls for this specific agent
-    const agentCalls = allCalls.filter(call => 
-      String(call.agent_id) === zendeskUserId
+    // Filter legs for this specific agent and only agent type legs
+    const agentLegs = allLegs.filter(leg => 
+      String(leg.agent_id) === zendeskUserId && 
+      leg.type === 'agent'  // Only count agent legs, exclude customer/system legs
     );
 
-    console.log(`Found ${agentCalls.length} calls for agent ${zendeskUserId} out of ${allCalls.length} total`);
+    console.log(`Found ${agentLegs.length} agent legs for ${zendeskUserId} out of ${allLegs.length} total legs`);
 
-    // Filter calls within the exact week boundary
-    const weekCalls = agentCalls.filter(call => {
-      const callDate = call.updated_at || call.created_at || call.timestamp;
-      return isWithinWeek(callDate, weekStart, weekEnd);
+    // Filter legs within the exact week boundary
+    const weekLegs = agentLegs.filter(leg => {
+      const legDate = leg.updated_at || leg.created_at;
+      return isWithinWeek(legDate, weekStart, weekEnd);
     });
 
-    console.log(`Calls within week ${weekStart} - ${weekEnd}: ${weekCalls.length}`);
+    console.log(`Agent legs within week ${weekStart} - ${weekEnd}: ${weekLegs.length}`);
 
-    if (weekCalls.length === 0) {
+    if (weekLegs.length === 0) {
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
     // Calculate AHT: talk_time only (excluding wrap_up_time to match Zendesk Explore)
     let totalTalkTime = 0;
 
-    for (const call of weekCalls) {
-      totalTalkTime += call.talk_time || 0;
+    for (const leg of weekLegs) {
+      totalTalkTime += leg.talk_time || 0;
     }
 
-    const ahtSeconds = Math.round(totalTalkTime / weekCalls.length);
-    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekCalls.length} calls, talk: ${totalTalkTime}s)`);
+    const ahtSeconds = Math.round(totalTalkTime / weekLegs.length);
+    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
 
-    return { ahtSeconds, totalCalls: weekCalls.length };
+    return { ahtSeconds, totalCalls: weekLegs.length };
 
   } catch (error) {
     console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);
