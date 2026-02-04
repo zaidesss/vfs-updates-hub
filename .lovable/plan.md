@@ -1,99 +1,181 @@
 
-# Fix Call AHT Calculation Using Legs API
+
+# Scorecard Enhancements: AHT Fix, Force Refresh, and Zendesk User ID Field
 
 ## Summary
-Update the `fetch-zendesk-metrics` edge function to use the Zendesk Talk **Incremental Legs API** instead of the Incremental Calls API, ensuring AHT calculations match Zendesk Explore reports.
-
-## Root Cause
-The current implementation uses `/api/v2/channels/voice/stats/incremental/calls.json` which only attributes calls to the **first agent who answered**. Zendesk Explore uses "Call Legs" which captures **every agent involvement** including transfers and consultations.
-
-**Example - Desiree's data:**
-- Calls API: 40 calls × 150s avg = 6,000s total (incorrect)
-- Legs API: 40 legs × 216s avg = 8,640s total (matches Explore)
+Implement three enhancements to the Team Scorecard and Agent Profile:
+1. **Fix Call AHT calculation** - Divide by unique calls (not legs) to match Zendesk Explore
+2. **Add "Refresh Metrics" button** per support type page (admin-only)
+3. **Add Zendesk User ID field** to agent profiles (admin-editable only)
 
 ---
 
-## Implementation Steps
+## Step 1: Fix Call AHT Calculation
 
-### Step 1: Update Call Record Interface
+### Problem
+Current formula: `totalTalkTime / weekLegs.length` (divides by number of legs)
 
-Add fields specific to the Legs API response.
+Zendesk Explore formula: `(Leg talk time hrs × 3600) / Accepted calls / 60`
+
+Which translates to: **Total Talk Time (seconds) / Unique Calls = AHT (seconds)**
+
+When an agent handles 40 calls but has 54 legs (due to transfers/consultations), the current method under-calculates AHT.
+
+### Solution
+Track unique `call_id` values and divide by that count instead of leg count.
 
 **File**: `supabase/functions/fetch-zendesk-metrics/index.ts`
 
+Update lines 182-196:
 ```typescript
-// Rename to LegRecord for clarity
-interface LegRecord {
-  id: string | number;
-  call_id: string | number;  // Parent call ID
-  agent_id: string | number;
-  talk_time: number;
-  wrap_up_time: number;
-  type: string;  // "customer", "agent", "external", "supervisor"
-  updated_at?: string;
-  created_at?: string;
+if (weekLegs.length === 0) {
+  return { ahtSeconds: null, totalCalls: 0 };
 }
-```
 
----
+// Get unique call IDs to match Zendesk Explore calculation
+// Formula: (Leg talk time hrs × 3600) / Accepted calls / 60
+// = Total Talk Time (seconds) / Unique Calls
+const uniqueCallIds = new Set(weekLegs.map(leg => String(leg.call_id)));
+const uniqueCallCount = uniqueCallIds.size;
 
-### Step 2: Change API Endpoint to Legs
-
-Update the pagination function to fetch from the Legs endpoint.
-
-**Current**:
-```typescript
-const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${currentStartTime}`;
-```
-
-**New**:
-```typescript
-const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/legs.json?start_time=${currentStartTime}`;
-```
-
----
-
-### Step 3: Filter by Agent Type
-
-Only count legs where `type === "agent"` to exclude customer and system legs.
-
-```typescript
-const agentLegs = allLegs.filter(leg => 
-  String(leg.agent_id) === zendeskUserId && 
-  leg.type === 'agent'  // Only count agent legs
-);
-```
-
----
-
-### Step 4: Update AHT Calculation Logic
-
-The calculation logic stays the same (sum of talk_time / count), but now operates on legs instead of calls.
-
-```typescript
-// Calculate AHT from agent legs
+// Sum all talk time from agent legs
 let totalTalkTime = 0;
-
 for (const leg of weekLegs) {
   totalTalkTime += leg.talk_time || 0;
 }
 
-const ahtSeconds = Math.round(totalTalkTime / weekLegs.length);
-console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
+// AHT = Total Talk Time / Unique Calls (not legs)
+const ahtSeconds = uniqueCallCount > 0 ? Math.round(totalTalkTime / uniqueCallCount) : null;
+console.log(`Call AHT: ${ahtSeconds}s (${uniqueCallCount} unique calls, ${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
 
-return { ahtSeconds, totalCalls: weekLegs.length };
+return { ahtSeconds, totalCalls: uniqueCallCount };
 ```
 
 ---
 
-### Step 5: Update Response Field Parsing
+## Step 2: Add Force Refresh Button (Per Support Type)
 
-The Legs API returns `legs` array instead of `calls` array.
+### Behavior
+- Button appears beside the Support Type dropdown (for admins only)
+- Clicking triggers a fresh Zendesk metrics fetch for agents of the **current support type only**
+- Bypasses the 1-hour cache by passing `scheduled: true`
+- Shows loading spinner and success/error toast
+- Scheduled job still runs on **Tuesdays at 2:00 AM EST** for all agents
 
+### Technical Changes
+
+**File**: `src/lib/scorecardApi.ts`
+
+Add new function:
 ```typescript
-const data: { legs?: LegRecord[]; end_time?: number; count?: number } = await response.json();
-const legs = data.legs || [];
+export async function triggerMetricsRefresh(
+  weekStart: string,
+  weekEnd: string,
+  supportType: string
+): Promise<{ success: boolean; processed?: number; error?: string }> {
+  // Fetch agent emails for this support type
+  const { data: agents, error: agentsError } = await supabase
+    .from('agent_profiles')
+    .select('email')
+    .eq('position', supportType)
+    .neq('employment_status', 'Terminated')
+    .not('zendesk_instance', 'is', null);
+
+  if (agentsError) {
+    return { success: false, error: agentsError.message };
+  }
+
+  const agentEmails = (agents || []).map(a => a.email);
+  if (agentEmails.length === 0) {
+    return { success: true, processed: 0 };
+  }
+
+  // Call edge function with scheduled: true to bypass cache
+  const response = await supabase.functions.invoke('fetch-zendesk-metrics', {
+    body: {
+      scheduled: true,
+      weekStart,
+      weekEnd,
+      agentEmails,
+    },
+  });
+
+  if (response.error) {
+    return { success: false, error: response.error.message };
+  }
+
+  return { success: true, processed: response.data?.processed || 0 };
+}
 ```
+
+**File**: `src/pages/TeamScorecard.tsx`
+
+Add refresh mutation (around line 130) and button beside the support type dropdown:
+
+```tsx
+// Add refresh mutation
+const refreshMutation = useMutation({
+  mutationFn: () => triggerMetricsRefresh(weekStartStr, weekEndStr, supportType),
+  onSuccess: (result) => {
+    if (result.success) {
+      toast.success(`Refreshed metrics for ${result.processed} agents`);
+      queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
+    } else {
+      toast.error(`Refresh failed: ${result.error}`);
+    }
+  },
+  onError: (error) => {
+    toast.error(`Error: ${error.message}`);
+  },
+});
+
+// Add button after the Select component (line ~320)
+{canSave && (
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={() => refreshMutation.mutate()}
+    disabled={refreshMutation.isPending}
+    className="gap-2"
+  >
+    <RefreshCw className={cn("h-4 w-4", refreshMutation.isPending && "animate-spin")} />
+    {refreshMutation.isPending ? 'Refreshing...' : 'Refresh Metrics'}
+  </Button>
+)}
+```
+
+---
+
+## Step 3: Add Zendesk User ID Field to Agent Profile
+
+### Behavior
+- Field appears beside Upwork Contract ID in Work Configuration section
+- Editable only by Admin or Super Admin
+- Read-only for regular users (shows existing value if present)
+- Already exists in database (`agent_profiles.zendesk_user_id`)
+
+### Technical Changes
+
+**File**: `src/components/profile/WorkConfigurationSection.tsx`
+
+Add field after Upwork Contract ID (after line 292):
+```tsx
+{/* Zendesk User ID */}
+<div className="space-y-2">
+  <Label>Zendesk User ID</Label>
+  <Input
+    value={profile.zendesk_user_id || ''}
+    onChange={(e) => onInputChange('zendesk_user_id', e.target.value)}
+    placeholder="e.g., 11436740426393"
+    disabled={!canEdit}
+    className={!canEdit ? 'bg-muted' : ''}
+  />
+</div>
+```
+
+**File**: `src/pages/AgentProfile.tsx`
+
+Ensure the field is loaded and saved in the profile object handling.
 
 ---
 
@@ -101,22 +183,33 @@ const legs = data.legs || [];
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Switch from Calls API to Legs API, update interface, add type filter |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Fix AHT calculation to use unique calls |
+| `src/lib/scorecardApi.ts` | Add `triggerMetricsRefresh` function |
+| `src/pages/TeamScorecard.tsx` | Add Refresh Metrics button with mutation |
+| `src/components/profile/WorkConfigurationSection.tsx` | Add Zendesk User ID input field |
+| `src/pages/AgentProfile.tsx` | Ensure `zendesk_user_id` loads/saves |
 
 ---
 
-## Expected Result
+## Expected Behavior After Implementation
 
-After this change:
-- Desiree's Call AHT should calculate to ~216 seconds (3:36)
-- Matches Zendesk Explore's "Leg talk time (min): 3 min [avg]"
-- Captures all agent interactions including transfers and consultations
+1. **Call AHT** will now match Zendesk Explore by dividing total talk time by unique call count
+   - Example: Desiree with 8,640s total talk time and 40 unique calls = 216s (3:36) AHT
+2. **Refresh Metrics** button (admin only) appears beside the support type dropdown
+   - Only fetches data for agents of the selected position
+   - Shows loading state and success/error toast
+3. **Zendesk User ID** appears beside Upwork Contract ID in Work Configuration
+   - Admins can edit; regular users see it read-only
+   - Existing values from database are displayed
 
 ---
 
 ## Verification Steps
 
 1. Deploy the updated edge function
-2. Trigger a fresh metrics fetch for the week (clear cache or use `scheduled: false`)
-3. Compare new calculated values with Zendesk Explore
-4. Desiree should show ~3:30-3:40 instead of 2:30
+2. Navigate to Team Scorecard → Hybrid Support
+3. Click "Refresh Metrics" and verify only Hybrid agents are processed
+4. Check that Desiree's AHT is now ~3:00-3:30 (matching Zendesk Explore)
+5. Navigate to an agent profile → Work Configuration
+6. Verify Zendesk User ID field appears and is editable for admins
+
