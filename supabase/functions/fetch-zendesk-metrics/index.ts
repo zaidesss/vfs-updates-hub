@@ -261,34 +261,34 @@ async function batchFetchTicketMetricsExploreAligned(
           const tm = metricsData.ticket_metric;
           
           // Log all available metrics for debugging
-          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min, agent_wait=${tm?.agent_wait_time_in_minutes?.calendar}min, requester_wait=${tm?.requester_wait_time_in_minutes?.calendar}min`);
+          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min, agent_wait=${tm?.agent_wait_time_in_minutes?.calendar}min`);
           
-          // Use seconds for precision (Explore aligned)
+          // FRT: Use reply_time_in_seconds for precision (Explore aligned)
           frtSeconds = tm?.reply_time_in_seconds?.calendar || null;
+          
+          // AHT: For messaging tickets, Explore uses full_resolution_time as "Handle Time"
+          // Native messaging doesn't track agent_work_time via metric events
+          // Use full_resolution_time_in_minutes converted to seconds
+          const fullResolutionMinutes = tm?.full_resolution_time_in_minutes?.calendar;
+          if (fullResolutionMinutes !== null && fullResolutionMinutes !== undefined) {
+            ahtSeconds = Math.round(fullResolutionMinutes * 60);
+          }
         }
-
-        if (eventsResponse.ok) {
+        
+        // Try metric events as fallback for agent_work_time (works for legacy chat, not native messaging)
+        if (ahtSeconds === null && eventsResponse.ok) {
           const eventsData = await eventsResponse.json();
           const events: TicketMetricEvent[] = eventsData.ticket_metric_events || [];
           
-          // Log event types for debugging
-          const eventSummary = events.map((e) => `${e.metric}:${e.type}`);
-          console.log(`Ticket ${ticketId} metric events: ${JSON.stringify(eventSummary)}`);
-          
-          // Find the last update_status event for agent_work_time
-          // This gives cumulative calendar seconds of agent active work
           const workTimeEvents = events.filter(
             (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
           );
           
           if (workTimeEvents.length > 0) {
-            // Use the last update_status event (cumulative value)
             const lastEvent = workTimeEvents[workTimeEvents.length - 1];
             ahtSeconds = lastEvent.status?.calendar || null;
-            console.log(`Ticket ${ticketId} agent_work_time: ${ahtSeconds}s`);
+            console.log(`Ticket ${ticketId} agent_work_time from events: ${ahtSeconds}s`);
           }
-        } else {
-          console.log(`Ticket ${ticketId} metric events fetch failed: ${eventsResponse.status}`);
         }
 
         return { ticketId, frtSeconds, ahtSeconds };
