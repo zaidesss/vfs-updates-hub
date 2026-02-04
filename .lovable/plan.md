@@ -1,258 +1,295 @@
 
-# Plan: Team Performance Scorecard
+
+# Updated Plan: Scheduled Weekly Zendesk Metrics Fetch + Saved Scorecard
 
 ## Summary
-Create a new Scorecard page under Team Performance that displays weekly performance metrics for agents, with support-type-specific calculations, configurable weights, and a comprehensive scoring system.
-
-**Key Clarification**: All agent data (name, position, quota, schedule, day_off) will be sourced from `agent_profiles` table as the single source of truth.
-
----
-
-## Support Type Scope
-
-| Position | Scorecard Type |
-|----------|---------------|
-| Hybrid Support | Full Scorecard (all metrics) |
-| Phone Support | Full Scorecard (phone-specific metrics) |
-| Chat Support | Full Scorecard (chat-specific metrics) |
-| Email Support | Full Scorecard (email-specific metrics) |
-| Logistics | Reliability Only |
-| Team Lead | Excluded |
-| Technical Support | Excluded |
+Update the scorecard system to:
+1. **Scheduled Weekly Fetch**: Run Zendesk metrics computation every Monday at 2 AM EST instead of on-demand
+2. **Batch Processing**: Respect Zendesk API rate limits with smart batching
+3. **Saved Scorecard**: Allow admins to permanently save/freeze scorecard values
+4. **Minimum Date**: Jan 26, 2026 - no metrics computed before this date
 
 ---
 
-## Data Sources
+## Architecture Overview
 
-| Data | Source Table | Fields Used |
-|------|--------------|-------------|
-| Agent List & Details | `agent_profiles` | full_name, email, position, quota_email, quota_chat, quota_phone, day_off, mon_schedule-sun_schedule, employment_status |
-| Ticket Counts | `ticket_logs` | agent_email, ticket_type, timestamp |
-| QA Scores | `qa_evaluations` | agent_email, percentage, evaluation_date |
-| Attendance Events | `profile_events` | profile_id, event_type, created_at |
-| Approved Leave | `leave_requests` | user_email, start_date, end_date, status='approved' |
-| Zendesk Metrics | `zendesk_agent_metrics` (new) | agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds |
-| Weights/Goals | `scorecard_config` (new) | support_type, metric_key, weight, goal |
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        SCHEDULED FETCH (Monday 2 AM EST)            │
+│                                                                     │
+│  ┌──────────────────┐      ┌───────────────────┐                    │
+│  │ Cron Job Trigger │ ──▶  │ fetch-zendesk-    │                    │
+│  │ (pg_cron)        │      │ metrics (Edge Fn) │                    │
+│  └──────────────────┘      └───────────────────┘                    │
+│                                     │                               │
+│            ┌────────────────────────┼────────────────────────┐      │
+│            ▼                        ▼                        ▼      │
+│   ┌────────────────┐    ┌────────────────┐    ┌──────────────────┐  │
+│   │ Zendesk Talk   │    │ Zendesk Chat   │    │ zendesk_agent_   │  │
+│   │ API (ZD1/ZD2)  │    │ API (ZD1/ZD2)  │    │ metrics (cache)  │  │
+│   └────────────────┘    └────────────────┘    └──────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 
----
-
-## Agent Filtering Logic
-
-```typescript
-// From agent_profiles table
-const eligibleAgents = agentProfiles.filter(profile => {
-  // Exclude terminated agents
-  if (profile.employment_status === 'Terminated') return false;
-  
-  // Exclude Team Lead and Technical Support
-  if (['Team Lead', 'Technical Support'].includes(profile.position)) return false;
-  
-  // Match support type filter
-  if (supportTypeFilter === 'Logistics') {
-    return profile.position === 'Logistics';
-  }
-  
-  return profile.position === supportTypeFilter;
-});
+┌─────────────────────────────────────────────────────────────────────┐
+│                        SCORECARD PAGE                               │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Week: Jan 26 - Feb 1, 2026    Support: Hybrid   [Save ▼]   │   │
+│  ├──────────────────────────────────────────────────────────────┤   │
+│  │  Agent Name  │ Prod │ AHT │ QA │ Reliability │ Final Score  │   │
+│  │──────────────│──────│─────│────│─────────────│──────────────│   │
+│  │  Jane Doe    │ 95%  │ 4:30│ 96 │    100%     │    97.2%     │   │
+│  │  (saved)     │      │     │    │             │              │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────┐   ┌─────────────────────────────────┐  │
+│  │ saved_scorecards table  │   │ Live calculation (falls back   │  │
+│  │ (frozen values)         │   │ if not saved)                  │  │
+│  └─────────────────────────┘   └─────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Database Changes
 
-### Table 1: `scorecard_config` (Metric Weights and Goals)
+### New Table: `saved_scorecards` (Frozen/Saved Values)
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| support_type | text | 'Hybrid Support', 'Phone Support', 'Chat Support', 'Email Support', 'Logistics' |
-| metric_key | text | 'productivity', 'call_aht', 'chat_aht', 'chat_frt', 'qa', 'revalida', 'reliability', 'ot_productivity' |
-| weight | numeric | Weight percentage (e.g., 15 for 15%) |
-| goal | numeric | Target value (e.g., 300 seconds for AHT, 96 for QA) |
-| is_enabled | boolean | Whether metric is used for this support type |
-| display_order | integer | Column display order |
-| created_at | timestamptz | |
-| updated_at | timestamptz | |
-
-### Table 2: `zendesk_agent_metrics` (Cached Zendesk Performance Data)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| agent_email | text | Agent's email (matches agent_profiles.email) |
 | week_start | date | Monday of the week |
 | week_end | date | Sunday of the week |
-| call_aht_seconds | numeric | Average handle time for calls |
-| chat_aht_seconds | numeric | Average handle time for chats |
-| chat_frt_seconds | numeric | First response time for chats |
-| total_calls | integer | Number of calls |
-| total_chats | integer | Number of chats |
-| fetched_at | timestamptz | When data was fetched |
+| support_type | text | 'Hybrid Support', etc. |
+| agent_email | text | Agent's email |
+| agent_name | text | Full name at time of save |
+| productivity | numeric | Frozen productivity % |
+| productivity_count | integer | Frozen ticket count |
+| call_aht_seconds | numeric | Frozen Call AHT |
+| chat_aht_seconds | numeric | Frozen Chat AHT |
+| chat_frt_seconds | numeric | Frozen Chat FRT |
+| qa | numeric | Frozen QA score |
+| revalida | numeric | Frozen Revalida (if available) |
+| reliability | numeric | Frozen reliability % |
+| ot_productivity | numeric | Frozen OT productivity |
+| final_score | numeric | Frozen final weighted score |
+| scheduled_days | integer | Days scheduled that week |
+| days_present | integer | Days with LOGIN |
+| approved_leave_days | integer | Leave days |
+| is_on_leave | boolean | Was on full-week leave |
+| saved_by | text | Email of admin who saved |
+| saved_at | timestamptz | When saved |
 | created_at | timestamptz | |
 
+**RLS**: 
+- Everyone can SELECT (view saved scorecards)
+- Only admins/super_admins can INSERT/UPDATE (save scorecard)
+
+### Modify Table: `zendesk_agent_metrics`
+
+Add unique constraint for upsert operations:
+```sql
+ALTER TABLE zendesk_agent_metrics 
+ADD CONSTRAINT zendesk_agent_metrics_unique_week 
+UNIQUE (agent_email, week_start, week_end);
+```
+
 ---
 
-## Calculation Logic
+## Cron Job Setup
 
-### Scheduled Days (from agent_profiles)
+**Schedule**: Every Monday at 7:00 AM UTC (2:00 AM EST)
+
+```sql
+SELECT cron.schedule(
+  'weekly-zendesk-metrics-fetch',
+  '0 7 * * 1',  -- Every Monday at 7 AM UTC (2 AM EST)
+  $$
+  SELECT net.http_post(
+    url := 'https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/fetch-zendesk-metrics',
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer <ANON_KEY>"}'::jsonb,
+    body := '{"scheduled": true}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
+
+---
+
+## Edge Function: `fetch-zendesk-metrics` (Updated)
+
+### Request Modes
+
+**1. Scheduled Mode (Cron Trigger)**
+```json
+{ "scheduled": true }
+```
+- Automatically computes metrics for the **previous week**
+- Processes all agents in batches to respect rate limits
+- Minimum date check: Skip if week_start < Jan 26, 2026
+
+**2. Manual/On-Demand Mode**
+```json
+{ 
+  "weekStart": "2026-01-26", 
+  "weekEnd": "2026-02-01",
+  "agentEmails": ["agent@example.com"]  // optional
+}
+```
+- Returns cached data if fresh (< 1 hour old)
+- Otherwise returns "pending" (requires scheduled run)
+
+### Batch Processing Logic
+
 ```typescript
-// Get scheduled working days from agent_profiles.day_off array
-function getScheduledDays(profile: AgentProfile, weekStart: Date, weekEnd: Date): number {
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  let scheduledDays = 0;
-  
-  for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-    const dayName = dayNames[d.getDay()];
-    if (!profile.day_off?.includes(dayName)) {
-      scheduledDays++;
+const BATCH_SIZE = 10;  // Agents per batch
+const BATCH_DELAY_MS = 5000;  // 5 seconds between batches
+const REQUEST_DELAY_MS = 500;  // 500ms between individual API calls
+
+async function processInBatches(agents: Agent[]): Promise<void> {
+  for (let i = 0; i < agents.length; i += BATCH_SIZE) {
+    const batch = agents.slice(i, i + BATCH_SIZE);
+    
+    for (const agent of batch) {
+      await fetchAgentMetrics(agent);
+      await delay(REQUEST_DELAY_MS);
+    }
+    
+    // Delay between batches to stay under rate limit
+    if (i + BATCH_SIZE < agents.length) {
+      await delay(BATCH_DELAY_MS);
     }
   }
-  return scheduledDays;
 }
 ```
 
-### Reliability (Attendance-Based with Approved Leave Adjustment)
+### Minimum Date Check
+
 ```typescript
-// 1. Get scheduled days from agent_profiles.day_off
-// 2. Subtract approved leave days (from leave_requests where status='approved')
-// 3. Count days with LOGIN event (from profile_events)
-// Reliability = (Days Present / Adjusted Scheduled Days) * 100
+const MINIMUM_DATE = new Date('2026-01-26');
 
-const scheduledDays = getScheduledDays(profile, weekStart, weekEnd);
-const approvedLeaveDays = countApprovedLeaveDays(leaveRequests, weekStart, weekEnd);
-const adjustedScheduledDays = scheduledDays - approvedLeaveDays;
-const daysPresent = countDaysWithLogin(profileEvents, weekStart, weekEnd);
-
-const reliabilityPercent = adjustedScheduledDays > 0 
-  ? Math.min(100, (daysPresent / adjustedScheduledDays) * 100)
-  : 100;
-```
-
-### Productivity (using quota from agent_profiles)
-```typescript
-// For Email Support: quota_email per day
-// For Hybrid Support: sum of quota_email + quota_chat + quota_phone per day
-// For Chat Support: quota_chat per day
-// For Phone Support: quota_phone per day
-
-function getWeeklyQuota(profile: AgentProfile, supportType: string, workingDays: number): number {
-  switch (supportType) {
-    case 'Email Support':
-      return (profile.quota_email || 0) * workingDays;
-    case 'Chat Support':
-      return (profile.quota_chat || 0) * workingDays;
-    case 'Phone Support':
-      return (profile.quota_phone || 0) * workingDays;
-    case 'Hybrid Support':
-      return ((profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0)) * workingDays;
-    default:
-      return 0;
-  }
+if (weekStart < MINIMUM_DATE) {
+  console.log('Skipping: Week before minimum date (Jan 26, 2026)');
+  return { skipped: true, reason: 'before_minimum_date' };
 }
-
-const productivityPercent = weeklyQuota > 0 
-  ? (actualTicketCount / weeklyQuota) * 100 
-  : 0;
 ```
 
-### QA Score (from qa_evaluations)
-```typescript
-// Filter qa_evaluations by agent_email and evaluation_date within week
-const weeklyQA = qaEvaluations.filter(e => 
-  e.agent_email === profile.email &&
-  e.evaluation_date >= weekStart &&
-  e.evaluation_date <= weekEnd
-);
+### Zendesk API Integration
 
-const qaScore = weeklyQA.length > 0
-  ? weeklyQA.reduce((sum, e) => sum + e.percentage, 0) / weeklyQA.length
-  : null;
+**Talk API (Calls)**:
+```typescript
+// GET /api/v2/channels/voice/calls.json
+// Filters: start_time, end_time
+// Compute: AHT = (talk_time + wrap_up_time) / call_count
 ```
 
-### AHT/FRT Score (Lower is Better)
+**Chat/Messaging API**:
 ```typescript
-// Score = Goal / Actual (capped at 100%)
-const ahtScore = actualSeconds > 0 
-  ? Math.min(100, (goalSeconds / actualSeconds) * 100)
-  : null;
-```
-
-### Final Scorecard
-```typescript
-let finalScore = 0;
-let totalWeight = 0;
-
-for (const config of enabledMetrics) {
-  const metricValue = metrics[config.metric_key];
-  if (metricValue !== null && metricValue !== undefined) {
-    const metricScore = calculateMetricScore(metricValue, config.goal, config.metric_key);
-    finalScore += metricScore * (config.weight / 100);
-    totalWeight += config.weight;
-  }
-}
-
-// Normalize if some metrics are missing (excluding pending ones)
-if (totalWeight < 100 && totalWeight > 0) {
-  finalScore = (finalScore / totalWeight) * 100;
-}
+// GET /api/v2/search.json?query=type:ticket channel:chat solved>YYYY-MM-DD
+// For each ticket, fetch comments
+// FRT = first_agent_reply_time - ticket_created_at
+// Chat AHT = total_agent_time / chat_count
 ```
 
 ---
 
-## UI Columns by Support Type
+## Frontend Changes
 
-| Column | Hybrid | Phone | Chat | Email | Logistics |
-|--------|--------|-------|------|-------|-----------|
-| Agent Name | Yes | Yes | Yes | Yes | Yes |
-| Productivity Count | Yes | No | No | Yes | No |
-| Call AHT | Yes | Yes | No | No | No |
-| Chat AHT | Yes | No | Yes | No | No |
-| Chat FRT | Yes | No | Yes | No | No |
-| QA | Yes | Yes | Yes | Yes | No |
-| Revalida | Yes (Pending) | Yes (Pending) | Yes (Pending) | Yes (Pending) | No |
-| Reliability | Yes | Yes | Yes | Yes | Yes |
-| OT Productivity | Placeholder | Placeholder | Placeholder | Placeholder | No |
-| Final Score | Yes | Yes | Yes | Yes | Yes (= Reliability) |
+### Save Button (Admin Only)
+
+Location: Upper right of Scorecard page
+
+**Behavior**:
+- Only visible to users with admin/super_admin role
+- Saves ALL agents' scores for the current week and support type
+- Overwrites existing saved data if re-saved
+- Shows loading state during save
+- Toast notification on success/failure
+
+### Display Logic
+
+```typescript
+// Fetch both live and saved data
+const liveScorecard = await fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+const savedScorecard = await fetchSavedScorecard(weekStart, weekEnd, supportType);
+
+// Merge: Show saved value if exists, otherwise show live
+const displayData = liveScorecard.map(live => {
+  const saved = savedScorecard.find(s => s.agent_email === live.agent.email);
+  return {
+    ...live,
+    isSaved: !!saved,
+    displayValues: saved || live,  // Use saved values if available
+  };
+});
+```
+
+### Visual Indicators
+
+- **Saved Badge**: Small "(saved)" or checkmark icon next to saved rows
+- **Unsaved Warning**: If viewing old week with no saved data: "⚠️ Data may be incomplete - backend data expires after 2 weeks"
+- **Save Button State**: "Save" → "Saving..." → "Saved ✓"
 
 ---
 
-## Visual Indicators
-- **Green**: Metric >= 100% of goal
-- **Yellow**: Metric 80-99% of goal
-- **Red**: Metric < 80% of goal
-- **Grey/Pending**: Metric not yet available (Revalida, Zendesk not fetched)
+## API Changes: `src/lib/scorecardApi.ts`
+
+### New Functions
+
+```typescript
+// Save scorecard for a week (admin only)
+export async function saveScorecard(
+  weekStart: Date,
+  weekEnd: Date,
+  supportType: string,
+  scorecards: AgentScorecard[],
+  savedBy: string
+): Promise<void>;
+
+// Fetch saved scorecard (returns null if not saved)
+export async function fetchSavedScorecard(
+  weekStart: Date,
+  weekEnd: Date,
+  supportType: string
+): Promise<SavedScorecard[] | null>;
+
+// Check if week is saved
+export async function isWeekSaved(
+  weekStart: Date,
+  weekEnd: Date,
+  supportType: string
+): Promise<boolean>;
+```
 
 ---
 
 ## Implementation Steps
 
 ### Step 1: Database Migration
-- Create `scorecard_config` table with RLS
-- Create `zendesk_agent_metrics` table with RLS
-- Insert default weight/goal configuration for all 5 support types
+- Create `saved_scorecards` table with RLS
+- Add unique constraint to `zendesk_agent_metrics`
+- Enable pg_cron and pg_net extensions (if not already)
 
-### Step 2: Create Edge Function
-- Build `fetch-zendesk-metrics` function
-- Implement Zendesk Talk Stats and Chat API integration
-- Cache results in `zendesk_agent_metrics`
+### Step 2: Create Cron Job
+- Schedule weekly fetch for Monday 7 AM UTC
 
-### Step 3: Create Scorecard API
-- Build `src/lib/scorecardApi.ts`
-- Query `agent_profiles` for agent list filtered by position
-- Exclude Terminated, Team Lead, Technical Support
-- Join with ticket_logs, qa_evaluations, profile_events, leave_requests
-- Implement all calculation functions
+### Step 3: Update Edge Function
+- Add scheduled mode support
+- Implement Zendesk Talk API integration
+- Implement Zendesk Chat/Messaging API integration
+- Add batch processing with delays
+- Add minimum date check (Jan 26, 2026)
 
-### Step 4: Build Scorecard Page
-- Create `src/pages/TeamScorecard.tsx`
-- Week navigation (Monday-Sunday)
-- Support type filter dropdown
-- Dynamic table columns per support type
-- Color-coded performance indicators
+### Step 4: Update Scorecard API
+- Add `saveScorecard()` function
+- Add `fetchSavedScorecard()` function
+- Update display logic to merge live/saved data
 
-### Step 5: Update Navigation
-- Add "Scorecard" to Layout.tsx Team Performance menu
-- Add route `/team-performance/scorecard` to App.tsx
+### Step 5: Update Scorecard Page
+- Add Save button (admin only)
+- Add saved indicator badges
+- Add unsaved data warning for old weeks
+- Implement save confirmation and loading states
 
 ---
 
@@ -260,16 +297,43 @@ if (totalWeight < 100 && totalWeight > 0) {
 
 | File | Action | Description |
 |------|--------|-------------|
-| Database Migration | Create | scorecard_config + zendesk_agent_metrics tables |
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Create | Zendesk performance metrics fetching |
-| `src/lib/scorecardApi.ts` | Create | Scorecard data aggregation using agent_profiles as base |
-| `src/pages/TeamScorecard.tsx` | Create | Main scorecard page component |
-| `src/components/Layout.tsx` | Modify | Add Scorecard to Team Performance menu |
-| `src/App.tsx` | Modify | Add /team-performance/scorecard route |
+| Database Migration | Create | saved_scorecards table, unique constraint, cron job |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Modify | Full Zendesk API integration with batch processing |
+| `src/lib/scorecardApi.ts` | Modify | Add save/fetch saved scorecard functions |
+| `src/pages/TeamScorecard.tsx` | Modify | Add Save button, saved indicators, merge display logic |
 
 ---
 
-## Access Control
-- Everyone (all logged-in users) can view the Scorecard page
-- All eligible agents' data visible to all authenticated users
-- Scorecard configuration (weights/goals) editable by admins only (future)
+## Test Week: Jan 26 - Feb 1, 2026
+
+For verification:
+1. Manually trigger the edge function with `weekStart: "2026-01-26"` and `weekEnd: "2026-02-01"`
+2. Verify data is pulled from Zendesk correctly
+3. Compare computed AHT/FRT values with Zendesk Explore reports
+4. Test the Save functionality with this week
+
+---
+
+## Rate Limit Safety
+
+| Zendesk Tier | Rate Limit | Our Usage |
+|--------------|------------|-----------|
+| Essential | 200 req/min | ~20 req/min (with delays) |
+| Team | 400 req/min | ~20 req/min (with delays) |
+| Professional | 400 req/min | ~20 req/min (with delays) |
+
+With 10 agents per batch, 500ms between requests, and 5s between batches:
+- 10 agents × 2 API calls (Talk + Chat) = 20 requests per batch
+- 20 requests / 10 seconds = ~120 requests/minute max
+- Well within all Zendesk tier limits
+
+---
+
+## Edge Cases
+
+1. **No Zendesk data for agent**: Store null values, still save other metrics
+2. **Agent not in agent_directory**: Skip Zendesk metrics, still compute reliability/productivity
+3. **Week before Jan 26, 2026**: Show "No data available" message
+4. **Saving already-saved week**: Overwrite silently (per user choice)
+5. **Viewing old unsaved week**: Show live calculations with warning about potential data loss
+
