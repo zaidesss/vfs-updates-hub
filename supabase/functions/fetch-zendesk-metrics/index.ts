@@ -35,6 +35,12 @@ interface ZendeskConfig {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Construct Zendesk email from support_account number
+function getZendeskEmail(supportAccount: string | null): string | null {
+  if (!supportAccount || supportAccount.trim() === '') return null;
+  return `support${supportAccount}@virtualfreelancesolutions.com`;
+}
+
 // Calculate previous week's Monday-Sunday range
 function getPreviousWeekRange(): { weekStart: string; weekEnd: string } {
   const now = new Date();
@@ -252,7 +258,7 @@ async function fetchChatMetrics(
 // Process agents in batches
 async function processAgentsInBatches(
   supabase: any,
-  agents: { email: string; zendesk_instance: string | null }[],
+  agents: { email: string; zendesk_instance: string | null; support_account: string | null }[],
   weekStart: string,
   weekEnd: string,
   zd1Config: ZendeskConfig | null,
@@ -273,11 +279,18 @@ async function processAgentsInBatches(
         continue;
       }
 
-      console.log(`Fetching metrics for ${agent.email} (${agent.zendesk_instance})`);
+      // Construct Zendesk email from support_account
+      const zendeskEmail = getZendeskEmail(agent.support_account);
+      if (!zendeskEmail) {
+        console.log(`Skipping ${agent.email}: no support_account configured`);
+        continue;
+      }
+
+      console.log(`Fetching metrics for ${agent.email} using Zendesk account ${zendeskEmail} (${agent.zendesk_instance})`);
 
       const [callMetrics, chatMetrics] = await Promise.all([
-        fetchCallMetrics(config, agent.email, weekStart, weekEnd),
-        fetchChatMetrics(config, agent.email, weekStart, weekEnd),
+        fetchCallMetrics(config, zendeskEmail, weekStart, weekEnd),
+        fetchChatMetrics(config, zendeskEmail, weekStart, weekEnd),
       ]);
 
       const metrics: AgentMetrics = {
@@ -412,7 +425,7 @@ Deno.serve(async (req) => {
     // Fetch agents to process
     let agentsQuery = supabase
       .from('agent_profiles')
-      .select('email, zendesk_instance')
+      .select('email, zendesk_instance, support_account')
       .not('employment_status', 'eq', 'Terminated')
       .not('zendesk_instance', 'is', null);
 
