@@ -349,25 +349,26 @@ async function fetchChatMetrics(
     const rawResults = searchData.results || [];
     console.log(`Raw search returned ${rawResults.length} tickets for User ID ${zendeskUserId}`);
     
-    // Log via/channel info for first few tickets to understand data structure
-    if (rawResults.length > 0) {
-      const sampleTickets = rawResults.slice(0, 5).map((t: any) => ({
-        id: t.id,
-        via: t.via?.channel,
-        comment_count: t.comment_count,
-        status: t.status
-      }));
-      console.log(`Sample tickets: ${JSON.stringify(sampleTickets)}`);
+    // Analyze via channel distribution
+    const channelCounts: Record<string, number> = {};
+    for (const t of rawResults) {
+      const channel = t.via?.channel || 'unknown';
+      channelCounts[channel] = (channelCounts[channel] || 0) + 1;
     }
+    console.log(`Channel distribution for User ID ${zendeskUserId}: ${JSON.stringify(channelCounts)}`);
     
-    // For messaging tickets, comment_count may not be populated correctly
-    // Use a more lenient filter: just exclude deleted tickets
-    // Agent-replied vs bot-only will be distinguished by metric events having agent_work_time
-    const tickets = rawResults.filter((t: any) => 
-      t.status !== 'deleted'
+    // Filter to messaging-related channels only
+    // These are the channels that Explore counts as "Messaging (legacy) tickets"
+    const messagingChannels = ['native_messaging', 'messaging', 'web_messaging', 'chat', 'mobile_sdk', 'facebook', 'twitter', 'instagram'];
+    const messagingTickets = rawResults.filter((t: any) => 
+      t.status !== 'deleted' && 
+      messagingChannels.includes(t.via?.channel)
     );
+    
+    console.log(`Found ${messagingTickets.length} messaging tickets for User ID ${zendeskUserId} (from ${rawResults.length} total)`);
 
-    console.log(`Found ${tickets.length} valid chat/messaging tickets for User ID ${zendeskUserId} (filtered from ${rawResults.length})`);
+    // Use messaging tickets for Chat metrics
+    const tickets = messagingTickets;
 
     if (tickets.length === 0) {
       return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
