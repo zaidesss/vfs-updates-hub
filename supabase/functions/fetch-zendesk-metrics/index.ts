@@ -324,10 +324,9 @@ async function fetchChatMetrics(
   weekEnd: string
 ): Promise<{ ahtSeconds: number | null; frtSeconds: number | null; totalChats: number }> {
   try {
-    // Use created date for accurate week filtering (Explore aligned)
-    // This ensures only tickets created within the week are included
-    // Use via: syntax for all messaging channels (channel: syntax doesn't work for legacy messaging)
-    const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR via:messaging OR via:web_messaging OR via:native_messaging OR via:mobile_sdk)`;
+    // Explore uses "Ticket solved - Date" for weekly reporting
+    // Try without via filter first to see total ticket count, then filter by via in results
+    const query = `type:ticket assignee_id:${zendeskUserId} solved>=${weekStart} solved<=${weekEnd}`;
     const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc&per_page=100`;
 
     console.log(`Searching chats (Explore aligned) for User ID ${zendeskUserId}: ${query}`);
