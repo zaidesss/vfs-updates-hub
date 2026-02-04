@@ -163,10 +163,13 @@ async function fetchCallMetrics(
     // Fetch all legs from the incremental API starting from weekStart
     const allLegs = await paginateIncrementalLegs(config, startEpoch, endEpoch);
 
-    // Filter legs for this specific agent and only agent type legs
+    // Filter legs for this specific agent - only accepted legs (talk_time > 0)
+    // Formula: (Leg talk time hrs × 3600) ÷ Accepted calls ÷ 60
+    // Accepted calls = legs where agent actually talked (talk_time > 0)
     const agentLegs = allLegs.filter(leg => 
       String(leg.agent_id) === zendeskUserId && 
-      leg.type === 'agent'  // Only count agent legs, exclude customer/system legs
+      leg.type === 'agent' &&
+      (leg.talk_time || 0) > 0  // Only accepted legs with actual talk time
     );
 
     console.log(`Found ${agentLegs.length} agent legs for ${zendeskUserId} out of ${allLegs.length} total legs`);
@@ -183,11 +186,9 @@ async function fetchCallMetrics(
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
-    // Get unique call IDs to match Zendesk Explore calculation
-    // Formula: (Leg talk time hrs × 3600) / Accepted calls / 60
-    // = Total Talk Time (seconds) / Unique Calls
-    const uniqueCallIds = new Set(weekLegs.map(leg => String(leg.call_id)));
-    const uniqueCallCount = uniqueCallIds.size;
+    // Formula: (Leg talk time hrs × 3600) ÷ Accepted calls ÷ 60
+    // Accepted calls = legs where agent actually talked (already filtered for talk_time > 0)
+    const acceptedCallsCount = weekLegs.length;
 
     // Calculate AHT: talk_time only (excluding wrap_up_time to match Zendesk Explore)
     let totalTalkTime = 0;
@@ -195,11 +196,11 @@ async function fetchCallMetrics(
       totalTalkTime += leg.talk_time || 0;
     }
 
-    // AHT = Total Talk Time / Unique Calls (not legs)
-    const ahtSeconds = uniqueCallCount > 0 ? Math.round(totalTalkTime / uniqueCallCount) : null;
-    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${uniqueCallCount} unique calls, ${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
+    // AHT = Total Talk Time / Accepted Calls (legs with talk_time > 0)
+    const ahtSeconds = acceptedCallsCount > 0 ? Math.round(totalTalkTime / acceptedCallsCount) : null;
+    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${acceptedCallsCount} accepted calls, talk: ${totalTalkTime}s)`);
 
-    return { ahtSeconds, totalCalls: uniqueCallCount };
+    return { ahtSeconds, totalCalls: acceptedCallsCount };
 
   } catch (error) {
     console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);
