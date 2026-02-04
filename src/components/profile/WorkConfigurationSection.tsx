@@ -290,6 +290,18 @@ export function WorkConfigurationSection({
             className={!canEdit ? 'bg-muted' : ''}
           />
         </div>
+
+        {/* Zendesk User ID */}
+        <div className="space-y-2">
+          <Label>Zendesk User ID</Label>
+          <Input
+            value={profile.zendesk_user_id || ''}
+            onChange={(e) => onInputChange('zendesk_user_id', e.target.value)}
+            placeholder="e.g., 11436740426393"
+            disabled={!canEdit}
+            className={!canEdit ? 'bg-muted' : ''}
+          />
+        </div>
       </div>
 
       {/* Productivity (Quota) - conditional based on position */}

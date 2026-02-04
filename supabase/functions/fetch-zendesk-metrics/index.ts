@@ -183,17 +183,23 @@ async function fetchCallMetrics(
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
+    // Get unique call IDs to match Zendesk Explore calculation
+    // Formula: (Leg talk time hrs × 3600) / Accepted calls / 60
+    // = Total Talk Time (seconds) / Unique Calls
+    const uniqueCallIds = new Set(weekLegs.map(leg => String(leg.call_id)));
+    const uniqueCallCount = uniqueCallIds.size;
+
     // Calculate AHT: talk_time only (excluding wrap_up_time to match Zendesk Explore)
     let totalTalkTime = 0;
-
     for (const leg of weekLegs) {
       totalTalkTime += leg.talk_time || 0;
     }
 
-    const ahtSeconds = Math.round(totalTalkTime / weekLegs.length);
-    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
+    // AHT = Total Talk Time / Unique Calls (not legs)
+    const ahtSeconds = uniqueCallCount > 0 ? Math.round(totalTalkTime / uniqueCallCount) : null;
+    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${uniqueCallCount} unique calls, ${weekLegs.length} legs, talk: ${totalTalkTime}s)`);
 
-    return { ahtSeconds, totalCalls: weekLegs.length };
+    return { ahtSeconds, totalCalls: uniqueCallCount };
 
   } catch (error) {
     console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);

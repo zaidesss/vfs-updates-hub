@@ -630,3 +630,43 @@ export async function upsertZendeskMetrics(
 
   return { success: true };
 }
+
+// Trigger a manual refresh of Zendesk metrics for a specific support type
+export async function triggerMetricsRefresh(
+  weekStart: string,
+  weekEnd: string,
+  supportType: string
+): Promise<{ success: boolean; processed?: number; error?: string }> {
+  // Fetch agent emails for this support type
+  const { data: agents, error: agentsError } = await supabase
+    .from('agent_profiles')
+    .select('email')
+    .eq('position', supportType)
+    .neq('employment_status', 'Terminated')
+    .not('zendesk_instance', 'is', null);
+
+  if (agentsError) {
+    return { success: false, error: agentsError.message };
+  }
+
+  const agentEmails = (agents || []).map(a => a.email);
+  if (agentEmails.length === 0) {
+    return { success: true, processed: 0 };
+  }
+
+  // Call edge function with scheduled: true to bypass cache
+  const response = await supabase.functions.invoke('fetch-zendesk-metrics', {
+    body: {
+      scheduled: true, // Bypasses the 1-hour cache
+      weekStart,
+      weekEnd,
+      agentEmails,
+    },
+  });
+
+  if (response.error) {
+    return { success: false, error: response.error.message };
+  }
+
+  return { success: true, processed: response.data?.processed || agentEmails.length };
+}
