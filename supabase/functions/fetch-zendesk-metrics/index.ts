@@ -258,8 +258,13 @@ async function batchFetchTicketMetricsExploreAligned(
 
         if (metricsResponse.ok) {
           const metricsData = await metricsResponse.json();
+          const tm = metricsData.ticket_metric;
+          
+          // Log all available metrics for debugging
+          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min, agent_wait=${tm?.agent_wait_time_in_minutes?.calendar}min, requester_wait=${tm?.requester_wait_time_in_minutes?.calendar}min`);
+          
           // Use seconds for precision (Explore aligned)
-          frtSeconds = metricsData.ticket_metric?.reply_time_in_seconds?.calendar || null;
+          frtSeconds = tm?.reply_time_in_seconds?.calendar || null;
         }
 
         if (eventsResponse.ok) {
