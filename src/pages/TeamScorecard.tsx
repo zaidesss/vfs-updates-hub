@@ -470,6 +470,38 @@ export default function TeamScorecard() {
                 )}
               </Button>
             )}
+
+            {canSave && !isBeforeMinimumDate && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      onClick={() => refreshMutation.mutate()}
+                      disabled={refreshMutation.isPending || supportType === 'all'}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {refreshMutation.isPending ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Refreshing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Refresh Metrics
+                        </>
+                      )}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {supportType === 'all' && (
+                  <TooltipContent>
+                    <p>Select a specific support type to refresh metrics</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            )}
           </div>
         </div>
 
