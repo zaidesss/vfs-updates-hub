@@ -85,6 +85,7 @@ export default function AgentProfilePage() {
     weekend_ot_schedule: '',
     day_off: [],
     ot_enabled: false,
+    zendesk_user_id: '',
   });
   
   const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>(emptyRateHistory);
@@ -161,6 +162,7 @@ export default function AgentProfilePage() {
         weekend_ot_schedule: result.data.weekend_ot_schedule || '',
         day_off: result.data.day_off || [],
         ot_enabled: result.data.ot_enabled || false,
+        zendesk_user_id: result.data.zendesk_user_id || '',
       });
       
       const existingHistory = result.data.rate_history || [];
@@ -226,6 +228,7 @@ export default function AgentProfilePage() {
         weekend_ot_schedule: '',
         day_off: [],
         ot_enabled: false,
+        zendesk_user_id: '',
       });
       setRateHistoryUI(Array(6).fill(null).map(() => ({ date: '', rate: '' })));
     }

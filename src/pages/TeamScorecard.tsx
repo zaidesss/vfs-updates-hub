@@ -19,6 +19,7 @@ import {
   saveScorecard,
   isWeekSaved,
   upsertZendeskMetrics,
+  triggerMetricsRefresh,
   SUPPORT_TYPES,
   getScoreColor,
   getScoreBgColor,
@@ -148,6 +149,22 @@ export default function TeamScorecard() {
     },
     onError: (error) => {
       toast.error(`Error saving scorecard: ${error.message}`);
+    },
+  });
+
+  // Refresh Zendesk metrics mutation (admin only, per support type)
+  const refreshMutation = useMutation({
+    mutationFn: () => triggerMetricsRefresh(weekStartStr, weekEndStr, supportType),
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(`Refreshed metrics for ${result.processed} agents`);
+        queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
+      } else {
+        toast.error(`Refresh failed: ${result.error}`);
+      }
+    },
+    onError: (error) => {
+      toast.error(`Error: ${error.message}`);
     },
   });
 
@@ -305,19 +322,35 @@ export default function TeamScorecard() {
                 </Button>
               </div>
 
-              {/* Support Type Filter */}
-              <Select value={supportType} onValueChange={(val) => { setSupportType(val); setEditedMetrics({}); }}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select support type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SUPPORT_TYPES.map(type => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Support Type Filter + Refresh Button */}
+              <div className="flex items-center gap-2">
+                <Select value={supportType} onValueChange={(val) => { setSupportType(val); setEditedMetrics({}); }}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select support type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORT_TYPES.map(type => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Refresh Metrics Button - Admin Only */}
+                {canSave && !isBeforeMinimumDate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshMutation.mutate()}
+                    disabled={refreshMutation.isPending}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${refreshMutation.isPending ? 'animate-spin' : ''}`} />
+                    {refreshMutation.isPending ? 'Refreshing...' : 'Refresh Metrics'}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

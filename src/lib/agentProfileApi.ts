@@ -165,6 +165,7 @@ export interface AgentProfile {
   sun_ot_schedule: string | null;
   day_off: string[] | null;
   ot_enabled: boolean | null;
+  zendesk_user_id: string | null;
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -236,6 +237,7 @@ export interface AgentProfileInput {
   sun_ot_schedule?: string;
   day_off?: string[];
   ot_enabled?: boolean;
+  zendesk_user_id?: string;
 }
 
 export interface ProfileChangeRequest {
