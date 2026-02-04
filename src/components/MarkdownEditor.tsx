@@ -8,6 +8,7 @@ import { PlaybookPage } from './playbook/PlaybookPage';
 import { PlaybookArticle } from '@/lib/playbookTypes';
 import { Wand2, Loader2, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { FileAttachmentButton, AttachedFile } from './editor/FileAttachmentButton';
 
 interface MarkdownEditorProps {
   value: string;
@@ -15,6 +16,8 @@ interface MarkdownEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: number;
+  attachments?: AttachedFile[];
+  onAttachmentsChange?: (attachments: AttachedFile[]) => void;
 }
 
 export function MarkdownEditor({ 
@@ -22,7 +25,9 @@ export function MarkdownEditor({
   onChange, 
   placeholder = "Write your article content here...\n\nSupports **markdown** formatting:\n- # Heading 1\n- ## Heading 2\n- **bold** and *italic*\n- Lists, tables, code blocks\n- > Blockquotes for messaging templates",
   className,
-  minHeight = 400
+  minHeight = 400,
+  attachments = [],
+  onAttachmentsChange
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [isFormatting, setIsFormatting] = useState(false);
@@ -60,6 +65,15 @@ export function MarkdownEditor({
     setIsFormatting(true);
     
     try {
+      // Build attachment info for AI
+      const attachmentInfo = attachments.length > 0 
+        ? attachments.map(a => ({
+            name: a.name,
+            url: a.url,
+            type: a.type
+          }))
+        : [];
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/format-update`,
         {
@@ -68,7 +82,7 @@ export function MarkdownEditor({
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ content: value }),
+          body: JSON.stringify({ content: value, attachments: attachmentInfo }),
         }
       );
 
@@ -150,6 +164,13 @@ export function MarkdownEditor({
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2">
+            {onAttachmentsChange && (
+              <FileAttachmentButton
+                attachments={attachments}
+                onAttachmentsChange={onAttachmentsChange}
+                disabled={isFormatting || pendingApproval}
+              />
+            )}
             {pendingApproval ? (
               <>
                 <Button

@@ -14,6 +14,7 @@ import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { fetchAdmins, AdminRole } from '@/lib/api';
 import { Update } from '@/types';
+import { AttachedFile } from '@/components/editor/FileAttachmentButton';
 
 interface CreateUpdateDialogProps {
   onUpdateCreated?: () => void;
@@ -33,6 +34,7 @@ export function CreateUpdateDialog({
   const [isCreating, setIsCreating] = useState(false);
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [admins, setAdmins] = useState<AdminRole[]>([]);
+  const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   
   const [newUpdate, setNewUpdate] = useState({
     title: '',
@@ -88,6 +90,7 @@ export function CreateUpdateDialog({
         status: 'draft',
         category: '',
       });
+      setAttachments([]);
       setIsOpen(false);
       onUpdateCreated?.();
     } finally {
@@ -155,6 +158,8 @@ export function CreateUpdateDialog({
                 onChange={(value) => setNewUpdate(prev => ({ ...prev, body: value }))}
                 placeholder="Paste your update here, then click 'AI Format' to make it look nice. After that, click 'Preview' to see how it will look."
                 minHeight={300}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
               />
             </div>
             <div className="space-y-2">

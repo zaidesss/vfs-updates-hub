@@ -10,6 +10,7 @@ import { AdminRole } from '@/lib/api';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
 import { Loader2 } from 'lucide-react';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
+import { AttachedFile } from '@/components/editor/FileAttachmentButton';
 
 interface EditUpdateDialogProps {
   update: Update | null;
@@ -21,6 +22,7 @@ interface EditUpdateDialogProps {
 
 export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }: EditUpdateDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     summary: '',
@@ -44,6 +46,8 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
         status: update.status,
         category: update.category || '',
       });
+      // Reset attachments when update changes (future: could extract from body JSON)
+      setAttachments([]);
     }
   }, [update]);
 
@@ -103,6 +107,8 @@ export function EditUpdateDialog({ update, open, onOpenChange, onSave, admins }:
               onChange={(value) => setFormData(prev => ({ ...prev, body: value }))}
               placeholder="Write your article content here..."
               minHeight={300}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
             />
           </div>
           <div className="space-y-2">
