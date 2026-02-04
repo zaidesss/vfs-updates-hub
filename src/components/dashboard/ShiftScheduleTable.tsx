@@ -110,6 +110,53 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
     );
   }
 
+  // OT badges
+  if (dayAttendance.otStatus || dayAttendance.otSchedule) {
+    const { otStatus, otLoginTime, otLogoutTime, otSchedule } = dayAttendance;
+    
+    switch (otStatus) {
+      case 'present_ot':
+        badges.push(
+          <Badge key="present-ot" className="bg-green-600 hover:bg-green-700 text-white">
+            Present OT {otLoginTime && `(${otLoginTime})`}
+          </Badge>
+        );
+        break;
+      case 'late_ot':
+        badges.push(
+          <Badge key="late-ot" variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white">
+            Late OT {otLoginTime && `(${otLoginTime})`}
+          </Badge>
+        );
+        break;
+      case 'absent_ot':
+        badges.push(
+          <Badge key="absent-ot" variant="destructive" className="bg-red-500 hover:bg-red-600 text-white">
+            Absent OT
+          </Badge>
+        );
+        break;
+      case 'pending_ot':
+        if (otSchedule) {
+          badges.push(
+            <Badge key="pending-ot" variant="secondary" className="bg-muted/50 text-muted-foreground opacity-60">
+              OT Scheduled
+            </Badge>
+          );
+        }
+        break;
+    }
+    
+    // OT Logout badge
+    if (otLogoutTime && (otStatus === 'present_ot' || otStatus === 'late_ot')) {
+      badges.push(
+        <Badge key="ot-out" variant="secondary" className="bg-muted text-muted-foreground">
+          OT Out ({otLogoutTime})
+        </Badge>
+      );
+    }
+  }
+
   return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
 

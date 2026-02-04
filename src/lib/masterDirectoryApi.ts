@@ -24,6 +24,14 @@ export interface DirectoryEntry {
   break_schedule: string | null;
   weekday_ot_schedule: string | null;
   weekend_ot_schedule: string | null;
+  // Per-day OT schedules
+  mon_ot_schedule: string | null;
+  tue_ot_schedule: string | null;
+  wed_ot_schedule: string | null;
+  thu_ot_schedule: string | null;
+  fri_ot_schedule: string | null;
+  sat_ot_schedule: string | null;
+  sun_ot_schedule: string | null;
   ot_total_hours: number;
   unpaid_break_hours: number;
   overall_total_hours: number;
@@ -176,13 +184,35 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
   // Parse daily hours from schedule strings
   const dailyWeekdayHours = parseScheduleHours(entry.weekday_schedule ?? null);
   const dailyWeekendHours = parseScheduleHours(entry.weekend_schedule ?? null);
-  const weekdayOtHours = parseScheduleHours(entry.weekday_ot_schedule ?? null);
-  const weekendOtHours = parseScheduleHours(entry.weekend_ot_schedule ?? null);
+  
+  // Calculate OT hours from per-day OT schedules (OT can happen even on day off)
+  const otSchedules = [
+    { day: 'Mon', schedule: (entry as any).mon_ot_schedule },
+    { day: 'Tue', schedule: (entry as any).tue_ot_schedule },
+    { day: 'Wed', schedule: (entry as any).wed_ot_schedule },
+    { day: 'Thu', schedule: (entry as any).thu_ot_schedule },
+    { day: 'Fri', schedule: (entry as any).fri_ot_schedule },
+    { day: 'Sat', schedule: (entry as any).sat_ot_schedule },
+    { day: 'Sun', schedule: (entry as any).sun_ot_schedule },
+  ];
+  
+  let otTotalHours = 0;
+  otSchedules.forEach(({ schedule }) => {
+    if (schedule) {
+      otTotalHours += parseScheduleHours(schedule);
+    }
+  });
+  
+  // Fallback to legacy weekday_ot_schedule/weekend_ot_schedule if no per-day schedules
+  if (otTotalHours === 0) {
+    const weekdayOtHours = parseScheduleHours(entry.weekday_ot_schedule ?? null);
+    const weekendOtHours = parseScheduleHours(entry.weekend_ot_schedule ?? null);
+    otTotalHours = weekdayOtHours + weekendOtHours;
+  }
   
   // Calculate weekly totals
   const weekdayTotalHours = workingWeekdays * dailyWeekdayHours;
   const weekendTotalHours = workingWeekendDays * dailyWeekendHours;
-  const otTotalHours = weekdayOtHours + weekendOtHours;
   
   // Check if break schedule has a value - only apply break deductions if it does
   const hasBreakSchedule = entry.break_schedule && entry.break_schedule.trim() !== '';
@@ -192,12 +222,17 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
     // Parse actual break duration from break schedule
     const breakDurationPerDay = parseScheduleHours(entry.break_schedule ?? null);
     
-    // Weekday breaks + fixed 30 min Weekend Revalida
-    unpaidBreakHours = (workingWeekdays * breakDurationPerDay) + 0.5;
+    // Weekday breaks only (no Revalida deduction anymore)
+    unpaidBreakHours = workingWeekdays * breakDurationPerDay;
   }
   
-  // Overall = gross hours - unpaid breaks
-  const overallTotalHours = weekdayTotalHours + weekendTotalHours + otTotalHours - unpaidBreakHours;
+  // Fixed weekly additions (paid activities)
+  const revalidaHours = 0.5;  // 30 mins weekly - now ADDED
+  const weeklyMeetingHours = 0.5;  // 30 mins weekly - NEW addition
+  
+  // NEW FORMULA:
+  // Overall = (Weekday + Weekend + OT) - Unpaid Break + Revalida + Meeting
+  const overallTotalHours = weekdayTotalHours + weekendTotalHours + otTotalHours - unpaidBreakHours + revalidaHours + weeklyMeetingHours;
   
   return {
     weekday_total_hours: weekdayTotalHours,
@@ -262,6 +297,14 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         break_schedule: dirEntry?.break_schedule || null,
         weekday_ot_schedule: dirEntry?.weekday_ot_schedule || null,
         weekend_ot_schedule: dirEntry?.weekend_ot_schedule || null,
+        // Per-day OT schedules
+        mon_ot_schedule: dirEntry?.mon_ot_schedule || null,
+        tue_ot_schedule: dirEntry?.tue_ot_schedule || null,
+        wed_ot_schedule: dirEntry?.wed_ot_schedule || null,
+        thu_ot_schedule: dirEntry?.thu_ot_schedule || null,
+        fri_ot_schedule: dirEntry?.fri_ot_schedule || null,
+        sat_ot_schedule: dirEntry?.sat_ot_schedule || null,
+        sun_ot_schedule: dirEntry?.sun_ot_schedule || null,
         ot_total_hours: dirEntry?.ot_total_hours || 0,
         unpaid_break_hours: dirEntry?.unpaid_break_hours || 0,
         overall_total_hours: dirEntry?.overall_total_hours || 0,
@@ -452,7 +495,7 @@ export async function syncAllProfilesToDirectory(): Promise<{
     // Fetch all profiles with work configuration data
     const { data: profiles, error: profilesError } = await supabase
       .from('agent_profiles')
-      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, day_off, upwork_contract_id, ticket_assignment_view_id, ticket_assignment_enabled');
+      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule, day_off, upwork_contract_id, ticket_assignment_view_id, ticket_assignment_enabled');
     
     if (profilesError) {
       return { success: false, synced: 0, error: profilesError.message };
@@ -486,6 +529,14 @@ export async function syncAllProfilesToDirectory(): Promise<{
         break_schedule: profile.break_schedule || null,
         weekday_ot_schedule: profile.weekday_ot_schedule || null,
         weekend_ot_schedule: profile.weekend_ot_schedule || null,
+        // Per-day OT schedules
+        mon_ot_schedule: profile.mon_ot_schedule || null,
+        tue_ot_schedule: profile.tue_ot_schedule || null,
+        wed_ot_schedule: profile.wed_ot_schedule || null,
+        thu_ot_schedule: profile.thu_ot_schedule || null,
+        fri_ot_schedule: profile.fri_ot_schedule || null,
+        sat_ot_schedule: profile.sat_ot_schedule || null,
+        sun_ot_schedule: profile.sun_ot_schedule || null,
         day_off: profile.day_off || [],
         upwork_contract_id: profile.upwork_contract_id || null,
         ticket_assignment_view_id: profile.ticket_assignment_enabled ? profile.ticket_assignment_view_id : null,
@@ -493,7 +544,7 @@ export async function syncAllProfilesToDirectory(): Promise<{
         weekend_schedule: profile.sat_schedule || null,
       };
       
-      // Calculate hours
+      // Calculate hours (pass per-day OT schedules for new calculation)
       const hours = calculateTotalHours({
         weekday_schedule: syncData.weekday_schedule,
         weekend_schedule: syncData.weekend_schedule,
@@ -501,7 +552,14 @@ export async function syncAllProfilesToDirectory(): Promise<{
         weekend_ot_schedule: syncData.weekend_ot_schedule,
         break_schedule: syncData.break_schedule,
         day_off: syncData.day_off,
-      });
+        mon_ot_schedule: syncData.mon_ot_schedule,
+        tue_ot_schedule: syncData.tue_ot_schedule,
+        wed_ot_schedule: syncData.wed_ot_schedule,
+        thu_ot_schedule: syncData.thu_ot_schedule,
+        fri_ot_schedule: syncData.fri_ot_schedule,
+        sat_ot_schedule: syncData.sat_ot_schedule,
+        sun_ot_schedule: syncData.sun_ot_schedule,
+      } as any);
       
       // Upsert to agent_directory
       const { error: upsertError } = await supabase

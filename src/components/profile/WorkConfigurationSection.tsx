@@ -477,32 +477,107 @@ export function WorkConfigurationSection({
           />
         </div>
 
-        {/* OT Schedule Fields - only visible when OT is enabled */}
+        {/* OT Schedule Fields - per-day when OT is enabled */}
         {profile.ot_enabled && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 border rounded-md bg-muted/30">
-            <div className="space-y-2">
-              <Label>Weekday OT Schedule</Label>
-              <Input
-                value={profile.weekday_ot_schedule || ''}
-                onChange={(e) => onInputChange('weekday_ot_schedule', e.target.value)}
-                onBlur={(e) => handleScheduleBlur('weekday_ot_schedule', e.target.value)}
-                placeholder="5:00 PM-7:00 PM"
-                disabled={!canEdit}
-                className={cn(!canEdit ? 'bg-muted' : '', errors['weekday_ot_schedule'] && 'border-destructive')}
-              />
-              {errors['weekday_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekday_ot_schedule']}</p>}
+          <div className="space-y-4 p-3 border rounded-md bg-muted/30">
+            {/* Weekday OT Schedule */}
+            <div className="space-y-3">
+              <ProfileSectionHeader title="Weekday OT Schedule" badge="hr" locked={!canEdit} />
+              <p className="text-xs text-muted-foreground">Configure OT schedule for each weekday (Mon-Fri)</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Monday OT</Label>
+                  <Input
+                    value={profile.mon_ot_schedule || ''}
+                    onChange={(e) => onInputChange('mon_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('mon_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['mon_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['mon_ot_schedule'] && <p className="text-xs text-destructive">{errors['mon_ot_schedule']}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Tuesday OT</Label>
+                  <Input
+                    value={profile.tue_ot_schedule || ''}
+                    onChange={(e) => onInputChange('tue_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('tue_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['tue_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['tue_ot_schedule'] && <p className="text-xs text-destructive">{errors['tue_ot_schedule']}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Wednesday OT</Label>
+                  <Input
+                    value={profile.wed_ot_schedule || ''}
+                    onChange={(e) => onInputChange('wed_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('wed_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['wed_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['wed_ot_schedule'] && <p className="text-xs text-destructive">{errors['wed_ot_schedule']}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Thursday OT</Label>
+                  <Input
+                    value={profile.thu_ot_schedule || ''}
+                    onChange={(e) => onInputChange('thu_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('thu_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['thu_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['thu_ot_schedule'] && <p className="text-xs text-destructive">{errors['thu_ot_schedule']}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Friday OT</Label>
+                  <Input
+                    value={profile.fri_ot_schedule || ''}
+                    onChange={(e) => onInputChange('fri_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('fri_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['fri_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['fri_ot_schedule'] && <p className="text-xs text-destructive">{errors['fri_ot_schedule']}</p>}
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Weekend OT Schedule</Label>
-              <Input
-                value={profile.weekend_ot_schedule || ''}
-                onChange={(e) => onInputChange('weekend_ot_schedule', e.target.value)}
-                onBlur={(e) => handleScheduleBlur('weekend_ot_schedule', e.target.value)}
-                placeholder="5:00 PM-7:00 PM"
-                disabled={!canEdit}
-                className={cn(!canEdit ? 'bg-muted' : '', errors['weekend_ot_schedule'] && 'border-destructive')}
-              />
-              {errors['weekend_ot_schedule'] && <p className="text-xs text-destructive">{errors['weekend_ot_schedule']}</p>}
+
+            {/* Weekend OT Schedule */}
+            <div className="space-y-3">
+              <ProfileSectionHeader title="Weekend OT Schedule" badge="hr" locked={!canEdit} />
+              <p className="text-xs text-muted-foreground">Configure OT schedule for weekend (Sat-Sun)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Saturday OT</Label>
+                  <Input
+                    value={profile.sat_ot_schedule || ''}
+                    onChange={(e) => onInputChange('sat_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('sat_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['sat_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['sat_ot_schedule'] && <p className="text-xs text-destructive">{errors['sat_ot_schedule']}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Sunday OT</Label>
+                  <Input
+                    value={profile.sun_ot_schedule || ''}
+                    onChange={(e) => onInputChange('sun_ot_schedule', e.target.value)}
+                    onBlur={(e) => handleScheduleBlur('sun_ot_schedule', e.target.value)}
+                    placeholder="5:00 PM-7:00 PM"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted', errors['sun_ot_schedule'] && 'border-destructive')}
+                  />
+                  {errors['sun_ot_schedule'] && <p className="text-xs text-destructive">{errors['sun_ot_schedule']}</p>}
+                </div>
+              </div>
             </div>
           </div>
         )}

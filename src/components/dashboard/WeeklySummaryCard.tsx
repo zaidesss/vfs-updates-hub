@@ -8,7 +8,8 @@ import {
   Coffee,
   Calendar,
   TrendingUp,
-  RotateCcw
+  RotateCcw,
+  Timer
 } from 'lucide-react';
 import type { DayAttendance, ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatDurationFromMinutes } from '@/lib/agentDashboardApi';
@@ -68,6 +69,16 @@ export function WeeklySummaryCard({ attendance, allEvents = [], className }: Wee
     (e) => (e.event_type as string) === 'DEVICE_RESTART_START'
   ).length;
 
+  // OT metrics
+  const otEvents = allEvents.filter(
+    (e) => e.event_type === 'OT_LOGIN' || e.event_type === 'OT_LOGOUT'
+  );
+  const otLoginCount = allEvents.filter(e => e.event_type === 'OT_LOGIN').length;
+  const totalOTWorkedMinutes = attendance.reduce(
+    (sum, a) => sum + (a.otHoursWorkedMinutes || 0),
+    0
+  );
+
   const metrics: SummaryMetric[] = [
     {
       label: 'Days Worked',
@@ -115,6 +126,17 @@ export function WeeklySummaryCard({ attendance, allEvents = [], className }: Wee
       value: deviceRestarts,
       icon: RotateCcw,
       color: 'text-orange-600 dark:text-orange-400',
+    });
+  }
+
+  // Add OT Hours if there are any OT sessions
+  if (otLoginCount > 0 || totalOTWorkedMinutes > 0) {
+    metrics.push({
+      label: 'OT Hours',
+      value: formatDurationFromMinutes(totalOTWorkedMinutes),
+      icon: Timer,
+      color: 'text-blue-600 dark:text-blue-400',
+      subtext: otLoginCount > 0 ? `${otLoginCount} session${otLoginCount > 1 ? 's' : ''}` : undefined,
     });
   }
 
