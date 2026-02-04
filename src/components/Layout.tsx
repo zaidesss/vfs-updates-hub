@@ -111,6 +111,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/team-performance/ticket-logs', label: 'Ticket Logs', icon: Ticket },
         { href: '/team-performance/qa-evaluations', label: 'QA Evaluations', icon: ClipboardList },
         { href: '/team-performance/agent-reports', label: 'Agent Reports', icon: FileWarning },
+        { href: '/team-performance/scorecard', label: 'Scorecard', icon: BarChart3 },
       ],
     });
 

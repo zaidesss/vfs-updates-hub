@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.assign-tickets-on-login]
 verify_jwt = false
+
+[functions.fetch-zendesk-metrics]
+verify_jwt = false

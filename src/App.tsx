@@ -38,6 +38,7 @@ import QAEvaluationForm from "./pages/QAEvaluationForm";
 import QAEvaluationDetail from "./pages/QAEvaluationDetail";
 import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import AgentReports from "./pages/AgentReports";
+import TeamScorecard from "./pages/TeamScorecard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -290,6 +291,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AgentReports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/scorecard"
+        element={
+          <ProtectedRoute>
+            <TeamScorecard />
           </ProtectedRoute>
         }
       />
