@@ -1,76 +1,95 @@
 
-# Fix Zendesk Chat/Messaging Search Query for ZD1
 
-## Problem Summary
-
-The current search query doesn't find Zendesk Messaging (legacy) tickets because it uses incorrect channel identifiers. The Explore screenshot shows agents with 3-79 messaging tickets, but our API returns 0 results.
-
-## Root Cause
-
-**Current Query:**
-```
-(via:chat OR channel:messaging OR channel:web)
-```
-
-**Issues:**
-1. `channel:messaging` and `channel:web` are not valid Zendesk Search API syntax for legacy messaging
-2. Zendesk Messaging (legacy) uses `via:messaging` or other `via:` values
-3. Need to expand the search to capture all messaging-related tickets
-
-## Solution
-
-Update the search query to use the correct Zendesk Search API syntax that matches all chat and messaging ticket types:
-
-**Corrected Query:**
-```
-(via:chat OR via:messaging OR via:web_messaging OR via:native_messaging OR via:mobile_sdk)
-```
-
-Alternatively, we can remove the channel filter entirely and use a broader approach, then filter by ticket attributes.
-
-## Technical Changes
-
-### File: `supabase/functions/fetch-zendesk-metrics/index.ts`
-
-**Line 317** - Update the search query:
-
-```typescript
-// Before (current - broken):
-const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
-
-// After (fixed):
-const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR via:messaging OR via:web_messaging OR via:native_messaging OR via:mobile_sdk)`;
-```
-
-## Alternative Approach (If Needed)
-
-If the expanded `via:` query still doesn't capture all tickets, we could:
-
-1. **Remove channel filter entirely** and rely on ticket attributes:
-   - Search: `type:ticket assignee_id:{id} created>={start} created<={end}`
-   - Then filter results where `ticket.via.channel` includes messaging-related types
-
-2. **Use Zendesk Talk API** to check if the ticket originated from chat/messaging based on the `via` object in ticket details
-
-## Validation
-
-After the fix:
-1. Re-run the edge function for week Jan 26 - Feb 1
-2. Verify `total_chats` matches Explore (e.g., Customer Care 15 - Pauline should show ~18 tickets)
-3. Compare Chat AHT values (e.g., Pauline should show ~17 min handle time)
-4. Compare Chat FRT values (e.g., Pauline should show ~1 min first reply)
-
-## Expected Mappings (from Explore screenshot)
-
-| Agent | Tickets | Handle Time | FRT |
-|-------|---------|-------------|-----|
-| Pauline Carbajosa (CC 15) | 18 | 17 min | 1 min |
-| Precious Mae Gagarra (CC 6) | 12 | 15 min | 0 min |
-| Kimberly Lacaden (CC 14) | 33 | 10 min | 0 min |
-| Jennifer Katigbak (CC 7) | 25 | 7 min | 0 min |
-| Will Angeline Reyes (CC 5) | 34 | 6 min | 0 min |
-| Desiree Cataytay (CC 2) | 34 | 5 min | 0 min |
+# Plan: Broaden Messaging Channels & Add Force Refresh Button
 
 ## Summary
+Update the Zendesk metrics fetching to include all messaging-like channels (`native_messaging`, `web_messaging`, `mobile_sdk`) and add a visible "Force Refresh" button that bypasses the cache and re-fetches fresh data from Zendesk for all agents of the selected support type.
 
-Single line change to fix the channel filter syntax, then deploy and verify the calculations match Zendesk Explore.
+---
+
+## Changes Overview
+
+### 1. Update Channel Filter in Edge Function
+**File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
+
+- **Current state:** Line 363 filters only for `native_messaging`
+- **Change:** Broaden the `messagingChannels` array to include:
+  - `native_messaging`
+  - `web_messaging`  
+  - `mobile_sdk`
+
+This aligns with Explore's broader "Messaging" definition and should capture all messaging-related tickets.
+
+### 2. Add Force Refresh Button to TeamScorecard
+**File:** `src/pages/TeamScorecard.tsx`
+
+Add a visible "Force Refresh" button in the header that:
+- Calls `triggerMetricsRefresh()` which passes `scheduled: true` to bypass the cache
+- Refreshes all agents of the currently selected support type
+- Shows a spinner while refreshing
+- Is visible only to Admins/Super Admins
+- Is disabled when `supportType === 'all'` (requires selecting a specific support type)
+- Placed next to the existing "Save Changes" / "Save Scorecard" buttons
+
+### 3. Improve Loading UX
+**File:** `src/pages/TeamScorecard.tsx`
+
+- The existing `refreshMutation` already has `isPending` state
+- Add visual feedback: spinner icon + "Refreshing..." text on the button
+- Disable the button while refresh is in progress
+
+---
+
+## Technical Details
+
+### Edge Function Changes
+```typescript
+// Line ~363 in fetch-zendesk-metrics/index.ts
+// FROM:
+const messagingChannels = ['native_messaging'];
+
+// TO:
+const messagingChannels = ['native_messaging', 'web_messaging', 'mobile_sdk'];
+```
+
+### Force Refresh Button Implementation
+The button will be added to the header area (around line 429-472) alongside the existing buttons:
+
+```text
+Button layout:
+[Save Changes (if edits)] [Save Scorecard] [Force Refresh]
+```
+
+Button states:
+- **Default:** Shows "Refresh Metrics" with refresh icon
+- **Loading:** Shows spinner + "Refreshing..." 
+- **Disabled conditions:**
+  - When `supportType === 'all'` (tooltip: "Select a support type first")
+  - When another mutation is in progress
+  - When `isBeforeMinimumDate` is true
+
+### Existing Infrastructure
+The codebase already has:
+- `refreshMutation` defined (lines 316-337) using `triggerMetricsRefresh()`
+- `triggerMetricsRefresh()` in `scorecardApi.ts` which passes `scheduled: true` to bypass cache
+- The edge function already supports `scheduled: true` to force fresh fetch
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Broaden `messagingChannels` filter |
+| `src/pages/TeamScorecard.tsx` | Add visible Force Refresh button with spinner |
+
+---
+
+## Expected Outcome
+
+1. **Broader ticket matching:** Chat AHT/FRT calculations will include tickets from `native_messaging`, `web_messaging`, and `mobile_sdk` channels, which should better align with Explore's totals.
+
+2. **Visible refresh capability:** Admins can click "Refresh Metrics" to force a fresh fetch from Zendesk API, bypassing the 1-hour cache.
+
+3. **Clear loading feedback:** Spinner on button indicates refresh is in progress.
+
