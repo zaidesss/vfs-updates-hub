@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown } from 'lucide-react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, eachWeekOfInterval } from 'date-fns';
@@ -677,7 +678,18 @@ export default function TeamScorecard() {
                         {showTypeColumn && <TableHead className="min-w-[120px]">Type</TableHead>}
                         <TableHead className="min-w-[180px]">Agent Name</TableHead>
                         {showProductivity && <TableHead className="text-center">Productivity</TableHead>}
-                        {showCallAht && <TableHead className="text-center">Call AHT</TableHead>}
+                        {showCallAht && (
+                          <TableHead className="text-center">
+                            <Tooltip>
+                              <TooltipTrigger className="cursor-help">
+                                Avg Talk Time
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>per call leg — Explore aligned</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableHead>
+                        )}
                         {showChatAht && <TableHead className="text-center">Chat AHT</TableHead>}
                         {showChatFrt && <TableHead className="text-center">Chat FRT</TableHead>}
                         {showQA && <TableHead className="text-center">QA</TableHead>}

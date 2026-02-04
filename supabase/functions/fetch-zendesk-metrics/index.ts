@@ -42,9 +42,13 @@ interface LegRecord {
   talk_time: number;
   wrap_up_time: number;
   type: string;  // "customer", "agent", "external", "supervisor"
+  completion_status?: string;  // "completed", "agent_missed", "agent_declined", etc.
   updated_at?: string;
   created_at?: string;
 }
+
+// Excluded statuses for Explore-aligned Avg Talk Time calculation
+const EXCLUDED_COMPLETION_STATUSES = ['agent_missed', 'agent_declined', 'agent_transfer_declined'];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -163,13 +167,13 @@ async function fetchCallMetrics(
     // Fetch all legs from the incremental API starting from weekStart
     const allLegs = await paginateIncrementalLegs(config, startEpoch, endEpoch);
 
-    // Filter legs for this specific agent - only accepted legs (talk_time > 0)
-    // Formula: (Leg talk time hrs × 3600) ÷ Accepted calls ÷ 60
-    // Accepted calls = legs where agent actually talked (talk_time > 0)
+    // Filter legs for this specific agent - Explore-aligned logic
+    // Include ALL agent legs EXCEPT missed/declined calls
+    // This matches Zendesk Explore's "Average Talk Time" per-leg calculation
     const agentLegs = allLegs.filter(leg => 
       String(leg.agent_id) === zendeskUserId && 
       leg.type === 'agent' &&
-      (leg.talk_time || 0) > 0  // Only accepted legs with actual talk time
+      !EXCLUDED_COMPLETION_STATUSES.includes(leg.completion_status || '')
     );
 
     console.log(`Found ${agentLegs.length} agent legs for ${zendeskUserId} out of ${allLegs.length} total legs`);
@@ -186,21 +190,22 @@ async function fetchCallMetrics(
       return { ahtSeconds: null, totalCalls: 0 };
     }
 
-    // Formula: (Leg talk time hrs × 3600) ÷ Accepted calls ÷ 60
-    // Accepted calls = legs where agent actually talked (already filtered for talk_time > 0)
-    const acceptedCallsCount = weekLegs.length;
+    // Explore-aligned formula: AVG(leg.talk_time_seconds)
+    // Total legs = all agent legs excluding missed/declined (per-leg granularity)
+    const totalLegs = weekLegs.length;
 
-    // Calculate AHT: talk_time only (excluding wrap_up_time to match Zendesk Explore)
+    // Sum all talk_time values (including zero-duration answered legs)
     let totalTalkTime = 0;
     for (const leg of weekLegs) {
       totalTalkTime += leg.talk_time || 0;
     }
 
-    // AHT = Total Talk Time / Accepted Calls (legs with talk_time > 0)
-    const ahtSeconds = acceptedCallsCount > 0 ? Math.round(totalTalkTime / acceptedCallsCount) : null;
-    console.log(`Call AHT for ${zendeskUserId}: ${ahtSeconds}s (${acceptedCallsCount} accepted calls, talk: ${totalTalkTime}s)`);
+    // Avg Talk Time = Total Talk Time / Total Legs (per-leg average, Explore aligned)
+    // Round only at the final step
+    const avgTalkTimeSeconds = totalLegs > 0 ? Math.round(totalTalkTime / totalLegs) : null;
+    console.log(`Avg Talk Time for ${zendeskUserId}: ${avgTalkTimeSeconds}s (${totalLegs} legs, total talk: ${totalTalkTime}s)`);
 
-    return { ahtSeconds, totalCalls: acceptedCallsCount };
+    return { ahtSeconds: avgTalkTimeSeconds, totalCalls: totalLegs };
 
   } catch (error) {
     console.error(`Error fetching call metrics for Zendesk User ID ${zendeskUserId}:`, error);
