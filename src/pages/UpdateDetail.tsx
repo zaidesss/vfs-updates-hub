@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
-import { fetchChangeHistory, submitQuestion } from '@/lib/api';
+import { fetchChangeHistory, submitQuestion, fetchAdmins, AdminRole } from '@/lib/api';
 import { UpdateChangeHistory } from '@/types';
 import { Layout } from '@/components/Layout';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
+import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -31,7 +32,8 @@ import {
   History,
   ChevronDown,
   Loader2,
-  Hash
+  Hash,
+  Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -39,34 +41,56 @@ import { toast } from 'sonner';
 export default function UpdateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate, ensureLoaded, isLoading } = useUpdates();
+  const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
+  const { getUpdateById, isAcknowledged, getAcknowledgement, acknowledgeUpdate, ensureLoaded, isLoading, editUpdate, refreshData } = useUpdates();
 
   const [question, setQuestion] = useState('');
   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false);
   const [changeHistory, setChangeHistory] = useState<UpdateChangeHistory[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [admins, setAdmins] = useState<AdminRole[]>([]);
+
+  // Check if user can edit (super admin, admin, or HR)
+  const canEdit = isSuperAdmin || isAdmin || isHR;
 
   useEffect(() => {
     ensureLoaded();
   }, [ensureLoaded]);
+
+  // Load admins for edit dialog
+  useEffect(() => {
+    async function loadAdmins() {
+      const { data } = await fetchAdmins();
+      if (data) setAdmins(data);
+    }
+    if (canEdit) loadAdmins();
+  }, [canEdit]);
 
   const update = getUpdateById(id || '');
   const acknowledged = user ? isAcknowledged(id || '', user.email) : false;
   const acknowledgement = user ? getAcknowledgement(id || '', user.email) : undefined;
 
   // Load change history
-  useEffect(() => {
-    async function loadHistory() {
-      if (id) {
-        const { data } = await fetchChangeHistory(id);
-        if (data) {
-          setChangeHistory(data);
-        }
+  const loadHistory = async () => {
+    if (id) {
+      const { data } = await fetchChangeHistory(id);
+      if (data) {
+        setChangeHistory(data);
       }
     }
+  };
+
+  useEffect(() => {
     loadHistory();
   }, [id]);
+
+  // Handle save from edit dialog
+  const handleSaveEdit = async (updateId: string, updateData: any) => {
+    await editUpdate(updateId, updateData, user?.email);
+    await refreshData();
+    await loadHistory();
+  };
 
   // Parse body as Playbook JSON if possible
   const playbookData = useMemo<PlaybookArticle | null>(() => {
@@ -145,8 +169,8 @@ export default function UpdateDetail() {
   const formatFieldName = (field: string) => {
     const fieldNames: Record<string, string> = {
       title: 'Title',
-      summary: 'Summary',
-      body: 'Body',
+      summary: 'Article Status',
+      body: 'Article Content',
       help_center_url: 'Help Center URL',
       posted_by: 'Posted By',
       deadline_at: 'Posted Date',
@@ -154,6 +178,99 @@ export default function UpdateDetail() {
       category: 'Category',
     };
     return fieldNames[field] || field;
+  };
+
+  // Extract meaningful snippets from body changes (for structured JSON content)
+  const extractBodyChangeSnippets = (oldBody: string | null, newBody: string | null): { section: string; oldSnippet: string; newSnippet: string }[] => {
+    const snippets: { section: string; oldSnippet: string; newSnippet: string }[] = [];
+    
+    try {
+      const oldData = oldBody ? JSON.parse(oldBody) : null;
+      const newData = newBody ? JSON.parse(newBody) : null;
+
+      if (!oldData?.sections || !newData?.sections) {
+        // Not structured content, return simple diff
+        return [{
+          section: 'Content',
+          oldSnippet: oldBody?.substring(0, 100) + (oldBody && oldBody.length > 100 ? '...' : '') || '(empty)',
+          newSnippet: newBody?.substring(0, 100) + (newBody && newBody.length > 100 ? '...' : '') || '(empty)'
+        }];
+      }
+
+      // Compare sections
+      const oldSections = new Map(oldData.sections.map((s: any) => [s.title, s]));
+      const newSections = new Map(newData.sections.map((s: any) => [s.title, s]));
+
+      // Find changed sections
+      newData.sections.forEach((newSection: any) => {
+        const oldSection = oldSections.get(newSection.title);
+        if (!oldSection) {
+          snippets.push({
+            section: newSection.title,
+            oldSnippet: '(new section)',
+            newSnippet: extractSectionText(newSection).substring(0, 150) + '...'
+          });
+        } else if (JSON.stringify(oldSection) !== JSON.stringify(newSection)) {
+          const oldText = extractSectionText(oldSection);
+          const newText = extractSectionText(newSection);
+          if (oldText !== newText) {
+            snippets.push({
+              section: newSection.title,
+              oldSnippet: oldText.substring(0, 150) + (oldText.length > 150 ? '...' : ''),
+              newSnippet: newText.substring(0, 150) + (newText.length > 150 ? '...' : '')
+            });
+          }
+        }
+      });
+
+      // Find removed sections
+      oldData.sections.forEach((oldSection: any) => {
+        if (!newSections.has(oldSection.title)) {
+          snippets.push({
+            section: oldSection.title,
+            oldSnippet: extractSectionText(oldSection).substring(0, 150) + '...',
+            newSnippet: '(section removed)'
+          });
+        }
+      });
+
+      // If no section-level changes detected but content differs, show general update
+      if (snippets.length === 0 && JSON.stringify(oldData) !== JSON.stringify(newData)) {
+        snippets.push({
+          section: 'Article Structure',
+          oldSnippet: 'Previous version',
+          newSnippet: 'Updated version'
+        });
+      }
+
+    } catch {
+      // Not JSON, show truncated text diff
+      return [{
+        section: 'Content',
+        oldSnippet: oldBody?.substring(0, 100) + (oldBody && oldBody.length > 100 ? '...' : '') || '(empty)',
+        newSnippet: newBody?.substring(0, 100) + (newBody && newBody.length > 100 ? '...' : '') || '(empty)'
+      }];
+    }
+
+    return snippets.length > 0 ? snippets : [{
+      section: 'Content',
+      oldSnippet: 'Previous version',
+      newSnippet: 'Updated version'
+    }];
+  };
+
+  // Extract readable text from a section
+  const extractSectionText = (section: any): string => {
+    if (!section.content || !Array.isArray(section.content)) return '';
+    
+    return section.content.map((item: any) => {
+      if (item.type === 'paragraph') return item.text || '';
+      if (item.type === 'bullets') return (item.items || []).join('; ');
+      if (item.type === 'steps') return (item.items || []).map((s: any) => s.title || s.text || '').join('; ');
+      if (item.type === 'callout') return item.text || '';
+      if (item.type === 'message_template') return item.content || '';
+      return '';
+    }).filter(Boolean).join(' ');
   };
 
   return (
@@ -215,6 +332,19 @@ export default function UpdateDetail() {
                 <h1 className="text-2xl font-bold text-foreground">{update.title}</h1>
                 <p className="text-muted-foreground mt-2">{update.summary}</p>
               </div>
+              
+              {/* Edit button in header */}
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditDialogOpen(true)}
+                  className="shrink-0"
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-muted-foreground">
@@ -345,22 +475,54 @@ export default function UpdateDetail() {
                             {formatDisplayDateTime(entry.changed_at)}
                           </span>
                         </div>
-                        <div className="space-y-2">
-                          {Object.entries(entry.changes).map(([field, change]) => (
-                            <div key={field} className="text-sm">
-                              <span className="font-medium">{formatFieldName(field)}:</span>
-                              <div className="ml-4 text-muted-foreground">
-                                <div className="flex items-start gap-2">
-                                  <span className="text-destructive shrink-0">−</span>
-                                  <span className="line-through opacity-60 break-all">{change.old || '(empty)'}</span>
+                        <div className="space-y-3">
+                          {Object.entries(entry.changes).map(([field, change]) => {
+                            // Special handling for body field - show section snippets
+                            if (field === 'body') {
+                              const snippets = extractBodyChangeSnippets(change.old, change.new);
+                              return (
+                                <div key={field} className="text-sm">
+                                  <span className="font-medium">{formatFieldName(field)}:</span>
+                                  <div className="ml-4 mt-2 space-y-3">
+                                    {snippets.map((snippet, idx) => (
+                                      <div key={idx} className="border-l-2 border-primary/30 pl-3 py-1">
+                                        <div className="font-medium text-xs text-primary mb-1">
+                                          📝 {snippet.section}
+                                        </div>
+                                        <div className="text-muted-foreground space-y-1">
+                                          <div className="flex items-start gap-2">
+                                            <span className="text-destructive shrink-0 font-mono">−</span>
+                                            <span className="line-through opacity-60 text-xs break-all">{snippet.oldSnippet}</span>
+                                          </div>
+                                          <div className="flex items-start gap-2">
+                                            <span className="text-success shrink-0 font-mono">+</span>
+                                            <span className="text-xs break-all">{snippet.newSnippet}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <div className="flex items-start gap-2">
-                                  <span className="text-success shrink-0">+</span>
-                                  <span className="break-all">{change.new || '(empty)'}</span>
+                              );
+                            }
+                            
+                            // Standard field rendering
+                            return (
+                              <div key={field} className="text-sm">
+                                <span className="font-medium">{formatFieldName(field)}:</span>
+                                <div className="ml-4 text-muted-foreground">
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-destructive shrink-0">−</span>
+                                    <span className="line-through opacity-60 break-all">{change.old || '(empty)'}</span>
+                                  </div>
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-success shrink-0">+</span>
+                                    <span className="break-all">{change.new || '(empty)'}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -370,6 +532,26 @@ export default function UpdateDetail() {
             </>
           )}
         </Card>
+
+        {/* Floating Edit Button */}
+        {canEdit && (
+          <Button
+            onClick={() => setIsEditDialogOpen(true)}
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+            size="icon"
+          >
+            <Pencil className="h-6 w-6" />
+          </Button>
+        )}
+
+        {/* Edit Dialog */}
+        <EditUpdateDialog
+          update={update}
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          onSave={handleSaveEdit}
+          admins={admins}
+        />
       </div>
     </Layout>
   );
