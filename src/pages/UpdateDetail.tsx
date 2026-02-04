@@ -180,6 +180,108 @@ export default function UpdateDetail() {
     return fieldNames[field] || field;
   };
 
+  // Extract all text items from a section for comparison
+  const extractAllTextItems = (section: any): string[] => {
+    const items: string[] = [];
+    if (!section.content || !Array.isArray(section.content)) return items;
+    
+    section.content.forEach((block: any) => {
+      if (block.type === 'paragraph' && block.text) {
+        items.push(block.text);
+      }
+      if (block.type === 'bullets' && Array.isArray(block.items)) {
+        block.items.forEach((item: string) => items.push(item));
+      }
+      if (block.type === 'list' && Array.isArray(block.items)) {
+        block.items.forEach((item: any) => {
+          if (typeof item === 'string') items.push(item);
+          else if (item.value) items.push(item.value);
+        });
+      }
+      if (block.type === 'steps' && Array.isArray(block.steps)) {
+        block.steps.forEach((step: any) => {
+          if (step.title) items.push(step.title);
+          if (step.description) items.push(step.description);
+          if (Array.isArray(step.substeps)) {
+            step.substeps.forEach((sub: string) => items.push(sub));
+          }
+        });
+      }
+      if (block.type === 'checklist' && Array.isArray(block.items)) {
+        block.items.forEach((item: string) => items.push(item));
+      }
+      if (block.type === 'callout' && block.text) {
+        items.push(block.text);
+      }
+      if (block.type === 'message_template' && block.content) {
+        items.push(block.content);
+      }
+    });
+    
+    return items;
+  };
+
+  // Find the actual text differences between old and new section
+  const findTextDifferences = (oldSection: any, newSection: any): { oldText: string; newText: string }[] => {
+    const differences: { oldText: string; newText: string }[] = [];
+    const oldItems = extractAllTextItems(oldSection);
+    const newItems = extractAllTextItems(newSection);
+    
+    // Create sets for quick lookup
+    const oldSet = new Set(oldItems);
+    const newSet = new Set(newItems);
+    
+    // Find items that changed (exist in old but not in new, paired with items in new but not in old)
+    const removedItems = oldItems.filter(item => !newSet.has(item));
+    const addedItems = newItems.filter(item => !oldSet.has(item));
+    
+    // Try to pair similar items (likely edits rather than add/remove)
+    const pairedChanges: { oldText: string; newText: string }[] = [];
+    const usedNewIndices = new Set<number>();
+    
+    removedItems.forEach(oldItem => {
+      // Find the most similar new item (simple substring matching)
+      let bestMatch = -1;
+      let bestScore = 0;
+      
+      addedItems.forEach((newItem, idx) => {
+        if (usedNewIndices.has(idx)) return;
+        
+        // Calculate similarity - check if they share common words
+        const oldWords = oldItem.toLowerCase().split(/\s+/);
+        const newWords = newItem.toLowerCase().split(/\s+/);
+        const commonWords = oldWords.filter(w => newWords.includes(w) && w.length > 3);
+        const score = commonWords.length / Math.max(oldWords.length, newWords.length);
+        
+        if (score > bestScore && score > 0.3) {
+          bestScore = score;
+          bestMatch = idx;
+        }
+      });
+      
+      if (bestMatch >= 0) {
+        pairedChanges.push({ oldText: oldItem, newText: addedItems[bestMatch] });
+        usedNewIndices.add(bestMatch);
+      }
+    });
+    
+    // If we found paired changes, use those
+    if (pairedChanges.length > 0) {
+      return pairedChanges;
+    }
+    
+    // Otherwise, just pair up the removed/added items
+    const maxLen = Math.max(removedItems.length, addedItems.length);
+    for (let i = 0; i < maxLen; i++) {
+      differences.push({
+        oldText: removedItems[i] || '(none)',
+        newText: addedItems[i] || '(none)'
+      });
+    }
+    
+    return differences;
+  };
+
   // Extract meaningful snippets from body changes (for structured JSON content)
   const extractBodyChangeSnippets = (oldBody: string | null, newBody: string | null): { section: string; oldSnippet: string; newSnippet: string }[] => {
     const snippets: { section: string; oldSnippet: string; newSnippet: string }[] = [];
@@ -197,38 +299,45 @@ export default function UpdateDetail() {
         }];
       }
 
-      // Compare sections
-      const oldSections = new Map(oldData.sections.map((s: any) => [s.title, s]));
-      const newSections = new Map(newData.sections.map((s: any) => [s.title, s]));
+      // Compare sections by ID or title
+      const oldSectionsById = new Map(oldData.sections.map((s: any) => [s.id || s.title, s]));
+      const newSectionsById = new Map(newData.sections.map((s: any) => [s.id || s.title, s]));
 
       // Find changed sections
       newData.sections.forEach((newSection: any) => {
-        const oldSection = oldSections.get(newSection.title);
+        const sectionKey = newSection.id || newSection.title;
+        const oldSection = oldSectionsById.get(sectionKey);
+        
         if (!oldSection) {
+          // New section added
+          const allText = extractAllTextItems(newSection);
           snippets.push({
-            section: newSection.title,
+            section: `${newSection.letter ? newSection.letter + '. ' : ''}${newSection.title}`,
             oldSnippet: '(new section)',
-            newSnippet: extractSectionText(newSection).substring(0, 150) + '...'
+            newSnippet: allText[0]?.substring(0, 120) + (allText[0]?.length > 120 ? '...' : '') || 'New content added'
           });
         } else if (JSON.stringify(oldSection) !== JSON.stringify(newSection)) {
-          const oldText = extractSectionText(oldSection);
-          const newText = extractSectionText(newSection);
-          if (oldText !== newText) {
+          // Section changed - find specific differences
+          const diffs = findTextDifferences(oldSection, newSection);
+          
+          diffs.forEach(diff => {
             snippets.push({
-              section: newSection.title,
-              oldSnippet: oldText.substring(0, 150) + (oldText.length > 150 ? '...' : ''),
-              newSnippet: newText.substring(0, 150) + (newText.length > 150 ? '...' : '')
+              section: `${newSection.letter ? newSection.letter + '. ' : ''}${newSection.title}`,
+              oldSnippet: diff.oldText.length > 150 ? diff.oldText.substring(0, 147) + '...' : diff.oldText,
+              newSnippet: diff.newText.length > 150 ? diff.newText.substring(0, 147) + '...' : diff.newText
             });
-          }
+          });
         }
       });
 
       // Find removed sections
       oldData.sections.forEach((oldSection: any) => {
-        if (!newSections.has(oldSection.title)) {
+        const sectionKey = oldSection.id || oldSection.title;
+        if (!newSectionsById.has(sectionKey)) {
+          const allText = extractAllTextItems(oldSection);
           snippets.push({
-            section: oldSection.title,
-            oldSnippet: extractSectionText(oldSection).substring(0, 150) + '...',
+            section: `${oldSection.letter ? oldSection.letter + '. ' : ''}${oldSection.title}`,
+            oldSnippet: allText[0]?.substring(0, 120) + '...' || 'Content removed',
             newSnippet: '(section removed)'
           });
         }
@@ -257,20 +366,6 @@ export default function UpdateDetail() {
       oldSnippet: 'Previous version',
       newSnippet: 'Updated version'
     }];
-  };
-
-  // Extract readable text from a section
-  const extractSectionText = (section: any): string => {
-    if (!section.content || !Array.isArray(section.content)) return '';
-    
-    return section.content.map((item: any) => {
-      if (item.type === 'paragraph') return item.text || '';
-      if (item.type === 'bullets') return (item.items || []).join('; ');
-      if (item.type === 'steps') return (item.items || []).map((s: any) => s.title || s.text || '').join('; ');
-      if (item.type === 'callout') return item.text || '';
-      if (item.type === 'message_template') return item.content || '';
-      return '';
-    }).filter(Boolean).join(' ');
   };
 
   return (
