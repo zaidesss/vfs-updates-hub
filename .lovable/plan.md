@@ -1,188 +1,349 @@
 
-# Zendesk Explore–Aligned Avg Talk Time Implementation
+# Zendesk Explore–Aligned Chat AHT and FRT Implementation (ZD1 Only)
 
-## Overview
+## Executive Summary
 
-Update the `fetch-zendesk-metrics` edge function to calculate **Average Talk Time** that matches Zendesk Explore within ±1 second. The key change is using the `completion_status` field to exclude missed/declined calls instead of filtering by `talk_time > 0`.
-
----
-
-## Current vs. Required Logic
-
-### Current Implementation (Incorrect for Explore alignment)
-```javascript
-// Filters legs where talk_time > 0
-const agentLegs = allLegs.filter(leg => 
-  String(leg.agent_id) === zendeskUserId && 
-  leg.type === 'agent' &&
-  (leg.talk_time || 0) > 0  // <-- This excludes short/zero-duration answered calls
-);
-
-// Formula: SUM(talk_time) / COUNT(legs where talk_time > 0)
-```
-
-**Problem:** This excludes legitimate legs where an agent answered but had very brief or zero talk time (e.g., immediate hang-up, system errors, very short calls).
-
-### Required Implementation (Explore Aligned)
-```javascript
-// Include ALL legs EXCEPT missed/declined
-const agentLegs = allLegs.filter(leg => 
-  String(leg.agent_id) === zendeskUserId && 
-  leg.type === 'agent' &&
-  leg.completion_status !== 'agent_missed' &&
-  leg.completion_status !== 'agent_declined' &&
-  leg.completion_status !== 'agent_transfer_declined'
-);
-
-// Formula: AVG(talk_time_seconds)
-// = SUM(talk_time) / COUNT(all included legs)
-```
+Update the `fetch-zendesk-metrics` edge function to calculate **Chat AHT** (Handle Time) and **FRT** (First Response Time) that match Zendesk Explore within ±1 second. This involves switching from the incorrect `agent_wait_time` metric to the proper `agent_work_time` from the Ticket Metric Events API.
 
 ---
 
-## Technical Changes
+## Current Problems Identified
 
-### 1. Update LegRecord Interface
+### Chat AHT (Handle Time)
+**Current Implementation:**
+```javascript
+ahtMinutes: metrics?.agent_wait_time_in_minutes?.calendar || null
+```
 
-Add `completion_status` field to capture the leg outcome from Zendesk API.
+**Problem:** `agent_wait_time` is the time a customer waited for an agent response, **NOT** the agent's handling time. This is fundamentally wrong.
 
-**File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
+**Correct Metric:** `agent_work_time` from Ticket Metric Events API - tracks cumulative time agent spent actively working (pauses when status is Pending/On-hold/Solved).
 
-```typescript
-interface LegRecord {
-  id: string | number;
-  call_id: string | number;
-  agent_id: string | number;
-  talk_time: number;
-  wrap_up_time: number;
-  type: string;
-  completion_status?: string;  // NEW: "completed", "agent_missed", "agent_declined", etc.
-  updated_at?: string;
-  created_at?: string;
+### Chat FRT (First Response Time)
+**Current Implementation:**
+```javascript
+frtMinutes: metrics?.reply_time_in_minutes?.calendar || null
+```
+
+**Status:** The field is correct, but:
+- Not filtering out bot-only conversations
+- Uses `updated>=` instead of `created>=` which may include tickets from previous weeks
+- Needs to ensure `reply_time_in_seconds.calendar` is used for precision
+
+---
+
+## Technical Solution
+
+### 1. Use Ticket Metric Events API for AHT
+
+The Ticket Metric Events API tracks `agent_work_time` with `update_status` events that contain the cumulative calendar time.
+
+**API Endpoint:**
+```
+GET /api/v2/tickets/{ticket_id}/metric_events.json
+```
+
+**Response contains:**
+```json
+{
+  "metric": "agent_work_time",
+  "type": "update_status",
+  "status": {
+    "calendar": 180,  // seconds of agent work time
+    "business": 120
+  }
 }
 ```
 
-### 2. Update Call Metrics Calculation
+### 2. Updated Data Flow
 
-Modify `fetchCallMetrics` function to:
-1. Filter by `completion_status` instead of `talk_time > 0`
-2. Include zero-duration legs that were answered
-3. Return the correct per-leg average
-
-```typescript
-// Before (current):
-const agentLegs = allLegs.filter(leg => 
-  String(leg.agent_id) === zendeskUserId && 
-  leg.type === 'agent' &&
-  (leg.talk_time || 0) > 0
-);
-
-// After (Explore aligned):
-const EXCLUDED_STATUSES = ['agent_missed', 'agent_declined', 'agent_transfer_declined'];
-
-const agentLegs = allLegs.filter(leg => 
-  String(leg.agent_id) === zendeskUserId && 
-  leg.type === 'agent' &&
-  !EXCLUDED_STATUSES.includes(leg.completion_status || '')
-);
+```text
+For each chat/messaging ticket:
+1. Fetch ticket via search (filter: via:chat OR channel:messaging OR channel:web)
+2. Filter: tickets created within week (not just updated)
+3. Filter: exclude tickets with 0 agent replies (bot-only/abandoned)
+4. For each valid ticket:
+   a. Fetch metric events: /tickets/{id}/metric_events.json
+   b. Extract agent_work_time (last update_status event)
+   c. Extract reply_time from ticket metrics (in seconds for precision)
+5. Calculate per-conversation averages:
+   - Chat AHT = AVG(agent_work_time.calendar seconds)
+   - Chat FRT = AVG(reply_time_in_seconds.calendar)
 ```
 
-### 3. Update Return Metrics
+### 3. Filtering Criteria (Explore Aligned)
 
-Rename internal variable for clarity and ensure proper per-leg averaging:
+**Include:**
+- Tickets with `via = "Chat"` OR `channel = "messaging"` OR `channel = "web"`
+- Tickets created within the date range (`created>=` and `created<=`)
+- Tickets with at least one agent reply (has agent_work_time events)
+
+**Exclude:**
+- Bot-only conversations (no agent_work_time fulfill/update_status events)
+- Abandoned chats (no agent response)
+
+---
+
+## Implementation Details
+
+### File: `supabase/functions/fetch-zendesk-metrics/index.ts`
+
+#### A. Add New Interface for Metric Events
 
 ```typescript
-// Calculate Avg Talk Time (per leg)
-const totalLegs = weekLegs.length;
-let totalTalkTime = 0;
-for (const leg of weekLegs) {
-  totalTalkTime += leg.talk_time || 0;
+interface TicketMetricEvent {
+  id: number;
+  ticket_id: number;
+  metric: string;  // "agent_work_time", "reply_time", etc.
+  type: string;    // "activate", "pause", "fulfill", "update_status"
+  time: string;
+  status?: {
+    calendar: number;  // seconds
+    business: number;
+  };
 }
-
-// AVG(leg.talk_time_seconds) - no rounding until final
-const avgTalkTimeSeconds = totalLegs > 0 ? Math.round(totalTalkTime / totalLegs) : null;
 ```
 
----
+#### B. New Function: Fetch Ticket Metric Events
 
-## Database Schema
-
-No changes required. The existing `zendesk_agent_metrics.call_aht_seconds` column will store the corrected value.
-
----
-
-## UI Label Update
-
-### Current Label
-- "Call AHT"
-
-### New Labels (as per user requirement)
-
-**Option A - Single Metric (Recommended)**
-Update the label to clearly indicate the calculation method:
-
-**File:** `src/pages/TeamScorecard.tsx`
 ```typescript
-// Change header text from:
-<TableHead>Call AHT</TableHead>
-
-// To:
-<TableHead>Avg Talk Time</TableHead>
-// Tooltip: "per call leg — Explore aligned"
+async function fetchTicketMetricEvents(
+  config: ZendeskConfig,
+  ticketId: number
+): Promise<TicketMetricEvent[]> {
+  const url = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metric_events.json`;
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) return [];
+  
+  const data = await response.json();
+  return data.ticket_metric_events || [];
+}
 ```
 
-**Option B - Dual Metrics (Optional Enhancement)**
-If exposing both metrics for clarity:
-- "Avg Talk Time" (per leg — Explore aligned)
-- "Avg Talk Time per Call" (capacity view — current formula)
+#### C. Update `batchFetchTicketMetrics` Function
+
+Replace the simple metrics fetch with a more comprehensive approach that:
+1. Fetches ticket metrics (for FRT in seconds)
+2. Fetches metric events (for agent_work_time)
+
+```typescript
+async function batchFetchTicketMetricsExploreAligned(
+  config: ZendeskConfig,
+  ticketIds: number[]
+): Promise<Map<number, { frtSeconds: number | null; ahtSeconds: number | null }>> {
+  const results = new Map();
+
+  for (let i = 0; i < ticketIds.length; i += CHAT_CONCURRENT_LIMIT) {
+    const batch = ticketIds.slice(i, i + CHAT_CONCURRENT_LIMIT);
+
+    const batchPromises = batch.map(async (ticketId) => {
+      try {
+        // Fetch standard ticket metrics (for FRT in seconds)
+        const metricsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metrics.json`;
+        const metricsResponse = await fetch(metricsUrl, { headers: authHeaders });
+        
+        // Fetch metric events (for agent_work_time)
+        const eventsUrl = `https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metric_events.json`;
+        const eventsResponse = await fetch(eventsUrl, { headers: authHeaders });
+
+        let frtSeconds = null;
+        let ahtSeconds = null;
+
+        if (metricsResponse.ok) {
+          const metricsData = await metricsResponse.json();
+          // Use seconds for precision
+          frtSeconds = metricsData.ticket_metric?.reply_time_in_seconds?.calendar || null;
+        }
+
+        if (eventsResponse.ok) {
+          const eventsData = await eventsResponse.json();
+          const events = eventsData.ticket_metric_events || [];
+          
+          // Find the last update_status event for agent_work_time
+          const workTimeEvents = events.filter(
+            (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
+          );
+          
+          if (workTimeEvents.length > 0) {
+            // Use the last update_status event (cumulative value)
+            const lastEvent = workTimeEvents[workTimeEvents.length - 1];
+            ahtSeconds = lastEvent.status?.calendar || null;
+          }
+        }
+
+        return { ticketId, frtSeconds, ahtSeconds };
+      } catch (error) {
+        return { ticketId, frtSeconds: null, ahtSeconds: null };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    for (const result of batchResults) {
+      results.set(result.ticketId, { 
+        frtSeconds: result.frtSeconds, 
+        ahtSeconds: result.ahtSeconds 
+      });
+    }
+
+    // Rate limiting delay between batches
+    if (i + CHAT_CONCURRENT_LIMIT < ticketIds.length) {
+      await delay(200);
+    }
+  }
+
+  return results;
+}
+```
+
+#### D. Update `fetchChatMetrics` Function
+
+1. Change search to use `created>=` instead of `updated>=`
+2. Filter for agent-replied tickets only
+3. Use the new batch fetch function
+
+```typescript
+async function fetchChatMetrics(
+  config: ZendeskConfig,
+  zendeskUserId: string,
+  weekStart: string,
+  weekEnd: string
+): Promise<{ ahtSeconds: number | null; frtSeconds: number | null; totalChats: number }> {
+  try {
+    // Use created date for accurate week filtering
+    const query = `type:ticket assignee_id:${zendeskUserId} created>=${weekStart} created<=${weekEnd} (via:chat OR channel:messaging OR channel:web)`;
+    const searchUrl = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc&per_page=100`;
+
+    const searchResponse = await fetch(searchUrl, { headers: authHeaders });
+    if (!searchResponse.ok) {
+      return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
+    }
+
+    const searchData = await searchResponse.json();
+    
+    // Filter out tickets with no agent replies (bot-only/abandoned)
+    const tickets = (searchData.results || []).filter((t: any) => 
+      t.status !== 'deleted' && 
+      (t.comment_count || 0) > 1  // At least one agent reply
+    );
+
+    if (tickets.length === 0) {
+      return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
+    }
+
+    const ticketIds = tickets.map((t: any) => t.id as number);
+    
+    // Use Explore-aligned batch fetch
+    const metricsMap = await batchFetchTicketMetricsExploreAligned(config, ticketIds);
+
+    // Calculate per-conversation averages (Explore aligned)
+    let totalFrt = 0;
+    let frtCount = 0;
+    let totalAht = 0;
+    let ahtCount = 0;
+
+    for (const [_, metrics] of metricsMap) {
+      if (metrics.frtSeconds !== null) {
+        totalFrt += metrics.frtSeconds;
+        frtCount++;
+      }
+      if (metrics.ahtSeconds !== null) {
+        totalAht += metrics.ahtSeconds;
+        ahtCount++;
+      }
+    }
+
+    // AVG per conversation - round only at final step
+    const avgFrt = frtCount > 0 ? Math.round(totalFrt / frtCount) : null;
+    const avgAht = ahtCount > 0 ? Math.round(totalAht / ahtCount) : null;
+
+    return { 
+      ahtSeconds: avgAht, 
+      frtSeconds: avgFrt, 
+      totalChats: tickets.length 
+    };
+
+  } catch (error) {
+    console.error(`Error fetching chat metrics:`, error);
+    return { ahtSeconds: null, frtSeconds: null, totalChats: 0 };
+  }
+}
+```
 
 ---
 
-## Summary of File Changes
+## UI Label Updates
 
-### Edge Function
-**File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
+### File: `src/pages/TeamScorecard.tsx`
 
-| Line Range | Change |
-|:---|:---|
-| 38-47 | Add `completion_status?: string` to `LegRecord` interface |
-| 166-173 | Replace `talk_time > 0` filter with `completion_status` exclusion logic |
-| 189-201 | Update comments and variable names for clarity |
+Update column headers to clarify calculation method:
 
-### Frontend
-**File:** `src/pages/TeamScorecard.tsx`
+| Current | New |
+|---------|-----|
+| Chat AHT | Chat AHT |
+| Chat FRT | Chat FRT |
 
-| Line Range | Change |
-|:---|:---|
-| 680 | Update column header from "Call AHT" to "Avg Talk Time" |
+**Add tooltips:**
+- Chat AHT: "per conversation — Explore aligned"
+- Chat FRT: "first agent reply — Explore aligned"
+
+---
+
+## Rate Limiting Considerations
+
+The Metric Events API has a rate limit. With the additional API call per ticket, we need to:
+- Increase batch delay from 100ms to 200ms
+- Monitor for 429 errors and implement exponential backoff if needed
 
 ---
 
 ## Validation Criteria
 
-After implementation, the metric should satisfy:
+After implementation:
 ```
-|Lovable Avg Talk Time - Zendesk Explore Avg Talk Time| ≤ 1 second
+|Lovable Chat AHT - Zendesk Explore Handle Time| ≤ 1 second
+|Lovable Chat FRT - Zendesk Explore First Reply Time| ≤ 1 second
 ```
-
-Any larger discrepancy indicates:
-- Wrong leg inclusion/exclusion (check `completion_status` filter)
-- Incorrect aggregation level (should be per-leg, not per-call)
-- Pre-rounding before averaging
 
 ---
 
 ## Edge Cases
 
-1. **No legs in week**: Return `null` (already handled)
-2. **All legs have `talk_time = 0`**: Return `0` seconds average (correct per-leg behavior)
-3. **Missing `completion_status`**: Treat as included (defensive fallback for older API responses)
-4. **Transferred legs**: Included (they have valid `completion_status` like "completed" or "customer_hang_up")
+1. **No agent_work_time events**: Ticket has no agent interaction → exclude from AHT average
+2. **Bot-only tickets**: Filtered out by `comment_count > 1` check
+3. **Transferred tickets**: Include - agent_work_time tracks per-agent cumulative work
+4. **Reopened tickets**: Include - Explore includes cumulative handle time across reopens
 
 ---
 
-## Backwards Compatibility
+## Summary of Changes
 
-- The database column name remains `call_aht_seconds`
-- Saved scorecards are unaffected (they store the computed value)
-- Fresh metric fetches will use the new formula going forward
+| File | Change |
+|------|--------|
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Add `TicketMetricEvent` interface |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | New `batchFetchTicketMetricsExploreAligned` function |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Update `fetchChatMetrics` to use `created>=` filter |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Filter out bot-only/abandoned tickets |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Use `reply_time_in_seconds` for FRT precision |
+| `src/pages/TeamScorecard.tsx` | Add tooltips to Chat AHT and Chat FRT headers |
+
+---
+
+## Formula Summary
+
+**Chat AHT (Explore Aligned):**
+```
+AVG(ticket.agent_work_time.calendar_seconds)
+```
+
+**Chat FRT (Explore Aligned):**
+```
+AVG(ticket.reply_time_in_seconds.calendar)
+```
+
+Both are per-conversation averages, not totals ÷ count, and round only at final output.
