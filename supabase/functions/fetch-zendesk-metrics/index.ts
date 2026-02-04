@@ -82,19 +82,21 @@ function isWithinWeek(dateStr: string | undefined, weekStart: string, weekEnd: s
   return date >= start && date <= end;
 }
 
-// Paginate through Zendesk Incremental Exports API
+// Paginate through Zendesk Incremental Exports API using end_time cursor
 async function paginateIncrementalCalls(
   config: ZendeskConfig,
-  startEpoch: number
+  startEpoch: number,
+  endEpoch: number
 ): Promise<CallRecord[]> {
   const allCalls: CallRecord[] = [];
-  let url: string | null = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${startEpoch}`;
+  let currentStartTime = startEpoch;
   let pageCount = 0;
-  const maxPages = 50; // Safety limit
+  const maxPages = 20; // Safety limit
 
-  while (url && pageCount < maxPages) {
+  while (pageCount < maxPages) {
     pageCount++;
-    console.log(`Fetching incremental calls page ${pageCount}: ${url}`);
+    const url = `https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/incremental/calls.json?start_time=${currentStartTime}`;
+    console.log(`Fetching incremental calls page ${pageCount}: start_time=${currentStartTime}`);
 
     try {
       const response: Response = await fetch(url, {
@@ -109,20 +111,31 @@ async function paginateIncrementalCalls(
         break;
       }
 
-      const data: { calls?: CallRecord[]; next_page?: string } = await response.json();
+      const data: { calls?: CallRecord[]; end_time?: number; count?: number } = await response.json();
       const calls = data.calls || [];
       allCalls.push(...calls);
 
-      console.log(`Page ${pageCount}: fetched ${calls.length} calls, total: ${allCalls.length}`);
+      console.log(`Page ${pageCount}: fetched ${calls.length} calls, total: ${allCalls.length}, end_time: ${data.end_time}`);
 
-      // Check for next page
-      url = data.next_page || null;
+      // Check if we've reached the end or passed our week boundary
+      if (!data.end_time || data.end_time >= endEpoch) {
+        console.log(`Reached end of data or past week boundary (end_time: ${data.end_time}, endEpoch: ${endEpoch})`);
+        break;
+      }
+
+      // Check if no more data (count is 0 or calls empty)
+      if (calls.length === 0) {
+        console.log('No more calls in this page, stopping pagination');
+        break;
+      }
+
+      // Use end_time as the start_time for next request
+      currentStartTime = data.end_time;
 
       // Rate limiting: 10 requests/minute = 6 second delay
-      if (url) {
-        console.log(`Rate limiting: waiting ${INCREMENTAL_API_DELAY_MS}ms before next page...`);
-        await delay(INCREMENTAL_API_DELAY_MS);
-      }
+      console.log(`Rate limiting: waiting ${INCREMENTAL_API_DELAY_MS}ms before next page...`);
+      await delay(INCREMENTAL_API_DELAY_MS);
+
     } catch (error) {
       console.error(`Error fetching incremental calls page ${pageCount}:`, error);
       break;
@@ -141,12 +154,13 @@ async function fetchCallMetrics(
   weekEnd: string
 ): Promise<{ ahtSeconds: number | null; totalCalls: number }> {
   try {
-    // Convert weekStart to Unix epoch (seconds)
+    // Convert weekStart and weekEnd to Unix epoch (seconds)
     const startEpoch = Math.floor(new Date(weekStart).getTime() / 1000);
-    console.log(`Fetching call metrics for User ID ${zendeskUserId}, week ${weekStart} to ${weekEnd}, epoch: ${startEpoch}`);
+    const endEpoch = Math.floor(new Date(weekEnd + 'T23:59:59Z').getTime() / 1000);
+    console.log(`Fetching call metrics for User ID ${zendeskUserId}, week ${weekStart} to ${weekEnd}, startEpoch: ${startEpoch}, endEpoch: ${endEpoch}`);
 
     // Fetch all calls from the incremental API starting from weekStart
-    const allCalls = await paginateIncrementalCalls(config, startEpoch);
+    const allCalls = await paginateIncrementalCalls(config, startEpoch, endEpoch);
 
     // Filter calls for this specific agent
     const agentCalls = allCalls.filter(call => 
