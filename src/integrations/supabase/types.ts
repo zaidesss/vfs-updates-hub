@@ -259,6 +259,7 @@ export type Database = {
           weekend_ot_schedule: string | null
           work_schedule: string | null
           zendesk_instance: string | null
+          zendesk_user_id: string | null
         }
         Insert: {
           agent_name?: string | null
@@ -322,6 +323,7 @@ export type Database = {
           weekend_ot_schedule?: string | null
           work_schedule?: string | null
           zendesk_instance?: string | null
+          zendesk_user_id?: string | null
         }
         Update: {
           agent_name?: string | null
@@ -385,6 +387,7 @@ export type Database = {
           weekend_ot_schedule?: string | null
           work_schedule?: string | null
           zendesk_instance?: string | null
+          zendesk_user_id?: string | null
         }
         Relationships: []
       }
