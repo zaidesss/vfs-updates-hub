@@ -1,103 +1,55 @@
 
-# Use Zendesk User IDs for Metrics Fetching
+# Populate Zendesk User IDs for Chat/Phone Agents
 
 ## Summary
-Update the edge function to use Zendesk User IDs directly instead of searching by email, which will correctly fetch Call AHT, Chat AHT, and Chat FRT metrics.
+Add Zendesk User IDs to the 6 agents who handle Chat and/or Phone support, prioritizing Desiree (Support 2) for immediate testing.
 
-## Problem Identified
-The current implementation:
-1. Constructs email `support{number}@virtualfreelancesolutions.com` 
-2. Searches Zendesk API by email to find User ID
-3. This search may be failing (returns 0 results) even though the agents exist
+## Agents to Update
 
-You've provided the actual Zendesk User IDs (Support 1-17), which we can use directly.
+| Priority | Agent | Email | Support Account | Zendesk User ID |
+|----------|-------|-------|-----------------|-----------------|
+| **1st** | Desiree Cataytay | descataytay.26@gmail.com | 2 | 11436740426393 |
+| 2nd | Will Angeline Reyes | willangelinereyes@gmail.com | 5 | 26969565500569 |
+| 3rd | Precious Mae Gagarra | preciousgagarra21@gmail.com | 6 | 27511291800345 |
+| 4th | Jennifer Katigbak | lhenlenkatigbak1999@gmail.com | 7 | 35402612196249 |
+| 5th | Kimberly Lacaden | kimberlytlacaden@gmail.com | 14 | 37286736245145 |
+| 6th | Pauline Carbajosa | paulinecarbajosa0713@gmail.com | 15 | 37286723394201 |
 
-## Solution
+Note: Malcom Testing has no support_account assigned, so no Zendesk User ID can be mapped.
 
-### Step 1: Add `zendesk_user_id` column to `agent_profiles`
-Store the Zendesk User ID mapping in the database for each agent.
+## Implementation Steps
 
+### Step 1: Update Desiree's Profile (Priority)
 ```sql
-ALTER TABLE public.agent_profiles 
-ADD COLUMN IF NOT EXISTS zendesk_user_id text;
+UPDATE agent_profiles 
+SET zendesk_user_id = '11436740426393'
+WHERE email = 'descataytay.26@gmail.com';
 ```
 
-### Step 2: Populate the User IDs for Support 1-17
-| Support Account | Zendesk User ID |
-|-----------------|-----------------|
-| 1 | 903432372303 |
-| 2 | 11436740426393 |
-| 3 | 13751087693337 |
-| 4 | 13751086800409 |
-| 5 | 26969565500569 |
-| 6 | 27511291800345 |
-| 7 | 35402612196249 |
-| 8 | 35402662864409 |
-| 9 | 35451699998489 |
-| **10** | **36942189588121** |
-| 11 | 37286573168793 |
-| 12 | 37286683884697 |
-| 13 | 37286671337113 |
-| 14 | 37286736245145 |
-| 15 | 37286723394201 |
-| 16 | 37286752550169 |
-| 17 | 37286802035225 |
+### Step 2: Update Remaining 5 Agents
+```sql
+UPDATE agent_profiles SET zendesk_user_id = '26969565500569' WHERE support_account = '5';
+UPDATE agent_profiles SET zendesk_user_id = '27511291800345' WHERE support_account = '6';
+UPDATE agent_profiles SET zendesk_user_id = '35402612196249' WHERE support_account = '7';
+UPDATE agent_profiles SET zendesk_user_id = '37286736245145' WHERE support_account = '14';
+UPDATE agent_profiles SET zendesk_user_id = '37286723394201' WHERE support_account = '15';
+```
 
-### Step 3: Update Edge Function
-
-**Modify `fetchCallMetrics`**:
-- Accept `zendeskUserId` parameter instead of searching by email
-- Skip the user search API call entirely
-
-**Modify `fetchChatMetrics`**:
-- Use `assignee_id:${zendeskUserId}` in search query instead of `assignee:${email}`
-
-**Update batch processing**:
-- Fetch `zendesk_user_id` from agent_profiles
-- Skip agents without a zendesk_user_id
-- Pass the User ID directly to both metric functions
-
-### Step 4: Test with Support 10
-Trigger a manual fetch for the Jan 26 - Feb 1 week to verify metrics are retrieved.
-
-## Files to Modify
-| File | Change |
-|------|--------|
-| Database | Add `zendesk_user_id` column + populate data |
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Use User ID directly |
+### Step 3: Test Metrics Fetch for Desiree
+Trigger the `fetch-zendesk-metrics` function for Jan 26 – Feb 1, 2026 to verify:
+- Call AHT is retrieved from Zendesk Talk API
+- Chat AHT and FRT are retrieved from Zendesk Support API
+- Data is saved to `zendesk_agent_metrics` table
 
 ## Expected Outcome
-After implementation, the function will:
-1. Look up the Zendesk User ID from the profile
-2. Query Call metrics using the User ID directly (no email search)
-3. Query Chat tickets using `assignee_id:{userId}` 
-4. Successfully populate metrics in `zendesk_agent_metrics` table
+After populating the IDs, the weekly cron job (Tuesdays 2:00 AM EST) will automatically fetch:
+- **Call AHT**: Average handle time for phone calls
+- **Chat AHT**: Average handle time for chat conversations  
+- **Chat FRT**: First response time for chat tickets
 
-## Technical Details
+Desiree should show actual metrics since she has `[Email Chat Phone]` support type and is actively using the Zendesk account.
 
-### Edge Function Changes
-
-**Function signatures**:
-```typescript
-// Before
-fetchCallMetrics(config, agentEmail, startDate, endDate)
-fetchChatMetrics(config, agentEmail, startDate, endDate)
-
-// After
-fetchCallMetrics(config, zendeskUserId, startDate, endDate)
-fetchChatMetrics(config, zendeskUserId, startDate, endDate)
-```
-
-**Chat search query change**:
-```typescript
-// Before
-const query = `type:ticket channel:chat assignee:${agentEmail} solved>=${startDate} solved<=${endDate}`;
-
-// After  
-const query = `type:ticket channel:chat assignee_id:${zendeskUserId} solved>=${startDate} solved<=${endDate}`;
-```
-
-**Agents query update**:
-```typescript
-.select('email, zendesk_instance, support_account, zendesk_user_id')
-```
+## Technical Notes
+- The edge function already uses `zendesk_user_id` for API queries (implemented earlier)
+- Only agents with a populated `zendesk_user_id` will have metrics fetched
+- Agents without Chat/Phone in `support_type` don't need IDs for AHT/FRT purposes
