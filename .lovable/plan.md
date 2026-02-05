@@ -1,95 +1,125 @@
 
-
-# Plan: Broaden Messaging Channels & Add Force Refresh Button
+# Plan: Fix Chat AHT Calculation, Display Units & Sync Database Goals
 
 ## Summary
-Update the Zendesk metrics fetching to include all messaging-like channels (`native_messaging`, `web_messaging`, `mobile_sdk`) and add a visible "Force Refresh" button that bypasses the cache and re-fetches fresh data from Zendesk for all agents of the selected support type.
+This plan addresses three critical issues:
+1. **Fix Chat AHT calculation** - Currently using `full_resolution_time` (includes queue/wait). Change to use `agent_work_time` (handle time only)
+2. **Change display to seconds** - Update UI to show raw seconds instead of mm:ss format
+3. **Sync database goals with spreadsheet** - Update `scorecard_config` table to match your spreadsheet values
 
 ---
 
-## Changes Overview
+## Issue 1: Chat AHT Calculation (Edge Function Fix)
 
-### 1. Update Channel Filter in Edge Function
+### Current Problem
+The edge function at line 269-275 uses `full_resolution_time_in_minutes` which includes:
+- Queue time (before agent picks up)
+- Wait time (customer waiting for responses)  
+- Actual handle time
+
+This produces inflated values like 9171 seconds (2.5+ hours) instead of actual handle time.
+
+### Solution
+Change the Chat AHT logic to:
+1. **Primary**: Use `agent_work_time` from Ticket Metric Events API (tracks actual time agent worked on ticket)
+2. **Fallback**: If `agent_work_time` not available, skip the metric (show null)
+
 **File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
 
-- **Current state:** Line 363 filters only for `native_messaging`
-- **Change:** Broaden the `messagingChannels` array to include:
-  - `native_messaging`
-  - `web_messaging`  
-  - `mobile_sdk`
+```text
+Lines 269-275 - BEFORE:
+  // AHT: For messaging tickets, Explore uses full_resolution_time as "Handle Time"
+  const fullResolutionMinutes = tm?.full_resolution_time_in_minutes?.calendar;
+  if (fullResolutionMinutes !== null) {
+    ahtSeconds = Math.round(fullResolutionMinutes * 60);
+  }
 
-This aligns with Explore's broader "Messaging" definition and should capture all messaging-related tickets.
+Lines 269-275 - AFTER:
+  // AHT: Use agent_work_time ONLY (actual handle time, excludes queue/wait)
+  // Do NOT use full_resolution_time as it includes queue and wait time
+  // agent_work_time will be fetched from metric events below
+  // Leave ahtSeconds as null here - will be populated from metric events
+```
 
-### 2. Add Force Refresh Button to TeamScorecard
-**File:** `src/pages/TeamScorecard.tsx`
-
-Add a visible "Force Refresh" button in the header that:
-- Calls `triggerMetricsRefresh()` which passes `scheduled: true` to bypass the cache
-- Refreshes all agents of the currently selected support type
-- Shows a spinner while refreshing
-- Is visible only to Admins/Super Admins
-- Is disabled when `supportType === 'all'` (requires selecting a specific support type)
-- Placed next to the existing "Save Changes" / "Save Scorecard" buttons
-
-### 3. Improve Loading UX
-**File:** `src/pages/TeamScorecard.tsx`
-
-- The existing `refreshMutation` already has `isPending` state
-- Add visual feedback: spinner icon + "Refreshing..." text on the button
-- Disable the button while refresh is in progress
+This ensures only actual agent handle time is captured.
 
 ---
 
-## Technical Details
+## Issue 2: Display Units (UI Change)
 
-### Edge Function Changes
-```typescript
-// Line ~363 in fetch-zendesk-metrics/index.ts
-// FROM:
-const messagingChannels = ['native_messaging'];
+### Current State
+- Values stored in seconds in database
+- Displayed as `mm:ss` format via `formatSeconds()` function
+- Hardcoded `METRIC_GOALS` object doesn't match database
 
-// TO:
-const messagingChannels = ['native_messaging', 'web_messaging', 'mobile_sdk'];
-```
+### Solution
+1. Remove the `formatSeconds` usage and display raw seconds
+2. Remove the hardcoded `METRIC_GOALS` object - use database goals from `scorecard_config`
+3. Add "s" suffix for clarity (e.g., "420s")
 
-### Force Refresh Button Implementation
-The button will be added to the header area (around line 429-472) alongside the existing buttons:
+**File:** `src/pages/TeamScorecard.tsx`
 
-```text
-Button layout:
-[Save Changes (if edits)] [Save Scorecard] [Force Refresh]
-```
+Changes:
+- Remove/modify `METRIC_GOALS` constant (lines 35-40)
+- Update `EditableMetricCell` usage to show seconds: replace `formatValue={formatSeconds}` with `formatValue={(v) => v !== null ? `${v}s` : '-'}`
+- Fetch goals from `scorecard_config` query and use them dynamically
 
-Button states:
-- **Default:** Shows "Refresh Metrics" with refresh icon
-- **Loading:** Shows spinner + "Refreshing..." 
-- **Disabled conditions:**
-  - When `supportType === 'all'` (tooltip: "Select a support type first")
-  - When another mutation is in progress
-  - When `isBeforeMinimumDate` is true
+**File:** `src/components/scorecard/EditableMetricCell.tsx`
 
-### Existing Infrastructure
-The codebase already has:
-- `refreshMutation` defined (lines 316-337) using `triggerMetricsRefresh()`
-- `triggerMetricsRefresh()` in `scorecardApi.ts` which passes `scheduled: true` to bypass cache
-- The edge function already supports `scheduled: true` to force fresh fetch
+Changes:
+- Update input parsing to accept raw seconds (not mm:ss)
+- Update display to show seconds with "s" suffix
+
+---
+
+## Issue 3: Database Goal Sync
+
+### Discrepancies Found
+
+Based on your spreadsheet, the following `scorecard_config` records need updating:
+
+| Support Type | Metric | Current Goal | Correct Goal |
+|--------------|--------|--------------|--------------|
+| Hybrid Support | call_aht | 240 | **420** |
+| Hybrid Support | chat_aht | 420 | **600** |
+| Hybrid Support | chat_frt | 20 | **30** |
+| Hybrid Support | qa | 96 | **100** |
+| Hybrid Support | reliability | 98 | **100** |
+| Email Support | productivity | 100 | **715** |
+| Email Support | revalida | 100 | **95** |
+| Email Support | reliability | 100 | **98** |
+| Logistics | reliability | 100 | **98** |
+| Logistics | (missing) | - | Add productivity, QA, revalida |
+
+**Action:** Use data update tool to sync these values.
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Broaden `messagingChannels` filter |
-| `src/pages/TeamScorecard.tsx` | Add visible Force Refresh button with spinner |
+| File | Changes |
+|------|---------|
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Fix Chat AHT to use `agent_work_time` only |
+| `src/pages/TeamScorecard.tsx` | Remove hardcoded goals, display seconds, use DB config |
+| `src/components/scorecard/EditableMetricCell.tsx` | Parse/display raw seconds instead of mm:ss |
+| `src/lib/scorecardApi.ts` | Update `formatSeconds` to `formatSecondsAsRaw` |
+| Database: `scorecard_config` | Update goal values to match spreadsheet |
+
+---
+
+## Implementation Order
+
+1. **Step 1**: Update database `scorecard_config` goals to match spreadsheet
+2. **Step 2**: Fix edge function Chat AHT calculation
+3. **Step 3**: Deploy edge function
+4. **Step 4**: Update UI to display seconds
+5. **Step 5**: Clear cached metrics and refresh to test
 
 ---
 
 ## Expected Outcome
 
-1. **Broader ticket matching:** Chat AHT/FRT calculations will include tickets from `native_messaging`, `web_messaging`, and `mobile_sdk` channels, which should better align with Explore's totals.
-
-2. **Visible refresh capability:** Admins can click "Refresh Metrics" to force a fresh fetch from Zendesk API, bypassing the 1-hour cache.
-
-3. **Clear loading feedback:** Spinner on button indicates refresh is in progress.
-
+1. **Chat AHT values** will show realistic agent handle times (typically 1-10 minutes = 60-600 seconds)
+2. **Display format** will show raw seconds (e.g., "420s" instead of "7:00")
+3. **Goal comparisons** will use correct values from your spreadsheet
+4. **Percentage calculations** will be accurate based on correct goals
