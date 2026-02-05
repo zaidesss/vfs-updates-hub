@@ -13,23 +13,14 @@ interface EditableMetricCellProps {
   className?: string;
 }
 
-// Parse time input - accepts mm:ss format or plain seconds
-function parseTimeInput(input: string): number | null {
+// Parse input - accepts raw seconds
+function parseInput(input: string): number | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
-  
-  // Check for mm:ss format
-  if (trimmed.includes(':')) {
-    const parts = trimmed.split(':');
-    if (parts.length !== 2) return null;
-    const mins = parseInt(parts[0], 10);
-    const secs = parseInt(parts[1], 10);
-    if (isNaN(mins) || isNaN(secs)) return null;
-    return mins * 60 + secs;
-  }
-  
-  // Otherwise treat as seconds
-  const seconds = parseInt(trimmed, 10);
+
+  // Remove 's' suffix if present and parse as integer seconds
+  const cleanValue = trimmed.replace(/s$/i, '').trim();
+  const seconds = parseInt(cleanValue, 10);
   return isNaN(seconds) ? null : seconds;
 }
 
@@ -73,13 +64,14 @@ export function EditableMetricCell({
   
   const handleClick = () => {
     if (isEditable) {
-      setInputValue(displayValue !== null ? formatValue(displayValue) : '');
+      // Show raw seconds value for editing (without 's' suffix)
+      setInputValue(displayValue !== null ? String(displayValue) : '');
       setIsEditing(true);
     }
   };
   
   const handleBlur = () => {
-    const parsed = parseTimeInput(inputValue);
+    const parsed = parseInput(inputValue);
     onEdit(parsed);
     setIsEditing(false);
   };
@@ -121,7 +113,7 @@ export function EditableMetricCell({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="h-6 w-16 text-center text-sm px-1"
-          placeholder="mm:ss"
+          placeholder="seconds"
         />
       ) : (
         <span className="text-foreground font-medium">

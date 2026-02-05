@@ -1,11 +1,10 @@
-
-# Plan: Fix Chat AHT Calculation, Display Units & Sync Database Goals
+# Plan: Fix Chat AHT Calculation, Display Units & Sync Database Goals ✅ COMPLETED
 
 ## Summary
-This plan addresses three critical issues:
-1. **Fix Chat AHT calculation** - Currently using `full_resolution_time` (includes queue/wait). Change to use `agent_work_time` (handle time only)
-2. **Change display to seconds** - Update UI to show raw seconds instead of mm:ss format
-3. **Sync database goals with spreadsheet** - Update `scorecard_config` table to match your spreadsheet values
+All three issues have been addressed:
+1. ✅ **Fixed Chat AHT calculation** - Now uses `agent_work_time` only (handle time), removed `full_resolution_time` fallback
+2. ✅ **Changed display to seconds** - UI now shows raw seconds (e.g., "420s") instead of mm:ss format
+3. ✅ **Synced database goals** - Updated `scorecard_config` table to match spreadsheet values
 
 ---
 
@@ -109,17 +108,23 @@ Based on your spreadsheet, the following `scorecard_config` records need updatin
 
 ## Implementation Order
 
-1. **Step 1**: Update database `scorecard_config` goals to match spreadsheet
-2. **Step 2**: Fix edge function Chat AHT calculation
-3. **Step 3**: Deploy edge function
-4. **Step 4**: Update UI to display seconds
-5. **Step 5**: Clear cached metrics and refresh to test
+1. ✅ **Step 1**: Updated database `scorecard_config` goals
+2. ✅ **Step 2**: Fixed edge function Chat AHT calculation
+3. ✅ **Step 3**: Deployed edge function
+4. ✅ **Step 4**: Updated UI to display seconds
+5. **Step 5**: Clear cached metrics and refresh to test ← **READY FOR USER TESTING**
 
 ---
 
 ## Expected Outcome
 
-1. **Chat AHT values** will show realistic agent handle times (typically 1-10 minutes = 60-600 seconds)
-2. **Display format** will show raw seconds (e.g., "420s" instead of "7:00")
-3. **Goal comparisons** will use correct values from your spreadsheet
-4. **Percentage calculations** will be accurate based on correct goals
+1. ✅ **Chat AHT values** will show realistic agent handle times (typically 60-600 seconds)
+2. ✅ **Display format** shows raw seconds (e.g., "420s")
+3. ✅ **Goal comparisons** use correct values from spreadsheet
+4. ✅ **Percentage calculations** accurate based on correct goals
+
+## Next Steps for User
+1. Navigate to Team Scorecard
+2. Select "Hybrid Support" and a week
+3. Click "Refresh Metrics" to fetch new Chat AHT values using agent_work_time
+4. Verify values display in seconds and match expectations
