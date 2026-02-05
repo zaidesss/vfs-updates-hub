@@ -1,125 +1,137 @@
 
-# Plan: Fix Chat AHT Calculation, Display Units & Sync Database Goals
+# Plan: Fix Call AHT Label & Correct Chat AHT Calculation
 
 ## Summary
-This plan addresses three critical issues:
-1. **Fix Chat AHT calculation** - Currently using `full_resolution_time` (includes queue/wait). Change to use `agent_work_time` (handle time only)
-2. **Change display to seconds** - Update UI to show raw seconds instead of mm:ss format
-3. **Sync database goals with spreadsheet** - Update `scorecard_config` table to match your spreadsheet values
+This plan addresses three issues:
+1. Re-label "Avg Talk Time" back to "Call AHT" in the scorecard table header
+2. Fix Chat AHT calculation to use `agent_work_time` (handle time only) instead of `full_resolution_time` (which includes queue/wait)
+3. Verify FRT continues using seconds correctly (no changes needed)
 
 ---
 
-## Issue 1: Chat AHT Calculation (Edge Function Fix)
+## Issue 1: Re-label Column Header
 
-### Current Problem
-The edge function at line 269-275 uses `full_resolution_time_in_minutes` which includes:
-- Queue time (before agent picks up)
-- Wait time (customer waiting for responses)  
-- Actual handle time
+**File:** `src/pages/TeamScorecard.tsx`
 
-This produces inflated values like 9171 seconds (2.5+ hours) instead of actual handle time.
+The table header currently shows "Avg Talk Time" but should show "Call AHT".
 
-### Solution
-Change the Chat AHT logic to:
-1. **Primary**: Use `agent_work_time` from Ticket Metric Events API (tracks actual time agent worked on ticket)
-2. **Fallback**: If `agent_work_time` not available, skip the metric (show null)
+**Change (line 717):**
+```text
+FROM: Avg Talk Time
+TO:   Call AHT
+```
+
+The tooltip will still explain "per call leg — Explore aligned" for context.
+
+---
+
+## Issue 2: Chat AHT Calculation Fix
 
 **File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
 
+### Current Problem (lines 269-292)
+The code currently:
+1. FIRST tries `full_resolution_time_in_minutes` (which includes queue time, wait time, AND handle time)
+2. Only falls back to `agent_work_time` from metric events if #1 is null
+
+This is backwards. The `full_resolution_time` metric captures the ENTIRE ticket lifecycle, not just the agent's actual handling time.
+
+### Correct Approach
+Flip the priority:
+1. **PRIMARY**: Use `agent_work_time` from Ticket Metric Events API (actual handle time only)
+2. **FALLBACK**: If `agent_work_time` not available, leave as null (do NOT use `full_resolution_time`)
+
+### Code Change (lines 256-292)
+
 ```text
-Lines 269-275 - BEFORE:
-  // AHT: For messaging tickets, Explore uses full_resolution_time as "Handle Time"
+BEFORE:
+  let ahtSeconds: number | null = null;
+  
+  // Use full_resolution_time first (WRONG - includes queue/wait)
   const fullResolutionMinutes = tm?.full_resolution_time_in_minutes?.calendar;
   if (fullResolutionMinutes !== null) {
     ahtSeconds = Math.round(fullResolutionMinutes * 60);
   }
+  
+  // Fallback to agent_work_time only if null
+  if (ahtSeconds === null && eventsResponse.ok) {
+    ...agent_work_time logic...
+  }
 
-Lines 269-275 - AFTER:
-  // AHT: Use agent_work_time ONLY (actual handle time, excludes queue/wait)
-  // Do NOT use full_resolution_time as it includes queue and wait time
-  // agent_work_time will be fetched from metric events below
-  // Leave ahtSeconds as null here - will be populated from metric events
+AFTER:
+  let ahtSeconds: number | null = null;
+  
+  // SKIP full_resolution_time - it includes queue and wait time
+  // Log it for debugging but don't use it for AHT
+  console.log(`Ticket ${ticketId} full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min (NOT used for AHT)`);
+  
+  // PRIMARY: Use agent_work_time from metric events (handle time only)
+  if (eventsResponse.ok) {
+    const eventsData = await eventsResponse.json();
+    const events = eventsData.ticket_metric_events || [];
+    
+    const workTimeEvents = events.filter(
+      (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
+    );
+    
+    if (workTimeEvents.length > 0) {
+      const lastEvent = workTimeEvents[workTimeEvents.length - 1];
+      ahtSeconds = lastEvent.status?.calendar || null;
+      console.log(`Ticket ${ticketId} agent_work_time: ${ahtSeconds}s (handle time only)`);
+    }
+  }
+  
+  // If agent_work_time not available, leave as null
+  // Do NOT fall back to full_resolution_time
 ```
 
-This ensures only actual agent handle time is captured.
+---
+
+## Issue 3: FRT Already Correct
+
+**File:** `supabase/functions/fetch-zendesk-metrics/index.ts`
+
+The FRT calculation at line 267 already uses `reply_time_in_seconds.calendar` which is the correct metric for "Assignment to First Reply" in seconds.
+
+No changes needed.
 
 ---
 
-## Issue 2: Display Units (UI Change)
+## Impact Assessment
 
-### Current State
-- Values stored in seconds in database
-- Displayed as `mm:ss` format via `formatSeconds()` function
-- Hardcoded `METRIC_GOALS` object doesn't match database
-
-### Solution
-1. Remove the `formatSeconds` usage and display raw seconds
-2. Remove the hardcoded `METRIC_GOALS` object - use database goals from `scorecard_config`
-3. Add "s" suffix for clarity (e.g., "420s")
-
-**File:** `src/pages/TeamScorecard.tsx`
-
-Changes:
-- Remove/modify `METRIC_GOALS` constant (lines 35-40)
-- Update `EditableMetricCell` usage to show seconds: replace `formatValue={formatSeconds}` with `formatValue={(v) => v !== null ? `${v}s` : '-'}`
-- Fetch goals from `scorecard_config` query and use them dynamically
-
-**File:** `src/components/scorecard/EditableMetricCell.tsx`
-
-Changes:
-- Update input parsing to accept raw seconds (not mm:ss)
-- Update display to show seconds with "s" suffix
-
----
-
-## Issue 3: Database Goal Sync
-
-### Discrepancies Found
-
-Based on your spreadsheet, the following `scorecard_config` records need updating:
-
-| Support Type | Metric | Current Goal | Correct Goal |
-|--------------|--------|--------------|--------------|
-| Hybrid Support | call_aht | 240 | **420** |
-| Hybrid Support | chat_aht | 420 | **600** |
-| Hybrid Support | chat_frt | 20 | **30** |
-| Hybrid Support | qa | 96 | **100** |
-| Hybrid Support | reliability | 98 | **100** |
-| Email Support | productivity | 100 | **715** |
-| Email Support | revalida | 100 | **95** |
-| Email Support | reliability | 100 | **98** |
-| Logistics | reliability | 100 | **98** |
-| Logistics | (missing) | - | Add productivity, QA, revalida |
-
-**Action:** Use data update tool to sync these values.
+| Component | Risk | Notes |
+|-----------|------|-------|
+| Call AHT label | None | Simple text change |
+| Chat AHT calculation | Low | Values may initially show as null for tickets without `agent_work_time` events; this is expected |
+| FRT | None | No changes |
+| Existing saved data | None | Previously saved scorecards retain their values |
+| Database | None | No schema changes |
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-zendesk-metrics/index.ts` | Fix Chat AHT to use `agent_work_time` only |
-| `src/pages/TeamScorecard.tsx` | Remove hardcoded goals, display seconds, use DB config |
-| `src/components/scorecard/EditableMetricCell.tsx` | Parse/display raw seconds instead of mm:ss |
-| `src/lib/scorecardApi.ts` | Update `formatSeconds` to `formatSecondsAsRaw` |
-| Database: `scorecard_config` | Update goal values to match spreadsheet |
+| File | Change |
+|------|--------|
+| `src/pages/TeamScorecard.tsx` | Line 717: "Avg Talk Time" → "Call AHT" |
+| `supabase/functions/fetch-zendesk-metrics/index.ts` | Lines 269-292: Prioritize `agent_work_time`, skip `full_resolution_time` |
 
 ---
 
-## Implementation Order
+## Testing After Implementation
 
-1. **Step 1**: Update database `scorecard_config` goals to match spreadsheet
-2. **Step 2**: Fix edge function Chat AHT calculation
-3. **Step 3**: Deploy edge function
-4. **Step 4**: Update UI to display seconds
-5. **Step 5**: Clear cached metrics and refresh to test
+1. Deploy the updated edge function
+2. Select a specific support type (e.g., Hybrid Support)
+3. Click "Refresh Metrics" to fetch fresh data
+4. Check logs to verify `agent_work_time` is being captured
+5. Verify Chat AHT values are now reasonable (typically 60-600 seconds)
+6. Confirm the column header shows "Call AHT" instead of "Avg Talk Time"
 
 ---
 
 ## Expected Outcome
 
-1. **Chat AHT values** will show realistic agent handle times (typically 1-10 minutes = 60-600 seconds)
-2. **Display format** will show raw seconds (e.g., "420s" instead of "7:00")
-3. **Goal comparisons** will use correct values from your spreadsheet
-4. **Percentage calculations** will be accurate based on correct goals
+1. **Call AHT column** will be correctly labeled "Call AHT"
+2. **Chat AHT values** will reflect actual agent handle time (excluding queue/wait)
+3. **Values will be smaller** and more realistic (minutes, not hours)
+4. **FRT** continues to work correctly in seconds
