@@ -897,9 +897,17 @@ export default function TeamScorecard() {
                           {showRevalida && (
                             <TableCell className="text-center">
                               {metricApplies(scorecard.agent.position, 'revalida') ? (
-                                <div className="px-2 py-1 rounded bg-muted/30">
-                                  <span className="text-muted-foreground">Pending</span>
-                                </div>
+                                scorecard.revalida !== null ? (
+                                  <div className={`px-2 py-1 rounded ${getScoreBgColor(scorecard.revalida, getMetricGoal('revalida', scorecard.agent.position))}`}>
+                                    <span className={getScoreColor(scorecard.revalida, getMetricGoal('revalida', scorecard.agent.position))}>
+                                      {formatScore(scorecard.revalida)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="px-2 py-1 rounded bg-muted/30">
+                                    <span className="text-muted-foreground">-</span>
+                                  </div>
+                                )
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}

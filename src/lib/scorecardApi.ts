@@ -380,7 +380,7 @@ export async function fetchWeeklyScorecard(
     : [fetchSavedScorecard(weekStartStr, weekEndStr, supportType)];
 
   // Fetch all required data in parallel
-  const [agentsResult, configResults, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResults] = await Promise.all([
+  const [agentsResult, configResults, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResults, revalidaBatchesResult] = await Promise.all([
     fetchEligibleAgents(supportType),
     Promise.all(configPromises),
     supabase
@@ -406,7 +406,13 @@ export async function fetchWeeklyScorecard(
       .lte('start_date', weekEndStr)
       .gte('end_date', weekStartStr),
     fetchZendeskMetrics(weekStartStr, weekEndStr),
-    Promise.all(savedPromises)
+    Promise.all(savedPromises),
+    // Fetch Revalida batches whose start_at falls within this week
+    supabase
+      .from('revalida_batches')
+      .select('id')
+      .gte('start_at', weekStartStr)
+      .lte('start_at', weekEndStr + 'T23:59:59')
   ]);
 
   const agents = agentsResult;
@@ -420,6 +426,24 @@ export async function fetchWeeklyScorecard(
   const zendeskMetrics = zendeskMetricsResult;
   // Flatten saved scorecards from all support types
   const savedScorecards = savedResults.flat();
+  
+  // Fetch Revalida attempts for the week's batches
+  const weeklyBatchIds = (revalidaBatchesResult.data || []).map((b: { id: string }) => b.id);
+  let revalidaMap = new Map<string, number>();
+  
+  if (weeklyBatchIds.length > 0) {
+    const { data: revalidaAttempts } = await supabase
+      .from('revalida_attempts')
+      .select('agent_email, final_percent')
+      .in('batch_id', weeklyBatchIds)
+      .eq('status', 'graded');
+    
+    for (const attempt of revalidaAttempts || []) {
+      if (attempt.final_percent !== null) {
+        revalidaMap.set(attempt.agent_email.toLowerCase(), attempt.final_percent);
+      }
+    }
+  }
 
   // Create lookup maps
   const zendeskMap = new Map(zendeskMetrics.map(m => [m.agent_email.toLowerCase(), m]));
@@ -533,7 +557,7 @@ export async function fetchWeeklyScorecard(
           metricValue = qa;
           break;
         case 'revalida':
-          metricValue = null; // Pending
+          metricValue = revalidaMap.get(agentEmailLower) ?? null;
           break;
         case 'call_aht':
           metricValue = callAht;
@@ -566,7 +590,7 @@ export async function fetchWeeklyScorecard(
       chatAht,
       chatFrt,
       qa,
-      revalida: null, // Pending
+      revalida: revalidaMap.get(agentEmailLower) ?? null,
       reliability,
       otProductivity: null, // Placeholder
       finalScore: isOnLeave ? null : finalScore,

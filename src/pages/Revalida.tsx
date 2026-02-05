@@ -34,6 +34,7 @@ import { AttemptResult } from '@/components/revalida/AttemptResult';
 import { SubmissionTable } from '@/components/revalida/SubmissionTable';
 import { ReviewQueue } from '@/components/revalida/ReviewQueue';
 import { GradingDialog } from '@/components/revalida/GradingDialog';
+import { SubmissionDetailDialog } from '@/components/revalida/SubmissionDetailDialog';
 import { FileText, Loader2 } from 'lucide-react';
 
 export default function Revalida() {
@@ -67,6 +68,13 @@ export default function Revalida() {
   const [gradingBatch, setGradingBatch] = useState<RevalidaBatch | null>(null);
   const [gradingQuestions, setGradingQuestions] = useState<RevalidaQuestion[]>([]);
   const [gradingAnswers, setGradingAnswers] = useState<RevalidaAnswer[]>([]);
+  
+  // View detail dialog state (for eye icon)
+  const [viewingAttempt, setViewingAttempt] = useState<RevalidaAttempt | null>(null);
+  const [viewingBatch, setViewingBatch] = useState<RevalidaBatch | null>(null);
+  const [viewingQuestions, setViewingQuestions] = useState<RevalidaQuestion[]>([]);
+  const [viewingAnswers, setViewingAnswers] = useState<RevalidaAnswer[]>([]);
+  const [viewLoading, setViewLoading] = useState(false);
   const [gradingLoading, setGradingLoading] = useState(false);
 
   // Load batches
@@ -329,11 +337,35 @@ export default function Revalida() {
     console.log('View batch:', batchId);
   };
 
-  // Handle view attempt
-  const handleViewAttempt = (attemptId: string) => {
+  // Handle view attempt - works for all statuses
+  const handleViewAttempt = async (attemptId: string) => {
     const attempt = allAttempts.find(a => a.id === attemptId);
-    if (attempt && attempt.status === 'needs_manual_review') {
+    if (!attempt) return;
+    
+    // For needs_manual_review, open grading dialog if admin
+    if (attempt.status === 'needs_manual_review' && isAdmin) {
       handleGradeAttempt(attemptId);
+      return;
+    }
+    
+    // For all other statuses, open view-only detail dialog
+    setViewLoading(true);
+    try {
+      const { batch, questions } = await fetchBatchById(attempt.batch_id);
+      const answers = await fetchAnswersForAttempt(attemptId);
+      
+      setViewingAttempt(attempt);
+      setViewingBatch(batch);
+      setViewingQuestions(questions);
+      setViewingAnswers(answers);
+    } catch (error: any) {
+      toast({
+        title: 'Error loading submission',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setViewLoading(false);
     }
   };
 
@@ -533,6 +565,24 @@ export default function Revalida() {
           onGradeAnswer={handleGradeAnswer}
           onFinalizeGrading={handleFinalizeGrading}
           isLoading={gradingLoading}
+        />
+        
+        {/* Submission Detail Dialog (for viewing graded/submitted attempts) */}
+        <SubmissionDetailDialog
+          isOpen={!!viewingAttempt}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewingAttempt(null);
+              setViewingBatch(null);
+              setViewingQuestions([]);
+              setViewingAnswers([]);
+            }
+          }}
+          attempt={viewingAttempt}
+          batch={viewingBatch}
+          questions={viewingQuestions}
+          answers={viewingAnswers}
+          isAdmin={isAdmin}
         />
       </div>
     </Layout>
