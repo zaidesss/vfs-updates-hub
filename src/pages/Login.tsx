@@ -1,13 +1,16 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useUpdates } from '@/context/UpdatesContext';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Bell, Loader2, AlertCircle, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Bell, Loader2, AlertCircle, Eye, EyeOff, CheckCircle, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { ToastAction } from '@/components/ui/toast';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -18,7 +21,14 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const { login } = useAuth();
+  const { getPendingUpdateCount, ensureLoaded } = useUpdates();
+  const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Ensure updates are loaded for pending check after login
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +39,21 @@ export default function Login() {
     const result = await login(email, password);
     
     if (result.success) {
+      // Check for pending updates and show toast if any
+      const pendingCount = getPendingUpdateCount(email);
+      if (pendingCount > 0) {
+        toast({
+          title: 'Updates Pending',
+          description: `You have ${pendingCount} update(s) to acknowledge.`,
+          action: (
+            <ToastAction altText="View Updates" onClick={() => navigate('/updates')}>
+              <FileText className="h-4 w-4 mr-1" />
+              View
+            </ToastAction>
+          ),
+        });
+      }
+      
       if (result.mustChangePassword) {
         navigate('/change-password');
       } else {

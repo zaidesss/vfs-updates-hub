@@ -19,6 +19,8 @@ interface UpdatesContextType {
   updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
   refreshData: () => Promise<void>;
   ensureLoaded: () => void; // Trigger lazy loading
+  getPendingUpdates: (agentEmail: string) => Update[];
+  getPendingUpdateCount: (agentEmail: string) => number;
 }
 
 const UpdatesContext = createContext<UpdatesContextType | undefined>(undefined);
@@ -119,6 +121,21 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     return acknowledgements.filter(a => a.update_id === updateId);
   };
 
+  const getPendingUpdates = (agentEmail: string): Update[] => {
+    const email = agentEmail.toLowerCase();
+    return updates.filter(u => 
+      u.status === 'published' &&
+      !acknowledgements.some(a => 
+        a.update_id === u.id && 
+        a.agent_email.toLowerCase() === email
+      )
+    );
+  };
+
+  const getPendingUpdateCount = (agentEmail: string): number => {
+    return getPendingUpdates(agentEmail).length;
+  };
+
   const createUpdate = async (update: Omit<Update, 'id' | 'posted_at'>) => {
     const result = await apiCreateUpdate(update);
     
@@ -203,6 +220,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       updateUpdateStatus,
       refreshData,
       ensureLoaded,
+      getPendingUpdates,
+      getPendingUpdateCount,
     }}>
       {children}
     </UpdatesContext.Provider>
