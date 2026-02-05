@@ -1,7 +1,8 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useDemoTour } from '@/context/DemoTourContext';
+import { useUpdates } from '@/context/UpdatesContext';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,6 +17,8 @@ import {
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
 import ImprovementsTracker from '@/components/ImprovementsTracker';
+import { PendingUpdatesModal } from '@/components/PendingUpdatesModal';
+import type { Update } from '@/types';
 
 interface LayoutProps {
   children: ReactNode;
@@ -37,8 +40,28 @@ interface NavGroup {
 export function Layout({ children }: LayoutProps) {
   const { user, logout, isAdmin, isHR, isSuperAdmin, profileId: userProfileId } = useAuth();
   const { openTour } = useDemoTour();
+  const { getPendingUpdates, ensureLoaded } = useUpdates();
   const location = useLocation();
   const [showImprovements, setShowImprovements] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [pendingUpdatesForLogout, setPendingUpdatesForLogout] = useState<Update[]>([]);
+
+  // Ensure updates are loaded for pending check
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
+
+  const handleLogoutClick = () => {
+    if (user?.email) {
+      const pending = getPendingUpdates(user.email);
+      if (pending.length > 0) {
+        setPendingUpdatesForLogout(pending);
+        setShowPendingModal(true);
+        return;
+      }
+    }
+    logout();
+  };
 
   // Define grouped navigation
   const getNavGroups = (): NavGroup[] => {
@@ -250,8 +273,9 @@ export function Layout({ children }: LayoutProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={logout}
+              onClick={handleLogoutClick}
               className="text-muted-foreground hover:text-foreground"
+              title="Logout"
             >
               <LogOut className="h-4 w-4" />
             </Button>
@@ -292,6 +316,13 @@ export function Layout({ children }: LayoutProps) {
         isSuperAdmin={isSuperAdmin}
         currentUserEmail={user?.email || ''}
         currentUserName={user?.name || ''}
+      />
+
+      {/* Pending Updates Modal for Logout */}
+      <PendingUpdatesModal
+        isOpen={showPendingModal}
+        onOpenChange={setShowPendingModal}
+        pendingUpdates={pendingUpdatesForLogout}
       />
     </div>
   );
