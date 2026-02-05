@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History, Trash2, ShieldAlert } from 'lucide-react';
+import { LeaveAuditLog } from '@/components/leave/LeaveAuditLog';
 import { format, parseISO } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
@@ -98,6 +99,9 @@ export default function LeaveRequest() {
   const [isDirectoryUser, setIsDirectoryUser] = useState(false);
   const [editingRequest, setEditingRequest] = useState<LeaveRequestType | null>(null);
   const [isAdminEditing, setIsAdminEditing] = useState(false);
+  const [auditLogOpen, setAuditLogOpen] = useState(false);
+  const [selectedRequestForAudit, setSelectedRequestForAudit] = useState<string | null>(null);
+  const [auditAgentName, setAuditAgentName] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
@@ -563,21 +567,10 @@ export default function LeaveRequest() {
     setIsProcessingDecision(false);
   };
 
-  const openHistoryDialog = async (requestId: string, agentName: string) => {
-    setHistoryDialog({ open: true, requestId, agentName });
-    setIsLoadingHistory(true);
-    
-    const result = await fetchLeaveRequestHistory(requestId);
-    if (result.data) {
-      setHistoryData(result.data);
-    } else {
-      toast({
-        title: 'Error',
-        description: result.error || 'Failed to load history',
-        variant: 'destructive'
-      });
-    }
-    setIsLoadingHistory(false);
+  const openHistoryDialog = (requestId: string, agentName: string) => {
+    setSelectedRequestForAudit(requestId);
+    setAuditAgentName(agentName);
+    setAuditLogOpen(true);
   };
 
   const formatFieldName = (field: string): string => {
@@ -1367,45 +1360,13 @@ export default function LeaveRequest() {
         </DialogContent>
       </Dialog>
 
-      {/* History Dialog */}
-      <Dialog open={historyDialog?.open || false} onOpenChange={(open) => !open && setHistoryDialog(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit History - {historyDialog?.agentName}</DialogTitle>
-            <DialogDescription>View all changes made to this leave request</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {isLoadingHistory ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
-            ) : historyData.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No edit history found</p>
-            ) : (
-              historyData.map((entry) => (
-                <div key={entry.id} className="border rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{entry.changed_by}</span>
-                    <span className="text-muted-foreground">
-                      {format(parseISO(entry.changed_at), 'MMM d, yyyy h:mm a')}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {Object.entries(entry.changes).map(([field, change]) => (
-                      <div key={field} className="text-sm">
-                        <span className="font-medium">{formatFieldName(field)}:</span>{' '}
-                        <span className="text-destructive line-through">{formatFieldValue(change.old)}</span>
-                        {' → '}
-                        <span className="text-success">{formatFieldValue(change.new)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Audit Log Dialog */}
+      <LeaveAuditLog
+        isOpen={auditLogOpen}
+        onOpenChange={setAuditLogOpen}
+        requestId={selectedRequestForAudit}
+        agentName={auditAgentName}
+      />
     </Layout>
   );
 }
