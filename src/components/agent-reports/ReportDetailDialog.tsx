@@ -8,17 +8,27 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { 
   Target, LogOut, Clock, RotateCcw, Timer, LogIn, DoorOpen, User,
-  CheckCircle, XCircle, Eye
+  CheckCircle, XCircle, ArrowUpRight, Coffee
 } from 'lucide-react';
 import {
   type AgentReport,
   type ReportStatus,
+  type IncidentType,
   INCIDENT_TYPE_CONFIG,
   SEVERITY_CONFIG,
   STATUS_CONFIG,
   updateReportStatus,
+  isEscalatableIncident,
+  getOutageReasonForIncident,
 } from '@/lib/agentReportsApi';
+import { 
+  createEscalatedOutageRequest, 
+  checkExistingOutageRequest,
+  EscalatedOutageInput
+} from '@/lib/leaveRequestApi';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { EscalationConfirmDialog } from './EscalationConfirmDialog';
 
 interface ReportDetailDialogProps {
   report: AgentReport | null;
@@ -38,6 +48,7 @@ const ICON_MAP: Record<string, typeof Target> = {
   'log-in': LogIn,
   'door-open': DoorOpen,
   user: User,
+  coffee: Coffee,
 };
 
 export function ReportDetailDialog({
@@ -50,6 +61,8 @@ export function ReportDetailDialog({
 }: ReportDetailDialogProps) {
   const [notes, setNotes] = useState(report?.notes || '');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showEscalationDialog, setShowEscalationDialog] = useState(false);
+  const [isEscalating, setIsEscalating] = useState(false);
 
   if (!report) return null;
 
@@ -57,6 +70,8 @@ export function ReportDetailDialog({
   const Icon = ICON_MAP[config.icon] || Target;
   const severityConfig = SEVERITY_CONFIG[report.severity];
   const statusConfig = STATUS_CONFIG[report.status];
+  const canEscalate = isEscalatableIncident(report.incident_type);
+  const outageReason = getOutageReasonForIncident(report.incident_type);
 
   const handleStatusUpdate = async (newStatus: ReportStatus) => {
     setIsUpdating(true);
@@ -64,13 +79,147 @@ export function ReportDetailDialog({
     setIsUpdating(false);
 
     if (result.success) {
-      toast({ title: 'Status Updated', description: `Report marked as ${newStatus}` });
+      toast({ title: 'Status Updated', description: `Report marked as ${STATUS_CONFIG[newStatus].label.toLowerCase()}` });
       onStatusUpdated();
       onOpenChange(false);
     } else {
       toast({ title: 'Error', description: result.error || 'Failed to update status', variant: 'destructive' });
     }
   };
+
+  // Calculate escalation time range based on incident type
+  const getEscalationTimeRange = (): { startTime: string; endTime: string } => {
+    const details = report.details || {};
+    
+    switch (report.incident_type) {
+      case 'LATE_LOGIN': {
+        // Start time: schedule + 5min grace, End time: 1 min before actual login
+        const scheduleStart = details.scheduleStart || '09:00';
+        const loginTime = details.loginTime || '09:30';
+        
+        // Parse schedule start and add 5 min grace
+        const [schedH, schedM] = scheduleStart.split(':').map(Number);
+        let graceMinutes = schedH * 60 + schedM + 5;
+        const graceH = Math.floor(graceMinutes / 60) % 24;
+        const graceM = graceMinutes % 60;
+        const startTime = `${String(graceH).padStart(2, '0')}:${String(graceM).padStart(2, '0')}`;
+        
+        // Parse login time and subtract 1 min
+        const [loginH, loginM] = loginTime.split(':').map(Number);
+        let endMinutes = loginH * 60 + loginM - 1;
+        if (endMinutes < 0) endMinutes += 24 * 60;
+        const endH = Math.floor(endMinutes / 60) % 24;
+        const endM = endMinutes % 60;
+        const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        
+        return { startTime, endTime };
+      }
+      case 'EARLY_OUT': {
+        // Start time: actual logout, End time: scheduled end
+        const logoutTime = details.logoutTime || '17:00';
+        const scheduleEnd = details.scheduleEnd || '18:00';
+        return { startTime: logoutTime, endTime: scheduleEnd };
+      }
+      case 'TIME_NOT_MET': {
+        // Use the full shift duration gap
+        const expected = details.expected || 8;
+        const actual = details.actual || 0;
+        const gapHours = expected - actual;
+        
+        // Default to a reasonable time range (end of shift minus gap)
+        const scheduleEnd = details.scheduleEnd || '18:00';
+        const [endH, endM] = scheduleEnd.split(':').map(Number);
+        let startMinutes = (endH * 60 + endM) - (gapHours * 60);
+        if (startMinutes < 0) startMinutes += 24 * 60;
+        const startH = Math.floor(startMinutes / 60) % 24;
+        const startM = Math.floor(startMinutes % 60);
+        const startTime = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+        
+        return { startTime, endTime: scheduleEnd };
+      }
+      default:
+        return { startTime: '09:00', endTime: '10:00' };
+    }
+  };
+
+  const handleEscalate = async () => {
+    setIsEscalating(true);
+    
+    try {
+      // Check for existing outage request
+      const existingCheck = await checkExistingOutageRequest(
+        report.agent_email,
+        report.incident_date,
+        outageReason
+      );
+      
+      if (existingCheck.data === true) {
+        toast({
+          title: 'Duplicate Request',
+          description: `An outage request for "${outageReason}" already exists for this agent on this date.`,
+          variant: 'destructive',
+        });
+        setIsEscalating(false);
+        setShowEscalationDialog(false);
+        return;
+      }
+      
+      // Fetch agent profile for client/team lead/role
+      const { data: profile } = await supabase
+        .from('agent_profiles')
+        .select('clients, team_lead, position')
+        .eq('email', report.agent_email.toLowerCase())
+        .maybeSingle();
+      
+      const { startTime, endTime } = getEscalationTimeRange();
+      
+      const input: EscalatedOutageInput = {
+        agent_email: report.agent_email,
+        agent_name: report.agent_name,
+        client_name: profile?.clients || 'Unknown',
+        team_lead_name: profile?.team_lead || 'Unknown',
+        role: profile?.position || 'Unknown',
+        start_date: report.incident_date,
+        start_time: startTime,
+        end_time: endTime,
+        outage_reason: outageReason as 'Late Login' | 'Undertime',
+      };
+      
+      const result = await createEscalatedOutageRequest(input);
+      
+      if (result.error) {
+        toast({
+          title: 'Error',
+          description: result.error,
+          variant: 'destructive',
+        });
+        setIsEscalating(false);
+        return;
+      }
+      
+      // Update report status to reviewed (escalated)
+      await updateReportStatus(report.id, 'reviewed', currentUserEmail, notes);
+      
+      toast({
+        title: 'Outage Request Created',
+        description: `Request ${result.data?.reference_number || ''} created for ${report.agent_name}`,
+      });
+      
+      onStatusUpdated();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to escalate report',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEscalating(false);
+      setShowEscalationDialog(false);
+    }
+  };
+
+  const { startTime: escalationStartTime, endTime: escalationEndTime } = canEscalate ? getEscalationTimeRange() : { startTime: '', endTime: '' };
 
   // Render incident-specific details
   const renderDetails = () => {
@@ -314,35 +463,50 @@ export function ReportDetailDialog({
           {/* Action Buttons */}
           {canEdit && report.status !== 'validated' && report.status !== 'dismissed' && (
             <div className="flex gap-2 pt-2">
-              {report.status === 'open' && (
+              {/* Escalate as Outage - only for escalatable incidents */}
+              {canEscalate && (report.status === 'open' || report.status === 'reviewed') && (
                 <Button
                   variant="outline"
-                  onClick={() => handleStatusUpdate('reviewed')}
-                  disabled={isUpdating}
-                  className="flex-1"
+                  onClick={() => setShowEscalationDialog(true)}
+                  disabled={isUpdating || isEscalating}
+                  className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-400 dark:hover:bg-purple-950"
                 >
-                  <Eye className="h-4 w-4 mr-2" />
-                  Mark Reviewed
+                  <ArrowUpRight className="h-4 w-4 mr-2" />
+                  Escalate as Outage
                 </Button>
               )}
               <Button
                 variant="default"
                 onClick={() => handleStatusUpdate('validated')}
-                disabled={isUpdating}
+                disabled={isUpdating || isEscalating}
                 className="flex-1"
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Validate
+                Validate (Coaching)
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => handleStatusUpdate('dismissed')}
-                disabled={isUpdating}
+                disabled={isUpdating || isEscalating}
               >
                 <XCircle className="h-4 w-4 mr-2" />
-                Dismiss
+                Dismiss (Invalid)
               </Button>
             </div>
+          )}
+
+          {/* Escalation Confirmation Dialog */}
+          {canEscalate && (
+            <EscalationConfirmDialog
+              open={showEscalationDialog}
+              onOpenChange={setShowEscalationDialog}
+              report={report}
+              outageReason={outageReason}
+              startTime={escalationStartTime}
+              endTime={escalationEndTime}
+              onConfirm={handleEscalate}
+              isLoading={isEscalating}
+            />
           )}
         </div>
       </DialogContent>
