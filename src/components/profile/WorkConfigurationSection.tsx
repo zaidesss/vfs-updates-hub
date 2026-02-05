@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
+import { UpworkLimitRequestDialog } from '@/components/profile/UpworkLimitRequestDialog';
 import { cn } from '@/lib/utils';
 import { 
   AgentProfileInput, 
@@ -14,6 +16,9 @@ import {
   getPositionDefaults 
 } from '@/lib/agentProfileApi';
 import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
+import { calculateProfileTotalHours } from '@/lib/profileTotalHours';
+import { useAuth } from '@/context/AuthContext';
+import { Clock, Send } from 'lucide-react';
 
 const ZENDESK_INSTANCES = ['ZD1', 'ZD2'];
 const SUPPORT_ACCOUNTS = Array.from({ length: 17 }, (_, i) => String(i + 1));
@@ -27,6 +32,7 @@ interface WorkConfigurationSectionProps {
   onPositionChange?: (position: string) => void;
   scheduleErrors?: Record<string, string>;
   onScheduleBlur?: (field: string, value: string) => void;
+  agentFullName?: string; // For dialog display
 }
 
 export function WorkConfigurationSection({
@@ -37,14 +43,45 @@ export function WorkConfigurationSection({
   onPositionChange,
   scheduleErrors = {},
   onScheduleBlur,
+  agentFullName,
 }: WorkConfigurationSectionProps) {
+  const { user, isAdmin: authIsAdmin, isSuperAdmin: authIsSuperAdmin } = useAuth();
+  
   // Local state for validation errors if no external handler provided
   const [localScheduleErrors, setLocalScheduleErrors] = useState<Record<string, string>>({});
+  const [showUpworkDialog, setShowUpworkDialog] = useState(false);
+  
   const errors = Object.keys(scheduleErrors).length > 0 ? scheduleErrors : localScheduleErrors;
 
   const positionDefaults = getPositionDefaults(profile.position || null);
   // Admins and Super Admins can edit work configuration fields
   const canEdit = isAdmin || isSuperAdmin;
+  
+  // Can request upwork limit adjustment (Admins or Super Admins only)
+  const canRequestUpworkLimit = authIsAdmin || authIsSuperAdmin;
+
+  // Calculate total hours using the same logic as Master Directory
+  const totalHours = useMemo(() => {
+    return calculateProfileTotalHours(profile);
+  }, [
+    profile.mon_schedule,
+    profile.tue_schedule,
+    profile.wed_schedule,
+    profile.thu_schedule,
+    profile.fri_schedule,
+    profile.sat_schedule,
+    profile.sun_schedule,
+    profile.break_schedule,
+    profile.ot_enabled,
+    profile.mon_ot_schedule,
+    profile.tue_ot_schedule,
+    profile.wed_ot_schedule,
+    profile.thu_ot_schedule,
+    profile.fri_ot_schedule,
+    profile.sat_ot_schedule,
+    profile.sun_ot_schedule,
+    profile.day_off,
+  ]);
 
   // Validation handler for schedule fields
   const handleScheduleBlur = (field: string, value: string) => {
@@ -166,6 +203,50 @@ export function WorkConfigurationSection({
 
   return (
     <div className="space-y-6">
+      {/* Total Hours Display (Read-only) */}
+      <div className="p-4 rounded-lg bg-muted/30 border border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Clock className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <Label className="text-sm text-muted-foreground">Total Hours (Weekly)</Label>
+              <p className="text-2xl font-semibold text-foreground">
+                {totalHours.overallTotalHours.toFixed(1)} <span className="text-base font-normal text-muted-foreground">hours</span>
+              </p>
+            </div>
+          </div>
+          {canRequestUpworkLimit && (
+            <Button
+              variant="outline"
+              onClick={() => setShowUpworkDialog(true)}
+              className="gap-2"
+            >
+              <Send className="h-4 w-4" />
+              Request Upwork Limit Adjustment
+            </Button>
+          )}
+        </div>
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-muted-foreground">
+          <div>Weekday: {totalHours.weekdayTotalHours.toFixed(1)}h</div>
+          <div>Weekend: {totalHours.weekendTotalHours.toFixed(1)}h</div>
+          <div>OT: {totalHours.otTotalHours.toFixed(1)}h</div>
+          <div>Break Deduction: -{totalHours.unpaidBreakHours.toFixed(1)}h</div>
+        </div>
+      </div>
+
+      {/* Upwork Limit Request Dialog */}
+      <UpworkLimitRequestDialog
+        isOpen={showUpworkDialog}
+        onOpenChange={setShowUpworkDialog}
+        agentName={agentFullName || profile.agent_name || 'Agent'}
+        agentEmail={profile.email}
+        currentTotalHours={totalHours.overallTotalHours}
+        teamLead={profile.team_lead || ''}
+        requestedBy={user?.name || user?.email || ''}
+      />
+
       {/* Position Dropdown */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
