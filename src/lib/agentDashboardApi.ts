@@ -224,6 +224,58 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
   return VALID_TRANSITIONS[currentStatus]?.[eventType] ?? null;
 }
 
+/**
+ * Fetch consolidated dashboard data via RPC
+ * Returns status, login time, and ticket metrics in a single call
+ */
+export async function fetchAgentDashboardRPC(profileId: string): Promise<{
+  data: {
+    current_status: ProfileStatus;
+    status_since: string | null;
+    current_status_counter: number;
+    latest_login_time: string | null;
+    total_tickets_week: number;
+    total_tickets_today: number;
+    avg_response_gap_seconds: number;
+    week_start_date: string;
+    week_end_date: string;
+  } | null;
+  error: string | null;
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_agent_dashboard_data', {
+      p_profile_id: profileId,
+    });
+    
+    if (error) {
+      return { data: null, error: error.message };
+    }
+    
+    // RPC returns an array, get first (and only) row
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      return { data: null, error: 'No data returned from RPC' };
+    }
+    
+    return {
+      data: {
+        current_status: row.current_status as ProfileStatus,
+        status_since: row.status_since,
+        current_status_counter: row.current_status_counter ?? 0,
+        latest_login_time: row.latest_login_time,
+        total_tickets_week: row.total_tickets_week ?? 0,
+        total_tickets_today: row.total_tickets_today ?? 0,
+        avg_response_gap_seconds: row.avg_response_gap_seconds ?? 0,
+        week_start_date: row.week_start_date,
+        week_end_date: row.week_end_date,
+      },
+      error: null,
+    };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}
+
 export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
     // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
