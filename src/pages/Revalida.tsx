@@ -35,6 +35,7 @@ import { SubmissionTable } from '@/components/revalida/SubmissionTable';
 import { ReviewQueue } from '@/components/revalida/ReviewQueue';
 import { GradingDialog } from '@/components/revalida/GradingDialog';
 import { SubmissionDetailDialog } from '@/components/revalida/SubmissionDetailDialog';
+import { BatchDetailDialog } from '@/components/revalida/BatchDetailDialog';
 import { FileText, Loader2 } from 'lucide-react';
 
 export default function Revalida() {
@@ -76,6 +77,10 @@ export default function Revalida() {
   const [viewingAnswers, setViewingAnswers] = useState<RevalidaAnswer[]>([]);
   const [viewLoading, setViewLoading] = useState(false);
   const [gradingLoading, setGradingLoading] = useState(false);
+  
+  // Batch detail dialog state (for batch eye icon)
+  const [viewingBatchDetail, setViewingBatchDetail] = useState<RevalidaBatch | null>(null);
+  const [viewingBatchQuestions, setViewingBatchQuestions] = useState<RevalidaQuestion[]>([]);
 
   // Load batches
   const loadBatches = useCallback(async () => {
@@ -333,8 +338,18 @@ export default function Revalida() {
   };
 
   // Handle view batch
-  const handleViewBatch = (batchId: string) => {
-    console.log('View batch:', batchId);
+  const handleViewBatch = async (batchId: string) => {
+    try {
+      const { batch, questions } = await fetchBatchById(batchId);
+      setViewingBatchDetail(batch);
+      setViewingBatchQuestions(questions);
+    } catch (error: any) {
+      toast({
+        title: 'Error loading batch',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
   };
 
   // Handle view attempt - works for all statuses
@@ -583,6 +598,19 @@ export default function Revalida() {
           questions={viewingQuestions}
           answers={viewingAnswers}
           isAdmin={isAdmin}
+        />
+        
+        {/* Batch Detail Dialog (for viewing batch questions) */}
+        <BatchDetailDialog
+          isOpen={!!viewingBatchDetail}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewingBatchDetail(null);
+              setViewingBatchQuestions([]);
+            }
+          }}
+          batch={viewingBatchDetail}
+          questions={viewingBatchQuestions}
         />
       </div>
     </Layout>
