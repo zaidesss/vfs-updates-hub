@@ -41,35 +41,33 @@ export function EscalationConfirmDialog({
             <ArrowUpRight className="h-5 w-5 text-purple-600" />
             Escalate as Outage Request
           </AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-4 pt-2">
-              <p>
-                This will create an outage request for review. The report will be marked as escalated.
-              </p>
+          <AlertDialogDescription className="space-y-4 pt-2">
+            <span className="block">
+              This will create an outage request for review. The report will be marked as escalated.
+            </span>
+            
+            <span className="block rounded-lg border p-4 space-y-3 bg-muted/50">
+              <span className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">{report.agent_name}</span>
+              </span>
               
-              <div className="rounded-lg border p-4 space-y-3 bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{report.agent_name}</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>{report.incident_date}</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>{startTime} - {endTime}</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-purple-600 border-purple-600">
-                    {outageReason}
-                  </Badge>
-                </div>
-              </div>
-            </div>
+              <span className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span>{report.incident_date}</span>
+              </span>
+              
+              <span className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>{startTime} - {endTime}</span>
+              </span>
+              
+              <span className="flex items-center gap-2">
+                <Badge variant="outline" className="text-purple-600 border-purple-600">
+                  {outageReason}
+                </Badge>
+              </span>
+            </span>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
