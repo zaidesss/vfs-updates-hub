@@ -195,6 +195,62 @@ export async function deleteBatch(batchId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Update an existing batch (for drafts only)
+export async function updateBatch(
+  batchId: string,
+  title: string,
+  questions: QuestionImport[]
+): Promise<RevalidaBatch> {
+  // Calculate totals
+  const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
+  const questionCount = questions.length;
+
+  // Update batch
+  const { data: batch, error: batchError } = await supabase
+    .from('revalida_batches')
+    .update({
+      title,
+      total_points: totalPoints,
+      question_count: questionCount,
+    })
+    .eq('id', batchId)
+    .select()
+    .single();
+
+  if (batchError) throw batchError;
+
+  // Delete old questions
+  const { error: deleteError } = await supabase
+    .from('revalida_questions')
+    .delete()
+    .eq('batch_id', batchId);
+
+  if (deleteError) throw deleteError;
+
+  // Insert new questions
+  const questionsToInsert = questions.map((q, idx) => ({
+    batch_id: batchId,
+    type: q.type,
+    prompt: q.prompt,
+    choice_a: q.choice_a || null,
+    choice_b: q.choice_b || null,
+    choice_c: q.choice_c || null,
+    choice_d: q.choice_d || null,
+    correct_answer: q.correct_answer || null,
+    points: q.points,
+    order_index: q.order_index ?? idx,
+    is_required: q.is_required ?? true,
+  }));
+
+  const { error: questionsError } = await supabase
+    .from('revalida_questions')
+    .insert(questionsToInsert);
+
+  if (questionsError) throw questionsError;
+
+  return batch as RevalidaBatch;
+}
+
 // Start an attempt (create with shuffled question order)
 export async function startAttempt(
   batchId: string,
