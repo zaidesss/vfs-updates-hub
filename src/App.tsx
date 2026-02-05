@@ -39,6 +39,7 @@ import QAEvaluationDetail from "./pages/QAEvaluationDetail";
 import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import AgentReports from "./pages/AgentReports";
 import TeamScorecard from "./pages/TeamScorecard";
+import Revalida from "./pages/Revalida";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -299,6 +300,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TeamScorecard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/revalida"
+        element={
+          <ProtectedRoute>
+            <Revalida />
           </ProtectedRoute>
         }
       />

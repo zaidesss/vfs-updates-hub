@@ -1505,6 +1505,261 @@ export type Database = {
           },
         ]
       }
+      revalida_answers: {
+        Row: {
+          answer_value: string | null
+          attempt_id: string
+          created_at: string
+          feedback: string | null
+          graded_at: string | null
+          id: string
+          is_correct: boolean | null
+          points_awarded: number | null
+          question_id: string
+        }
+        Insert: {
+          answer_value?: string | null
+          attempt_id: string
+          created_at?: string
+          feedback?: string | null
+          graded_at?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_awarded?: number | null
+          question_id: string
+        }
+        Update: {
+          answer_value?: string | null
+          attempt_id?: string
+          created_at?: string
+          feedback?: string | null
+          graded_at?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_awarded?: number | null
+          question_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_answers_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revalida_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revalida_attempts: {
+        Row: {
+          agent_email: string
+          agent_id: string
+          auto_score_points: number
+          auto_total_points: number
+          batch_id: string
+          created_at: string
+          final_percent: number | null
+          graded_at: string | null
+          graded_by: string | null
+          id: string
+          manual_score_points: number
+          manual_total_points: number
+          question_order: Json
+          started_at: string
+          status: string
+          submitted_at: string | null
+        }
+        Insert: {
+          agent_email: string
+          agent_id: string
+          auto_score_points?: number
+          auto_total_points?: number
+          batch_id: string
+          created_at?: string
+          final_percent?: number | null
+          graded_at?: string | null
+          graded_by?: string | null
+          id?: string
+          manual_score_points?: number
+          manual_total_points?: number
+          question_order?: Json
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+        }
+        Update: {
+          agent_email?: string
+          agent_id?: string
+          auto_score_points?: number
+          auto_total_points?: number
+          batch_id?: string
+          created_at?: string
+          final_percent?: number | null
+          graded_at?: string | null
+          graded_by?: string | null
+          id?: string
+          manual_score_points?: number
+          manual_total_points?: number
+          question_order?: Json
+          started_at?: string
+          status?: string
+          submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_attempts_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revalida_attempts_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles_team_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revalida_attempts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revalida_batches: {
+        Row: {
+          created_at: string
+          created_by: string
+          end_at: string | null
+          id: string
+          is_active: boolean
+          question_count: number
+          start_at: string | null
+          title: string
+          total_points: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          end_at?: string | null
+          id?: string
+          is_active?: boolean
+          question_count?: number
+          start_at?: string | null
+          title: string
+          total_points?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          end_at?: string | null
+          id?: string
+          is_active?: boolean
+          question_count?: number
+          start_at?: string | null
+          title?: string
+          total_points?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      revalida_exports: {
+        Row: {
+          exported_at: string
+          exported_by: string
+          file_path: string
+          id: string
+          range_end: string
+          range_start: string
+          rows_exported: number
+        }
+        Insert: {
+          exported_at?: string
+          exported_by?: string
+          file_path: string
+          id?: string
+          range_end: string
+          range_start: string
+          rows_exported?: number
+        }
+        Update: {
+          exported_at?: string
+          exported_by?: string
+          file_path?: string
+          id?: string
+          range_end?: string
+          range_start?: string
+          rows_exported?: number
+        }
+        Relationships: []
+      }
+      revalida_questions: {
+        Row: {
+          batch_id: string
+          choice_a: string | null
+          choice_b: string | null
+          choice_c: string | null
+          choice_d: string | null
+          correct_answer: string | null
+          created_at: string
+          id: string
+          is_required: boolean
+          order_index: number
+          points: number
+          prompt: string
+          type: string
+        }
+        Insert: {
+          batch_id: string
+          choice_a?: string | null
+          choice_b?: string | null
+          choice_c?: string | null
+          choice_d?: string | null
+          correct_answer?: string | null
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          order_index?: number
+          points?: number
+          prompt: string
+          type: string
+        }
+        Update: {
+          batch_id?: string
+          choice_a?: string | null
+          choice_b?: string | null
+          choice_c?: string | null
+          choice_d?: string | null
+          correct_answer?: string | null
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          order_index?: number
+          points?: number
+          prompt?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_questions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_scorecards: {
         Row: {
           agent_email: string

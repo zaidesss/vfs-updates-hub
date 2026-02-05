@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.generate-eod-analytics]
 verify_jwt = false
+
+[functions.revalida-retention-job]
+verify_jwt = false
