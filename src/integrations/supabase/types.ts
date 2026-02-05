@@ -2426,6 +2426,41 @@ export type Database = {
           log_date: string
         }[]
       }
+      get_weekly_scorecard_data: {
+        Args: {
+          p_support_type?: string
+          p_week_end: string
+          p_week_start: string
+        }
+        Returns: {
+          agent_email: string
+          agent_name: string
+          agent_position: string
+          approved_leave_days: number
+          call_aht_seconds: number
+          call_count: number
+          chat_aht_seconds: number
+          chat_count: number
+          chat_frt_seconds: number
+          day_off: string[]
+          days_with_login: number
+          email_count: number
+          fri_schedule: string
+          is_saved: boolean
+          mon_schedule: string
+          profile_id: string
+          qa_average: number
+          quota_chat: number
+          quota_email: number
+          quota_phone: number
+          revalida_score: number
+          sat_schedule: string
+          sun_schedule: string
+          thu_schedule: string
+          tue_schedule: string
+          wed_schedule: string
+        }[]
+      }
       has_role: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
