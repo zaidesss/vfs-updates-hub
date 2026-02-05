@@ -3,11 +3,11 @@ import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import {
   fetchBatches,
   fetchBatchById,
   createBatch,
+  updateBatch,
   publishBatch,
   deactivateBatch,
   deleteBatch,
@@ -27,6 +27,8 @@ import {
 } from '@/lib/revalidaApi';
 import { BatchCard } from '@/components/revalida/BatchCard';
 import { BatchManagement } from '@/components/revalida/BatchManagement';
+import { QuestionBuilder } from '@/components/revalida/QuestionBuilder';
+import { QuestionDraft } from '@/components/revalida/QuestionCard';
 import { TestForm } from '@/components/revalida/TestForm';
 import { AttemptResult } from '@/components/revalida/AttemptResult';
 import { SubmissionTable } from '@/components/revalida/SubmissionTable';
@@ -47,6 +49,12 @@ export default function Revalida() {
   const [isStarting, setIsStarting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showTestForm, setShowTestForm] = useState(false);
+
+  // Question Builder state
+  const [showQuestionBuilder, setShowQuestionBuilder] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<RevalidaBatch | null>(null);
+  const [editingQuestions, setEditingQuestions] = useState<RevalidaQuestion[]>([]);
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
 
   // Admin state
   const [allAttempts, setAllAttempts] = useState<RevalidaAttempt[]>([]);
@@ -128,16 +136,110 @@ export default function Revalida() {
     }
   }, [isAdmin, loadAttempts]);
 
-  // Handle import
-  const handleImport = async (title: string, questions: QuestionImport[]) => {
+  // Convert QuestionDraft to QuestionImport
+  const convertToImport = (draft: QuestionDraft): QuestionImport => ({
+    type: draft.type,
+    prompt: draft.prompt,
+    choice_a: draft.choice_a || undefined,
+    choice_b: draft.choice_b || undefined,
+    choice_c: draft.choice_c || undefined,
+    choice_d: draft.choice_d || undefined,
+    correct_answer: draft.correct_answer || undefined,
+    points: draft.points,
+    order_index: draft.order_index,
+  });
+
+  // Handle create new batch
+  const handleCreateNew = () => {
+    setEditingBatch(null);
+    setEditingQuestions([]);
+    setShowQuestionBuilder(true);
+  };
+
+  // Handle edit batch
+  const handleEditBatch = async (batchId: string) => {
+    try {
+      const { batch, questions } = await fetchBatchById(batchId);
+      setEditingBatch(batch);
+      setEditingQuestions(questions);
+      setShowQuestionBuilder(true);
+    } catch (error: any) {
+      toast({
+        title: 'Error loading batch',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle save draft
+  const handleSaveDraft = async (title: string, questions: QuestionDraft[]) => {
     if (!user?.email) return;
 
-    await createBatch(title, questions, user.email);
-    toast({
-      title: 'Batch Created',
-      description: `"${title}" has been created with ${questions.length} questions.`,
-    });
-    await loadBatches();
+    setIsSavingBatch(true);
+    try {
+      const questionsImport = questions.map(convertToImport);
+      
+      if (editingBatch) {
+        // Update existing batch
+        await updateBatch(editingBatch.id, title, questionsImport);
+        toast({
+          title: 'Batch Updated',
+          description: `"${title}" has been saved.`,
+        });
+      } else {
+        // Create new batch
+        await createBatch(title, questionsImport, user.email);
+        toast({
+          title: 'Batch Created',
+          description: `"${title}" has been saved as a draft.`,
+        });
+      }
+      
+      setShowQuestionBuilder(false);
+      setEditingBatch(null);
+      setEditingQuestions([]);
+      await loadBatches();
+    } finally {
+      setIsSavingBatch(false);
+    }
+  };
+
+  // Handle save and publish
+  const handleSaveAndPublish = async (title: string, questions: QuestionDraft[]) => {
+    if (!user?.email) return;
+
+    setIsSavingBatch(true);
+    try {
+      const questionsImport = questions.map(convertToImport);
+      
+      let batch: RevalidaBatch;
+      if (editingBatch) {
+        batch = await updateBatch(editingBatch.id, title, questionsImport);
+      } else {
+        batch = await createBatch(title, questionsImport, user.email);
+      }
+      
+      // Deactivate any currently active batch first
+      const currentActive = batches.find(b => b.is_active);
+      if (currentActive && currentActive.id !== batch.id) {
+        await deactivateBatch(currentActive.id);
+      }
+
+      await publishBatch(batch.id);
+      
+      toast({
+        title: 'Batch Published',
+        description: 'The test is now available to agents for 48 hours.',
+      });
+      
+      setShowQuestionBuilder(false);
+      setEditingBatch(null);
+      setEditingQuestions([]);
+      await loadBatches();
+    } finally {
+      setIsSavingBatch(false);
+    }
   };
 
   // Handle publish
@@ -224,7 +326,6 @@ export default function Revalida() {
 
   // Handle view batch
   const handleViewBatch = (batchId: string) => {
-    // Could open a detail dialog - for now just log
     console.log('View batch:', batchId);
   };
 
@@ -310,6 +411,28 @@ export default function Revalida() {
     );
   }
 
+  // Question Builder view
+  if (showQuestionBuilder && isAdmin) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto">
+          <QuestionBuilder
+            editBatch={editingBatch}
+            editQuestions={editingQuestions}
+            onSaveDraft={handleSaveDraft}
+            onSaveAndPublish={handleSaveAndPublish}
+            onCancel={() => {
+              setShowQuestionBuilder(false);
+              setEditingBatch(null);
+              setEditingQuestions([]);
+            }}
+            isSaving={isSavingBatch}
+          />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -344,7 +467,8 @@ export default function Revalida() {
               <BatchManagement
                 batches={batches}
                 isLoading={false}
-                onImport={handleImport}
+                onCreateNew={handleCreateNew}
+                onEditBatch={handleEditBatch}
                 onPublish={handlePublish}
                 onDeactivate={handleDeactivate}
                 onDelete={handleDelete}
