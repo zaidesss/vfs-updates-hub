@@ -385,18 +385,22 @@ export function ReportDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Icon className={`h-5 w-5 ${config.color}`} />
-            {config.label}
-          </DialogTitle>
-          <DialogDescription>
-            Incident report for {report.agent_name}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0">
+        {/* Fixed Header */}
+        <div className="shrink-0 p-6 pb-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon className={`h-5 w-5 ${config.color}`} />
+              {config.label}
+            </DialogTitle>
+            <DialogDescription>
+              Incident report for {report.agent_name}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4">
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
           {/* Agent Info */}
           <div className="flex items-center justify-between">
             <div>
@@ -462,14 +466,14 @@ export function ReportDetailDialog({
 
           {/* Action Buttons */}
           {canEdit && report.status !== 'validated' && report.status !== 'dismissed' && (
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               {/* Escalate as Outage - only for escalatable incidents */}
               {canEscalate && (report.status === 'open' || report.status === 'reviewed') && (
                 <Button
                   variant="outline"
                   onClick={() => setShowEscalationDialog(true)}
                   disabled={isUpdating || isEscalating}
-                  className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-400 dark:hover:bg-purple-950"
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-400 dark:hover:bg-purple-950"
                 >
                   <ArrowUpRight className="h-4 w-4 mr-2" />
                   Escalate as Outage
@@ -479,7 +483,6 @@ export function ReportDetailDialog({
                 variant="default"
                 onClick={() => handleStatusUpdate('validated')}
                 disabled={isUpdating || isEscalating}
-                className="flex-1"
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Validate (Coaching)
