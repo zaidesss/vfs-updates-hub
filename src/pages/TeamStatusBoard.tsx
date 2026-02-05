@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLoggedInTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
 import { StatusCard } from '@/components/team-status/StatusCard';
+import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -236,6 +237,8 @@ export default function TeamStatusBoard() {
                   showDashboardLink={canViewDashboards}
                   sortBy={sortBy}
                 />
+
+                <LiveActivityFeed />
               </div>
             )}
           </div>
