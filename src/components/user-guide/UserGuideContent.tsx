@@ -1,66 +1,66 @@
-import { AuthenticationSection } from './sections/AuthenticationSection';
-import { NavigationSection } from './sections/NavigationSection';
-import { UpdatesSection } from './sections/UpdatesSection';
-import { QuestionsSection } from './sections/QuestionsSection';
-import { LeaveRequestSection } from './sections/LeaveRequestSection';
-import { CalendarSection } from './sections/CalendarSection';
-import { OutageStatsSection } from './sections/OutageStatsSection';
-import { KnowledgeBaseSection } from './sections/KnowledgeBaseSection';
-import { ActivitySection } from './sections/ActivitySection';
-import { ProfileSection } from './sections/ProfileSection';
-import { NotificationsSection } from './sections/NotificationsSection';
-import { RolesSection } from './sections/RolesSection';
-import { EmailNotificationsSection } from './sections/EmailNotificationsSection';
-import { QuickReferenceSection } from './sections/QuickReferenceSection';
-import { ChangelogSection } from './sections/ChangelogSection';
+import { MenuAccordion } from './MenuAccordion';
+import { UpdatesMenuSection } from './sections/menus/UpdatesMenuSection';
+import { OutagesMenuSection } from './sections/menus/OutagesMenuSection';
+import { PeopleMenuSection } from './sections/menus/PeopleMenuSection';
+import { TeamPerformanceMenuSection } from './sections/menus/TeamPerformanceMenuSection';
+import { GeneralSection } from './sections/menus/GeneralSection';
+import { FileText, Clock, Users, BarChart3, Settings } from 'lucide-react';
 
 export function UserGuideContent() {
   return (
-    <div className="space-y-6">
-      {/* Authentication */}
-      <AuthenticationSection />
-      
-      {/* Navigation */}
-      <NavigationSection />
-      
-      {/* Updates */}
-      <UpdatesSection />
-      
-      {/* Questions */}
-      <QuestionsSection />
-      
-      {/* Leave Requests */}
-      <LeaveRequestSection />
-      
-      {/* Calendar */}
-      <CalendarSection />
-      
-      {/* Outage Stats */}
-      <OutageStatsSection />
-      
-      {/* Knowledge Base */}
-      <KnowledgeBaseSection />
-      
-      {/* Activity */}
-      <ActivitySection />
-      
-      {/* Profile */}
-      <ProfileSection />
-      
-      {/* Changelog / What's New */}
-      <ChangelogSection />
-      
-      {/* Notifications */}
-      <NotificationsSection />
-      
-      {/* Roles and Permissions */}
-      <RolesSection />
-      
-      {/* Email Notifications */}
-      <EmailNotificationsSection />
-      
-      {/* Quick Reference */}
-      <QuickReferenceSection />
+    <div className="space-y-4">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-2">User Guide</h2>
+        <p className="text-muted-foreground">
+          Complete guide to using the VFS Agent Portal, organized by navigation menu.
+        </p>
+      </div>
+
+      <MenuAccordion
+        id="updates"
+        icon={FileText}
+        title="Updates Menu"
+        description="Updates, Knowledge Base, Update Requests, Help Center"
+        defaultOpen
+      >
+        <UpdatesMenuSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="outages"
+        icon={Clock}
+        title="Outages Menu"
+        description="Outage Requests, Calendar, My Outage Report"
+      >
+        <OutagesMenuSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="people"
+        icon={Users}
+        title="People Menu"
+        description="My Bio, Team Status Board, Dashboard"
+      >
+        <PeopleMenuSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="performance"
+        icon={BarChart3}
+        title="Team Performance Menu"
+        description="Ticket Logs, QA Evaluations, Agent Reports, Scorecard, Revalida"
+      >
+        <TeamPerformanceMenuSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="general"
+        icon={Settings}
+        title="General"
+        description="Authentication, Notifications, Roles & Permissions"
+      >
+        <GeneralSection />
+      </MenuAccordion>
     </div>
   );
 }

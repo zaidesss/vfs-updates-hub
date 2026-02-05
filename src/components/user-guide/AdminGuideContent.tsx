@@ -1,50 +1,66 @@
-import { AdminPanelSection } from './sections/admin/AdminPanelSection';
-import { QuestionsManagementSection } from './sections/admin/QuestionsManagementSection';
-import { UserManagementSection } from './sections/admin/UserManagementSection';
-import { ArticleRequestsSection } from './sections/admin/ArticleRequestsSection';
-import { DashboardSection } from './sections/admin/DashboardSection';
-import { ChangelogManagementSection } from './sections/admin/ChangelogManagementSection';
-import { ProfileChangeRequestsSection } from './sections/admin/ProfileChangeRequestsSection';
-import { OutageStatsSection } from './sections/OutageStatsSection';
-import { RolesSection } from './sections/RolesSection';
-import { EmailNotificationsSection } from './sections/EmailNotificationsSection';
-import { QuickReferenceSection } from './sections/QuickReferenceSection';
+import { MenuAccordion } from './MenuAccordion';
+import { UpdatesAdminSection } from './sections/admin-menus/UpdatesAdminSection';
+import { OutagesAdminSection } from './sections/admin-menus/OutagesAdminSection';
+import { PeopleAdminSection } from './sections/admin-menus/PeopleAdminSection';
+import { TeamPerformanceAdminSection } from './sections/admin-menus/TeamPerformanceAdminSection';
+import { AdminPanelSection } from './sections/admin-menus/AdminPanelSection';
+import { FileText, Clock, Users, BarChart3, Settings } from 'lucide-react';
 
 export function AdminGuideContent() {
   return (
-    <div className="space-y-6">
-      {/* Admin Panel */}
-      <AdminPanelSection />
-      
-      {/* Questions Management */}
-      <QuestionsManagementSection />
-      
-      {/* User Management */}
-      <UserManagementSection />
-      
-      {/* Article Requests */}
-      <ArticleRequestsSection />
-      
-      {/* Dashboard */}
-      <DashboardSection />
-      
-      {/* Changelog Management (Super Admin) */}
-      <ChangelogManagementSection />
-      
-      {/* Profile Change Requests (Super Admin) */}
-      <ProfileChangeRequestsSection />
-      
-      {/* Outage Stats (shared with user guide but relevant for admins) */}
-      <OutageStatsSection />
-      
-      {/* Roles and Permissions */}
-      <RolesSection />
-      
-      {/* Email Notifications */}
-      <EmailNotificationsSection />
-      
-      {/* Quick Reference */}
-      <QuickReferenceSection />
+    <div className="space-y-4">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-2">Admin Guide</h2>
+        <p className="text-muted-foreground">
+          Administrative features, workflows, automated triggers, and escalation processes.
+        </p>
+      </div>
+
+      <MenuAccordion
+        id="updates-admin"
+        icon={FileText}
+        title="Updates Menu (Admin)"
+        description="Create updates, manage questions, track acknowledgements"
+        defaultOpen
+      >
+        <UpdatesAdminSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="outages-admin"
+        icon={Clock}
+        title="Outages Menu (Admin)"
+        description="Review requests, statistics, automated triggers, escalations"
+      >
+        <OutagesAdminSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="people-admin"
+        icon={Users}
+        title="People Menu (Admin)"
+        description="Profile management, directory, change requests"
+      >
+        <PeopleAdminSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="performance-admin"
+        icon={BarChart3}
+        title="Team Performance (Admin)"
+        description="QA management, agent reports, Revalida batches"
+      >
+        <TeamPerformanceAdminSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="admin-panel"
+        icon={Settings}
+        title="Admin Panel"
+        description="User management, roles, changelog, improvements"
+      >
+        <AdminPanelSection />
+      </MenuAccordion>
     </div>
   );
 }
