@@ -226,8 +226,10 @@ async function fetchCallMetrics(
   }
 }
 
-// Batch fetch ticket metrics with Explore-aligned logic (ZD1 only)
-// Uses Ticket Metric Events API for agent_work_time and ticket metrics for FRT in seconds
+// Batch fetch ticket metrics with Explore-aligned logic
+// Uses Ticket Metric Events API for agent_work_time (Chat AHT) and ticket metrics for FRT in seconds
+// IMPORTANT: Chat AHT uses agent_work_time ONLY (actual handle time, excludes queue/wait)
+// Do NOT use full_resolution_time as it includes queue and wait time
 async function batchFetchTicketMetricsExploreAligned(
   config: ZendeskConfig,
   ticketIds: number[]
@@ -260,26 +262,19 @@ async function batchFetchTicketMetricsExploreAligned(
           const metricsData = await metricsResponse.json();
           const tm = metricsData.ticket_metric;
           
-          // Log all available metrics for debugging
-          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min, agent_wait=${tm?.agent_wait_time_in_minutes?.calendar}min`);
-          
           // FRT: Use reply_time_in_seconds for precision (Explore aligned)
           frtSeconds = tm?.reply_time_in_seconds?.calendar || null;
           
-          // AHT: For messaging tickets, Explore uses full_resolution_time as "Handle Time"
-          // Native messaging doesn't track agent_work_time via metric events
-          // Use full_resolution_time_in_minutes converted to seconds
-          const fullResolutionMinutes = tm?.full_resolution_time_in_minutes?.calendar;
-          if (fullResolutionMinutes !== null && fullResolutionMinutes !== undefined) {
-            ahtSeconds = Math.round(fullResolutionMinutes * 60);
-          }
+          // AHT: Do NOT use full_resolution_time as it includes queue and wait time
+          // We will get agent_work_time from metric events below
         }
         
-        // Try metric events as fallback for agent_work_time (works for legacy chat, not native messaging)
-        if (ahtSeconds === null && eventsResponse.ok) {
+        // Get agent_work_time from metric events (actual handle time only)
+        if (eventsResponse.ok) {
           const eventsData = await eventsResponse.json();
           const events: TicketMetricEvent[] = eventsData.ticket_metric_events || [];
           
+          // Look for agent_work_time metric - this is the actual time agent spent handling the ticket
           const workTimeEvents = events.filter(
             (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
           );
@@ -287,7 +282,10 @@ async function batchFetchTicketMetricsExploreAligned(
           if (workTimeEvents.length > 0) {
             const lastEvent = workTimeEvents[workTimeEvents.length - 1];
             ahtSeconds = lastEvent.status?.calendar || null;
-            console.log(`Ticket ${ticketId} agent_work_time from events: ${ahtSeconds}s`);
+            console.log(`Ticket ${ticketId} agent_work_time: ${ahtSeconds}s`);
+          } else {
+            // If no agent_work_time events, leave as null (don't fall back to full_resolution_time)
+            console.log(`Ticket ${ticketId} no agent_work_time events found`);
           }
         }
 
