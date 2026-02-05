@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown } from 'lucide-react';
+import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
+import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, eachWeekOfInterval } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
@@ -498,6 +499,34 @@ export default function TeamScorecard() {
                     Save Scorecard
                   </>
                 )}
+              </Button>
+            )}
+
+            {/* Export Button */}
+            {scorecards && scorecards.length > 0 && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const columns = [
+                    { key: 'agent.full_name', header: 'Agent' },
+                    { key: 'agent.position', header: 'Position' },
+                    { key: 'productivity', header: 'Productivity %' },
+                    { key: 'callAht', header: 'Call AHT (seconds)' },
+                    { key: 'chatAht', header: 'Chat AHT (seconds)' },
+                    { key: 'chatFrt', header: 'Chat FRT (seconds)' },
+                    { key: 'qa', header: 'QA %' },
+                    { key: 'revalida', header: 'Revalida %' },
+                    { key: 'reliability', header: 'Reliability %' },
+                    { key: 'finalScore', header: 'Final Score %' },
+                  ];
+                  const filename = `scorecard-${weekStartStr}-to-${weekEndStr}-${supportType.replace(/\s+/g, '-').toLowerCase()}.csv`;
+                  exportToCSV(filteredScorecards, columns, filename);
+                  toast.success('Scorecard exported successfully');
+                }}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
               </Button>
             )}
 

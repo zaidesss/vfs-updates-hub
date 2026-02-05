@@ -167,13 +167,48 @@ export function generateTicketUrl(instance: ZDInstance, ticketId: string): strin
   return `https://${ZD_INSTANCES[instance]}/agent/tickets/${ticketId}`;
 }
 
-// Fetch all QA evaluations
-export async function fetchQAEvaluations(): Promise<QAEvaluation[]> {
-  const { data, error } = await supabase
+// Filter options for fetching QA evaluations
+export interface QAEvaluationFilters {
+  year?: number;
+  month?: number;
+  weekStart?: string;
+  agentEmail?: string;
+}
+
+// Fetch QA evaluations with optional server-side filtering
+export async function fetchQAEvaluations(filters?: QAEvaluationFilters): Promise<QAEvaluation[]> {
+  let query = supabase
     .from('qa_evaluations')
     .select('*')
     .order('created_at', { ascending: false });
 
+  // Apply server-side date filtering if year/month provided
+  if (filters?.year && filters?.month) {
+    const year = filters.year;
+    const month = filters.month - 1; // 0-indexed for Date constructor
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0); // Last day of month
+    
+    const startStr = monthStart.toISOString().split('T')[0];
+    const endStr = monthEnd.toISOString().split('T')[0];
+    
+    // Filter by work_week_start falling within the month
+    query = query
+      .gte('work_week_start', startStr)
+      .lte('work_week_start', endStr);
+  }
+
+  // Filter by specific week if provided
+  if (filters?.weekStart) {
+    query = query.eq('work_week_start', filters.weekStart);
+  }
+
+  // Filter by agent email if provided
+  if (filters?.agentEmail) {
+    query = query.eq('agent_email', filters.agentEmail.toLowerCase());
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return (data || []) as QAEvaluation[];
 }

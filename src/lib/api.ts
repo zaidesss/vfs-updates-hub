@@ -1,9 +1,5 @@
 import { Update, Acknowledgement, UpdateChangeHistory } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
-import { mockUpdates, mockAcknowledgements } from '@/lib/mockData';
-
-// Flag to control whether to use the real API or mock data
-const USE_MOCK_DATA = false;
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -371,10 +367,6 @@ export async function changeUserRole(
 
 // Fetch updates directly from the database
 export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
-  if (USE_MOCK_DATA) {
-    return { data: mockUpdates, error: null };
-  }
-
   try {
     const { data, error } = await supabase
       .from('updates')
@@ -383,7 +375,7 @@ export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
 
     if (error) {
       console.error('Error fetching updates:', error);
-      return { data: mockUpdates, error: null };
+      return { data: null, error: error.message };
     }
 
     // Map database rows to Update type
@@ -403,16 +395,13 @@ export async function fetchUpdates(): Promise<ApiResponse<Update[]>> {
 
     return { data: updates, error: null };
   } catch (err) {
-    console.log('Falling back to mock updates data');
-    return { data: mockUpdates, error: null };
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch updates:', errorMessage);
+    return { data: null, error: errorMessage };
   }
 }
 
 export async function fetchAcknowledgements(): Promise<ApiResponse<Acknowledgement[]>> {
-  if (USE_MOCK_DATA) {
-    return { data: mockAcknowledgements, error: null };
-  }
-
   try {
     const { data, error } = await supabase
       .from('acknowledgements')
@@ -420,23 +409,18 @@ export async function fetchAcknowledgements(): Promise<ApiResponse<Acknowledgeme
 
     if (error) {
       console.error('Error fetching acknowledgements:', error);
-      return { data: mockAcknowledgements, error: null };
+      return { data: null, error: error.message };
     }
 
     return { data: data as Acknowledgement[], error: null };
   } catch (err) {
-    console.log('Falling back to mock acknowledgements data');
-    return { data: mockAcknowledgements, error: null };
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Failed to fetch acknowledgements:', errorMessage);
+    return { data: null, error: errorMessage };
   }
 }
 
 export async function acknowledgeUpdate(updateId: string, agentEmail: string): Promise<ApiResponse<{ ok: boolean; acknowledged_at: string }>> {
-  if (USE_MOCK_DATA) {
-    return {
-      data: { ok: true, acknowledged_at: new Date().toISOString() },
-      error: null
-    };
-  }
 
   try {
     const acknowledged_at = new Date().toISOString();
@@ -463,14 +447,6 @@ export async function acknowledgeUpdate(updateId: string, agentEmail: string): P
 }
 
 export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
-  if (USE_MOCK_DATA) {
-    const newUpdate: Update = {
-      ...update,
-      id: String(Date.now()),
-      posted_at: new Date().toISOString(),
-    };
-    return { data: { ok: true, update: newUpdate }, error: null };
-  }
 
   try {
     const { data, error } = await supabase
@@ -533,20 +509,6 @@ export async function editUpdate(
   update: Partial<Omit<Update, 'id' | 'posted_at'>>,
   changedBy?: string
 ): Promise<ApiResponse<{ ok: boolean; update: Update }>> {
-  if (USE_MOCK_DATA) {
-    const editedUpdate: Update = {
-      id: updateId,
-      posted_at: new Date().toISOString(),
-      title: update.title || '',
-      summary: update.summary || '',
-      body: update.body || '',
-      help_center_url: update.help_center_url || '',
-      posted_by: update.posted_by || '',
-      deadline_at: update.deadline_at || null,
-      status: update.status || 'draft',
-    };
-    return { data: { ok: true, update: editedUpdate }, error: null };
-  }
 
   try {
     // Fetch current update to track changes
