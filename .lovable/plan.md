@@ -1,145 +1,127 @@
 
-# Plan: Simplify Upwork Tracking - Fetch on Logout
+
+# Plan: Add Header Filters to Master Directory
 
 ## Summary
-Restructure Upwork time tracking to fetch data **only when an agent logs out** instead of on every dashboard load. This reduces API calls and ensures we capture the most accurate end-of-day Upwork hours. Also fix the current authentication failure by documenting the re-authorization step needed.
+Add dropdown filters for **Team Lead**, **Zendesk Instance**, and **Support Type** to the Master Directory table, allowing admins to quickly filter the view by these criteria.
 
 ---
 
-## Problem Analysis
-
-### Current Issues
-1. **Authentication Failure**: Upwork tokens expired on Feb 4 and refresh is failing
-   - Upwork uses single-use refresh tokens
-   - Once a refresh fails, the token chain is broken
-   - **Requires manual re-authorization** to fix
-
-2. **Inefficient Calling Pattern**: Currently fetches on every dashboard page load
-   - Wastes API calls if agent reloads multiple times
-   - May hit rate limits
-
-3. **No Start/End Time Available**: Upwork's Cell schema doesn't expose time fields
-   - Cannot determine when tracking started/ended
-   - Only `total_cells` count is reliable
+## Current State
+- Master Directory has a search input for filtering by name/email
+- No column-specific filters exist
+- Table already displays Team Lead, Zendesk Instance, and Support Type columns
 
 ---
 
-## Proposed Solution
+## Implementation
 
-### Change 1: Fetch Upwork Time on Logout
+### UI Design
+A filter bar will be added next to the search input with three dropdown selects and a Reset button:
 
-Move the Upwork API call from dashboard load to the **LOGOUT event** in the status change flow.
-
-```text
-Current Flow:
-┌─────────────────┐    ┌──────────────────────┐
-│ Dashboard Load  │───►│ fetch-upwork-time    │
-└─────────────────┘    └──────────────────────┘
-                       (Called every page load)
-
-New Flow:
-┌─────────────────┐    ┌──────────────────────┐
-│ Agent Logs Out  │───►│ fetch-upwork-time    │
-└─────────────────┘    └──────────────────────┘
-                       (Called once per day on logout)
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [🔍 Search agents...]  [Team Lead ▼]  [ZD Instance ▼]  [Support Type ▼]  [Reset] │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Change 2: Integrate with `log-profile-event` Edge Function
-
-When a `LOGOUT` event is recorded:
-1. Check if agent has `upwork_contract_id`
-2. Call Upwork API to get today's hours
-3. Save to `upwork_daily_logs`
-
-### Change 3: Display Cached Data on Dashboard
-
-Instead of fetching live from Upwork on dashboard load:
-- Read from `upwork_daily_logs` table
-- Show "Last synced at: [timestamp]" 
-- This is already partially implemented
+- Filter options are **dynamically extracted** from the current data
+- Empty/null values are excluded from filter options
+- "All" option shows all entries (default)
+- Reset button appears only when filters are active
 
 ---
 
-## Technical Implementation
+## Technical Changes
 
-### Files to Modify
+### File: `src/pages/MasterDirectory.tsx`
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/log-profile-event/index.ts` | Add Upwork fetch logic for LOGOUT events |
-| `src/pages/AgentDashboard.tsx` | Remove live Upwork API call, read from `upwork_daily_logs` instead |
-| `src/lib/agentDashboardApi.ts` | Update `fetchUpworkTime` to read from cache, not API |
+| Change | Description |
+|--------|-------------|
+| Add imports | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` from ui/select, `X` icon |
+| Add filter state | `teamLeadFilter`, `zdInstanceFilter`, `supportTypeFilter` (default: `'all'`) |
+| Add useMemo for options | Extract unique `team_lead`, `zendesk_instance`, `support_type` values from non-terminated profiles |
+| Update `filteredEntries` | Apply the three new filters in addition to existing search filter |
+| Update UI | Replace search-only bar with flex container holding search + 3 dropdowns + reset button |
 
-### Edge Function Logic (log-profile-event)
+---
 
+## Code Snippets
+
+### 1. Add Filter State
 ```typescript
-// On LOGOUT event:
-if (eventType === 'LOGOUT' && upworkContractId) {
-  // Fire and forget - fetch Upwork time in background
-  fetch(upworkEndpoint, {
-    method: 'POST',
-    body: JSON.stringify({
-      contractId: upworkContractId,
-      date: todayDate,
-      agentEmail: email
-    })
-  }).catch(err => console.log('Upwork fetch failed:', err));
-}
+const [teamLeadFilter, setTeamLeadFilter] = useState('all');
+const [zdInstanceFilter, setZdInstanceFilter] = useState('all');
+const [supportTypeFilter, setSupportTypeFilter] = useState('all');
 ```
 
-### Dashboard Changes
-
+### 2. Extract Unique Filter Options
 ```typescript
-// Instead of calling fetch-upwork-time API:
-const { data: upworkLog } = await supabase
-  .from('upwork_daily_logs')
-  .select('total_hours, fetched_at')
-  .eq('contract_id', contractId)
-  .eq('date', today)
-  .maybeSingle();
+const filterOptions = useMemo(() => {
+  const activeEntries = editedData.filter(e => e.employment_status !== 'Terminated');
+  
+  const teamLeads = [...new Set(activeEntries.map(e => e.team_lead).filter(Boolean))].sort() as string[];
+  const zdInstances = [...new Set(activeEntries.map(e => e.zendesk_instance).filter(Boolean))].sort() as string[];
+  const supportTypes = [...new Set(activeEntries.map(e => e.support_type).filter(Boolean))].sort() as string[];
+  
+  return { teamLeads, zdInstances, supportTypes };
+}, [editedData]);
+```
 
-// Display upworkLog.total_hours with "Synced at: {fetched_at}"
+### 3. Update Filtered Entries Logic
+```typescript
+const filteredEntries = useMemo(() => {
+  let result = editedData.filter(entry => entry.employment_status !== 'Terminated');
+  
+  if (teamLeadFilter !== 'all') {
+    result = result.filter(entry => entry.team_lead === teamLeadFilter);
+  }
+  if (zdInstanceFilter !== 'all') {
+    result = result.filter(entry => entry.zendesk_instance === zdInstanceFilter);
+  }
+  if (supportTypeFilter !== 'all') {
+    result = result.filter(entry => entry.support_type === supportTypeFilter);
+  }
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase();
+    result = result.filter(entry =>
+      entry.full_name?.toLowerCase().includes(query) ||
+      entry.email.toLowerCase().includes(query)
+    );
+  }
+  
+  return result;
+}, [editedData, searchQuery, teamLeadFilter, zdInstanceFilter, supportTypeFilter]);
+```
+
+### 4. Reset Handler
+```typescript
+const resetFilters = () => {
+  setTeamLeadFilter('all');
+  setZdInstanceFilter('all');
+  setSupportTypeFilter('all');
+  setSearchQuery('');
+};
+
+const hasActiveFilters = teamLeadFilter !== 'all' || 
+                         zdInstanceFilter !== 'all' || 
+                         supportTypeFilter !== 'all' || 
+                         searchQuery.trim() !== '';
 ```
 
 ---
 
-## Immediate Fix Required
+## Files Changed
 
-### Re-authorize Upwork OAuth
-
-The current tokens are broken. Someone with Upwork account access needs to:
-
-1. Visit: `https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/upwork-oauth-callback`
-2. Log in to Upwork when prompted
-3. Authorize the application
-4. Fresh tokens will be stored automatically
+| File | Action |
+|------|--------|
+| `src/pages/MasterDirectory.tsx` | Add filter state, logic, and UI components |
 
 ---
 
-## Benefits of This Approach
+## Benefits
+- Quick filtering without scrolling through entire table
+- Dynamic options based on actual data (no hardcoded values)
+- Filters persist during session until manually reset
+- Combines with existing search for powerful querying
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| API Calls | Every dashboard load | Once per logout |
-| Data Freshness | Live but incomplete | End-of-day accurate |
-| Token Usage | More refresh cycles | Fewer refreshes |
-| Complexity | Live fetch with retry | Simple cache read |
-
----
-
-## Implementation Steps
-
-1. **Fix Tokens** (immediate) - Re-authorize Upwork OAuth
-2. **Modify log-profile-event** - Add Upwork fetch on LOGOUT
-3. **Update Dashboard** - Read from `upwork_daily_logs` cache
-4. **Remove live fetch** - Delete the API call on dashboard load
-5. **Add "Synced at" label** - Show when data was last fetched
-
----
-
-## Edge Cases
-
-- **Agent doesn't log out**: Data won't be captured
-  - Mitigation: Optional scheduled job to fetch at midnight (future enhancement)
-- **Multiple logouts per day**: Data gets updated each time (good - more accurate)
-- **Token failure on logout**: Silent fail, don't block logout flow
