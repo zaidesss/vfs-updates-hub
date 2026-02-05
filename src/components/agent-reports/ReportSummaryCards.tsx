@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { FileWarning, Eye, CheckCircle, XCircle } from 'lucide-react';
+import { FileWarning, Eye, CheckCircle, ArrowUpRight } from 'lucide-react';
 import type { ReportSummary } from '@/lib/agentReportsApi';
 
 interface ReportSummaryCardsProps {
@@ -24,9 +24,9 @@ export function ReportSummaryCards({ summary, isLoading }: ReportSummaryCardsPro
       bgColor: 'bg-amber-50 dark:bg-amber-950',
     },
     {
-      label: 'Reviewed',
+      label: 'Escalated',
       value: summary?.reviewed || 0,
-      icon: Eye,
+      icon: ArrowUpRight,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-950',
     },

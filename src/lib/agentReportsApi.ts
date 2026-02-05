@@ -71,10 +71,35 @@ export const SEVERITY_CONFIG: Record<ReportSeverity, { label: string; color: str
 
 export const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {
   open: { label: 'Open', color: 'bg-blue-100 text-blue-800' },
-  reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-800' },
+  reviewed: { label: 'Escalated', color: 'bg-purple-100 text-purple-800' },
   validated: { label: 'Validated', color: 'bg-green-100 text-green-800' },
   dismissed: { label: 'Dismissed', color: 'bg-gray-100 text-gray-800' },
 };
+
+// Escalatable incident types that can generate outage requests
+export const ESCALATABLE_INCIDENT_TYPES: IncidentType[] = ['LATE_LOGIN', 'EARLY_OUT', 'TIME_NOT_MET'];
+
+/**
+ * Check if an incident type can be escalated to an outage request
+ */
+export function isEscalatableIncident(type: IncidentType): boolean {
+  return ESCALATABLE_INCIDENT_TYPES.includes(type);
+}
+
+/**
+ * Get the outage reason for an escalatable incident type
+ */
+export function getOutageReasonForIncident(type: IncidentType): string {
+  switch (type) {
+    case 'LATE_LOGIN':
+      return 'Late Login';
+    case 'EARLY_OUT':
+    case 'TIME_NOT_MET':
+      return 'Undertime';
+    default:
+      return 'Other';
+  }
+}
 
 /**
  * Fetch agent reports with optional filters
