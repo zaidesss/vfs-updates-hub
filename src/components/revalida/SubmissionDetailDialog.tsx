@@ -62,61 +62,60 @@ export function SubmissionDetailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
-        <div className="flex flex-col h-full max-h-[90vh] overflow-hidden">
-          {/* Fixed Header Section */}
-          <div className="p-6 pb-0 space-y-4 shrink-0">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Submission Details
-              </DialogTitle>
-              <DialogDescription>
-                {attempt.agent_email} - {batch.title}
-              </DialogDescription>
-            </DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+        {/* Fixed Header Section */}
+        <div className="shrink-0 p-6 space-y-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Submission Details
+            </DialogTitle>
+            <DialogDescription>
+              {attempt.agent_email} - {batch.title}
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Metadata */}
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              {getStatusBadge()}
-              {attempt.submitted_at && (
-                <span className="text-muted-foreground">
-                  Submitted: {format(new Date(attempt.submitted_at), 'MMM d, yyyy h:mm a')}
-                </span>
-              )}
-            </div>
-
-            {/* Score Summary */}
-            <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-muted/50">
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Auto-graded</p>
-                <p className="text-lg font-bold">
-                  {autoScore}/{autoTotal}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Manual</p>
-                <p className="text-lg font-bold">
-                  {manualScore}/{manualTotal}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Final Score</p>
-                <p className="text-lg font-bold text-primary">
-                  {attempt.final_percent !== null 
-                    ? `${attempt.final_percent.toFixed(1)}%`
-                    : 'Pending'}
-                </p>
-              </div>
-            </div>
-
-            <Separator />
+          {/* Metadata */}
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            {getStatusBadge()}
+            {attempt.submitted_at && (
+              <span className="text-muted-foreground">
+                Submitted: {format(new Date(attempt.submitted_at), 'MMM d, yyyy h:mm a')}
+              </span>
+            )}
           </div>
 
-          {/* Scrollable Questions Section */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="space-y-4 p-6 pt-4">
+          {/* Score Summary */}
+          <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-muted/50">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Auto-graded</p>
+              <p className="text-lg font-bold">
+                {autoScore}/{autoTotal}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Manual</p>
+              <p className="text-lg font-bold">
+                {manualScore}/{manualTotal}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Final Score</p>
+              <p className="text-lg font-bold text-primary">
+                {attempt.final_percent !== null 
+                  ? `${attempt.final_percent.toFixed(1)}%`
+                  : 'Pending'}
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+        </div>
+
+        {/* Scrollable Body */}
+        <div className="flex-1 min-h-0">
+          <ScrollArea className="h-full [&_[data-radix-scroll-area-viewport]]:h-full">
+            <div className="p-6 pt-4 space-y-4">
             {orderedQuestions.map((question, idx) => {
               const answer = answersMap.get(question.id);
               const isSituational = question.type === 'situational';
@@ -201,9 +200,8 @@ export function SubmissionDetailDialog({
                 </Card>
               );
             })}
-              </div>
-            </ScrollArea>
-          </div>
+            </div>
+          </ScrollArea>
         </div>
       </DialogContent>
     </Dialog>
