@@ -1,80 +1,33 @@
 
-# Plan: Enforce Update Acknowledgment on Login/Logout
+# Plan: Total Hours Display and Upwork Limit Adjustment Request
 
 ## Summary
-Implement a system that:
-1. **On Login**: Shows a warning toast informing agents of unacknowledged updates (non-blocking)
-2. **On Logout**: Blocks the action and redirects to Updates page if any published updates are unacknowledged
+Add a new read-only "Total Hours" field in Agent Profiles (using Master Directory calculation logic) with a button to request Upwork Limit Adjustments. The button opens a floating popup for Admins to submit requests that notify HR and Super Admins via email and in-app notifications.
 
 ---
 
 ## Technical Approach
 
-### New Component: `PendingUpdatesModal.tsx`
-A modal component that displays when logout is attempted with unacknowledged updates:
-- Lists the pending updates with titles
-- Provides "Go to Updates" button to redirect
-- Cannot be dismissed until updates are acknowledged
+### 1. Total Hours Calculation
+Reuse the existing `calculateTotalHours` function from `src/lib/masterDirectoryApi.ts` which computes:
+- Weekday + Weekend hours from daily schedules
+- Minus unpaid breaks (per working day)
+- Plus OT hours from individual day OT schedules
+- Plus fixed 0.5h Revalida + 0.5h Weekly Meeting
 
-### Modifications
+### 2. New UI Component: `UpworkLimitRequestDialog.tsx`
+A dialog/modal that:
+- Shows "New Upwork Limit" input field (number)
+- Displays the Team Lead name (from profile data)
+- Has an optional "Reason" text area
+- "Send" button triggers the edge function
+- Dismissible with Cancel
 
-#### 1. `src/context/UpdatesContext.tsx`
-Add a helper function to calculate pending updates for a user:
-
-```typescript
-// New function to get unacknowledged published updates for a user
-getPendingUpdates: (agentEmail: string) => Update[];
-getPendingUpdateCount: (agentEmail: string) => number;
-```
-
-**Logic**:
-- Filter `updates` where `status === 'published'`
-- Exclude updates where `acknowledgements` contains the agent's email
-
-#### 2. `src/pages/Login.tsx` (Lines 31-36)
-After successful login, check for pending updates and show a warning toast:
-
-```typescript
-// After successful login
-const pendingCount = getPendingUpdateCount(email);
-if (pendingCount > 0) {
-  toast({
-    title: 'Updates Pending',
-    description: `You have ${pendingCount} update(s) to acknowledge.`,
-    variant: 'default',
-    action: <Link to="/updates">View Updates</Link>
-  });
-}
-// Continue with navigation
-```
-
-#### 3. `src/components/Layout.tsx` (Lines 250-257)
-Wrap the logout button click to check for pending updates:
-
-```typescript
-const [showPendingModal, setShowPendingModal] = useState(false);
-const [pendingUpdatesForLogout, setPendingUpdatesForLogout] = useState<Update[]>([]);
-
-const handleLogoutClick = () => {
-  const pending = getPendingUpdates(user.email);
-  if (pending.length > 0) {
-    setPendingUpdatesForLogout(pending);
-    setShowPendingModal(true);
-  } else {
-    logout();
-  }
-};
-```
-
-Replace the logout button's `onClick={logout}` with `onClick={handleLogoutClick}`.
-
-#### 4. New: `src/components/PendingUpdatesModal.tsx`
-Create a blocking modal that:
-- Shows when `showPendingModal` is true
-- Displays list of unacknowledged update titles
-- Has a "View Updates" button that navigates to `/updates`
-- Has a "Close" button (but user still cannot logout until updates are acknowledged)
-- Uses the same pattern as `ProfileCompletionModal` (cannot be dismissed by clicking outside)
+### 3. Edge Function: `send-upwork-limit-request`
+- Sends email to `hr@virtualfreelancesolutions.com` and `cherry@virtualfreelancesolutions.com`
+- Also sends to all Super Admins from `user_roles` table
+- Creates in-app notifications in `notifications` table for all recipients
+- Uses existing Resend integration pattern
 
 ---
 
@@ -82,66 +35,144 @@ Create a blocking modal that:
 
 | File | Purpose |
 |------|---------|
-| `src/components/PendingUpdatesModal.tsx` | Modal blocking logout until updates acknowledged |
+| `src/components/profile/UpworkLimitRequestDialog.tsx` | Floating popup for submitting limit adjustment requests |
+| `supabase/functions/send-upwork-limit-request/index.ts` | Edge function to send email and create notifications |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/context/UpdatesContext.tsx` | Add `getPendingUpdates()` and `getPendingUpdateCount()` functions |
-| `src/pages/Login.tsx` | Show warning toast after login if pending updates exist |
-| `src/components/Layout.tsx` | Intercept logout to check for pending updates |
+| `src/components/profile/WorkConfigurationSection.tsx` | Add Total Hours display and Request button above Team Lead field |
+| `src/lib/agentProfileApi.ts` | Export/use calculation from masterDirectoryApi or add helper |
 
 ---
 
-## User Experience Flow
+## UI Placement
 
-### Login Flow
-```text
-User logs in
-  ↓
-System checks for unacknowledged published updates
-  ↓
-If pending > 0: Show toast "You have X update(s) to acknowledge"
-  ↓
-User proceeds to /updates (normal flow, not blocked)
-```
+In `WorkConfigurationSection.tsx`, add a new row **above Team Lead and Client fields**:
 
-### Logout Flow
 ```text
-User clicks Logout
-  ↓
-System checks for unacknowledged published updates
-  ↓
-If pending > 0:
-  ├── Show PendingUpdatesModal
-  ├── List all pending update titles
-  └── "Go to Updates" button redirects to /updates
-      ↓
-If pending = 0:
-  └── Normal logout proceeds
+┌─────────────────────────────────────────────────────────────┐
+│ Total Hours (Weekly)                                         │
+│ ┌────────────────────┐  ┌──────────────────────────────────┐│
+│ │ 45.5 hours         │  │ 📤 Request Upwork Limit Adjust   ││
+│ │ (read-only)        │  │                                  ││
+│ └────────────────────┘  └──────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────┐ ┌──────────────────────┐
+│ Team Lead                         │ │ Client(s)            │
+│ [ Select team lead... ]           │ │ [ Enter clients ]    │
+└───────────────────────────────────┘ └──────────────────────┘
 ```
 
 ---
 
-## Technical Details
+## Dialog/Popup Design
 
-### Query for Pending Updates
+```text
+┌────────────────────────────────────────┐
+│  Request Upwork Limit Adjustment       │
+├────────────────────────────────────────┤
+│  Agent: John Doe                       │
+│  Current Total Hours: 45.5 hours       │
+│                                        │
+│  New Upwork Limit                      │
+│  ┌──────────────────────────────────┐  │
+│  │ [  Enter new limit (hours)    ]  │  │
+│  └──────────────────────────────────┘  │
+│                                        │
+│  Team Lead                             │
+│  ┌──────────────────────────────────┐  │
+│  │  Cherry Doe (read-only)          │  │
+│  └──────────────────────────────────┘  │
+│                                        │
+│  Reason (optional)                     │
+│  ┌──────────────────────────────────┐  │
+│  │                                  │  │
+│  │                                  │  │
+│  └──────────────────────────────────┘  │
+│                                        │
+│        [Cancel]  [Send Request]        │
+└────────────────────────────────────────┘
+```
+
+---
+
+## Edge Function: `send-upwork-limit-request`
+
 ```typescript
-const getPendingUpdates = (agentEmail: string): Update[] => {
-  const email = agentEmail.toLowerCase();
-  return updates.filter(u => 
-    u.status === 'published' &&
-    !acknowledgements.some(a => 
-      a.update_id === u.id && 
-      a.agent_email.toLowerCase() === email
-    )
-  );
-};
+interface UpworkLimitRequest {
+  agentName: string;
+  agentEmail: string;
+  currentTotalHours: number;
+  requestedLimit: number;
+  teamLead: string;
+  reason?: string;
+  requestedBy: string;  // Admin who clicked the button
+}
 ```
 
-### Modal Behavior
-- Uses Radix Dialog with `onPointerDownOutside` and `onEscapeKeyDown` prevented
-- Shows update count and list of titles
-- Primary action: Navigate to Updates page
-- Secondary action: Close modal (user must acknowledge updates to logout)
+**Recipients**:
+1. Fixed: `hr@virtualfreelancesolutions.com`, `cherry@virtualfreelancesolutions.com`
+2. Dynamic: All Super Admins from `user_roles` table
+
+**Email Content**:
+```text
+Subject: Upwork Limit Adjustment Request - [Agent Name]
+
+Agent: John Doe (john@example.com)
+Current Total Hours: 45.5 hours
+Requested New Limit: 50 hours
+Team Lead: Cherry Doe
+Requested By: Admin Name
+
+Reason: [Optional reason text if provided]
+```
+
+**In-App Notifications**:
+Insert records into `notifications` table:
+```typescript
+{
+  user_email: recipientEmail,
+  title: 'Upwork Limit Adjustment Request',
+  message: `${agentName} - New limit: ${requestedLimit} hours (from ${currentTotalHours}h)`,
+  type: 'system',
+  reference_type: 'upwork_adjustment',
+  reference_id: agentEmail,
+}
+```
+
+---
+
+## Access Control
+
+- **Visibility**: Total Hours field visible to all users viewing the profile
+- **Button**: Only visible to Admins (`isAdmin || isSuperAdmin`)
+- Both computed from the existing `useAuth()` context
+
+---
+
+## Calculation Logic Reference
+
+From `masterDirectoryApi.ts`:
+```typescript
+function calculateTotalHours(entry: Partial<DirectoryEntry>): {
+  weekday_total_hours: number;
+  weekend_total_hours: number;
+  ot_total_hours: number;
+  unpaid_break_hours: number;
+  overall_total_hours: number;
+}
+```
+
+This takes daily schedules (`mon_schedule` through `sun_schedule`), OT schedules, `break_schedule`, and `day_off` array to compute the final total.
+
+---
+
+## Implementation Steps
+
+1. **Add calculation helper** - Export/adapt `calculateTotalHours` for profile data shape
+2. **Create dialog component** - `UpworkLimitRequestDialog.tsx` with form fields
+3. **Add Total Hours row** - In `WorkConfigurationSection.tsx` with computed value + button
+4. **Create edge function** - `send-upwork-limit-request` for email + notifications
+5. **Wire up button** - Open dialog, pass profile data, call edge function on submit
