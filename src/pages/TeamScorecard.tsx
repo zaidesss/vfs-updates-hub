@@ -714,7 +714,7 @@ export default function TeamScorecard() {
                           <TableHead className="text-center">
                             <Tooltip>
                               <TooltipTrigger className="cursor-help">
-                                Avg Talk Time
+                                Call AHT
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>per call leg — Explore aligned</p>
