@@ -27,17 +27,18 @@ import {
   getScoreBgColor,
   formatSeconds,
   type AgentScorecard,
+  type ScorecardConfig,
 } from '@/lib/scorecardApi';
 
 const MINIMUM_DATE = new Date('2026-01-26');
 const DATA_RETENTION_WEEKS = 2;
 
-// AHT/FRT goals in seconds
-const METRIC_GOALS = {
-  call_aht: 300,  // 5 minutes
-  chat_aht: 180,  // 3 minutes
-  chat_frt: 60,   // 1 minute
-};
+// Default AHT/FRT goals in seconds (fallback only - DB values preferred)
+const DEFAULT_METRIC_GOALS = {
+  call_aht: 420,  // 7 minutes
+  chat_aht: 600,  // 10 minutes
+  chat_frt: 30,   // 30 seconds
+} as const;
 
 const MONTHS = [
   { value: '01', label: 'January' },
@@ -185,9 +186,22 @@ export default function TeamScorecard() {
   });
 
   // Fetch config for column visibility (for specific support type)
-  const { data: config } = useQuery({
+  const { data: config, data: configData } = useQuery({
     queryKey: ['scorecard-config', supportType === 'all' ? 'Hybrid Support' : supportType],
     queryFn: () => fetchScorecardConfig(supportType === 'all' ? 'Hybrid Support' : supportType),
+    staleTime: 10 * 60 * 1000,
+  });
+  
+  // Also fetch all support type configs for goal lookups in 'all' mode
+  const { data: allConfigs } = useQuery({
+    queryKey: ['scorecard-config-all'],
+    queryFn: async () => {
+      const results: Record<string, ScorecardConfig[]> = {};
+      for (const st of SUPPORT_TYPES) {
+        results[st] = await fetchScorecardConfig(st);
+      }
+      return results;
+    },
     staleTime: 10 * 60 * 1000,
   });
 
@@ -381,9 +395,25 @@ export default function TeamScorecard() {
   const showRevalida = isAllMode || supportType !== 'Logistics';
   const showOtProductivity = isAllMode || supportType !== 'Logistics';
 
-  const getMetricGoal = (metricKey: string): number => {
+  // Get metric goal from DB config, with fallback to defaults
+  const getMetricGoal = (metricKey: string, agentPosition?: string | null): number => {
+    // In 'all' mode, look up goal from agent's specific support type
+    if (supportType === 'all' && agentPosition && allConfigs) {
+      const agentConfig = allConfigs[agentPosition];
+      const configItem = agentConfig?.find(c => c.metric_key === metricKey);
+      if (configItem?.goal) return configItem.goal;
+    }
+    
+    // Otherwise use the current support type's config
     const configItem = config?.find(c => c.metric_key === metricKey);
-    return configItem?.goal || 100;
+    if (configItem?.goal) return configItem.goal;
+    
+    // Fallback to defaults for AHT/FRT
+    if (metricKey === 'call_aht') return DEFAULT_METRIC_GOALS.call_aht;
+    if (metricKey === 'chat_aht') return DEFAULT_METRIC_GOALS.chat_aht;
+    if (metricKey === 'chat_frt') return DEFAULT_METRIC_GOALS.chat_frt;
+    
+    return 100;
   };
 
   const formatScore = (score: number | null): string => {
@@ -805,7 +835,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'callAht')}
                                   originalValue={scorecard.callAht}
-                                  goal={METRIC_GOALS.call_aht}
+                                  goal={getMetricGoal('call_aht', scorecard.agent.position)}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'callAht', val)}
                                   formatValue={formatSeconds}
@@ -822,7 +852,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'chatAht')}
                                   originalValue={scorecard.chatAht}
-                                  goal={METRIC_GOALS.chat_aht}
+                                  goal={getMetricGoal('chat_aht', scorecard.agent.position)}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatAht', val)}
                                   formatValue={formatSeconds}
@@ -839,7 +869,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'chatFrt')}
                                   originalValue={scorecard.chatFrt}
-                                  goal={METRIC_GOALS.chat_frt}
+                                  goal={getMetricGoal('chat_frt', scorecard.agent.position)}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatFrt', val)}
                                   formatValue={formatSeconds}

@@ -255,26 +255,23 @@ async function batchFetchTicketMetricsExploreAligned(
 
         let frtSeconds: number | null = null;
         let ahtSeconds: number | null = null;
+        let tm: any = null;
 
         if (metricsResponse.ok) {
           const metricsData = await metricsResponse.json();
-          const tm = metricsData.ticket_metric;
+          tm = metricsData.ticket_metric;
           
-          // Log available metrics for debugging (full_resolution NOT used for AHT - includes queue/wait)
-          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, full_resolution=${tm?.full_resolution_time_in_minutes?.calendar}min (NOT used for AHT)`);
-          
-          // FRT: Use reply_time_in_seconds for precision (Explore aligned)
-          frtSeconds = tm?.reply_time_in_seconds?.calendar || null;
-          
-          // AHT: Do NOT use full_resolution_time - it includes queue and wait time
-          // Will be fetched from agent_work_time metric events below
+          // Log available metrics for debugging
+          console.log(`Ticket ${ticketId} metrics: reply_time=${tm?.reply_time_in_seconds?.calendar}s, requester_wait=${tm?.requester_wait_time_in_minutes?.calendar}min`);
         }
         
-        // PRIMARY: Use agent_work_time from metric events (handle time only, excludes queue/wait)
+        // PRIMARY: Use agent_work_time from metric events for AHT (handle time only)
+        // Also calculate FRT from assignment→reply events
         if (eventsResponse.ok) {
           const eventsData = await eventsResponse.json();
           const events: TicketMetricEvent[] = eventsData.ticket_metric_events || [];
           
+          // === AHT: Use agent_work_time metric ===
           const workTimeEvents = events.filter(
             (e) => e.metric === 'agent_work_time' && e.type === 'update_status'
           );
@@ -284,9 +281,39 @@ async function batchFetchTicketMetricsExploreAligned(
             ahtSeconds = lastEvent.status?.calendar || null;
             console.log(`Ticket ${ticketId} agent_work_time: ${ahtSeconds}s (handle time only)`);
           }
+          
+          // === FRT: Calculate Assignment to First Reply ===
+          // Find reply_time activate (last assignment) and fulfill (first reply) events
+          const replyActivate = events.find(
+            (e) => e.metric === 'reply_time' && e.type === 'activate'
+          );
+          const replyFulfill = events.find(
+            (e) => e.metric === 'reply_time' && e.type === 'fulfill'
+          );
+          
+          if (replyActivate && replyFulfill) {
+            // Calculate Assignment to First Reply from event timestamps
+            const activateTime = new Date(replyActivate.time).getTime();
+            const fulfillTime = new Date(replyFulfill.time).getTime();
+            frtSeconds = Math.round((fulfillTime - activateTime) / 1000);
+            console.log(`Ticket ${ticketId} FRT (assignment→reply): ${frtSeconds}s`);
+          } else if (replyFulfill && replyFulfill.status?.calendar !== undefined) {
+            // Fallback: Use cumulative calendar time from fulfill event
+            frtSeconds = replyFulfill.status.calendar;
+            console.log(`Ticket ${ticketId} FRT from fulfill event: ${frtSeconds}s`);
+          } else {
+            console.log(`Ticket ${ticketId} FRT unavailable - no assignment events`);
+          }
         }
         
-        // If agent_work_time not available, leave as null (do NOT fall back to full_resolution_time)
+        // FALLBACK for AHT: Use requester_wait_time if agent_work_time not available
+        if (ahtSeconds === null && tm) {
+          const requesterWaitMinutes = tm.requester_wait_time_in_minutes?.calendar;
+          if (requesterWaitMinutes !== null && requesterWaitMinutes !== undefined) {
+            ahtSeconds = Math.round(requesterWaitMinutes * 60);
+            console.log(`Ticket ${ticketId} using requester_wait_time: ${ahtSeconds}s (fallback)`);
+          }
+        }
 
         return { ticketId, frtSeconds, ahtSeconds };
       } catch (error) {

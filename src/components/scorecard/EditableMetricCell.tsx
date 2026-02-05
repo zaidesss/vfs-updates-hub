@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface EditableMetricCellProps {
@@ -18,9 +20,12 @@ function parseTimeInput(input: string): number | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   
+  // Remove 's' suffix if present (e.g., "420s" -> "420")
+  const cleanedInput = trimmed.replace(/s$/i, '');
+  
   // Check for mm:ss format
-  if (trimmed.includes(':')) {
-    const parts = trimmed.split(':');
+  if (cleanedInput.includes(':')) {
+    const parts = cleanedInput.split(':');
     if (parts.length !== 2) return null;
     const mins = parseInt(parts[0], 10);
     const secs = parseInt(parts[1], 10);
@@ -29,7 +34,7 @@ function parseTimeInput(input: string): number | null {
   }
   
   // Otherwise treat as seconds
-  const seconds = parseInt(trimmed, 10);
+  const seconds = parseInt(cleanedInput, 10);
   return isNaN(seconds) ? null : seconds;
 }
 
@@ -95,10 +100,24 @@ export function EditableMetricCell({
   if (displayValue === null && !isEditing) {
     return (
       <div 
-        className={cn("px-2 py-1 rounded bg-muted/30", className)}
+        className={cn(
+          "px-2 py-1 rounded bg-muted/30",
+          isEditable && "cursor-pointer hover:bg-accent/50 transition-colors",
+          className
+        )}
         onClick={handleClick}
       >
-        <span className="text-muted-foreground">Pending</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="text-xs">N/A</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">Data unavailable{isEditable ? ' - click to enter manually' : ''}</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
     );
   }
@@ -121,7 +140,7 @@ export function EditableMetricCell({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="h-6 w-16 text-center text-sm px-1"
-          placeholder="mm:ss"
+        placeholder="seconds"
         />
       ) : (
         <span className="text-foreground font-medium">
