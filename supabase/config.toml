@@ -113,3 +113,9 @@ verify_jwt = false
 
 [functions.fetch-zendesk-metrics]
 verify_jwt = false
+
+[functions.send-upwork-limit-request]
+verify_jwt = false
+
+[functions.generate-eod-analytics]
+verify_jwt = false
