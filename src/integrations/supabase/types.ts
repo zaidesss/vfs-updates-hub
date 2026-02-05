@@ -2374,6 +2374,40 @@ export type Database = {
       }
     }
     Functions: {
+      get_agent_dashboard_data: {
+        Args: { p_profile_id: string }
+        Returns: {
+          agent_name: string
+          agent_position: string
+          avg_response_gap_seconds: number
+          current_status: string
+          current_status_counter: number
+          day_off: string[]
+          email: string
+          fri_schedule: string
+          full_name: string
+          latest_login_time: string
+          mon_schedule: string
+          ot_enabled: boolean
+          profile_id: string
+          quota_chat: number
+          quota_email: number
+          quota_phone: number
+          sat_schedule: string
+          status_since: string
+          sun_schedule: string
+          support_type: string
+          thu_schedule: string
+          ticket_assignment_view_id: string
+          total_tickets_today: number
+          total_tickets_week: number
+          tue_schedule: string
+          wed_schedule: string
+          week_end_date: string
+          week_start_date: string
+          zendesk_instance: string
+        }[]
+      }
       get_super_admin_count: { Args: never; Returns: number }
       get_ticket_dashboard_data: {
         Args: {
