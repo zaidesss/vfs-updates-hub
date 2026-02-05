@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getMonth, getYear } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
-import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation } from '@/lib/qaEvaluationsApi';
+import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation, type QAEvaluationFilters } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
@@ -93,10 +93,15 @@ export default function QAEvaluations() {
   const canCreate = isAdmin || isHR || isSuperAdmin;
   const canViewAll = isAdmin || isHR || isSuperAdmin;
 
-  // Fetch evaluations
-  const { data: evaluations = [], isLoading } = useQuery({
-    queryKey: ['qa-evaluations'],
-    queryFn: fetchQAEvaluations,
+  // Fetch evaluations with server-side date filtering
+  const { data: evaluations = [], isLoading } = useQuery<QAEvaluation[]>({
+    queryKey: ['qa-evaluations', selectedYear, selectedMonth, selectedWeek, canViewAll ? selectedAgent : user?.email],
+    queryFn: () => fetchQAEvaluations({
+      year: parseInt(selectedYear),
+      month: parseInt(selectedMonth),
+      weekStart: selectedWeek !== 'all' ? selectedWeek : undefined,
+      agentEmail: !canViewAll && user?.email ? user.email : (canViewAll && selectedAgent !== 'all' ? selectedAgent : undefined),
+    }),
   });
 
   // Get unique agents for filter dropdown
@@ -110,22 +115,12 @@ export default function QAEvaluations() {
     return Array.from(agents.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [evaluations]);
 
-  // Filter evaluations by agent first (for chart), then by date (for table)
+  // Since we now filter server-side, just apply remaining client-side filters
   const agentFilteredEvaluations = useMemo(() => {
-    let filtered = evaluations;
-
-    // Filter by user if not admin
-    if (!canViewAll && user?.email) {
-      filtered = filtered.filter(e => e.agent_email.toLowerCase() === user.email.toLowerCase());
-    }
-
-    // Filter by selected agent (only for admins)
-    if (canViewAll && selectedAgent !== 'all') {
-      filtered = filtered.filter(e => e.agent_email === selectedAgent);
-    }
-
-    return filtered;
-  }, [evaluations, canViewAll, user?.email, selectedAgent]);
+    // With server-side filtering, evaluations are already filtered by date and agent
+    // Just need to handle local admin agent selection if not already filtered
+    return evaluations;
+  }, [evaluations]);
 
   // Get available weeks for the selected month
   const availableWeeks = useMemo(() => {
@@ -168,29 +163,11 @@ export default function QAEvaluations() {
     setSelectedWeek('all');
   };
 
-  // Filter evaluations based on Year/Month/Week selection
+  // With server-side filtering, we only need to apply search filter client-side
   const filteredEvaluations = useMemo(() => {
     let filtered = agentFilteredEvaluations;
 
-    const year = parseInt(selectedYear);
-    const month = parseInt(selectedMonth) - 1; // 0-indexed
-    const monthStart = startOfMonth(new Date(year, month, 1));
-    const monthEnd = endOfMonth(new Date(year, month, 1));
-    const monthStartStr = format(monthStart, 'yyyy-MM-dd');
-    const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
-
-    // Filter by month (work_week_start falls within selected month)
-    filtered = filtered.filter(e => {
-      const weekStart = e.work_week_start || e.audit_date;
-      return weekStart >= monthStartStr && weekStart <= monthEndStr;
-    });
-
-    // If specific week is selected, filter further
-    if (selectedWeek !== 'all') {
-      filtered = filtered.filter(e => e.work_week_start === selectedWeek);
-    }
-
-    // Search filtering
+    // Search filtering (client-side for instant feedback)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(e => 
@@ -202,7 +179,7 @@ export default function QAEvaluations() {
     }
 
     return filtered;
-  }, [agentFilteredEvaluations, selectedYear, selectedMonth, selectedWeek, searchQuery]);
+  }, [agentFilteredEvaluations, searchQuery]);
 
   // Calculate weekly stats from filtered evaluations (based on date range)
   // Group evaluations by their work_week_start to show weeks dynamically
