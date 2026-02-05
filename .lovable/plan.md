@@ -1,254 +1,100 @@
-
-
 # Implementation Plan: Portal Optimizations
 
 This plan covers performance optimizations, maintainability improvements, and feature enhancements across the portal. The work is organized into logical phases.
 
 ---
 
-## Phase 1: Database RPC Consolidation
+## Completed Steps
 
-### 1.1 Team Scorecard RPC Function
+### ✅ Step 1: QA Evaluations Server-Side Filtering
+- Added `QAEvaluationFilters` interface to `src/lib/qaEvaluationsApi.ts`
+- `fetchQAEvaluations` now accepts year/month/week/agent filters
+- `src/pages/QAEvaluations.tsx` passes date filters to query
 
-**Problem**: `TeamScorecard.tsx` makes 8+ parallel database calls per load.
+### ✅ Step 2: Mock Data Cleanup  
+- Removed `USE_MOCK_DATA` flag from `src/lib/api.ts`
+- Removed mock fallbacks for updates and acknowledgments
 
-**Solution**: Create a PostgreSQL function `get_weekly_scorecard_data` that consolidates:
-- Eligible agents fetch
-- Ticket logs aggregation
-- QA evaluations averages
-- Profile events (login counts)
-- Leave requests
-- Zendesk metrics
-- Saved scorecards
-- Revalida attempts
+### ✅ Step 3: Scorecard CSV Export
+- Created `src/lib/exportUtils.ts` with `exportToCSV` and `downloadCSV` functions
+- Added Export button to `src/pages/TeamScorecard.tsx`
 
-**Database Migration**:
-```sql
-CREATE OR REPLACE FUNCTION get_weekly_scorecard_data(
-  p_week_start DATE,
-  p_week_end DATE,
-  p_support_type TEXT
-) RETURNS TABLE (
-  agent_id UUID,
-  agent_email TEXT,
-  agent_name TEXT,
-  position TEXT,
-  -- ... all scorecard fields
-) AS $$ ... $$
-```
+### ✅ Step 4: Leave Request Audit Log
+- Created `src/components/leave/LeaveAuditLog.tsx` component
+- Integrated into `src/pages/LeaveRequest.tsx` (replaces old history dialog)
+- Shows chronological status changes with actor and timestamp
 
-**Files to modify**:
-- Create new database function via migration
-- Update `src/lib/scorecardApi.ts` to use RPC call instead of multiple queries
+### ✅ Step 5: Real-Time Activity Feed
+- Created `src/components/team/LiveActivityFeed.tsx`
+- Integrated into `src/pages/TeamStatusBoard.tsx` (right column)
+- Subscribes to `profile_events` via Supabase Realtime
+
+### ✅ Step 6: Agent Dashboard RPC (Partial)
+- Created `get_agent_dashboard_data` PostgreSQL function
+- Consolidates profile, status, login, and ticket data into single call
+- Note: Frontend integration pending (API layer update needed)
 
 ---
 
-### 1.2 Agent Dashboard RPC Function
+## Remaining Steps
 
-**Problem**: `AgentDashboard.tsx` makes 6+ sequential calls in `loadDashboardData`.
+### 🔲 Step 7: Edge Function Import Fixes
+Fix `npm:` import specifiers in edge functions that use deprecated `esm.sh` imports.
 
-**Solution**: Create `get_agent_dashboard_data` RPC:
-- Profile + status in one call
-- Week events consolidated
-- Ticket counts + gap data combined
+**Functions to audit:**
+- `supabase/functions/send-notifications/index.ts`
+- `supabase/functions/send-qa-notification/index.ts`
 
-**Files to modify**:
+### 🔲 Step 8: Team Scorecard RPC
+Due to schema complexity (10+ tables, mixed column names), the scorecard RPC requires careful design:
+- Join agent_profiles with profile_events via profile_id
+- Aggregate ticket_logs, qa_evaluations by email
+- Handle leave_requests date overlaps
+- Merge zendesk_agent_metrics and saved_scorecards
+
+**Files to modify:**
 - Create database function via migration
-- Update `src/lib/agentDashboardApi.ts` to add consolidated RPC function
-- Update `src/pages/AgentDashboard.tsx` to use new function
+- Update `src/lib/scorecardApi.ts` to add RPC option
+- Update `src/pages/TeamScorecard.tsx` to use new function
 
----
-
-## Phase 2: QA Evaluations Server-Side Filtering
-
-**Problem**: `fetchQAEvaluations` loads ALL evaluations, then filters client-side.
-
-**Solution**: Add server-side date filtering parameters.
-
-**Changes to `src/lib/qaEvaluationsApi.ts`**:
-```typescript
-export async function fetchQAEvaluations(filters?: {
-  year?: number;
-  month?: number;
-  weekStart?: string;
-  agentEmail?: string;
-}): Promise<QAEvaluation[]>
-```
-
-**Changes to `src/pages/QAEvaluations.tsx`**:
-- Pass date filters to query
-- Update query key to include filter parameters
-- Remove client-side date filtering logic
-
----
-
-## Phase 3: Leave Request Audit Log Enhancement
-
-**Problem**: No visible admin action audit trail in the UI.
-
-**Solution**: Add a dedicated "Actions Log" tab/section showing:
-- Status changes with timestamps
-- Who made the decision
-- Any remarks added
-
-**New Component**: `src/components/leave/LeaveAuditLog.tsx`
-- Display `leave_request_history` entries
-- Show actor, action type, timestamp
-- Format changes in human-readable way
-
-**Update**: `src/pages/LeaveRequest.tsx`
-- Add audit log dialog/tab for admins viewing requests
-- Show history when clicking on a request
-
----
-
-## Phase 4: Scorecard Export Functionality
-
-**Problem**: No way to export scorecard data for reporting.
-
-**Solution**: Add CSV/Excel export button to Team Scorecard.
-
-**New utility**: `src/lib/exportUtils.ts`
-```typescript
-export function exportToCSV(data: any[], filename: string): void
-export function downloadCSV(csvContent: string, filename: string): void
-```
-
-**Update**: `src/pages/TeamScorecard.tsx`
-- Add Export button next to Save Scorecard
-- Export filtered/displayed data as CSV
-- Include all visible columns
-
----
-
-## Phase 5: Real-Time Team Activity Feed
-
-**Problem**: No live view of agent status changes.
-
-**Solution**: Create a lightweight real-time activity component.
-
-**New Component**: `src/components/team/LiveActivityFeed.tsx`
-- Subscribe to `profile_events` and `profile_status` changes
-- Show last 10-20 status changes
-- Auto-refresh with Supabase Realtime
-
-**Integration Points**:
-- Add to Team Status page sidebar
-- Optional: Add to admin dashboard
-
----
-
-## Phase 6: Edge Function Consolidation
-
-**Problem**: 42 separate edge functions, many with duplicate code patterns.
-
-**Solution**: Create a unified notification dispatcher.
-
-**Note**: This is a larger refactoring effort. For now, we'll:
-1. Document the consolidation pattern
-2. Fix the import patterns to use `npm:` specifiers per project standards
-3. Update functions that use deprecated `esm.sh` imports
-
-**Functions to update** (fix imports only, minimal changes):
-- `send-notifications/index.ts`
-- `send-qa-notification/index.ts`
-- Other functions using `https://esm.sh/` imports
-
----
-
-## Phase 7: Mock Data and Code Cleanup
-
-### 7.1 Remove Unused Mock Data
-
-**Problem**: `src/lib/mockData.ts` contains stale demo data.
-
-**Solution**: 
-- Remove `USE_MOCK_DATA` flag checks from `src/lib/api.ts`
-- Remove mock fallbacks (DB is now stable)
-- Keep `mockData.ts` as minimal reference only
-
-**Files to modify**:
-- `src/lib/api.ts` - Remove mock fallback logic
-- `src/lib/mockData.ts` - Minimize or deprecate
-
-### 7.2 Standardize API Response Types
-
-**Problem**: Inconsistent `{ data, error }` vs direct returns.
-
-**Solution**: Ensure all API functions return `ApiResponse<T>`:
-```typescript
-interface ApiResponse<T> {
-  data: T | null;
-  error: string | null;
-}
-```
-
-**Files to audit**:
-- `src/lib/scorecardApi.ts`
-- `src/lib/agentDashboardApi.ts`
-- `src/lib/qaEvaluationsApi.ts`
-
----
-
-## Implementation Order (Step by Step)
-
-We'll implement these one at a time, verifying each before proceeding:
-
-1. **Step 1**: QA Evaluations server-side filtering (simplest, high impact)
-2. **Step 2**: Mock data cleanup (low risk)
-3. **Step 3**: Scorecard CSV export (user-facing feature)
-4. **Step 4**: Leave Request audit log enhancement
-5. **Step 5**: Real-time activity feed
-6. **Step 6**: Edge function import fixes
-7. **Step 7**: Team Scorecard RPC (larger change)
-8. **Step 8**: Agent Dashboard RPC (larger change)
+### 🔲 Step 9: API Layer Updates for RPC
+- Update `src/lib/agentDashboardApi.ts` to call `get_agent_dashboard_data` RPC
+- Update `src/pages/AgentDashboard.tsx` to use consolidated function
 
 ---
 
 ## Files Summary
 
-| File | Action | Phase |
-|------|--------|-------|
-| `src/lib/qaEvaluationsApi.ts` | Add filtered fetch function | 2 |
-| `src/pages/QAEvaluations.tsx` | Pass filters to query | 2 |
-| `src/lib/api.ts` | Remove mock fallbacks | 7 |
-| `src/lib/mockData.ts` | Minimize content | 7 |
-| `src/lib/exportUtils.ts` | Create new file | 4 |
-| `src/pages/TeamScorecard.tsx` | Add export button | 4 |
-| `src/components/leave/LeaveAuditLog.tsx` | Create new component | 3 |
-| `src/pages/LeaveRequest.tsx` | Add audit log UI | 3 |
-| `src/components/team/LiveActivityFeed.tsx` | Create new component | 5 |
-| `supabase/functions/*/index.ts` | Fix imports | 6 |
-| `supabase/migrations/` | Add RPC functions | 1 |
-| `src/lib/scorecardApi.ts` | Add RPC call | 1 |
-| `src/lib/agentDashboardApi.ts` | Add RPC call | 1 |
+| File | Action | Status |
+|------|--------|--------|
+| `src/lib/qaEvaluationsApi.ts` | Add filtered fetch | ✅ Done |
+| `src/pages/QAEvaluations.tsx` | Pass filters to query | ✅ Done |
+| `src/lib/api.ts` | Remove mock fallbacks | ✅ Done |
+| `src/lib/exportUtils.ts` | Create new file | ✅ Done |
+| `src/pages/TeamScorecard.tsx` | Add export button | ✅ Done |
+| `src/components/leave/LeaveAuditLog.tsx` | Create new component | ✅ Done |
+| `src/pages/LeaveRequest.tsx` | Add audit log UI | ✅ Done |
+| `src/components/team/LiveActivityFeed.tsx` | Create new component | ✅ Done |
+| `src/pages/TeamStatusBoard.tsx` | Add activity feed | ✅ Done |
+| `supabase/functions/` | RPC functions | 🔲 Scorecard pending |
+| `src/lib/agentDashboardApi.ts` | Add RPC call | 🔲 Pending |
 
 ---
 
-## Acceptance Criteria
+## Database Functions Created
 
-### QA Evaluations Filtering
-- Query only fetches data for selected date range
-- Page loads faster for current month view
-- Network payload reduced by ~80%
+### `get_agent_dashboard_data(p_profile_id UUID)`
+Returns consolidated agent data including:
+- Profile info (name, email, position, quotas)
+- Status info (current_status, status_since)
+- Login data (latest_login_time, status_counter)
+- Ticket counts (week total, today total)
+- Gap data (avg_response_gap_seconds)
 
-### Export Functionality
-- CSV downloads with correct formatting
-- Includes all visible columns
-- Filename includes date range
+---
 
-### Leave Audit Log
-- Shows all status changes chronologically
-- Displays actor name and timestamp
-- Accessible from request detail view
+## Notes
 
-### Real-time Feed
-- Updates within 2 seconds of status change
-- Shows agent name, old status, new status
-- Scrollable list of recent events
-
-### Code Cleanup
-- No mock data fallbacks in production paths
-- Consistent API response patterns
-- Edge functions use `npm:` imports
-
+- Security linter warnings shown are **pre-existing** RLS policy issues, not from this implementation
+- The scorecard RPC is complex due to many table joins; may implement incrementally
+- All new components follow existing design patterns and use Tailwind design tokens
