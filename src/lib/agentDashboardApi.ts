@@ -525,9 +525,13 @@ export async function updateProfileStatus(
         // Trigger automatic ticket assignment on login
         triggerTicketAssignment(profileId, agentProfile.email)
           .catch((err) => console.error('Failed to trigger ticket assignment:', err));
-      } else if (eventType === 'LOGOUT') {
+      } else if (eventType === 'LOGOUT' || eventType === 'OT_LOGOUT') {
         checkAndAlertEarlyOut(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
           .catch((err) => console.error('Failed to check early out:', err));
+        
+        // Fetch and cache Upwork hours on logout (fire and forget)
+        fetchAndCacheUpworkTime(profileId, agentProfile.email)
+          .catch((err) => console.error('Failed to fetch Upwork time on logout:', err));
       } else if (eventType === 'BREAK_OUT') {
         checkAndAlertOverbreak(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email)
           .catch((err) => console.error('Failed to check overbreak:', err));
@@ -1723,6 +1727,85 @@ export async function fetchUpworkTime(
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Exception fetching Upwork time:', errorMessage);
     return { hours: null, firstCellTime: null, lastCellTime: null, error: errorMessage };
+  }
+}
+
+/**
+ * Fetch Upwork time from cache (upwork_daily_logs table)
+ * This reads previously synced data instead of calling the live API
+ */
+export async function fetchUpworkTimeFromCache(
+  contractId: string,
+  date: string
+): Promise<{ 
+  hours: number | null; 
+  syncedAt: string | null;
+  error: string | null 
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('upwork_daily_logs')
+      .select('total_hours, fetched_at')
+      .eq('contract_id', contractId)
+      .eq('date', date)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching Upwork cache:', error);
+      return { hours: null, syncedAt: null, error: error.message };
+    }
+
+    if (!data) {
+      // No cached data yet - not an error, just no data
+      return { hours: null, syncedAt: null, error: null };
+    }
+
+    return { 
+      hours: data.total_hours ?? null, 
+      syncedAt: data.fetched_at ?? null,
+      error: null 
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Exception fetching Upwork cache:', errorMessage);
+    return { hours: null, syncedAt: null, error: errorMessage };
+  }
+}
+
+/**
+ * Fetch and cache Upwork time on logout - called as fire-and-forget
+ * This triggers the edge function to fetch from Upwork and store in upwork_daily_logs
+ */
+async function fetchAndCacheUpworkTime(profileId: string, agentEmail: string): Promise<void> {
+  try {
+    // Get agent's upwork contract ID
+    const { data: profile } = await supabase
+      .from('agent_profiles')
+      .select('upwork_contract_id')
+      .eq('id', profileId)
+      .single();
+
+    if (!profile?.upwork_contract_id) {
+      // No Upwork contract - silently skip
+      return;
+    }
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    
+    // Call the edge function to fetch and cache
+    const { error } = await supabase.functions.invoke('fetch-upwork-time', {
+      body: { 
+        contractId: profile.upwork_contract_id, 
+        date: today, 
+        agentEmail 
+      },
+    });
+
+    if (error) {
+      console.error('Error fetching Upwork time on logout:', error);
+    }
+  } catch (err) {
+    console.error('Exception in fetchAndCacheUpworkTime:', err);
   }
 }
 

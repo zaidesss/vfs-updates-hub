@@ -28,7 +28,7 @@ import {
   getAgentTagByEmail,
   getTodayTicketCountByType,
   getTodayGapData,
-  fetchUpworkTime,
+  fetchUpworkTimeFromCache,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
   type DashboardProfile,
@@ -103,8 +103,8 @@ export default function AgentDashboard() {
   const [portalHours, setPortalHours] = useState<number | null>(null);
   const [portalLoginTime, setPortalLoginTime] = useState<string | null>(null);
   const [upworkHours, setUpworkHours] = useState<number | null>(null);
+  const [upworkSyncedAt, setUpworkSyncedAt] = useState<string | null>(null);
   const [upworkError, setUpworkError] = useState<string | null>(null);
-  const [upworkStartTime, setUpworkStartTime] = useState<string | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     if (!profileId) {
@@ -238,21 +238,20 @@ export default function AgentDashboard() {
         setPortalLoginTime(todayAttendanceForHours.loginTime);
       }
       
-      // Fetch Upwork hours if contract ID exists
+      // Fetch Upwork hours from cache if contract ID exists
       if (profileResult.data.upwork_contract_id) {
         const todayStr = format(today, 'yyyy-MM-dd');
-        const upworkResult = await fetchUpworkTime(
+        const upworkResult = await fetchUpworkTimeFromCache(
           profileResult.data.upwork_contract_id,
-          todayStr,
-          profileResult.data.email // Pass email for database logging
+          todayStr
         );
         if (upworkResult.error) {
           setUpworkError(upworkResult.error);
           setUpworkHours(null);
-          setUpworkStartTime(null);
+          setUpworkSyncedAt(null);
         } else {
           setUpworkHours(upworkResult.hours);
-          setUpworkStartTime(upworkResult.firstCellTime);
+          setUpworkSyncedAt(upworkResult.syncedAt);
           setUpworkError(null);
         }
       }
@@ -484,7 +483,7 @@ export default function AgentDashboard() {
           portalLoginTime={portalLoginTime}
           upworkHours={upworkHours}
           upworkError={upworkError}
-          upworkStartTime={upworkStartTime}
+          upworkSyncedAt={upworkSyncedAt}
           hasUpworkContract={!!profile.upwork_contract_id}
         />
       </div>
