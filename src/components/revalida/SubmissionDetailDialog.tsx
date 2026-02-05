@@ -114,8 +114,9 @@ export function SubmissionDetailDialog({
           </div>
 
           {/* Scrollable Questions Section */}
-          <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
-          <div className="space-y-4 pr-4">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
+              <div className="space-y-4 p-6 pt-4">
             {orderedQuestions.map((question, idx) => {
               const answer = answersMap.get(question.id);
               const isSituational = question.type === 'situational';
@@ -200,8 +201,9 @@ export function SubmissionDetailDialog({
                 </Card>
               );
             })}
-            </div>
-          </ScrollArea>
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

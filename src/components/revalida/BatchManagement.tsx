@@ -142,8 +142,8 @@ export function BatchManagement({
                         <Eye className="h-4 w-4" />
                       </Button>
 
-                      {/* Edit button - only for drafts */}
-                      {isDraftBatch(batch) && (
+                      {/* Edit button - for drafts and active batches (typo corrections) */}
+                      {(isDraftBatch(batch) || (batch.is_active && !isDeadlinePassed(batch.end_at))) && (
                         <Button
                           variant="ghost"
                           size="icon"
