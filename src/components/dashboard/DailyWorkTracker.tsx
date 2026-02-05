@@ -27,7 +27,7 @@ interface DailyWorkTrackerProps {
   // Upwork integration props (only show when hasUpworkContract)
   upworkHours?: number | null;
   upworkError?: string | null;
-  upworkStartTime?: string | null;
+  upworkSyncedAt?: string | null;  // When data was last synced from Upwork
   hasUpworkContract?: boolean;
 }
 
@@ -106,7 +106,7 @@ export function DailyWorkTracker({
   portalLoginTime,
   upworkHours,
   upworkError,
-  upworkStartTime,
+  upworkSyncedAt,
   hasUpworkContract,
 }: DailyWorkTrackerProps) {
   const { showEmail, showChat, showCall } = getVisibleTicketTypes(position, quotaChat, quotaPhone);
@@ -284,19 +284,22 @@ export function DailyWorkTracker({
                 </p>
               ) : (
                 <div className="flex items-center gap-1 text-xs text-muted-foreground italic">
-                  {upworkStartTime ? (
+                  {upworkSyncedAt ? (
                     <>
-                      <PlayCircle className="h-3 w-3 text-green-600" />
-                      Started: {upworkStartTime}
+                      Synced: {new Date(upworkSyncedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                     </>
-                  ) : varianceStatus === 'ok' ? (
-                    'Times match ✓'
-                  ) : varianceStatus === 'over' ? (
-                    `Portal +${formatHours(variance)} vs Upwork`
-                  ) : varianceStatus === 'under' ? (
-                    `Upwork +${formatHours(Math.abs(variance ?? 0))} vs Portal`
+                  ) : upworkHours !== null ? (
+                    varianceStatus === 'ok' ? (
+                      'Times match ✓'
+                    ) : varianceStatus === 'over' ? (
+                      `Portal +${formatHours(variance)} vs Upwork`
+                    ) : varianceStatus === 'under' ? (
+                      `Upwork +${formatHours(Math.abs(variance ?? 0))} vs Portal`
+                    ) : (
+                      'From last logout sync'
+                    )
                   ) : (
-                    'From Upwork Work Diary'
+                    'Syncs on logout'
                   )}
                 </div>
               )}
