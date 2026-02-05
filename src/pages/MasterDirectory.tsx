@@ -12,10 +12,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Save, Search, ExternalLink, RefreshCw } from 'lucide-react';
+import { Save, Search, ExternalLink, RefreshCw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DirectoryEntry,
@@ -39,6 +46,11 @@ export default function MasterDirectory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
+  
+  // Filter states
+  const [teamLeadFilter, setTeamLeadFilter] = useState('all');
+  const [zdInstanceFilter, setZdInstanceFilter] = useState('all');
+  const [supportTypeFilter, setSupportTypeFilter] = useState('all');
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -70,12 +82,34 @@ export default function MasterDirectory() {
     setIsLoading(false);
   };
 
+  // Extract unique filter options from active entries
+  const filterOptions = useMemo(() => {
+    const activeEntries = editedData.filter(e => e.employment_status !== 'Terminated');
+    
+    const teamLeads = [...new Set(activeEntries.map(e => e.team_lead).filter(Boolean))].sort() as string[];
+    const zdInstances = [...new Set(activeEntries.map(e => e.zendesk_instance).filter(Boolean))].sort() as string[];
+    const supportTypes = [...new Set(activeEntries.map(e => e.support_type).filter(Boolean))].sort() as string[];
+    
+    return { teamLeads, zdInstances, supportTypes };
+  }, [editedData]);
+
   // Filter entries based on search and exclude terminated profiles
   const filteredEntries = useMemo(() => {
     let result = editedData;
     
     // Exclude terminated profiles
     result = result.filter(entry => entry.employment_status !== 'Terminated');
+    
+    // Apply dropdown filters
+    if (teamLeadFilter !== 'all') {
+      result = result.filter(entry => entry.team_lead === teamLeadFilter);
+    }
+    if (zdInstanceFilter !== 'all') {
+      result = result.filter(entry => entry.zendesk_instance === zdInstanceFilter);
+    }
+    if (supportTypeFilter !== 'all') {
+      result = result.filter(entry => entry.support_type === supportTypeFilter);
+    }
     
     // Apply search filter
     if (searchQuery.trim()) {
@@ -88,7 +122,20 @@ export default function MasterDirectory() {
     }
     
     return result;
-  }, [editedData, searchQuery]);
+  }, [editedData, searchQuery, teamLeadFilter, zdInstanceFilter, supportTypeFilter]);
+
+  // Reset filters handler
+  const resetFilters = () => {
+    setTeamLeadFilter('all');
+    setZdInstanceFilter('all');
+    setSupportTypeFilter('all');
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = teamLeadFilter !== 'all' || 
+                           zdInstanceFilter !== 'all' || 
+                           supportTypeFilter !== 'all' || 
+                           searchQuery.trim() !== '';
 
   // Update a single field for an entry (only for editable fields)
   const updateField = (email: string, field: keyof DirectoryEntry, value: any) => {
@@ -220,15 +267,70 @@ export default function MasterDirectory() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search agents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        {/* Filter Bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="relative w-full sm:w-auto sm:min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search agents..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          
+          {/* Team Lead Filter */}
+          <Select value={teamLeadFilter} onValueChange={setTeamLeadFilter}>
+            <SelectTrigger className="w-[160px] bg-background border-border">
+              <SelectValue placeholder="Team Lead" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border z-50">
+              <SelectItem value="all">All Team Leads</SelectItem>
+              {filterOptions.teamLeads.map((lead) => (
+                <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Zendesk Instance Filter */}
+          <Select value={zdInstanceFilter} onValueChange={setZdInstanceFilter}>
+            <SelectTrigger className="w-[140px] bg-background border-border">
+              <SelectValue placeholder="ZD Instance" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border z-50">
+              <SelectItem value="all">All Instances</SelectItem>
+              {filterOptions.zdInstances.map((inst) => (
+                <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Support Type Filter */}
+          <Select value={supportTypeFilter} onValueChange={setSupportTypeFilter}>
+            <SelectTrigger className="w-[150px] bg-background border-border">
+              <SelectValue placeholder="Support Type" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border z-50">
+              <SelectItem value="all">All Types</SelectItem>
+              {filterOptions.supportTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Reset Button */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Reset
+            </Button>
+          )}
         </div>
 
         {/* Table with sticky header and frozen first column */}
