@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -135,6 +135,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/team-performance/qa-evaluations', label: 'QA Evaluations', icon: ClipboardList },
         { href: '/team-performance/agent-reports', label: 'Agent Reports', icon: FileWarning },
         { href: '/team-performance/scorecard', label: 'Scorecard', icon: BarChart3 },
+        { href: '/team-performance/revalida', label: 'Revalida', icon: GraduationCap },
       ],
     });
 
