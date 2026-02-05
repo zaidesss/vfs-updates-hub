@@ -51,6 +51,14 @@ const ICON_MAP: Record<string, typeof Target> = {
   coffee: Coffee,
 };
 
+// Convert minutes from midnight to HH:MM format
+function formatMinutesToTime(minutes: number | undefined | null): string {
+  if (minutes === undefined || minutes === null) return '-';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
 export function ReportDetailDialog({
   report,
   open,
@@ -93,49 +101,45 @@ export function ReportDetailDialog({
     
     switch (report.incident_type) {
       case 'LATE_LOGIN': {
-        // Start time: schedule + 5min grace, End time: 1 min before actual login
-        const scheduleStart = details.scheduleStart || '09:00';
-        const loginTime = details.loginTime || '09:30';
+        // Backend stores: scheduledStart (minutes), actualLogin (minutes), lateByMinutes
+        const scheduleStartMins = details.scheduledStart;
+        const loginMins = details.actualLogin;
         
-        // Parse schedule start and add 5 min grace
-        const [schedH, schedM] = scheduleStart.split(':').map(Number);
-        let graceMinutes = schedH * 60 + schedM + 5;
-        const graceH = Math.floor(graceMinutes / 60) % 24;
-        const graceM = graceMinutes % 60;
-        const startTime = `${String(graceH).padStart(2, '0')}:${String(graceM).padStart(2, '0')}`;
-        
-        // Parse login time and subtract 1 min
-        const [loginH, loginM] = loginTime.split(':').map(Number);
-        let endMinutes = loginH * 60 + loginM - 1;
-        if (endMinutes < 0) endMinutes += 24 * 60;
-        const endH = Math.floor(endMinutes / 60) % 24;
-        const endM = endMinutes % 60;
-        const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-        
-        return { startTime, endTime };
+        if (scheduleStartMins !== undefined && loginMins !== undefined) {
+          // Start time: schedule + 5min grace
+          const graceMinutes = scheduleStartMins + 5;
+          const startTime = formatMinutesToTime(graceMinutes);
+          
+          // End time: 1 min before actual login
+          const endTime = formatMinutesToTime(Math.max(0, loginMins - 1));
+          
+          return { startTime, endTime };
+        }
+        return { startTime: '09:00', endTime: '10:00' }; // Fallback
       }
       case 'EARLY_OUT': {
-        // Start time: actual logout, End time: scheduled end
-        const logoutTime = details.logoutTime || '17:00';
-        const scheduleEnd = details.scheduleEnd || '18:00';
-        return { startTime: logoutTime, endTime: scheduleEnd };
+        // Backend stores: actualLogout (minutes), scheduledEnd (minutes)
+        const logoutMins = details.actualLogout;
+        const scheduleEndMins = details.scheduledEnd;
+        
+        if (logoutMins !== undefined && scheduleEndMins !== undefined) {
+          return { 
+            startTime: formatMinutesToTime(logoutMins), 
+            endTime: formatMinutesToTime(scheduleEndMins) 
+          };
+        }
+        return { startTime: '17:00', endTime: '18:00' };
       }
       case 'TIME_NOT_MET': {
-        // Use the full shift duration gap
-        const expected = details.expected || 8;
-        const actual = details.actual || 0;
-        const gapHours = expected - actual;
+        // Use shortfallMinutes to calculate gap
+        const shortfallMins = details.shortfallMinutes || 0;
+        const scheduleEndMins = details.scheduledEnd || 18 * 60; // Default 6PM
         
-        // Default to a reasonable time range (end of shift minus gap)
-        const scheduleEnd = details.scheduleEnd || '18:00';
-        const [endH, endM] = scheduleEnd.split(':').map(Number);
-        let startMinutes = (endH * 60 + endM) - (gapHours * 60);
-        if (startMinutes < 0) startMinutes += 24 * 60;
-        const startH = Math.floor(startMinutes / 60) % 24;
-        const startM = Math.floor(startMinutes % 60);
-        const startTime = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
-        
-        return { startTime, endTime: scheduleEnd };
+        const startMins = Math.max(0, scheduleEndMins - shortfallMins);
+        return { 
+          startTime: formatMinutesToTime(startMins), 
+          endTime: formatMinutesToTime(scheduleEndMins) 
+        };
       }
       default:
         return { startTime: '09:00', endTime: '10:00' };
@@ -231,11 +235,15 @@ export function ReportDetailDialog({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected Quota</span>
-              <span className="font-medium">{details.quota || '-'} tickets</span>
+              <span className="font-medium">{details.expectedQuota ?? '-'} tickets</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Actual Count</span>
-              <span className="font-medium">{details.actual || '-'} tickets</span>
+              <span className="font-medium">{details.actualTotal ?? '-'} tickets</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Shortfall</span>
+              <span className="font-medium text-red-600">{details.shortfall ?? '-'} tickets</span>
             </div>
             {details.breakdown && (
               <div className="mt-2 p-3 bg-muted/50 rounded-lg text-sm">
@@ -270,16 +278,16 @@ export function ReportDetailDialog({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bio Time Used</span>
-              <span className="font-medium">{details.timeUsedSeconds ? Math.ceil(details.timeUsedSeconds / 60) : '-'} mins</span>
+              <span className="font-medium">{details.totalBioSeconds ? Math.ceil(details.totalBioSeconds / 60) : '-'} mins</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Allowance</span>
-              <span className="font-medium">{details.allowanceSeconds ? Math.ceil(details.allowanceSeconds / 60) : '-'} mins</span>
+              <span className="font-medium">{details.bioAllowance ? Math.ceil(details.bioAllowance / 60) : '-'} mins</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Exceeded By</span>
               <span className="font-medium text-red-600">
-                {details.exceededSeconds ? Math.ceil(details.exceededSeconds / 60) : 0} mins
+                {details.overageSeconds ? Math.ceil(details.overageSeconds / 60) : 0} mins
               </span>
             </div>
           </div>
@@ -290,15 +298,19 @@ export function ReportDetailDialog({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Last Login</span>
-              <span className="font-medium">{details.loginTime || '-'}</span>
+              <span className="font-medium">
+                {details.loginTime 
+                  ? format(new Date(details.loginTime), 'h:mm a')
+                  : '-'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected Logout</span>
-              <span className="font-medium">{details.scheduleEnd || '-'}</span>
+              <span className="font-medium">{formatMinutesToTime(details.scheduledEnd)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Auto-Logged Out</span>
-              <span className="font-medium">{details.auto_logged_out ? 'Yes' : 'No'}</span>
+              <span className="font-medium">{details.autoLoggedOut ? 'Yes' : 'No'}</span>
             </div>
           </div>
         );
@@ -325,15 +337,15 @@ export function ReportDetailDialog({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Schedule Start</span>
-              <span className="font-medium">{details.scheduleStart || '-'}</span>
+              <span className="font-medium">{formatMinutesToTime(details.scheduledStart)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Actual Login</span>
-              <span className="font-medium">{details.loginTime || '-'}</span>
+              <span className="font-medium">{formatMinutesToTime(details.actualLogin)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Minutes Late</span>
-              <span className="font-medium text-amber-600">{details.minutesLate || '-'}</span>
+              <span className="font-medium text-amber-600">{details.lateByMinutes ?? '-'}</span>
             </div>
           </div>
         );
@@ -343,15 +355,15 @@ export function ReportDetailDialog({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Schedule End</span>
-              <span className="font-medium">{details.scheduleEnd || '-'}</span>
+              <span className="font-medium">{formatMinutesToTime(details.scheduledEnd)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Actual Logout</span>
-              <span className="font-medium">{details.logoutTime || '-'}</span>
+              <span className="font-medium">{formatMinutesToTime(details.actualLogout)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Minutes Early</span>
-              <span className="font-medium text-orange-600">{details.minutesEarly || '-'}</span>
+              <span className="font-medium text-orange-600">{details.earlyByMinutes ?? '-'}</span>
             </div>
           </div>
         );
@@ -360,17 +372,23 @@ export function ReportDetailDialog({
         return (
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Expected Hours</span>
-              <span className="font-medium">{details.expected?.toFixed(1) || '-'} hrs</span>
+              <span className="text-muted-foreground">Required Hours</span>
+              <span className="font-medium">{details.requiredHours?.toFixed(1) ?? '-'} hrs</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Actual Hours</span>
-              <span className="font-medium">{details.actual?.toFixed(1) || '-'} hrs</span>
+              <span className="text-muted-foreground">Logged Hours</span>
+              <span className="font-medium">{details.loggedHours?.toFixed(1) ?? '-'} hrs</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Source</span>
-              <span className="font-medium capitalize">{details.source || '-'}</span>
+              <span className="text-muted-foreground">Shortfall</span>
+              <span className="font-medium text-red-600">{details.shortfallMinutes ?? '-'} mins</span>
             </div>
+            {details.source && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Source</span>
+                <span className="font-medium capitalize">{details.source}</span>
+              </div>
+            )}
           </div>
         );
 
