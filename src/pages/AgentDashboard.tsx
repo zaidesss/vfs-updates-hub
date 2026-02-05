@@ -27,6 +27,7 @@ import {
   getWeekAllEvents,
   calculateAttendanceForWeek,
   getAgentTagByEmail,
+  getTodayTicketCountByType,
   fetchUpworkTimeFromCache,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
@@ -136,17 +137,11 @@ export default function AgentDashboard() {
 
       setProfile(profileResult.data);
 
-      // Use RPC data for status if available, fallback to direct query
+      // Use RPC data for status and avg gap, get ticket breakdown separately
       if (rpcResult.data) {
         setStatus(rpcResult.data.current_status);
         setStatusSince(rpcResult.data.status_since);
-        // Set ticket metrics from RPC
-        setTicketCounts({
-          email: 0, // RPC returns total, breakdown done separately if needed
-          chat: 0,
-          call: 0,
-          total: rpcResult.data.total_tickets_today,
-        });
+        // RPC provides avg gap, but we'll fetch per-type tickets below
         setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
       } else if (statusResult.data) {
         // Fallback to direct status query
@@ -231,10 +226,13 @@ export default function AgentDashboard() {
         }
       }
 
-      // Fetch agent tag for detailed ticket breakdown (if RPC didn't provide it)
+      // Fetch agent tag for detailed ticket breakdown
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
         setAgentTag(tag);
+        // Fetch per-type ticket breakdown (RPC only provides total)
+        const ticketResult = await getTodayTicketCountByType(tag);
+        setTicketCounts(ticketResult.data);
       }
       
       // Calculate portal hours and login time from today's attendance
@@ -276,22 +274,22 @@ export default function AgentDashboard() {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Refresh tracker data manually - uses RPC for efficiency
+  // Refresh tracker data manually
   const handleRefreshTracker = async () => {
-    if (!profileId) return;
+    if (!agentTag) return;
     
     setIsRefreshingTracker(true);
     try {
-      // Use RPC for fresh data
-      const rpcResult = await fetchAgentDashboardRPC(profileId);
-      if (rpcResult.data) {
-        setTicketCounts({
-          email: 0,
-          chat: 0,
-          call: 0,
-          total: rpcResult.data.total_tickets_today,
-        });
-        setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
+      // Fetch ticket breakdown by type
+      const ticketResult = await getTodayTicketCountByType(agentTag);
+      setTicketCounts(ticketResult.data);
+      
+      // Use RPC for avg gap
+      if (profileId) {
+        const rpcResult = await fetchAgentDashboardRPC(profileId);
+        if (rpcResult.data) {
+          setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
+        }
       }
     } catch (err) {
       console.error('Failed to refresh tracker:', err);

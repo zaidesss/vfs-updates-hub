@@ -98,6 +98,36 @@ export const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support'];
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// RPC result type for get_weekly_scorecard_data
+interface ScorecardRPCResult {
+  agent_email: string;
+  agent_name: string | null;
+  agent_position: string | null;
+  profile_id: string;
+  quota_email: number | null;
+  quota_chat: number | null;
+  quota_phone: number | null;
+  day_off: string[] | null;
+  mon_schedule: string | null;
+  tue_schedule: string | null;
+  wed_schedule: string | null;
+  thu_schedule: string | null;
+  fri_schedule: string | null;
+  sat_schedule: string | null;
+  sun_schedule: string | null;
+  email_count: number;
+  chat_count: number;
+  call_count: number;
+  qa_average: number | null;
+  revalida_score: number | null;
+  days_with_login: number;
+  approved_leave_days: number;
+  call_aht_seconds: number | null;
+  chat_aht_seconds: number | null;
+  chat_frt_seconds: number | null;
+  is_saved: boolean;
+}
+
 // Fetch scorecard configuration for a support type
 export async function fetchScorecardConfig(supportType: string): Promise<ScorecardConfig[]> {
   const { data, error } = await supabase
@@ -359,7 +389,211 @@ export async function saveScorecard(
   return { success: true };
 }
 
-// Fetch all data for weekly scorecard
+/**
+ * Fetch weekly scorecard data via consolidated RPC
+ * Replaces 10+ parallel queries with a single database call
+ */
+export async function fetchWeeklyScorecardRPC(
+  weekStart: Date,
+  weekEnd: Date,
+  supportType: string
+): Promise<{ data: AgentScorecard[]; fromRPC: boolean }> {
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+  try {
+    // Fetch RPC data and config in parallel
+    const configPromises = supportType === 'all'
+      ? SUPPORT_TYPES.map(type => fetchScorecardConfig(type).then(config => ({ type, config })))
+      : [fetchScorecardConfig(supportType).then(config => ({ type: supportType, config }))];
+
+    const [rpcResult, configResults] = await Promise.all([
+      supabase.rpc('get_weekly_scorecard_data', {
+        p_week_start: weekStartStr,
+        p_week_end: weekEndStr,
+        p_support_type: supportType,
+      }),
+      Promise.all(configPromises),
+    ]);
+
+    if (rpcResult.error) {
+      console.error('RPC error, falling back to legacy fetch:', rpcResult.error);
+      // Fallback to legacy function
+      const legacyData = await fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+      return { data: legacyData, fromRPC: false };
+    }
+
+    const rpcData = (rpcResult.data || []) as ScorecardRPCResult[];
+    const configMap = new Map(configResults.map(r => [r.type, r.config]));
+    const config = supportType === 'all' ? [] : (configResults[0]?.config || []);
+
+    // Transform RPC results to AgentScorecard format
+    const scorecards: AgentScorecard[] = rpcData.map(row => {
+      const agentSupportType = row.agent_position || supportType;
+      
+      // Calculate scheduled days from day_off + schedules
+      const scheduledDays = calculateScheduledDaysFromRPC(row, weekStart, weekEnd);
+      const adjustedScheduledDays = Math.max(0, scheduledDays - row.approved_leave_days);
+      
+      // Calculate reliability
+      const reliability = adjustedScheduledDays > 0
+        ? Math.min(100, (row.days_with_login / adjustedScheduledDays) * 100)
+        : 100;
+      
+      const isOnLeave = row.approved_leave_days >= scheduledDays;
+
+      // Calculate productivity based on support type
+      let productivityCount = 0;
+      switch (agentSupportType) {
+        case 'Email Support':
+          productivityCount = row.email_count;
+          break;
+        case 'Chat Support':
+          productivityCount = row.chat_count;
+          break;
+        case 'Phone Support':
+          productivityCount = row.call_count;
+          break;
+        case 'Hybrid Support':
+          productivityCount = row.email_count + row.chat_count + row.call_count;
+          break;
+      }
+
+      // Get weekly quota
+      const agentProfile: AgentProfile = {
+        id: row.profile_id,
+        email: row.agent_email,
+        full_name: row.agent_name,
+        agent_name: row.agent_name,
+        position: row.agent_position,
+        employment_status: 'Active',
+        quota_email: row.quota_email,
+        quota_chat: row.quota_chat,
+        quota_phone: row.quota_phone,
+        day_off: row.day_off,
+        mon_schedule: row.mon_schedule,
+        tue_schedule: row.tue_schedule,
+        wed_schedule: row.wed_schedule,
+        thu_schedule: row.thu_schedule,
+        fri_schedule: row.fri_schedule,
+        sat_schedule: row.sat_schedule,
+        sun_schedule: row.sun_schedule,
+      };
+
+      const weeklyQuota = getWeeklyQuota(agentProfile, agentSupportType, adjustedScheduledDays);
+      const productivity = weeklyQuota > 0 ? (productivityCount / weeklyQuota) * 100 : null;
+
+      // Calculate final score
+      const agentConfig = supportType === 'all'
+        ? (configMap.get(agentSupportType) || [])
+        : config;
+
+      let finalScore = 0;
+      let totalWeight = 0;
+
+      for (const c of agentConfig) {
+        let metricValue: number | null = null;
+
+        switch (c.metric_key) {
+          case 'productivity':
+            metricValue = productivity;
+            break;
+          case 'reliability':
+            metricValue = reliability;
+            break;
+          case 'qa':
+            metricValue = row.qa_average;
+            break;
+          case 'revalida':
+            metricValue = row.revalida_score;
+            break;
+          case 'call_aht':
+            metricValue = row.call_aht_seconds;
+            break;
+          case 'chat_aht':
+            metricValue = row.chat_aht_seconds;
+            break;
+          case 'chat_frt':
+            metricValue = row.chat_frt_seconds;
+            break;
+        }
+
+        if (metricValue !== null && metricValue !== undefined) {
+          const score = calculateMetricScore(metricValue, c.goal, c.metric_key);
+          finalScore += score * (c.weight / 100);
+          totalWeight += c.weight;
+        }
+      }
+
+      // Normalize if some metrics are missing
+      if (totalWeight > 0 && totalWeight < 100) {
+        finalScore = (finalScore / totalWeight) * 100;
+      }
+
+      return {
+        agent: agentProfile,
+        productivity,
+        productivityCount,
+        callAht: row.call_aht_seconds,
+        chatAht: row.chat_aht_seconds,
+        chatFrt: row.chat_frt_seconds,
+        qa: row.qa_average,
+        revalida: row.revalida_score,
+        reliability,
+        otProductivity: null,
+        finalScore: isOnLeave ? null : finalScore,
+        isOnLeave,
+        scheduledDays,
+        daysPresent: row.days_with_login,
+        approvedLeaveDays: row.approved_leave_days,
+        isSaved: row.is_saved,
+      };
+    });
+
+    return { data: scorecards, fromRPC: true };
+  } catch (err) {
+    console.error('RPC exception, falling back to legacy fetch:', err);
+    const legacyData = await fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+    return { data: legacyData, fromRPC: false };
+  }
+}
+
+// Helper to calculate scheduled days from RPC result
+function calculateScheduledDaysFromRPC(
+  row: ScorecardRPCResult,
+  weekStart: Date,
+  weekEnd: Date
+): number {
+  const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  let scheduledDays = 0;
+
+  for (const day of days) {
+    const dayName = DAY_NAMES[day.getDay()];
+    if (!row.day_off?.includes(dayName)) {
+      // Check if the day has a schedule set
+      const scheduleMap: Record<string, string | null> = {
+        'Sun': row.sun_schedule,
+        'Mon': row.mon_schedule,
+        'Tue': row.tue_schedule,
+        'Wed': row.wed_schedule,
+        'Thu': row.thu_schedule,
+        'Fri': row.fri_schedule,
+        'Sat': row.sat_schedule,
+      };
+      const schedule = scheduleMap[dayName];
+      if (schedule && schedule !== 'Day Off' && schedule !== '') {
+        scheduledDays++;
+      } else if (!schedule) {
+        // If no schedule field, count as scheduled if not in day_off
+        scheduledDays++;
+      }
+    }
+  }
+
+  return scheduledDays;
+}
+
+// Fetch all data for weekly scorecard (legacy function)
 // When supportType is 'all', fetches all agents and calculates scores using each agent's own position config
 export async function fetchWeeklyScorecard(
   weekStart: Date,
