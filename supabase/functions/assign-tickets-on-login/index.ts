@@ -10,7 +10,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const ZENDESK_API_TOKEN = Deno.env.get("ZENDESK_API_TOKEN");
+const ZENDESK_API_TOKEN = Deno.env.get("ZENDESK_API_TOKEN_ZD1");
 const ZENDESK_ADMIN_EMAIL = Deno.env.get("ZENDESK_ADMIN_EMAIL");
 
 // ZD1 subdomain
