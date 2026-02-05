@@ -1,91 +1,80 @@
 
+## Problem Analysis
 
-# Plan: Fix SubmissionDetailDialog Scrolling (Final Fix)
+The current `SubmissionDetailDialog` uses Radix's `<ScrollArea>` component (line 117) with the viewport height selector, but it still doesn't scroll. This is because:
 
-## Root Cause Identified
-
-The current implementation has these issues:
-
-1. **Nested flex containers**: Line 66 wraps everything in another `div className="flex flex-col h-full max-h-[90vh] overflow-hidden"` which breaks height propagation
-2. **Missing viewport height enforcement**: The Radix ScrollArea's `[data-radix-scroll-area-viewport]` doesn't receive height context
-3. **Padding on wrong element**: Some padding is applied in ways that break the height calculation
+1. **Radix ScrollArea Limitations in Portaled Dialogs**: The Radix component's internal viewport calculation fails when nested inside a portaled dialog with flex constraints
+2. **Height Context Loss**: Even with `h-full [&_[data-radix-scroll-area-viewport]]:h-full`, the viewport doesn't receive a calculable height
+3. **Native Solution Required**: A simple native `overflow-y-auto` container is guaranteed to work because it uses browser-native scrolling
 
 ## Solution
 
-Apply the exact fix as specified:
+Replace the Radix `ScrollArea` with a native scroll container on lines 116-204:
 
-### Changes to `src/components/revalida/SubmissionDetailDialog.tsx`
-
-**Current Structure (Broken):**
+**Current (Broken) - Lines 116-204:**
 ```tsx
-<DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
-  <div className="flex flex-col h-full max-h-[90vh] overflow-hidden">  {/* ❌ Nested flex breaks height */}
-    <div className="p-6 pb-0 space-y-4 shrink-0">...</div>
-    <div className="flex-1 min-h-0 overflow-hidden">  {/* ❌ overflow-hidden blocks scroll */}
-      <ScrollArea className="h-full">...</ScrollArea>
+<div className="flex-1 min-h-0">
+  <ScrollArea className="h-full [&_[data-radix-scroll-area-viewport]]:h-full">
+    <div className="p-6 pt-4 space-y-4">
+      {orderedQuestions.map(...)}
     </div>
-  </div>
-</DialogContent>
-```
-
-**Fixed Structure:**
-```tsx
-<DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0">
-  {/* Fixed Header Section */}
-  <div className="shrink-0 p-6 space-y-4">
-    <DialogHeader>...</DialogHeader>
-    {/* Metadata / Score Summary */}
-    <Separator />
-  </div>
-
-  {/* Scrollable Body */}
-  <div className="flex-1 min-h-0">
-    <ScrollArea className="h-full [&_[data-radix-scroll-area-viewport]]:h-full">
-      <div className="p-6 pt-4 space-y-4">
-        {/* Questions / Answers */}
-      </div>
-    </ScrollArea>
-  </div>
-</DialogContent>
-```
-
-### Key Changes
-
-| What | Before | After |
-|------|--------|-------|
-| Nested flex wrapper | Present (line 66-67) | Removed |
-| Header section | `p-6 pb-0` | `shrink-0 p-6` |
-| Scroll wrapper | `overflow-hidden` | No overflow-hidden |
-| ScrollArea | `h-full` only | `h-full [&_[data-radix-scroll-area-viewport]]:h-full` |
-| Content padding | `p-6 pt-4` on inner div | Same (this is correct) |
-
-### Mandatory Rules Enforced
-
-- `DialogContent` is `flex flex-col` with `max-h-[90vh]`
-- Header uses `shrink-0`
-- Scroll container uses `flex-1 min-h-0` (NO `overflow-hidden`)
-- ScrollArea has `h-full` AND viewport height enforcement via `[&_[data-radix-scroll-area-viewport]]:h-full`
-- Padding is inside the scrollable content div, not on ScrollArea
-
-### Fallback (if needed)
-
-If Radix ScrollArea still fails after this fix, replace with:
-```tsx
-<div className="flex-1 min-h-0 overflow-y-auto p-6 pt-4 space-y-4">
-  {/* Questions content */}
+  </ScrollArea>
 </div>
 ```
 
-## Acceptance Criteria
+**Fixed (Native Scroll) - Lines 116-204:**
+```tsx
+<div className="flex-1 min-h-0 overflow-y-auto p-6 pt-4">
+  <div className="space-y-4">
+    {orderedQuestions.map(...)}
+  </div>
+</div>
+```
 
-- Dialog scrolls on mouse wheel and trackpad
-- Scroll works on long content without expanding dialog height
-- No body scrolling behind the dialog
-- Works on desktop and mobile viewports
+## Key Changes
+
+1. **Remove Radix ScrollArea**: Delete the `<ScrollArea>` wrapper completely (line 117)
+2. **Apply Native Scroll**: Add `overflow-y-auto` directly to the outer container (line 116)
+3. **Move Padding**: Move `p-6 pt-4` from the inner div to the scroll container
+4. **Height Setup**: Keep `flex-1 min-h-0` on the outer container to ensure it has a constrained height
+
+## Why This Works
+
+- `flex-1 min-h-0` ensures the container takes remaining vertical space and can constrain height
+- `overflow-y-auto` enables native browser scrolling when content overflows
+- Padding on the scroll container prevents content from reaching the edges
+- `DialogContent` with `h-[90vh]` provides the height constraint for overflow to trigger
+
+## Structural Layout After Fix
+
+```
+DialogContent (h-[90vh] flex flex-col overflow-hidden)
+├── Fixed Header (shrink-0 p-6)
+│   ├── DialogHeader
+│   ├── Metadata
+│   ├── Score Summary
+│   └── Separator
+└── Scrollable Body (flex-1 min-h-0 overflow-y-auto p-6 pt-4)
+    └── Questions Container (space-y-4)
+        └── Question Cards (mapped)
+```
 
 ## File to Modify
 
-| File | Action |
-|------|--------|
-| `src/components/revalida/SubmissionDetailDialog.tsx` | Restructure layout |
+| File | Lines | Action |
+|------|-------|--------|
+| `src/components/revalida/SubmissionDetailDialog.tsx` | 116-204 | Replace Radix ScrollArea with native `overflow-y-auto` container |
 
+## Also Need to Verify
+
+- Remove the unused `ScrollArea` import from line 4 (optional cleanup, but recommended)
+- Ensure `DialogContent` already has `h-[90vh]` class (it does on line 65)
+
+## Acceptance Criteria
+
+✓ Eye icon opens dialog with scrollable questions section  
+✓ Scrollbar appears when content exceeds viewport  
+✓ Mouse wheel and trackpad scrolling works  
+✓ Dialog doesn't grow beyond viewport height  
+✓ Header remains fixed at top  
+✓ No visual regression in spacing or layout
