@@ -1,7 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { CheckCircle2, XCircle, Clock, FileText } from 'lucide-react';
 import { RevalidaAttempt, RevalidaAnswer, RevalidaQuestion, RevalidaBatch } from '@/lib/revalidaApi';
@@ -112,10 +111,9 @@ export function SubmissionDetailDialog({
           <Separator />
         </div>
 
-        {/* Scrollable Body */}
-        <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full [&_[data-radix-scroll-area-viewport]]:h-full">
-            <div className="p-6 pt-4 space-y-4">
+        {/* Scrollable Body - Native scroll for guaranteed behavior */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 pt-4">
+          <div className="space-y-4">
             {orderedQuestions.map((question, idx) => {
               const answer = answersMap.get(question.id);
               const isSituational = question.type === 'situational';
@@ -200,8 +198,7 @@ export function SubmissionDetailDialog({
                 </Card>
               );
             })}
-            </div>
-          </ScrollArea>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
