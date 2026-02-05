@@ -601,7 +601,9 @@ export function getScoreBgColor(score: number | null, goal: number = 100): strin
 // Format seconds as mm:ss
 export function formatSeconds(seconds: number | null): string {
   if (seconds === null) return '-';
-  return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 // Update Zendesk metrics in the database (for admin edits)

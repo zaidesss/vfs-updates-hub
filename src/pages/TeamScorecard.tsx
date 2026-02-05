@@ -32,12 +32,11 @@ import {
 const MINIMUM_DATE = new Date('2026-01-26');
 const DATA_RETENTION_WEEKS = 2;
 
-// AHT/FRT goals in seconds - now fetched dynamically from scorecard_config
-// Using fallback values if config not loaded
-const DEFAULT_METRIC_GOALS = {
-  call_aht: 420,  // 7 minutes (spreadsheet value)
-  chat_aht: 600,  // 10 minutes (spreadsheet value)
-  chat_frt: 30,   // 30 seconds (spreadsheet value)
+// AHT/FRT goals in seconds
+const METRIC_GOALS = {
+  call_aht: 300,  // 5 minutes
+  chat_aht: 180,  // 3 minutes
+  chat_frt: 60,   // 1 minute
 };
 
 const MONTHS = [
@@ -384,12 +383,7 @@ export default function TeamScorecard() {
 
   const getMetricGoal = (metricKey: string): number => {
     const configItem = config?.find(c => c.metric_key === metricKey);
-    if (configItem?.goal) return configItem.goal;
-    // Fallback for AHT/FRT metrics
-    if (metricKey === 'call_aht') return DEFAULT_METRIC_GOALS.call_aht;
-    if (metricKey === 'chat_aht') return DEFAULT_METRIC_GOALS.chat_aht;
-    if (metricKey === 'chat_frt') return DEFAULT_METRIC_GOALS.chat_frt;
-    return 100;
+    return configItem?.goal || 100;
   };
 
   const formatScore = (score: number | null): string => {
@@ -811,7 +805,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'callAht')}
                                   originalValue={scorecard.callAht}
-                                  goal={getMetricGoal('call_aht')}
+                                  goal={METRIC_GOALS.call_aht}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'callAht', val)}
                                   formatValue={formatSeconds}
@@ -828,7 +822,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'chatAht')}
                                   originalValue={scorecard.chatAht}
-                                  goal={getMetricGoal('chat_aht')}
+                                  goal={METRIC_GOALS.chat_aht}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatAht', val)}
                                   formatValue={formatSeconds}
@@ -845,7 +839,7 @@ export default function TeamScorecard() {
                                 <EditableMetricCell
                                   value={getDisplayValue(scorecard, 'chatFrt')}
                                   originalValue={scorecard.chatFrt}
-                                  goal={getMetricGoal('chat_frt')}
+                                  goal={METRIC_GOALS.chat_frt}
                                   isEditable={canSave}
                                   onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'chatFrt', val)}
                                   formatValue={formatSeconds}
