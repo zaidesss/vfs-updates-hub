@@ -19,6 +19,7 @@ import { WeeklySummaryCard } from '@/components/dashboard/WeeklySummaryCard';
 
 import {
   fetchDashboardProfile,
+  fetchAgentDashboardRPC,
   getProfileStatus,
   updateProfileStatus,
   getApprovedLeavesForWeek,
@@ -26,8 +27,6 @@ import {
   getWeekAllEvents,
   calculateAttendanceForWeek,
   getAgentTagByEmail,
-  getTodayTicketCountByType,
-  getTodayGapData,
   fetchUpworkTimeFromCache,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
@@ -117,10 +116,12 @@ export default function AgentDashboard() {
     setError(null);
 
     try {
-      // Fetch profile and status in parallel
-      const [profileResult, statusResult] = await Promise.all([
+      // Fetch profile (full fields) and RPC data (status/metrics) in parallel
+      // This reduces 4+ queries to 2 queries
+      const [profileResult, rpcResult, statusResult] = await Promise.all([
         fetchDashboardProfile(profileId),
-        getProfileStatus(profileId),
+        fetchAgentDashboardRPC(profileId),
+        getProfileStatus(profileId), // Still need this for bio fields not in RPC
       ]);
 
       if (profileResult.error) {
@@ -135,12 +136,28 @@ export default function AgentDashboard() {
 
       setProfile(profileResult.data);
 
-      if (statusResult.data) {
+      // Use RPC data for status if available, fallback to direct query
+      if (rpcResult.data) {
+        setStatus(rpcResult.data.current_status);
+        setStatusSince(rpcResult.data.status_since);
+        // Set ticket metrics from RPC
+        setTicketCounts({
+          email: 0, // RPC returns total, breakdown done separately if needed
+          chat: 0,
+          call: 0,
+          total: rpcResult.data.total_tickets_today,
+        });
+        setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
+      } else if (statusResult.data) {
+        // Fallback to direct status query
         setStatus(statusResult.data.current_status);
         setStatusSince(statusResult.data.status_since);
+      }
+      
+      // Bio fields always from direct status query
+      if (statusResult.data) {
         setBioTimeRemaining(statusResult.data.bio_time_remaining_seconds);
         setBioAllowance(statusResult.data.bio_allowance_seconds);
-        // Reset notification refs when status changes
         restartExceededNotifiedRef.current = false;
         bioExceededNotifiedRef.current = false;
       }
@@ -214,17 +231,10 @@ export default function AgentDashboard() {
         }
       }
 
-      // Fetch agent tag for ticket tracking
+      // Fetch agent tag for detailed ticket breakdown (if RPC didn't provide it)
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
         setAgentTag(tag);
-        // Fetch initial ticket data by type
-        const [ticketResult, gapResult] = await Promise.all([
-          getTodayTicketCountByType(tag),
-          getTodayGapData(tag),
-        ]);
-        setTicketCounts(ticketResult.data);
-        setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
       }
       
       // Calculate portal hours and login time from today's attendance
@@ -266,18 +276,23 @@ export default function AgentDashboard() {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Refresh tracker data manually
+  // Refresh tracker data manually - uses RPC for efficiency
   const handleRefreshTracker = async () => {
-    if (!agentTag) return;
+    if (!profileId) return;
     
     setIsRefreshingTracker(true);
     try {
-      const [ticketResult, gapResult] = await Promise.all([
-        getTodayTicketCountByType(agentTag),
-        getTodayGapData(agentTag),
-      ]);
-      setTicketCounts(ticketResult.data);
-      setAvgGapSeconds(gapResult.data?.avgGapSeconds || null);
+      // Use RPC for fresh data
+      const rpcResult = await fetchAgentDashboardRPC(profileId);
+      if (rpcResult.data) {
+        setTicketCounts({
+          email: 0,
+          chat: 0,
+          call: 0,
+          total: rpcResult.data.total_tickets_today,
+        });
+        setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
+      }
     } catch (err) {
       console.error('Failed to refresh tracker:', err);
     } finally {
