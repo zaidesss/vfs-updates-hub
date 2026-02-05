@@ -15,6 +15,15 @@ const ZENDESK_ADMIN_EMAIL = Deno.env.get("ZENDESK_ADMIN_EMAIL");
 
 // ZD1 subdomain
 const ZD1_SUBDOMAIN = "customerserviceadvocates";
+// ZD2 subdomain
+const ZD2_SUBDOMAIN = "persistbrands";
+const ZENDESK_API_TOKEN_ZD2 = Deno.env.get("ZENDESK_API_TOKEN_ZD2");
+
+// Agent assignment custom field IDs per Zendesk instance
+const AGENT_ASSIGNMENT_FIELD_IDS: Record<string, number> = {
+  ZD1: 14923047306265,
+  ZD2: 44524282221593,
+};
 
 // Lock retry configuration
 const LOCK_RETRY_DELAY_MS = 2000;
@@ -90,9 +99,9 @@ async function processTicketAssignment(
   }
 
   // Step 2: Check if ZD1 only
-  if (agentConfig.zendesk_instance !== "ZD1") {
-    await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, null, null, 0, 0, [], "skipped", "ZD2 ticket assignment disabled");
-    return { success: true, skipped: true, reason: "Ticket assignment not enabled for ZD2" };
+  if (agentConfig.zendesk_instance !== "ZD1" && agentConfig.zendesk_instance !== "ZD2") {
+    await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, null, null, 0, 0, [], "skipped", "Unknown Zendesk instance");
+    return { success: true, skipped: true, reason: "Unknown Zendesk instance" };
   }
 
   // Step 3: Check if ticket assignment is enabled
@@ -138,7 +147,7 @@ async function processTicketAssignment(
 
   try {
     // Step 8: Fetch tickets from Zendesk View
-    const tickets = await fetchTicketsFromView(viewId, ticketCount);
+    const tickets = await fetchTicketsFromView(viewId, ticketCount, agentConfig.zendesk_instance!);
     
     if (!tickets || tickets.length === 0) {
       await releaseLock(supabase, viewId);
@@ -149,10 +158,10 @@ async function processTicketAssignment(
     // Step 9: Assign tickets (add agent_tag)
     const assignedTicketIds: string[] = [];
     for (const ticket of tickets) {
-      const assigned = await assignTicketToAgent(ticket.id, ticket.tags || [], agentConfig.agent_tag!);
+      const assigned = await assignTicketToAgent(ticket.id, agentConfig.agent_tag!, agentConfig.zendesk_instance!);
       if (!assigned) {
         // Retry once
-        const retryAssigned = await assignTicketToAgent(ticket.id, ticket.tags || [], agentConfig.agent_tag!);
+        const retryAssigned = await assignTicketToAgent(ticket.id, agentConfig.agent_tag!, agentConfig.zendesk_instance!);
         if (!retryAssigned) {
           // Failure - abort all, notify admin
           await releaseLock(supabase, viewId);
@@ -292,13 +301,16 @@ async function releaseLock(supabase: any, viewId: string): Promise<void> {
   console.log(`Lock released for view ${viewId}`);
 }
 
-async function fetchTicketsFromView(viewId: string, count: number): Promise<any[]> {
-  if (!ZENDESK_API_TOKEN || !ZENDESK_ADMIN_EMAIL) {
-    throw new Error("Zendesk API credentials not configured");
+async function fetchTicketsFromView(viewId: string, count: number, zendeskInstance: string): Promise<any[]> {
+  const subdomain = zendeskInstance === "ZD1" ? ZD1_SUBDOMAIN : ZD2_SUBDOMAIN;
+  const apiToken = zendeskInstance === "ZD1" ? ZENDESK_API_TOKEN : ZENDESK_API_TOKEN_ZD2;
+
+  if (!apiToken || !ZENDESK_ADMIN_EMAIL) {
+    throw new Error(`Zendesk API credentials not configured for ${zendeskInstance}`);
   }
 
-  const url = `https://${ZD1_SUBDOMAIN}.zendesk.com/api/v2/views/${viewId}/tickets.json?per_page=${count}`;
-  const auth = btoa(`${ZENDESK_ADMIN_EMAIL}/token:${ZENDESK_API_TOKEN}`);
+  const url = `https://${subdomain}.zendesk.com/api/v2/views/${viewId}/tickets.json?per_page=${count}`;
+  const auth = btoa(`${ZENDESK_ADMIN_EMAIL}/token:${apiToken}`);
 
   const response = await fetch(url, {
     method: "GET",
@@ -317,16 +329,17 @@ async function fetchTicketsFromView(viewId: string, count: number): Promise<any[
   return data.tickets || [];
 }
 
-async function assignTicketToAgent(ticketId: number, existingTags: string[], agentTag: string): Promise<boolean> {
-  if (!ZENDESK_API_TOKEN || !ZENDESK_ADMIN_EMAIL) {
-    throw new Error("Zendesk API credentials not configured");
+async function assignTicketToAgent(ticketId: number, agentTag: string, zendeskInstance: string): Promise<boolean> {
+  const subdomain = zendeskInstance === "ZD1" ? ZD1_SUBDOMAIN : ZD2_SUBDOMAIN;
+  const apiToken = zendeskInstance === "ZD1" ? ZENDESK_API_TOKEN : ZENDESK_API_TOKEN_ZD2;
+  const customFieldId = AGENT_ASSIGNMENT_FIELD_IDS[zendeskInstance];
+
+  if (!apiToken || !ZENDESK_ADMIN_EMAIL) {
+    throw new Error(`Zendesk API credentials not configured for ${zendeskInstance}`);
   }
 
-  // Add agent_tag to existing tags (avoid duplicates)
-  const newTags = [...new Set([...existingTags, agentTag])];
-
-  const url = `https://${ZD1_SUBDOMAIN}.zendesk.com/api/v2/tickets/${ticketId}.json`;
-  const auth = btoa(`${ZENDESK_ADMIN_EMAIL}/token:${ZENDESK_API_TOKEN}`);
+  const url = `https://${subdomain}.zendesk.com/api/v2/tickets/${ticketId}.json`;
+  const auth = btoa(`${ZENDESK_ADMIN_EMAIL}/token:${apiToken}`);
 
   try {
     const response = await fetch(url, {
@@ -337,17 +350,20 @@ async function assignTicketToAgent(ticketId: number, existingTags: string[], age
       },
       body: JSON.stringify({
         ticket: {
-          tags: newTags,
+          custom_fields: [
+            { id: customFieldId, value: agentTag }
+          ]
         },
       }),
     });
 
     if (!response.ok) {
-      console.error(`Failed to assign ticket ${ticketId}: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Failed to assign ticket ${ticketId}: ${response.status} - ${errorText}`);
       return false;
     }
 
-    console.log(`Ticket ${ticketId} assigned with tag ${agentTag}`);
+    console.log(`Ticket ${ticketId} assigned via custom field ${customFieldId} = ${agentTag}`);
     return true;
   } catch (error) {
     console.error(`Error assigning ticket ${ticketId}:`, error);
