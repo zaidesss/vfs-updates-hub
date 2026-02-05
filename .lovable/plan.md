@@ -1,165 +1,91 @@
 
 
-# Plan: Fix Batch Management Eye Icon, Enable Question Editing After Publish, and Fix Scroll Issue
+# Plan: Fix SubmissionDetailDialog Scrolling (Final Fix)
 
-## Issues Identified
+## Root Cause Identified
 
-### Issue 1: Batch Management Eye Icon Does Not Work
-- **Location**: `src/pages/Revalida.tsx` line 336-338
-- **Problem**: The `handleViewBatch` function only logs to console and does nothing:
-  ```typescript
-  const handleViewBatch = (batchId: string) => {
-    console.log('View batch:', batchId);
-  };
-  ```
-- **Solution**: Create a new `BatchDetailDialog.tsx` component that shows all questions in the batch, and update `handleViewBatch` to open this dialog
+The current implementation has these issues:
 
-### Issue 2: Questions Should Be Editable Even After Publishing
-- **Location**: `src/components/revalida/BatchManagement.tsx` lines 145-155
-- **Problem**: The edit button only shows for draft batches (`isDraftBatch(batch)`):
-  ```typescript
-  {isDraftBatch(batch) && (
-    <Button ... onClick={() => onEditBatch(batch.id)}>
-      <Edit className="h-4 w-4" />
-    </Button>
-  )}
-  ```
-- **Solution**: Always show the edit button for all non-expired batches (drafts, active, and even expired if needed for corrections). The edit should update questions but preserve existing attempts/answers.
+1. **Nested flex containers**: Line 66 wraps everything in another `div className="flex flex-col h-full max-h-[90vh] overflow-hidden"` which breaks height propagation
+2. **Missing viewport height enforcement**: The Radix ScrollArea's `[data-radix-scroll-area-viewport]` doesn't receive height context
+3. **Padding on wrong element**: Some padding is applied in ways that break the height calculation
 
-### Issue 3: Submissions Eye Icon Dialog Not Scrollable
-- **Location**: `src/components/revalida/SubmissionDetailDialog.tsx`
-- **Problem**: The ScrollArea isn't working because of a layout issue. Looking at the code:
-  - The `DialogContent` has default `grid` layout from Shadcn which conflicts with `flex flex-col`
-  - The nested structure needs the ScrollArea to have explicit height constraints
-- **Root Cause**: The `ScrollArea` needs to be inside a container with a fixed height. Currently, the `flex-1 min-h-0` isn't working because the parent doesn't properly constrain height.
-- **Solution**: Apply an explicit height to the ScrollArea using `h-[calc(90vh-280px)]` (subtracting the header + metadata + score section heights)
+## Solution
 
----
+Apply the exact fix as specified:
 
-## Implementation Details
+### Changes to `src/components/revalida/SubmissionDetailDialog.tsx`
 
-### Fix 1: Batch Management Eye Icon
-
-**Create new component**: `src/components/revalida/BatchDetailDialog.tsx`
-
-This dialog will show:
-- Batch metadata (title, status, deadline, total points)
-- All questions with their details:
-  - Question number, type, points
-  - Question prompt
-  - For MCQ: All choices (A, B, C, D)
-  - For MCQ/TF: Correct answer highlighted
-  - For Situational: Note that manual grading is required
-
-**Update**: `src/pages/Revalida.tsx`
-
-Add state and handler for viewing batch:
-```typescript
-// New state
-const [viewingBatchDetail, setViewingBatchDetail] = useState<RevalidaBatch | null>(null);
-const [viewingBatchQuestions, setViewingBatchQuestions] = useState<RevalidaQuestion[]>([]);
-
-// Updated handler
-const handleViewBatch = async (batchId: string) => {
-  try {
-    const { batch, questions } = await fetchBatchById(batchId);
-    setViewingBatchDetail(batch);
-    setViewingBatchQuestions(questions);
-  } catch (error: any) {
-    toast({ title: 'Error', description: error.message, variant: 'destructive' });
-  }
-};
-
-// Add dialog to render:
-<BatchDetailDialog
-  isOpen={!!viewingBatchDetail}
-  onOpenChange={(open) => !open && setViewingBatchDetail(null)}
-  batch={viewingBatchDetail}
-  questions={viewingBatchQuestions}
-/>
-```
-
-### Fix 2: Allow Editing After Publish
-
-**Update**: `src/components/revalida/BatchManagement.tsx`
-
-Change the edit button condition from:
-```typescript
-{isDraftBatch(batch) && (
-```
-To:
-```typescript
-{/* Allow editing for drafts and active batches (for typo corrections) */}
-{(isDraftBatch(batch) || (batch.is_active && !isDeadlinePassed(batch.end_at))) && (
-```
-
-This allows admins to edit:
-- Draft batches (before publishing)
-- Active batches (while test is running - for typo corrections)
-
-When editing an active batch, the `updateBatch` function in `revalidaApi.ts` will update the questions. This is safe because:
-- Existing answers reference `question_id` which doesn't change
-- Only the question text/choices/correct_answer are modified
-- The `order_index` remains the same
-
-### Fix 3: Submission Detail Dialog Scroll Issue
-
-**Update**: `src/components/revalida/SubmissionDetailDialog.tsx`
-
-The issue is that the Radix ScrollArea needs an explicit height constraint. The current structure with `flex-1 min-h-0` on ScrollArea isn't working because the parent container doesn't properly establish a height context due to the nested flex containers.
-
-Solution: Use a simpler approach with an explicit max-height on the ScrollArea:
-
+**Current Structure (Broken):**
 ```tsx
-{/* Scrollable Questions Section */}
-<ScrollArea className="flex-1 min-h-0 px-6 pb-6" style={{ maxHeight: 'calc(90vh - 300px)' }}>
+<DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+  <div className="flex flex-col h-full max-h-[90vh] overflow-hidden">  {/* ❌ Nested flex breaks height */}
+    <div className="p-6 pb-0 space-y-4 shrink-0">...</div>
+    <div className="flex-1 min-h-0 overflow-hidden">  {/* ❌ overflow-hidden blocks scroll */}
+      <ScrollArea className="h-full">...</ScrollArea>
+    </div>
+  </div>
+</DialogContent>
 ```
 
-Or restructure the component to remove the nested flex container that's causing issues:
-
+**Fixed Structure:**
 ```tsx
-<DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-  {/* Fixed Header Section - add shrink-0 */}
-  <div className="space-y-4 shrink-0">
+<DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+  {/* Fixed Header Section */}
+  <div className="shrink-0 p-6 space-y-4">
     <DialogHeader>...</DialogHeader>
-    {/* Metadata */}
-    {/* Score Summary */}
+    {/* Metadata / Score Summary */}
     <Separator />
   </div>
 
-  {/* Scrollable Questions Section - needs explicit height */}
-  <div className="flex-1 min-h-0 overflow-hidden">
-    <ScrollArea className="h-full">
-      <div className="space-y-4 px-6 pb-6 pt-4">
-        {/* Questions */}
+  {/* Scrollable Body */}
+  <div className="flex-1 min-h-0">
+    <ScrollArea className="h-full [&_[data-radix-scroll-area-viewport]]:h-full">
+      <div className="p-6 pt-4 space-y-4">
+        {/* Questions / Answers */}
       </div>
     </ScrollArea>
   </div>
 </DialogContent>
 ```
 
-The key is to ensure ScrollArea has explicit height constraints by:
-1. Making the ScrollArea's parent a flex child that can shrink (`flex-1 min-h-0`)
-2. Giving ScrollArea `h-full` to fill that constrained space
-3. Moving padding inside the scrollable content div
+### Key Changes
 
----
+| What | Before | After |
+|------|--------|-------|
+| Nested flex wrapper | Present (line 66-67) | Removed |
+| Header section | `p-6 pb-0` | `shrink-0 p-6` |
+| Scroll wrapper | `overflow-hidden` | No overflow-hidden |
+| ScrollArea | `h-full` only | `h-full [&_[data-radix-scroll-area-viewport]]:h-full` |
+| Content padding | `p-6 pt-4` on inner div | Same (this is correct) |
 
-## Files Summary
+### Mandatory Rules Enforced
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/revalida/BatchDetailDialog.tsx` | Create | View batch questions and answers |
-| `src/components/revalida/BatchManagement.tsx` | Modify | Show edit button for active batches too |
-| `src/components/revalida/SubmissionDetailDialog.tsx` | Modify | Fix ScrollArea height constraints |
-| `src/pages/Revalida.tsx` | Modify | Add batch view dialog state and handler |
+- `DialogContent` is `flex flex-col` with `max-h-[90vh]`
+- Header uses `shrink-0`
+- Scroll container uses `flex-1 min-h-0` (NO `overflow-hidden`)
+- ScrollArea has `h-full` AND viewport height enforcement via `[&_[data-radix-scroll-area-viewport]]:h-full`
+- Padding is inside the scrollable content div, not on ScrollArea
 
----
+### Fallback (if needed)
 
-## Implementation Order
+If Radix ScrollArea still fails after this fix, replace with:
+```tsx
+<div className="flex-1 min-h-0 overflow-y-auto p-6 pt-4 space-y-4">
+  {/* Questions content */}
+</div>
+```
 
-1. **First**: Fix the ScrollArea in `SubmissionDetailDialog.tsx` (simpler fix)
-2. **Second**: Update `BatchManagement.tsx` to show edit button for active batches
-3. **Third**: Create `BatchDetailDialog.tsx` for viewing batch questions
-4. **Fourth**: Update `Revalida.tsx` to use the new batch detail dialog
+## Acceptance Criteria
+
+- Dialog scrolls on mouse wheel and trackpad
+- Scroll works on long content without expanding dialog height
+- No body scrolling behind the dialog
+- Works on desktop and mobile viewports
+
+## File to Modify
+
+| File | Action |
+|------|--------|
+| `src/components/revalida/SubmissionDetailDialog.tsx` | Restructure layout |
 
