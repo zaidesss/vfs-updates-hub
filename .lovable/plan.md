@@ -1,76 +1,100 @@
 
-# Agent Reports: Action Button Redesign ✅ COMPLETE
+# Fix Agent Reports Dialog Overflow Issue
 
-## Overview
-Replace the current Agent Reports action buttons (Mark Reviewed, Validate, Dismiss) with a new workflow-oriented button set that ties reports to actionable outcomes.
+## Problem
 
-## Current vs New Button Logic
+The `ReportDetailDialog` content is overflowing beyond the dialog's white background. Elements like "Team Lead Notes", action buttons, and the header metadata (severity badge, status, date) are rendering outside the visible dialog container.
 
-| Current | New | Purpose |
-|---------|-----|---------|
-| Mark Reviewed | **Escalate as Outage** | Auto-generates an Outage Request for attendance-related violations |
-| Validate | **Validate (Action for Coaching)** | Confirms the report as valid and flags for coaching follow-up |
-| Dismiss | **Dismiss (Invalid Report)** | Marks the report as an invalid/false positive |
+**Root Cause**: The `DialogContent` has no `max-height` constraint, so when the content grows (especially with the notes textarea and multiple buttons), it exceeds the viewport and overflows.
 
-## Escalation Rules
+## Solution
 
-**Incident Type Mapping:**
-- `LATE_LOGIN` → Creates outage with reason `"Late Login"`
-- `TIME_NOT_MET` → Creates outage with reason `"Undertime"`
-- `EARLY_OUT` → Creates outage with reason `"Undertime"`
+Apply the same scrollable dialog pattern used in other components like `SubmissionDetailDialog` and `LeaveAuditLog`:
 
-**Request Details:**
-- Status: `for_review` (same as system auto-generated requests)
-- Uses incident date as the outage date
-- Calculates duration from report details (schedule vs actual times)
-- Sets `is_auto_generated: false` (admin-initiated, not system-triggered)
-- Links to the agent's client/team lead/role from their profile
+1. Add `max-h-[85vh]` to constrain the dialog height
+2. Add `flex flex-col` for proper layout structure  
+3. Add `overflow-hidden` to prevent content bleeding
+4. Wrap the body content in a scrollable container with `overflow-y-auto`
+5. Keep the header fixed at the top
 
-**Report Status After Escalation:**
-- Status changes to `reviewed` (renamed to "Escalated" in UI labels)
+## Implementation
 
-## Implementation Summary
+### File: `src/components/agent-reports/ReportDetailDialog.tsx`
 
-### Completed Changes:
+**Current structure (lines 386-512)**:
+```jsx
+<DialogContent className="max-w-lg">
+  <DialogHeader>...</DialogHeader>
+  <div className="space-y-4">
+    {/* All content here - no scroll */}
+  </div>
+</DialogContent>
+```
 
-1. **`src/lib/agentReportsApi.ts`**
-   - Updated `STATUS_CONFIG` label: "Reviewed" → "Escalated"
-   - Added `ESCALATABLE_INCIDENT_TYPES` constant
-   - Added `isEscalatableIncident()` helper function
-   - Added `getOutageReasonForIncident()` helper function
+**Fixed structure**:
+```jsx
+<DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0">
+  {/* Fixed Header */}
+  <div className="shrink-0 p-6 pb-0">
+    <DialogHeader>...</DialogHeader>
+  </div>
+  
+  {/* Scrollable Body */}
+  <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
+    {/* Agent Info */}
+    {/* Separator */}
+    {/* Incident Details */}
+    {/* Frequency warning */}
+    {/* Separator */}
+    {/* Notes section */}
+    {/* Reviewed by info */}
+    {/* Action Buttons */}
+    {/* Escalation Dialog */}
+  </div>
+</DialogContent>
+```
 
-2. **`src/lib/leaveRequestApi.ts`**
-   - Added `EscalatedOutageInput` interface
-   - Added `checkExistingOutageRequest()` function (duplicate prevention)
-   - Added `createEscalatedOutageRequest()` function
+### Key Changes
 
-3. **`src/components/agent-reports/ReportDetailDialog.tsx`**
-   - Replaced "Mark Reviewed" with "Escalate as Outage" button
-   - Button only visible for escalatable incidents (LATE_LOGIN, EARLY_OUT, TIME_NOT_MET)
-   - Updated "Validate" → "Validate (Coaching)"
-   - Updated "Dismiss" → "Dismiss (Invalid)"
-   - Added escalation flow with confirmation dialog
-   - Calculates time ranges from incident details
+| Change | Purpose |
+|--------|---------|
+| `max-h-[85vh]` | Limit dialog height to 85% of viewport |
+| `flex flex-col` | Enable flex layout for fixed header + scrollable body |
+| `overflow-hidden` | Prevent content from bleeding outside the dialog |
+| `p-0` on DialogContent | Remove default padding so we can control it per section |
+| Fixed header section | Keep title/description visible at all times |
+| `overflow-y-auto` on body | Enable vertical scrolling when content exceeds available space |
 
-4. **`src/components/agent-reports/EscalationConfirmDialog.tsx`** (NEW)
-   - Confirmation dialog showing outage details before creation
-   - Displays agent name, date, time range, and outage reason
+### Additional Fix: Button Layout
 
-5. **`src/components/agent-reports/ReportSummaryCards.tsx`**
-   - Renamed "Reviewed" card to "Escalated"
-   - Changed icon from Eye to ArrowUpRight
+While fixing overflow, also improve button layout:
+- Add `flex-wrap` to allow buttons to wrap on narrow screens
+- Remove `flex-1` so buttons size naturally based on content
 
-## Button Visibility Logic
+```jsx
+<div className="flex flex-wrap gap-2 pt-2">
+  <Button variant="outline" ...>Escalate as Outage</Button>
+  <Button variant="default" ...>Validate (Coaching)</Button>
+  <Button variant="ghost" ...>Dismiss (Invalid)</Button>
+</div>
+```
 
-**Escalate as Outage Button:**
-- Visible only for: `LATE_LOGIN`, `EARLY_OUT`, `TIME_NOT_MET`
-- Enabled when report status is `open` or `reviewed`
-- Hidden for other incident types (Quota, Gap, Bio, Restarts, Overbreak, No Logout)
+### Also Fix: EscalationConfirmDialog Ref Warning
 
-**Validate (Coaching) Button:**
-- Always visible for open/reviewed reports
-- Represents coaching action needed
+Remove `asChild` from `AlertDialogDescription` to fix the React ref warning seen in console logs.
 
-**Dismiss (Invalid) Button:**
-- Always visible for open/reviewed reports
-- Represents false positive / invalid report
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/components/agent-reports/ReportDetailDialog.tsx` | Add max-height, flex layout, scrollable body section |
+| `src/components/agent-reports/EscalationConfirmDialog.tsx` | Remove `asChild` from AlertDialogDescription |
+
+## Visual Result
+
+After the fix:
+- Dialog will be constrained to 85% of viewport height
+- Header (title, description) stays fixed at top
+- Body content scrolls when it exceeds available space
+- Action buttons remain visible and wrap properly
+- All content stays within the white dialog background
