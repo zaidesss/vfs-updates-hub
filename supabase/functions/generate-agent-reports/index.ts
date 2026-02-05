@@ -782,8 +782,34 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Slack notification disabled - pending finalization of Daily Agent Report details
+      // Slack notification disabled for daily incident reports
       // Will be re-enabled once the format is confirmed
+    }
+
+    // ========================
+    // TRIGGER EOD ANALYTICS
+    // ========================
+    // Call the generate-eod-analytics function to send team-wide performance summary
+    try {
+      console.log('Triggering EOD analytics...');
+      const eodResponse = await fetch(`${supabaseUrl}/functions/v1/generate-eod-analytics`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ date: targetDateStr }),
+      });
+      
+      if (eodResponse.ok) {
+        const eodResult = await eodResponse.json();
+        console.log('EOD analytics completed:', eodResult.analytics?.overallStatus);
+      } else {
+        const errorText = await eodResponse.text();
+        console.error('EOD analytics failed:', errorText);
+      }
+    } catch (eodError) {
+      console.error('Error calling EOD analytics:', eodError);
     }
 
     return new Response(
