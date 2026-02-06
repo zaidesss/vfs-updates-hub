@@ -581,9 +581,12 @@ export async function updateProfileStatus(
         checkAndAlertEarlyOut(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
           .catch((err) => console.error('Failed to check early out:', err));
         
-        // Fetch and cache Upwork hours on logout (fire and forget)
-        fetchAndCacheUpworkTime(profileId, agentProfile.email)
-          .catch((err) => console.error('Failed to fetch Upwork time on logout:', err));
+        // Await Upwork sync so dashboard refresh sees updated data
+        try {
+          await fetchAndCacheUpworkTime(profileId, agentProfile.email);
+        } catch (err) {
+          console.error('Failed to fetch Upwork time on logout:', err);
+        }
       } else if (eventType === 'BREAK_OUT') {
         checkAndAlertOverbreak(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email)
           .catch((err) => console.error('Failed to check overbreak:', err));
