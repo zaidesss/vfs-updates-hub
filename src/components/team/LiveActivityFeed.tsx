@@ -186,7 +186,7 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[400px] px-4 pb-4">
+        <ScrollArea className="min-h-[200px] max-h-[calc(100vh-300px)] px-4 pb-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
