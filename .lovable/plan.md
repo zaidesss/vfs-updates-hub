@@ -1,119 +1,87 @@
 
 
-# Fix Demo Guide Interactivity Issues
+# Fix Demo Guide Spotlight - Remove Backdrop Blur
 
-## Problems Identified
+## Problem Identified
 
-| Issue | Symptom | Root Cause |
-|-------|---------|------------|
-| Guide card disappears | Grey screen, can't exit | Card rendered off-screen when target element not found |
-| Full background blur | Blurs entire page instead of spotlight | Spotlight div doesn't render when target is null, but backdrop still shows |
-| Unresponsive/frozen | Can't click any buttons | Card has no explicit background, becomes invisible against backdrop |
-| No exit option | Must refresh page | Backdrop blocks all interaction, card is invisible |
+The demo guide highlights are supposed to create a "spotlight" effect that shows the target element clearly while dimming the rest of the page. However, the entire page (including highlighted elements) appears blurred because of the `backdrop-blur-sm` CSS class on the backdrop overlay.
+
+| Current Behavior | Expected Behavior |
+|------------------|-------------------|
+| Target element is blurred along with everything else | Target element should be crisp and clearly visible |
+| "Spotlight" effect is useless | Spotlight should show a clear, focused target |
+| User can't see what's being highlighted | User can clearly see the highlighted element |
 
 ---
 
-## Technical Root Causes
+## Technical Root Cause
 
-### 1. Missing Explicit Background on Card
-The Card component relies on `bg-card` CSS variable which can fail when:
-- Combined with `backdrop-blur-sm` on the parent overlay
-- The stacking context makes it transparent
+The backdrop has this CSS:
+```tsx
+className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer"
+```
 
-### 2. Card Position Calculation Goes Off-Screen
-When `targetRect` is null or the calculated position is negative/beyond viewport, the card becomes invisible but the blocking backdrop remains.
-
-### 3. No Click Handler on Backdrop
-Users cannot dismiss the guide by clicking outside (on the backdrop).
+- `backdrop-blur-sm` blurs **everything behind it** (all page content)
+- The spotlight div (z-index 101) creates a "cutout" using `box-shadow: '0 0 0 9999px rgba(0, 0, 0, 0.6)'`
+- But this cutout only reveals the **already-blurred content** underneath
+- The blur cannot be "undone" for specific elements
 
 ---
 
 ## Solution
 
+Remove `backdrop-blur-sm` from the backdrop overlay in both demo guide components. The dark overlay (`bg-black/60`) provides sufficient visual separation without blurring the content.
+
+---
+
+## Files to Modify
+
+| File | Line | Change |
+|------|------|--------|
+| `src/components/PageDemoGuide.tsx` | 149 | Remove `backdrop-blur-sm` from className |
+| `src/components/DemoTour.tsx` | 171 | Remove `backdrop-blur-sm` from className |
+
+---
+
+## Technical Changes
+
 ### File 1: `src/components/PageDemoGuide.tsx`
 
-**Changes:**
-1. Add explicit solid background to the Card (`bg-card` + fallback)
-2. Add click-to-close on backdrop
-3. Ensure card position is always within viewport bounds
-4. Add fallback center positioning when target not found
-
+**Before (Line 149):**
 ```tsx
-// 1. Backdrop - make it clickable to close
 <div 
   className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
   onClick={onClose}
 />
-
-// 2. Card - add explicit background and ensure it's always visible
-<Card
-  className="fixed z-[102] w-[90vw] max-w-md shadow-2xl border-primary/20 bg-card"
-  style={{
-    ...getCardPosition(),
-    backgroundColor: 'hsl(var(--card))', // Explicit fallback
-  }}
->
 ```
 
-### 3. Improve Position Calculation
-Ensure card never renders off-screen:
-
+**After:**
 ```tsx
-const getCardPosition = () => {
-  const cardWidth = 400;
-  const cardHeight = 300;
-  const padding = 20;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  
-  // Default to center if no target
-  if (!targetRect || currentStepData?.position === 'center') {
-    return {
-      position: 'fixed' as const,
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-    };
-  }
-  
-  // Calculate position based on target
-  let top = 0;
-  let left = 0;
-  
-  switch (currentStepData?.position) {
-    case 'bottom':
-      top = targetRect.bottom + padding;
-      left = targetRect.left;
-      break;
-    // ... other cases
-  }
-  
-  // CLAMP to viewport bounds
-  top = Math.max(padding, Math.min(top, viewportHeight - cardHeight - padding));
-  left = Math.max(padding, Math.min(left, viewportWidth - cardWidth - padding));
-  
-  return {
-    position: 'fixed' as const,
-    top: `${top}px`,
-    left: `${left}px`,
-  };
-};
+<div 
+  className="fixed inset-0 z-[100] bg-black/60 cursor-pointer" 
+  onClick={onClose}
+/>
 ```
 
 ---
 
 ### File 2: `src/components/DemoTour.tsx`
 
-Apply the same fixes for the global tour component.
+**Before (Line 171):**
+```tsx
+<div 
+  className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
+  onClick={onClose}
+/>
+```
 
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/PageDemoGuide.tsx` | Add backdrop click handler, explicit Card background, viewport clamping |
-| `src/components/DemoTour.tsx` | Same fixes for global tour |
+**After:**
+```tsx
+<div 
+  className="fixed inset-0 z-[100] bg-black/60 cursor-pointer" 
+  onClick={onClose}
+/>
+```
 
 ---
 
@@ -121,17 +89,38 @@ Apply the same fixes for the global tour component.
 
 | Scenario | Before | After |
 |----------|--------|-------|
-| Target element not found | Grey screen, frozen | Card shows centered, can close |
-| Card position off-screen | Card invisible, backdrop blocks | Card clamped to viewport |
-| Click on backdrop | Nothing happens | Closes the guide |
-| Card background | Sometimes transparent | Always solid background |
+| Backdrop appearance | Blurred entire page | Dark overlay only (60% black) |
+| Spotlight target | Blurred and hard to read | Crisp and clearly visible |
+| Text/elements in spotlight | Fuzzy/unreadable | Sharp and focused |
+| Overall effect | Everything looks the same (blurred) | Clear contrast between dimmed and highlighted areas |
+
+---
+
+## Visual Effect After Fix
+
+```text
++------------------------------------------+
+|           DIMMED AREA (60% black)        |
+|  +------------------------------------+  |
+|  |                                    |  |
+|  |    +--------------------------+    |  |
+|  |    |  SPOTLIGHT - CLEAR &     |    |  |
+|  |    |  CRISP TARGET ELEMENT    |    |  |
+|  |    |  (ring highlight around  |    |  |
+|  |    |   the actual button/UI)  |    |  |
+|  |    +--------------------------+    |  |
+|  |                                    |  |
+|  +------------------------------------+  |
+|                                          |
++------------------------------------------+
+```
 
 ---
 
 ## Implementation Notes
 
-1. Both components (`PageDemoGuide.tsx` and `DemoTour.tsx`) share similar code and need the same fixes
-2. The explicit `backgroundColor` style is a fallback in case CSS variables fail
-3. Viewport clamping ensures the card is always visible and accessible
-4. Backdrop click provides an escape hatch even if buttons are somehow unreachable
+1. This is a simple CSS class removal - no logic changes required
+2. The `bg-black/60` still provides 60% opacity dark overlay for visual separation
+3. The spotlight ring (`ring-4 ring-primary`) will now be clearly visible
+4. Both files need the same change for consistency
 
