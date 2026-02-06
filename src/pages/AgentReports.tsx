@@ -15,6 +15,7 @@ import { ReportSummaryCards } from '@/components/agent-reports/ReportSummaryCard
 import { ReportDetailDialog } from '@/components/agent-reports/ReportDetailDialog';
 import { AgentAnalyticsPanel } from '@/components/agent-reports/AgentAnalyticsPanel';
 import { EODAnalyticsPanel } from '@/components/agent-reports/EODAnalyticsPanel';
+import { IndividualAgentAnalytics } from '@/components/agent-reports/IndividualAgentAnalytics';
 
 import {
   type AgentReport,
@@ -125,6 +126,9 @@ export default function AgentReports() {
 
         {/* EOD Team Analytics Panel */}
         <EODAnalyticsPanel />
+
+        {/* Individual Agent Analytics */}
+        <IndividualAgentAnalytics />
 
         {/* Filters */}
         <Card>
