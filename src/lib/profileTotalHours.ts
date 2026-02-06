@@ -48,14 +48,25 @@ export function calculateProfileTotalHours(profile: Partial<AgentProfileInput>):
 } {
   const dayOff = profile.day_off || [];
   
-  // Count working days (exclude days off)
+// Count working days (exclude days off)
   const workingWeekdays = WEEKDAYS.filter(day => !dayOff.includes(day)).length;
   const workingWeekendDays = WEEKENDS.filter(day => !dayOff.includes(day)).length;
   
-  // Get weekday schedule from Monday (representative)
-  const dailyWeekdayHours = parseScheduleHours(profile.mon_schedule);
-  // Get weekend schedule from Saturday (representative)
-  const dailyWeekendHours = parseScheduleHours(profile.sat_schedule);
+  // Helper: Get first available weekday schedule (not just Monday)
+  const getFirstWeekdaySchedule = (): string | null | undefined => {
+    return profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
+           profile.thu_schedule || profile.fri_schedule;
+  };
+  
+  // Helper: Get first available weekend schedule (not just Saturday)
+  const getFirstWeekendSchedule = (): string | null | undefined => {
+    return profile.sat_schedule || profile.sun_schedule;
+  };
+  
+  // Get weekday schedule from first available working day
+  const dailyWeekdayHours = parseScheduleHours(getFirstWeekdaySchedule());
+  // Get weekend schedule from first available weekend day
+  const dailyWeekendHours = parseScheduleHours(getFirstWeekendSchedule());
   
   // Calculate OT hours from per-day OT schedules
   const otSchedules = [
