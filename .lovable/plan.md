@@ -1,112 +1,278 @@
 
+# Agent Reports Enhancements
 
-# Fix: Upwork Time Not Refreshing After Logout
+## Overview
 
-## Problem Identified
+Two improvements requested for the Agent Reports page:
 
-When an agent logs out, the dashboard immediately refreshes but shows stale Upwork hours because the sync operation runs in the background ("fire and forget").
-
-| Timeline | What Happens |
-|----------|--------------|
-| T+0ms | User clicks LOGOUT |
-| T+50ms | `updateProfileStatus` completes, returns success |
-| T+60ms | Dashboard calls `loadDashboardData()` |
-| T+70ms | `fetchUpworkTimeFromCache` returns **old cached data** |
-| T+2000ms | Edge function finishes syncing **new data** to cache |
-| **Result** | User sees stale Upwork hours until manual page refresh |
+| Request | Current Behavior | Desired Behavior |
+|---------|------------------|------------------|
+| EOD Analytics | Not visible on Agent Reports page | Display team-wide daily performance metrics |
+| Default Status Filter | Shows "All Status" on load | Shows only "Open" status by default |
 
 ---
 
-## Root Cause
+## Part 1: Default Status Filter to "Open"
 
-**File: `src/lib/agentDashboardApi.ts` (Line 585)**
+### Problem
+When loading the Agent Reports page, users see all reports (open, escalated, validated, dismissed) by default. This clutters the view with already-processed reports when the primary use case is reviewing pending (open) incidents.
 
+### Solution
+Change the default status filter from empty (`''`) to `'open'` so only actionable items appear on initial load.
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/pages/AgentReports.tsx` | Set initial status state to `'open'` |
+| `src/pages/AgentReports.tsx` | Update `handleClearFilters` to reset to `'open'` instead of `''` |
+
+### Technical Changes
+
+**File: `src/pages/AgentReports.tsx`**
+
+**Line 41 - Initial State:**
 ```typescript
-// Fetch and cache Upwork hours on logout (fire and forget)
-fetchAndCacheUpworkTime(profileId, agentProfile.email)
-  .catch((err) => console.error('Failed to fetch Upwork time on logout:', err));
-```
-
-The `.catch()` pattern means this is NOT awaited - the function returns immediately while the sync runs in the background.
-
----
-
-## Solution
-
-**Await the Upwork sync during logout** so the dashboard refresh sees the updated data.
-
-### Option A: Await in API (Recommended)
-Make the logout wait for Upwork sync to complete before returning success. This adds ~1-2 seconds to logout but guarantees fresh data.
-
-### Option B: Delayed Refetch in UI
-Keep fire-and-forget but add a delayed refetch (e.g., 3 seconds after logout). Less reliable as sync time varies.
-
-**I recommend Option A** because it's more reliable and matches the memory context stating "logout-triggered sync model to minimize API overhead."
-
----
-
-## Technical Changes
-
-### File: `src/lib/agentDashboardApi.ts`
-
-**Change the fire-and-forget to an awaited call:**
-
-```typescript
-// Before (Lines 580-586):
-} else if (eventType === 'LOGOUT' || eventType === 'OT_LOGOUT') {
-  checkAndAlertEarlyOut(...)
-    .catch((err) => console.error('...'));
-  
-  // Fetch and cache Upwork hours on logout (fire and forget)
-  fetchAndCacheUpworkTime(profileId, agentProfile.email)
-    .catch((err) => console.error('...'));
-}
+// Before:
+const [status, setStatus] = useState('');
 
 // After:
-} else if (eventType === 'LOGOUT' || eventType === 'OT_LOGOUT') {
-  checkAndAlertEarlyOut(...)
-    .catch((err) => console.error('...'));
-  
-  // Await Upwork sync so dashboard refresh sees updated data
+const [status, setStatus] = useState('open');
+```
+
+**Lines 89-93 - Clear Filters:**
+```typescript
+// Before:
+const handleClearFilters = () => {
+  setAgentEmail('');
+  setIncidentType('');
+  setStatus('');
+};
+
+// After:
+const handleClearFilters = () => {
+  setAgentEmail('');
+  setIncidentType('');
+  setStatus('open'); // Preserve default "open" filter
+};
+```
+
+---
+
+## Part 2: EOD Analytics Panel
+
+### Problem
+The EOD (End of Day) team analytics are calculated daily but only sent via email/Slack. Users want to view these metrics directly on the Agent Reports page.
+
+### Solution
+Create a collapsible EOD Analytics panel that displays team-wide performance metrics above the incident reports table.
+
+### Data Available from Edge Function
+
+The `generate-eod-analytics` function returns:
+
+```typescript
+{
+  date: string;
+  attendance: {
+    active: number;           // Agents who logged in
+    scheduled: number;        // Expected to work
+    onTime: number;           // Logged in on time
+    onTimeRate: number;       // Percentage
+    fullShift: number;        // Completed full shift
+    fullShiftRate: number;    // Percentage
+  };
+  productivity: {
+    total: number;            // Total tickets
+    email: number;
+    chat: number;
+    call: number;
+    quotaAgents: number;      // Agents with quota
+    quotaMet: number;         // Met quota
+    quotaRate: number;        // Percentage
+    avgGap: number | null;    // Average ticket gap (mins)
+  };
+  time: {
+    avgLogged: number | null; // Average hours logged
+    avgRequired: number | null;
+  };
+  compliance: {
+    clean: number;            // Zero violations
+    cleanRate: number;        // Percentage
+    incidents: number;        // Total incidents
+    breakdown: Record<string, number>;  // By type
+  };
+  status: 'good' | 'warning' | 'critical';
+  details: string[];          // Status explanations
+}
+```
+
+### Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `src/lib/agentReportsApi.ts` | Add `fetchEODAnalytics()` function |
+| `src/components/agent-reports/EODAnalyticsPanel.tsx` | New component to display analytics |
+| `src/pages/AgentReports.tsx` | Import and render the panel |
+
+### Technical Changes
+
+**File: `src/lib/agentReportsApi.ts`**
+
+Add new function at the end of the file:
+
+```typescript
+/**
+ * EOD Analytics data structure
+ */
+export interface EODAnalytics {
+  date: string;
+  attendance: {
+    active: number;
+    scheduled: number;
+    onTime: number;
+    onTimeRate: number;
+    fullShift: number;
+    fullShiftRate: number;
+  };
+  productivity: {
+    total: number;
+    email: number;
+    chat: number;
+    call: number;
+    quotaAgents: number;
+    quotaMet: number;
+    quotaRate: number;
+    avgGap: number | null;
+  };
+  time: {
+    avgLogged: number | null;
+    avgRequired: number | null;
+  };
+  compliance: {
+    clean: number;
+    cleanRate: number;
+    incidents: number;
+    breakdown: Record<string, number>;
+  };
+  status: 'good' | 'warning' | 'critical';
+  details: string[];
+}
+
+/**
+ * Fetch EOD team analytics for a specific date
+ */
+export async function fetchEODAnalytics(
+  date?: string
+): Promise<{ data: EODAnalytics | null; error: string | null }> {
   try {
-    await fetchAndCacheUpworkTime(profileId, agentProfile.email);
-  } catch (err) {
-    console.error('Failed to fetch Upwork time on logout:', err);
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-eod-analytics`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ date }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { data: null, error: errorText || 'Failed to fetch analytics' };
+    }
+
+    const result = await response.json();
+    return { data: result.analytics, error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
   }
 }
 ```
 
 ---
 
-## Files to Modify
+**File: `src/components/agent-reports/EODAnalyticsPanel.tsx`** (New File)
 
-| File | Change |
-|------|--------|
-| `src/lib/agentDashboardApi.ts` | Await `fetchAndCacheUpworkTime` during LOGOUT/OT_LOGOUT |
+Create a collapsible panel with 4 metric cards:
+- Attendance (Active, On-Time Rate, Shift Completion)
+- Productivity (Tickets, Quota Rate, Avg Gap)
+- Time (Avg Logged vs Required)
+- Compliance (Clean Rate, Incidents Breakdown)
+
+Features:
+- Date picker to select which day's analytics to view
+- Status badge (Good/Warning/Critical) with color coding
+- Details list showing threshold violations
+- Collapsible accordion for space efficiency
+
+UI Layout:
+```text
++------------------------------------------------------------------+
+| EOD Team Analytics                      [Date: Jan 6, 2026] [v]  |
+| Status: WARNING - On-Time Login below target: 85%                |
++------------------------------------------------------------------+
+| Attendance       | Productivity      | Time           | Compliance |
+| 12/15 active     | 247 tickets       | 7.8h / 8h avg  | 87% clean  |
+| 80% on-time      | 72% quota met     |                | 3 incidents|
+| 93% full shift   | 4.2 min avg gap   |                |            |
++------------------------------------------------------------------+
+```
 
 ---
 
-## Expected Results After Fix
+**File: `src/pages/AgentReports.tsx`**
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| Logout button response | ~50ms (instant) | ~1-2s (waits for sync) |
-| Upwork hours after logout | Stale data shown | Fresh data shown |
-| User experience | Must refresh page | Data updates automatically |
+Add import and render the panel:
 
----
+```typescript
+// Add import
+import { EODAnalyticsPanel } from '@/components/agent-reports/EODAnalyticsPanel';
 
-## Trade-offs
+// In the JSX, after ReportSummaryCards:
+{/* EOD Analytics Panel */}
+<EODAnalyticsPanel />
 
-| Aspect | Impact |
-|--------|--------|
-| Logout speed | Slightly slower (~1-2s) due to waiting for edge function |
-| Data accuracy | Guaranteed fresh data |
-| User expectation | "Status Updated" toast appears after sync completes |
+{/* Existing Filters Card */}
+<Card>
+```
 
 ---
 
-## Alternative Consideration
+## Implementation Order
 
-If the 1-2 second delay is unacceptable, we could implement a "Syncing..." loading state that shows after logout while fetching continues, then auto-refreshes when complete. However, the await approach is simpler and more reliable.
+| Step | Task |
+|------|------|
+| 1 | Change default status filter to `'open'` in AgentReports.tsx |
+| 2 | Add `fetchEODAnalytics` function to agentReportsApi.ts |
+| 3 | Create EODAnalyticsPanel component |
+| 4 | Import and render panel in AgentReports.tsx |
+| 5 | Test date selection and analytics display |
 
+---
+
+## Additional Considerations
+
+### Permissions
+- EOD Analytics should only be visible to Admin/HR users (matches who receives email notifications)
+- Use `isAdmin || isHR` check before rendering the panel
+
+### Caching
+- Analytics can be cached briefly (5 minutes) since the data is calculated daily
+- Add `staleTime` to the query if using React Query
+
+### Edge Function Deployment
+- Ensure `generate-eod-analytics` is deployed (was already in `config.toml`)
+- Test the endpoint before integrating
+
+---
+
+## Summary
+
+| Change | Files | Complexity |
+|--------|-------|------------|
+| Default "Open" filter | 1 file, 2 lines | Low |
+| EOD Analytics Panel | 3 files, new component | Medium |
