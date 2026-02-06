@@ -528,8 +528,12 @@ export async function syncAllProfilesToDirectory(): Promise<{
         sat_schedule: profile.sat_schedule || null,
         sun_schedule: profile.sun_schedule || null,
         break_schedule: profile.break_schedule || null,
-        weekday_ot_schedule: profile.weekday_ot_schedule || null,
-        weekend_ot_schedule: profile.weekend_ot_schedule || null,
+        // Derive weekday OT summary from first available Mon-Fri OT schedule
+        weekday_ot_schedule: profile.mon_ot_schedule || profile.tue_ot_schedule || 
+                             profile.wed_ot_schedule || profile.thu_ot_schedule || 
+                             profile.fri_ot_schedule || null,
+        // Derive weekend OT summary from first available Sat-Sun OT schedule
+        weekend_ot_schedule: profile.sat_ot_schedule || profile.sun_ot_schedule || null,
         // Per-day OT schedules
         mon_ot_schedule: profile.mon_ot_schedule || null,
         tue_ot_schedule: profile.tue_ot_schedule || null,
