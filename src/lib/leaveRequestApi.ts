@@ -741,7 +741,7 @@ export interface EscalatedOutageInput {
   start_date: string;
   start_time: string;
   end_time: string;
-  outage_reason: 'Late Login' | 'Undertime';
+  outage_reason: 'Late Login' | 'Undertime' | 'Equipment Issue';
 }
 
 // Check for existing outage request with same reason for the same date

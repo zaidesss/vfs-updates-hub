@@ -77,7 +77,7 @@ export const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string 
 };
 
 // Escalatable incident types that can generate outage requests
-export const ESCALATABLE_INCIDENT_TYPES: IncidentType[] = ['LATE_LOGIN', 'EARLY_OUT', 'TIME_NOT_MET'];
+export const ESCALATABLE_INCIDENT_TYPES: IncidentType[] = ['LATE_LOGIN', 'EARLY_OUT', 'TIME_NOT_MET', 'EXCESSIVE_RESTARTS'];
 
 /**
  * Check if an incident type can be escalated to an outage request
@@ -96,6 +96,8 @@ export function getOutageReasonForIncident(type: IncidentType): string {
     case 'EARLY_OUT':
     case 'TIME_NOT_MET':
       return 'Undertime';
+    case 'EXCESSIVE_RESTARTS':
+      return 'Equipment Issue';
     default:
       return 'Other';
   }

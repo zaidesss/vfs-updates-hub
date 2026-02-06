@@ -141,6 +141,13 @@ export function ReportDetailDialog({
           endTime: formatMinutesToTime(scheduleEndMins) 
         };
       }
+      case 'EXCESSIVE_RESTARTS': {
+        // Restarts track cumulative duration - use a placeholder range
+        // The duration is in durationMinutes but we don't have specific timestamps
+        const durationMins = details.durationMinutes || 0;
+        // Default to a 1-hour window starting at 9 AM for equipment issues
+        return { startTime: '09:00', endTime: formatMinutesToTime(9 * 60 + Math.max(durationMins, 60)) };
+      }
       default:
         return { startTime: '09:00', endTime: '10:00' };
     }
@@ -186,7 +193,7 @@ export function ReportDetailDialog({
         start_date: report.incident_date,
         start_time: startTime,
         end_time: endTime,
-        outage_reason: outageReason as 'Late Login' | 'Undertime',
+        outage_reason: outageReason as 'Late Login' | 'Undertime' | 'Equipment Issue',
       };
       
       const result = await createEscalatedOutageRequest(input);

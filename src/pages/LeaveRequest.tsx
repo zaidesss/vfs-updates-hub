@@ -732,12 +732,22 @@ export default function LeaveRequest() {
               )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Notice for users editing */}
+                {editingRequest && !isAdmin && (
+                  <div className="md:col-span-2 p-3 bg-muted/50 border rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Note:</strong> Core details are read-only. You can only update remarks.
+                    </p>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="agent_name">Agent Name *</Label>
                   {isAdmin ? (
                     <Select
                       value={formData.agent_name}
                       onValueChange={handleAgentSelect}
+                      disabled={!!editingRequest && !isAdmin}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select agent" />
@@ -754,8 +764,8 @@ export default function LeaveRequest() {
                       value={formData.agent_name}
                       onChange={(e) => handleInputChange('agent_name', e.target.value)}
                       placeholder="Your name"
-                      disabled={isDirectoryUser}
-                      className={isDirectoryUser ? 'bg-muted' : ''}
+                      disabled={isDirectoryUser || (!!editingRequest && !isAdmin)}
+                      className={(isDirectoryUser || (!!editingRequest && !isAdmin)) ? 'bg-muted' : ''}
                     />
                   )}
                 </div>
@@ -765,8 +775,9 @@ export default function LeaveRequest() {
                   <Select
                     value={formData.client_name}
                     onValueChange={(value) => handleInputChange('client_name', value)}
+                    disabled={!!editingRequest && !isAdmin}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={(!!editingRequest && !isAdmin) ? 'bg-muted' : ''}>
                       <SelectValue placeholder="Select client" />
                     </SelectTrigger>
                     <SelectContent>
@@ -783,6 +794,7 @@ export default function LeaveRequest() {
                     <Select
                       value={formData.team_lead_name}
                       onValueChange={(value) => handleInputChange('team_lead_name', value)}
+                      disabled={!!editingRequest && !isAdmin}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select team lead" />
@@ -799,8 +811,8 @@ export default function LeaveRequest() {
                       value={formData.team_lead_name}
                       onChange={(e) => handleInputChange('team_lead_name', e.target.value)}
                       placeholder="Team lead name"
-                      disabled={isDirectoryUser}
-                      className={isDirectoryUser ? 'bg-muted' : ''}
+                      disabled={isDirectoryUser || (!!editingRequest && !isAdmin)}
+                      className={(isDirectoryUser || (!!editingRequest && !isAdmin)) ? 'bg-muted' : ''}
                     />
                   )}
                 </div>
@@ -811,6 +823,7 @@ export default function LeaveRequest() {
                     <Select
                       value={formData.role}
                       onValueChange={(value) => handleInputChange('role', value)}
+                      disabled={!!editingRequest && !isAdmin}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select role" />
@@ -827,8 +840,8 @@ export default function LeaveRequest() {
                       value={formData.role}
                       onChange={(e) => handleInputChange('role', e.target.value)}
                       placeholder="Your role"
-                      disabled={isDirectoryUser}
-                      className={isDirectoryUser ? 'bg-muted' : ''}
+                      disabled={isDirectoryUser || (!!editingRequest && !isAdmin)}
+                      className={(isDirectoryUser || (!!editingRequest && !isAdmin)) ? 'bg-muted' : ''}
                     />
                   )}
                 </div>
@@ -840,6 +853,7 @@ export default function LeaveRequest() {
                     value={formData.start_date}
                     onChange={(value) => handleInputChange('start_date', value)}
                     placeholder="Select start date"
+                    disabled={!!editingRequest && !isAdmin}
                   />
                 </div>
                 
@@ -850,6 +864,7 @@ export default function LeaveRequest() {
                     value={formData.end_date}
                     onChange={(value) => handleInputChange('end_date', value)}
                     placeholder="Select end date"
+                    disabled={!!editingRequest && !isAdmin}
                   />
                 </div>
                 
@@ -860,6 +875,8 @@ export default function LeaveRequest() {
                     type="time"
                     value={formData.start_time}
                     onChange={(e) => handleInputChange('start_time', e.target.value)}
+                    disabled={!!editingRequest && !isAdmin}
+                    className={(!!editingRequest && !isAdmin) ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -870,6 +887,8 @@ export default function LeaveRequest() {
                     type="time"
                     value={formData.end_time}
                     onChange={(e) => handleInputChange('end_time', e.target.value)}
+                    disabled={!!editingRequest && !isAdmin}
+                    className={(!!editingRequest && !isAdmin) ? 'bg-muted' : ''}
                   />
                 </div>
                 
@@ -878,8 +897,9 @@ export default function LeaveRequest() {
                   <Select
                     value={formData.outage_reason}
                     onValueChange={(value) => handleInputChange('outage_reason', value)}
+                    disabled={!!editingRequest && !isAdmin}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={(!!editingRequest && !isAdmin) ? 'bg-muted' : ''}>
                       <SelectValue placeholder="Select reason" />
                     </SelectTrigger>
                     <SelectContent>
@@ -897,7 +917,7 @@ export default function LeaveRequest() {
                       ref={fileInputRef}
                       type="file"
                       onChange={handleFileUpload}
-                      disabled={isUploading}
+                      disabled={isUploading || (!!editingRequest && !isAdmin)}
                       className="hidden"
                       id="file-upload"
                     />
@@ -906,7 +926,7 @@ export default function LeaveRequest() {
                         type="button"
                         variant="outline"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
+                        disabled={isUploading || (!!editingRequest && !isAdmin)}
                         className="w-full justify-start"
                       >
                         {isUploading ? (
@@ -932,33 +952,37 @@ export default function LeaveRequest() {
                         >
                           View Attachment
                         </a>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={clearAttachment}
-                          className="h-6 w-6"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        {(isAdmin || !editingRequest) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={clearAttachment}
+                            className="h-6 w-6"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
                 
-                {/* Remarks field for auto-generated requests */}
-                {editingRequest && (editingRequest as any).is_auto_generated && (
+                {/* Remarks field - always visible when editing */}
+                {editingRequest && (
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="edit_remarks">Remarks</Label>
                     <Textarea
                       id="edit_remarks"
                       value={editRemarks}
                       onChange={(e) => setEditRemarks(e.target.value)}
-                      placeholder="Add any notes or explanation for this late login..."
+                      placeholder="Add any notes or explanation..."
                       rows={3}
                     />
                     <p className="text-xs text-muted-foreground">
-                      This request was auto-generated due to late login. Use remarks to provide additional context.
+                      {(editingRequest as any).is_auto_generated 
+                        ? 'This request was auto-generated. Use remarks to provide additional context.'
+                        : 'Use remarks to add context or explanation for this request.'}
                     </p>
                   </div>
                 )}
