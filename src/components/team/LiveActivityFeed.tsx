@@ -74,7 +74,12 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
   // Fetch initial data
   const loadRecentActivities = async () => {
     try {
-      // Fetch recent profile events with agent info
+      // Calculate start of today (midnight local time)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayISO = today.toISOString();
+
+      // Fetch recent profile events with agent info - only from today
       const { data: events, error } = await supabase
         .from('profile_events')
         .select(`
@@ -85,6 +90,7 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
           new_status,
           created_at
         `)
+        .gte('created_at', todayISO)
         .order('created_at', { ascending: false })
         .limit(maxItems);
 
@@ -156,18 +162,25 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
             .eq('id', event.profile_id)
             .single();
 
-          const newActivity: ActivityEvent = {
-            id: event.id,
-            profileId: event.profile_id,
-            agentName: profile?.full_name || profile?.email || 'Unknown',
-            agentEmail: profile?.email || '',
-            eventType: event.event_type,
-            prevStatus: event.prev_status,
-            newStatus: event.new_status,
-            createdAt: event.created_at,
-          };
+          // Filter: only add events from today
+          const eventDate = new Date(event.created_at);
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
 
-          setActivities(prev => [newActivity, ...prev.slice(0, maxItems - 1)]);
+          if (eventDate >= todayStart) {
+            const newActivity: ActivityEvent = {
+              id: event.id,
+              profileId: event.profile_id,
+              agentName: profile?.full_name || profile?.email || 'Unknown',
+              agentEmail: profile?.email || '',
+              eventType: event.event_type,
+              prevStatus: event.prev_status,
+              newStatus: event.new_status,
+              createdAt: event.created_at,
+            };
+
+            setActivities(prev => [newActivity, ...prev.slice(0, maxItems - 1)]);
+          }
         }
       )
       .subscribe();
@@ -186,7 +199,7 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="min-h-[200px] max-h-[calc(100vh-300px)] px-4 pb-4">
+        <ScrollArea className="h-[400px] px-4 pb-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
