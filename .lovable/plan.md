@@ -1,110 +1,103 @@
 
 
-# Fix: Live Activity Feed - 24h Filter and Fixed Height
+# Fix: OT Schedule Sync + Automatic Sync Already Exists
 
-## Problem Summary
+## Good News: Automatic Sync Already Works!
 
-The Live Activity Feed has two issues:
-1. **Scroll broken** - The `max-h-[calc(100vh-300px)]` calculation doesn't work properly with the Radix ScrollArea component, causing content to be cropped without a scrollbar
-2. **Shows old events** - Currently shows any 15 events regardless of age (some are 2+ days old)
+Looking at the code, automatic syncing from Bios to Master Directory is **already implemented**:
 
----
-
-## Solution
-
-### 1. Filter Events to "Today Only"
-
-Add a database filter to only fetch events from today (midnight EST to now).
-
-**File: `src/components/team/LiveActivityFeed.tsx`**
-
-**Query modification (around line 78-89):**
-
+**File: `src/lib/agentProfileApi.ts` (Lines 447-453)**
 ```typescript
-// Before:
-const { data: events, error } = await supabase
-  .from('profile_events')
-  .select(`
-    id,
-    profile_id,
-    event_type,
-    prev_status,
-    new_status,
-    created_at
-  `)
-  .order('created_at', { ascending: false })
-  .limit(maxItems);
-
-// After:
-// Calculate start of today in EST timezone
-const today = new Date();
-today.setHours(0, 0, 0, 0);
-const todayISO = today.toISOString();
-
-const { data: events, error } = await supabase
-  .from('profile_events')
-  .select(`
-    id,
-    profile_id,
-    event_type,
-    prev_status,
-    new_status,
-    created_at
-  `)
-  .gte('created_at', todayISO)  // Only events from today
-  .order('created_at', { ascending: false })
-  .limit(maxItems);
-```
-
-Also filter new realtime events (around line 149-170):
-
-```typescript
-// Add check before adding to state:
-const eventDate = new Date(event.created_at);
-const todayStart = new Date();
-todayStart.setHours(0, 0, 0, 0);
-
-if (eventDate >= todayStart) {
-  setActivities(prev => [newActivity, ...prev.slice(0, maxItems - 1)]);
+// Sync to agent_directory for Master Directory visibility
+try {
+  await syncProfileToDirectory(input);
+} catch (syncError) {
+  console.error('Failed to sync profile to directory:', syncError);
+  // Don't fail the save for sync errors
 }
 ```
 
-### 2. Fix Scroll Height - Use Fixed Panel
+Every time a profile is saved via `upsertProfile()`, it automatically calls `syncProfileToDirectory()` to update the Master Directory.
 
-The issue is that Radix ScrollArea requires a fixed height ancestor to work properly. The `calc()` approach doesn't give it a definite height.
+---
 
-**File: `src/components/team/LiveActivityFeed.tsx`**
+## The Real Issue: OT Summary Logic Bug
 
-**Change ScrollArea (line 189):**
+The problem is that the sync function tries to use fields that don't exist in the input:
+
+| Line | Current Code | Problem |
+|------|--------------|---------|
+| 371 | `weekday_ot_schedule: input.weekday_ot_schedule \|\| null` | `weekday_ot_schedule` is NOT a field in `AgentProfileInput` |
+| 372 | `weekend_ot_schedule: input.weekend_ot_schedule \|\| null` | `weekend_ot_schedule` is NOT a field in `AgentProfileInput` |
+
+The agent_profiles table stores **per-day OT** (`mon_ot_schedule`, `tue_ot_schedule`, etc.), but the Master Directory displays **summary columns** that need to be derived.
+
+---
+
+## Solution: Fix OT Summary Derivation
+
+### File 1: `src/lib/agentProfileApi.ts`
+
+**Lines 371-372 - Derive OT summary from per-day fields:**
 
 ```typescript
 // Before:
-<ScrollArea className="min-h-[200px] max-h-[calc(100vh-300px)] px-4 pb-4">
+weekday_ot_schedule: input.weekday_ot_schedule || null,
+weekend_ot_schedule: input.weekend_ot_schedule || null,
 
 // After:
-<ScrollArea className="h-[400px] px-4 pb-4">
+// Derive weekday OT summary from first available Mon-Fri OT schedule
+weekday_ot_schedule: input.mon_ot_schedule || input.tue_ot_schedule || 
+                     input.wed_ot_schedule || input.thu_ot_schedule || 
+                     input.fri_ot_schedule || null,
+// Derive weekend OT summary from first available Sat-Sun OT schedule
+weekend_ot_schedule: input.sat_ot_schedule || input.sun_ot_schedule || null,
 ```
 
-**Why this works:** A fixed `400px` height gives the ScrollArea a definite container to scroll within. The Radix Viewport inside will then properly enable scrolling for overflow content.
+### File 2: `src/lib/masterDirectoryApi.ts`
 
-**Why the `calc()` didn't work:** Radix ScrollArea's Viewport uses `h-full` which requires its parent to have a computed height. When using `max-h-[calc(...)]` without a min-height constraint that matches, the container can collapse or not trigger the overflow detection correctly.
+**Lines 531-532 - Same fix for bulk sync:**
+
+```typescript
+// Before:
+weekday_ot_schedule: profile.weekday_ot_schedule || null,
+weekend_ot_schedule: profile.weekend_ot_schedule || null,
+
+// After:
+// Derive weekday OT summary from first available Mon-Fri OT schedule
+weekday_ot_schedule: profile.mon_ot_schedule || profile.tue_ot_schedule || 
+                     profile.wed_ot_schedule || profile.thu_ot_schedule || 
+                     profile.fri_ot_schedule || null,
+// Derive weekend OT summary from first available Sat-Sun OT schedule
+weekend_ot_schedule: profile.sat_ot_schedule || profile.sun_ot_schedule || null,
+```
 
 ---
 
 ## Summary of Changes
 
-| Location | Change |
-|----------|--------|
-| Line 75-89 | Add `todayISO` calculation and `.gte('created_at', todayISO)` filter |
-| Line 149-170 | Add date check before adding realtime events |
-| Line 189 | Change `min-h-[200px] max-h-[calc(100vh-300px)]` back to `h-[400px]` |
+| File | Lines | Change |
+|------|-------|--------|
+| `src/lib/agentProfileApi.ts` | 371-372 | Derive OT summary from per-day fields |
+| `src/lib/masterDirectoryApi.ts` | 531-532 | Same derivation for bulk sync |
 
 ---
 
-## Expected Result
+## How It Works After Fix
 
-- Live Activity shows only events from today (midnight to now)
-- Panel has a fixed 400px height with internal scrolling
-- All events within the panel are visible and scrollable
-- Old events (yesterday, 2 days ago, etc.) are filtered out
+1. **Individual Save** (Automatic): When any profile is saved in Bios, `syncProfileToDirectory()` automatically runs and correctly populates OT summary columns
+
+2. **Bulk Sync** (Manual): When "Sync from Bios" button is clicked, `syncAllProfilesToDirectory()` correctly populates OT summary for all profiles
+
+---
+
+## Expected Result for Malcolm
+
+After fix, when Malcolm's profile is saved (or bulk sync is run):
+
+| Column | Current | After Fix |
+|--------|---------|-----------|
+| Weekday OT | `-` (NULL) | `5:30 PM-7:30 PM` |
+| Weekend OT | `-` (NULL) | `5:00 PM-7:00 PM` |
+| OT Hours | `10.0` | `10.0` (unchanged, already correct) |
 
