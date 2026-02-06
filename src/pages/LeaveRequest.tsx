@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -681,9 +682,12 @@ export default function LeaveRequest() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Outage Requests</h1>
-          <p className="text-muted-foreground">Submit and manage your outage requests</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Outage Requests</h1>
+            <p className="text-muted-foreground">Submit and manage your outage requests</p>
+          </div>
+          <PageGuideButton pageId="leave-request" />
         </div>
 
         {/* Submit Form */}
@@ -1031,8 +1035,10 @@ export default function LeaveRequest() {
           <CardContent>
             {isAdmin && (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
-                <TabsList>
+                <TabsList data-tour="request-tabs">
                   <TabsTrigger value="all">All Requests</TabsTrigger>
+                  <TabsTrigger value="pending">Pending</TabsTrigger>
+                  <TabsTrigger value="for_review">For Review</TabsTrigger>
                   <TabsTrigger value="override" className="relative">
                     Override Requests
                     {overrideCount > 0 && (
@@ -1041,6 +1047,15 @@ export default function LeaveRequest() {
                       </Badge>
                     )}
                   </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+            
+            {!isAdmin && (
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+                <TabsList data-tour="request-tabs">
+                  <TabsTrigger value="all">All Requests</TabsTrigger>
+                  <TabsTrigger value="pending">Pending</TabsTrigger>
                 </TabsList>
               </Tabs>
             )}
@@ -1055,7 +1070,7 @@ export default function LeaveRequest() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table data-tour="requests-list">
                   <TableHeader>
                     <TableRow>
                       {canBulkDelete && (
