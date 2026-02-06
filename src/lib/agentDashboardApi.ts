@@ -406,8 +406,13 @@ export async function updateProfileStatus(
         // Stale login detected - auto-logout and create NO_LOGOUT report
         console.log(`Stale login detected for profile ${profileId}. Auto-logging out from ${statusDateStr}`);
         
-        // Create auto-logout event at end of previous day (11:59 PM)
-        const autoLogoutTime = new Date(statusDateStr + 'T23:59:59.000Z');
+        // Create auto-logout event at end of previous day (11:59:59 PM EST)
+        // 11:59:59 PM EST = 4:59:59 AM UTC the next day
+        const [year, month, day] = statusDateStr.split('-').map(Number);
+        const nextDayDate = new Date(Date.UTC(year, month - 1, day));
+        nextDayDate.setUTCDate(nextDayDate.getUTCDate() + 1);
+        nextDayDate.setUTCHours(4, 59, 59, 0);
+        const autoLogoutTime = nextDayDate;
         
         // Record the auto-logout event
         await supabase.from('profile_events').insert({

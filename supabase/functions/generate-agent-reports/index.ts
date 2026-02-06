@@ -220,23 +220,29 @@ Deno.serve(async (req) => {
     const directoryMap = new Map<string, AgentDirectory>();
     directories?.forEach(d => directoryMap.set(d.email.toLowerCase(), d));
 
-    // Fetch all events for the target date
-    const startOfDay = `${targetDateStr}T00:00:00.000Z`;
-    const endOfDay = `${targetDateStr}T23:59:59.999Z`;
+    // Fetch all events for the target date using EST boundaries
+    // EST = UTC-5, so midnight EST = 5:00 AM UTC
+    // Start of EST day: targetDate at 5:00 AM UTC
+    // End of EST day: next day at 4:59:59 AM UTC
+    const startOfDayEST = `${targetDateStr}T05:00:00.000Z`;
+    const nextDay = new Date(targetDateStr);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().split('T')[0];
+    const endOfDayEST = `${nextDayStr}T04:59:59.999Z`;
 
     const { data: allEvents } = await supabase
       .from('profile_events')
       .select('*')
-      .gte('created_at', startOfDay)
-      .lte('created_at', endOfDay)
+      .gte('created_at', startOfDayEST)
+      .lte('created_at', endOfDayEST)
       .order('created_at', { ascending: true });
 
     // Fetch ticket logs for the target date (for QUOTA_NOT_MET)
     const { data: ticketLogs } = await supabase
       .from('ticket_logs')
       .select('agent_email, ticket_type')
-      .gte('timestamp', startOfDay)
-      .lte('timestamp', endOfDay);
+      .gte('timestamp', startOfDayEST)
+      .lte('timestamp', endOfDayEST);
 
     // Aggregate ticket counts by agent
     const ticketCountsByAgent = new Map<string, { email: number; chat: number; call: number }>();

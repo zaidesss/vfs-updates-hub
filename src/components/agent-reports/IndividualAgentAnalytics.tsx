@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { INCIDENT_TYPE_CONFIG, type IncidentType } from '@/lib/agentReportsApi';
+import { getESTDayBoundaries, getESTWeekBoundaries, parseDateStringLocal, getESTDateFromTimestamp, generateWeekDates } from '@/lib/timezoneUtils';
 
 interface AgentMetrics {
   date: string;
@@ -57,7 +58,7 @@ interface WeeklyAgentMetrics {
   avgGap: number | null;
   totalBreakMinutes: number;
   incidents: { type: IncidentType; count: number }[];
-  dailyBreakdown: { date: string; tickets: number; hours: number }[];
+  dailyBreakdown: { date: string; tickets: number; hours: number; active?: boolean }[];
 }
 
 export function IndividualAgentAnalytics() {
@@ -120,13 +121,12 @@ export function IndividualAgentAnalytics() {
 
   const loadDailyMetrics = async () => {
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const startOfDay = `${dateStr}T00:00:00.000Z`;
-    const endOfDay = `${dateStr}T23:59:59.999Z`;
+    const { start: startOfDayEST, end: endOfDayEST } = getESTDayBoundaries(dateStr);
 
-    // Get profile ID for events
+    // Get profile ID for events + agent_name for ticket fallback
     const { data: profile } = await supabase
       .from('agent_profiles')
-      .select('id, position, quota_email, quota_chat, quota_phone')
+      .select('id, position, quota_email, quota_chat, quota_phone, agent_name')
       .eq('email', selectedAgentEmail.toLowerCase())
       .single();
 
@@ -135,27 +135,31 @@ export function IndividualAgentAnalytics() {
       return;
     }
 
-    // Parallel fetches
+    const agentTag = profile.agent_name || '';
+    const email = selectedAgentEmail.toLowerCase();
+
+    // Parallel fetches with EST boundaries
+    // Ticket query: match by agent_email OR agent_name (agent_tag)
     const [eventsResult, ticketsResult, gapsResult, incidentsResult] = await Promise.all([
       supabase.from('profile_events')
         .select('event_type, created_at')
         .eq('profile_id', profile.id)
-        .gte('created_at', startOfDay)
-        .lte('created_at', endOfDay)
+        .gte('created_at', startOfDayEST)
+        .lte('created_at', endOfDayEST)
         .order('created_at'),
       supabase.from('ticket_logs')
         .select('ticket_type')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
-        .gte('timestamp', startOfDay)
-        .lte('timestamp', endOfDay),
+        .or(`agent_email.eq.${email},agent_name.eq.${agentTag}`)
+        .gte('timestamp', startOfDayEST)
+        .lte('timestamp', endOfDayEST),
       supabase.from('ticket_gap_daily')
         .select('avg_gap_seconds')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
+        .eq('agent_email', email)
         .eq('date', dateStr)
         .single(),
       supabase.from('agent_reports')
         .select('incident_type')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
+        .eq('agent_email', email)
         .eq('incident_date', dateStr),
     ]);
 
@@ -223,13 +227,12 @@ export function IndividualAgentAnalytics() {
     const weekEndDate = endOfWeek(selectedDate, { weekStartsOn: 1 });
     const weekStartStr = format(weekStartDate, 'yyyy-MM-dd');
     const weekEndStr = format(weekEndDate, 'yyyy-MM-dd');
-    const startOfWeekTs = `${weekStartStr}T00:00:00.000Z`;
-    const endOfWeekTs = `${weekEndStr}T23:59:59.999Z`;
+    const { start: startOfWeekEST, end: endOfWeekEST } = getESTWeekBoundaries(weekStartStr, weekEndStr);
 
-    // Get profile
+    // Get profile + agent_name for ticket fallback
     const { data: profile } = await supabase
       .from('agent_profiles')
-      .select('id, position, quota_email, quota_chat, quota_phone')
+      .select('id, position, quota_email, quota_chat, quota_phone, agent_name')
       .eq('email', selectedAgentEmail.toLowerCase())
       .single();
 
@@ -238,27 +241,30 @@ export function IndividualAgentAnalytics() {
       return;
     }
 
-    // Parallel fetches
+    const agentTag = profile.agent_name || '';
+    const email = selectedAgentEmail.toLowerCase();
+
+    // Parallel fetches with EST boundaries
     const [eventsResult, ticketsResult, gapsResult, incidentsResult] = await Promise.all([
       supabase.from('profile_events')
         .select('event_type, created_at')
         .eq('profile_id', profile.id)
-        .gte('created_at', startOfWeekTs)
-        .lte('created_at', endOfWeekTs)
+        .gte('created_at', startOfWeekEST)
+        .lte('created_at', endOfWeekEST)
         .order('created_at'),
       supabase.from('ticket_logs')
         .select('ticket_type, timestamp')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
-        .gte('timestamp', startOfWeekTs)
-        .lte('timestamp', endOfWeekTs),
+        .or(`agent_email.eq.${email},agent_name.eq.${agentTag}`)
+        .gte('timestamp', startOfWeekEST)
+        .lte('timestamp', endOfWeekEST),
       supabase.from('ticket_gap_daily')
         .select('avg_gap_seconds, date')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
+        .eq('agent_email', email)
         .gte('date', weekStartStr)
         .lte('date', weekEndStr),
       supabase.from('agent_reports')
         .select('incident_type')
-        .eq('agent_email', selectedAgentEmail.toLowerCase())
+        .eq('agent_email', email)
         .gte('incident_date', weekStartStr)
         .lte('incident_date', weekEndStr),
     ]);
@@ -268,19 +274,27 @@ export function IndividualAgentAnalytics() {
     const gaps = gapsResult.data || [];
     const incidents = incidentsResult.data || [];
 
-    // Group events by day
+    // Group events by EST day (not UTC)
     const eventsByDay = new Map<string, any[]>();
     events.forEach(e => {
-      const day = e.created_at.split('T')[0];
-      if (!eventsByDay.has(day)) eventsByDay.set(day, []);
-      eventsByDay.get(day)!.push(e);
+      const estDay = getESTDateFromTimestamp(e.created_at);
+      if (!eventsByDay.has(estDay)) eventsByDay.set(estDay, []);
+      eventsByDay.get(estDay)!.push(e);
+    });
+
+    // Pre-populate all 7 days of the week for complete display
+    const allWeekDates = generateWeekDates(weekStartDate);
+    const dailyBreakdownMap = new Map<string, { date: string; tickets: number; hours: number; active: boolean }>();
+    
+    // Initialize all days with zeros
+    allWeekDates.forEach(dateStr => {
+      dailyBreakdownMap.set(dateStr, { date: dateStr, tickets: 0, hours: 0, active: false });
     });
 
     // Calculate daily breakdown and totals
     let daysActive = 0;
     let totalHoursWorked = 0;
     let totalBreakMinutes = 0;
-    const dailyBreakdown: { date: string; tickets: number; hours: number }[] = [];
 
     eventsByDay.forEach((dayEvents, day) => {
       const loginEvent = dayEvents.find(e => e.event_type === 'LOGIN');
@@ -301,10 +315,15 @@ export function IndividualAgentAnalytics() {
           totalBreakMinutes += (new Date(breakOuts[i].created_at).getTime() - new Date(breakIns[i].created_at).getTime()) / 60000;
         }
 
-        const dayTickets = tickets.filter(t => t.timestamp.startsWith(day)).length;
-        dailyBreakdown.push({ date: day, tickets: dayTickets, hours });
+        // Count tickets for this EST day
+        const dayTickets = tickets.filter(t => getESTDateFromTimestamp(t.timestamp) === day).length;
+        
+        // Update the day in the map
+        dailyBreakdownMap.set(day, { date: day, tickets: dayTickets, hours, active: true });
       }
     });
+    
+    const dailyBreakdown = Array.from(dailyBreakdownMap.values());
 
     // Count tickets
     const emailCount = tickets.filter(t => t.ticket_type?.toLowerCase() === 'email').length;
@@ -601,21 +620,25 @@ export function IndividualAgentAnalytics() {
               </Card>
             </div>
 
-            {/* Daily Breakdown */}
-            {weeklyMetrics.dailyBreakdown.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Daily Breakdown</h4>
-                <div className="grid grid-cols-7 gap-2">
-                  {weeklyMetrics.dailyBreakdown.map(day => (
-                    <div key={day.date} className="text-center p-2 bg-muted rounded-md">
-                      <div className="text-xs text-muted-foreground">{format(new Date(day.date), 'EEE')}</div>
-                      <div className="text-sm font-medium">{day.tickets}</div>
-                      <div className="text-xs text-muted-foreground">{formatHours(day.hours)}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* Daily Breakdown - Always show all 7 days */}
+            <div className="mt-4">
+              <h4 className="text-sm font-medium mb-2">Daily Breakdown</h4>
+              <div className="grid grid-cols-7 gap-2">
+                {weeklyMetrics.dailyBreakdown.map(day => (
+                  <div 
+                    key={day.date} 
+                    className={cn(
+                      "text-center p-2 rounded-md",
+                      day.active ? "bg-muted" : "bg-muted/30"
+                    )}
+                  >
+                    <div className="text-xs text-muted-foreground">{format(parseDateStringLocal(day.date), 'EEE')}</div>
+                    <div className={cn("text-sm font-medium", !day.active && "text-muted-foreground")}>{day.tickets}</div>
+                    <div className="text-xs text-muted-foreground">{day.active ? formatHours(day.hours) : '-'}</div>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
           </div>
         ) : (
           <div className="text-center py-8 text-muted-foreground">
