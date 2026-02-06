@@ -1,103 +1,110 @@
 
 
-# Fix: Live Activity Feed Cropped at Bottom
+# Fix: Live Activity Feed - 24h Filter and Fixed Height
 
-## Problem Identified
+## Problem Summary
 
-The Live Activity Feed on the Team Status Board is cropped at the bottom because it uses a fixed height of `400px` that doesn't adapt to the available viewport space.
-
-Looking at the current implementation:
-
-| Issue | Location | Current Value |
-|-------|----------|---------------|
-| Fixed scroll height | `LiveActivityFeed.tsx` line 189 | `h-[400px]` |
-| No viewport constraint | Card extends below visible area | N/A |
-
----
-
-## Root Cause
-
-**File: `src/components/team/LiveActivityFeed.tsx` (Line 189)**
-
-```typescript
-<ScrollArea className="h-[400px] px-4 pb-4">
-```
-
-The `400px` fixed height doesn't account for:
-- The viewport height
-- The card header height
-- The position of the card on the page
-
-When the Live Activity Feed has many entries, the card's content gets cropped because the fixed height cuts off entries, and the card itself may extend past the viewport bottom.
+The Live Activity Feed has two issues:
+1. **Scroll broken** - The `max-h-[calc(100vh-300px)]` calculation doesn't work properly with the Radix ScrollArea component, causing content to be cropped without a scrollbar
+2. **Shows old events** - Currently shows any 15 events regardless of age (some are 2+ days old)
 
 ---
 
 ## Solution
 
-Change the ScrollArea from a fixed height to a dynamic height that:
-1. Uses `max-h-[calc(100vh-300px)]` to respect viewport bounds
-2. Uses `min-h-[200px]` to ensure usability with few items
-3. Keeps the Card's `h-full` but removes absolute height constraints
+### 1. Filter Events to "Today Only"
 
----
+Add a database filter to only fetch events from today (midnight EST to now).
 
-## Technical Changes
+**File: `src/components/team/LiveActivityFeed.tsx`**
 
-### File: `src/components/team/LiveActivityFeed.tsx`
-
-**Line 189 - Change fixed height to dynamic viewport-based height:**
+**Query modification (around line 78-89):**
 
 ```typescript
 // Before:
-<ScrollArea className="h-[400px] px-4 pb-4">
+const { data: events, error } = await supabase
+  .from('profile_events')
+  .select(`
+    id,
+    profile_id,
+    event_type,
+    prev_status,
+    new_status,
+    created_at
+  `)
+  .order('created_at', { ascending: false })
+  .limit(maxItems);
 
 // After:
+// Calculate start of today in EST timezone
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const todayISO = today.toISOString();
+
+const { data: events, error } = await supabase
+  .from('profile_events')
+  .select(`
+    id,
+    profile_id,
+    event_type,
+    prev_status,
+    new_status,
+    created_at
+  `)
+  .gte('created_at', todayISO)  // Only events from today
+  .order('created_at', { ascending: false })
+  .limit(maxItems);
+```
+
+Also filter new realtime events (around line 149-170):
+
+```typescript
+// Add check before adding to state:
+const eventDate = new Date(event.created_at);
+const todayStart = new Date();
+todayStart.setHours(0, 0, 0, 0);
+
+if (eventDate >= todayStart) {
+  setActivities(prev => [newActivity, ...prev.slice(0, maxItems - 1)]);
+}
+```
+
+### 2. Fix Scroll Height - Use Fixed Panel
+
+The issue is that Radix ScrollArea requires a fixed height ancestor to work properly. The `calc()` approach doesn't give it a definite height.
+
+**File: `src/components/team/LiveActivityFeed.tsx`**
+
+**Change ScrollArea (line 189):**
+
+```typescript
+// Before:
 <ScrollArea className="min-h-[200px] max-h-[calc(100vh-300px)] px-4 pb-4">
+
+// After:
+<ScrollArea className="h-[400px] px-4 pb-4">
 ```
 
-**Explanation:**
-- `min-h-[200px]` - Ensures the feed is always at least 200px tall (shows ~3-4 entries)
-- `max-h-[calc(100vh-300px)]` - Dynamically calculates max height based on viewport, leaving room for:
-  - Header (64px)
-  - Page title area (~80px)
-  - Card header (~60px)
-  - Bottom padding (~96px for mobile nav)
+**Why this works:** A fixed `400px` height gives the ScrollArea a definite container to scroll within. The Radix Viewport inside will then properly enable scrolling for overflow content.
+
+**Why the `calc()` didn't work:** Radix ScrollArea's Viewport uses `h-full` which requires its parent to have a computed height. When using `max-h-[calc(...)]` without a min-height constraint that matches, the container can collapse or not trigger the overflow detection correctly.
 
 ---
 
-## Alternative Consideration
+## Summary of Changes
 
-If the card should truly fill the remaining height of the right column, we could also add `flex-1` to make it grow within the parent container:
-
-**Additional Change to TeamStatusBoard.tsx (Line 227):**
-
-```typescript
-// Before:
-<div className="space-y-6">
-
-// After:
-<div className="space-y-6 flex flex-col">
-```
-
-And adjust the LiveActivityFeed Card:
-
-```typescript
-// Before:
-<Card className={cn('h-full', className)}>
-
-// After:
-<Card className={cn('flex-1 flex flex-col min-h-0', className)}>
-```
-
-This approach would make the Live Activity Feed expand to fill all available vertical space in the right column.
+| Location | Change |
+|----------|--------|
+| Line 75-89 | Add `todayISO` calculation and `.gte('created_at', todayISO)` filter |
+| Line 149-170 | Add date check before adding realtime events |
+| Line 189 | Change `min-h-[200px] max-h-[calc(100vh-300px)]` back to `h-[400px]` |
 
 ---
 
-## Summary
+## Expected Result
 
-| File | Change |
-|------|--------|
-| `src/components/team/LiveActivityFeed.tsx` | Change `h-[400px]` to `min-h-[200px] max-h-[calc(100vh-300px)]` |
-
-**Result:** The Live Activity Feed will dynamically size based on viewport height, preventing content from being cropped while still maintaining scrollability for long activity lists.
+- Live Activity shows only events from today (midnight to now)
+- Panel has a fixed 400px height with internal scrolling
+- All events within the panel are visible and scrollable
+- Old events (yesterday, 2 days ago, etc.) are filtered out
 
