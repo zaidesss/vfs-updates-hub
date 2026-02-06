@@ -404,3 +404,73 @@ export async function deleteReport(
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * EOD Analytics data structure
+ */
+export interface EODAnalytics {
+  date: string;
+  attendance: {
+    active: number;
+    scheduled: number;
+    onTime: number;
+    onTimeRate: number;
+    fullShift: number;
+    fullShiftRate: number;
+  };
+  productivity: {
+    total: number;
+    email: number;
+    chat: number;
+    call: number;
+    quotaAgents: number;
+    quotaMet: number;
+    quotaRate: number;
+    avgGap: number | null;
+  };
+  time: {
+    avgLogged: number | null;
+    avgRequired: number | null;
+  };
+  compliance: {
+    clean: number;
+    cleanRate: number;
+    incidents: number;
+    breakdown: Record<string, number>;
+  };
+  status: 'good' | 'warning' | 'critical';
+  details: string[];
+}
+
+/**
+ * Fetch EOD team analytics for a specific date
+ */
+export async function fetchEODAnalytics(
+  date?: string
+): Promise<{ data: EODAnalytics | null; error: string | null }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-eod-analytics`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ date }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { data: null, error: errorText || 'Failed to fetch analytics' };
+    }
+
+    const result = await response.json();
+    return { data: result.analytics, error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}

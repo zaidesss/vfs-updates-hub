@@ -14,6 +14,7 @@ import { ReportFilters } from '@/components/agent-reports/ReportFilters';
 import { ReportSummaryCards } from '@/components/agent-reports/ReportSummaryCards';
 import { ReportDetailDialog } from '@/components/agent-reports/ReportDetailDialog';
 import { AgentAnalyticsPanel } from '@/components/agent-reports/AgentAnalyticsPanel';
+import { EODAnalyticsPanel } from '@/components/agent-reports/EODAnalyticsPanel';
 
 import {
   type AgentReport,
@@ -38,7 +39,7 @@ export default function AgentReports() {
   const [month, setMonth] = useState(currentDate.getMonth() + 1);
   const [agentEmail, setAgentEmail] = useState('');
   const [incidentType, setIncidentType] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('open');
 
   // Data state
   const [reports, setReports] = useState<AgentReport[]>([]);
@@ -89,7 +90,7 @@ export default function AgentReports() {
   const handleClearFilters = () => {
     setAgentEmail('');
     setIncidentType('');
-    setStatus('');
+    setStatus('open'); // Preserve default "open" filter
   };
 
   const handleViewReport = (report: AgentReport) => {
@@ -121,6 +122,9 @@ export default function AgentReports() {
 
         {/* Summary Cards */}
         <ReportSummaryCards summary={summary} isLoading={isLoading} data-tour="summary-cards" />
+
+        {/* EOD Team Analytics Panel */}
+        <EODAnalyticsPanel />
 
         {/* Filters */}
         <Card>
