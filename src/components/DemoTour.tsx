@@ -168,7 +168,7 @@ export function DemoTour({ steps, isOpen, onClose, onComplete, userEmail }: Demo
     <>
       {/* Backdrop - clickable to close */}
       <div 
-        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
+        className="fixed inset-0 z-[100] bg-black/60 cursor-pointer" 
         onClick={onClose}
       />
 

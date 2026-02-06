@@ -146,7 +146,7 @@ export function PageDemoGuide({ pageId, isOpen, onClose, isAdmin, isHR }: PageDe
     <>
       {/* Backdrop - clickable to close */}
       <div 
-        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
+        className="fixed inset-0 z-[100] bg-black/60 cursor-pointer" 
         onClick={onClose}
       />
 
