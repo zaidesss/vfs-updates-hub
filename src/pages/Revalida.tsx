@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import {
   fetchBatches,
   fetchBatchById,

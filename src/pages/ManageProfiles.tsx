@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Loader2, Save, User, DollarSign, ChevronLeft, Search, Briefcase, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { fetchAllUsersWithProfiles, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, fetchAllChangeRequests, updateChangeRequestStatus, ProfileChangeRequest, UserWithProfile, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { normalizeNameForStorage } from '@/lib/stringUtils';
@@ -267,9 +268,12 @@ export default function ManageProfilesPage() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Manage Agent Profiles</h1>
-          <p className="text-muted-foreground">View and edit agent information and compensation</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Manage Agent Profiles</h1>
+            <p className="text-muted-foreground">View and edit agent information and compensation</p>
+          </div>
+          <PageGuideButton pageId="manage-profiles" />
         </div>
 
         {isSuperAdmin && pendingRequests.length > 0 && (

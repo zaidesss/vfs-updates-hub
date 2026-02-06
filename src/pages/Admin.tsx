@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { 
   Plus, 
   FileText, 
@@ -579,6 +580,8 @@ export default function Admin() {
             </Button>
 
             <CreateUpdateDialog onUpdateCreated={handleRefresh} />
+            
+            <PageGuideButton pageId="admin" />
           </div>
         </div>
 

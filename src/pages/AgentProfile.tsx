@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
 import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
@@ -334,9 +335,12 @@ export default function AgentProfilePage() {
   return (
     <Layout>
       <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
-          <p className="text-muted-foreground">Manage your personal and work information</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
+            <p className="text-muted-foreground">Manage your personal and work information</p>
+          </div>
+          <PageGuideButton pageId="profile" />
         </div>
 
         <Card>
