@@ -541,8 +541,11 @@ export async function syncAllProfilesToDirectory(): Promise<{
         day_off: profile.day_off || [],
         upwork_contract_id: profile.upwork_contract_id || null,
         ticket_assignment_view_id: profile.ticket_assignment_enabled ? profile.ticket_assignment_view_id : null,
-        weekday_schedule: profile.mon_schedule || null,
-        weekend_schedule: profile.sat_schedule || null,
+        // Find first available weekday schedule (not just Monday - handles day off)
+        weekday_schedule: profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
+                          profile.thu_schedule || profile.fri_schedule || null,
+        // Find first available weekend schedule (not just Saturday - handles day off)
+        weekend_schedule: profile.sat_schedule || profile.sun_schedule || null,
       };
       
       // Calculate hours (pass per-day OT schedules for new calculation)
