@@ -476,3 +476,79 @@ export async function fetchEODAnalytics(
     return { data: null, error: err.message };
   }
 }
+
+/**
+ * EOW (End of Week) Analytics data structure
+ */
+export interface EOWAnalytics {
+  weekStart: string;
+  weekEnd: string;
+  attendance: {
+    scheduledDays: number;
+    activeDays: number;
+    onTimeDays: number;
+    fullShiftDays: number;
+    onTimeRate: number;
+    fullShiftRate: number;
+    attendanceRate: number;
+  };
+  productivity: {
+    total: number;
+    email: number;
+    chat: number;
+    call: number;
+    quotaAgents: number;
+    quotaMet: number;
+    quotaRate: number;
+    avgGap: number | null;
+  };
+  time: {
+    totalLogged: number;
+    totalRequired: number;
+    avgLoggedPerDay: number | null;
+    avgRequiredPerDay: number | null;
+  };
+  compliance: {
+    totalIncidents: number;
+    agentsWithIncidents: number;
+    cleanAgents: number;
+    cleanRate: number;
+    breakdown: Record<string, number>;
+  };
+  status: 'good' | 'warning' | 'critical';
+  details: string[];
+}
+
+/**
+ * Fetch EOW (End of Week) team analytics
+ */
+export async function fetchEOWAnalytics(
+  weekStart?: string,
+  weekEnd?: string
+): Promise<{ data: EOWAnalytics | null; error: string | null }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weekly-analytics`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ weekStart, weekEnd, silent: true }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { data: null, error: errorText || 'Failed to fetch weekly analytics' };
+    }
+
+    const result = await response.json();
+    return { data: result.analytics, error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+}

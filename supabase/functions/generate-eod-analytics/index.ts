@@ -7,6 +7,9 @@ const corsHeaders = {
 
 const THRESHOLDS = { onTimeLogin: 90, shiftComplete: 85, quota: 70, violations: 75, gap: 5 };
 
+// Positions to exclude from team analytics (still included in individual analytics)
+const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -31,15 +34,25 @@ Deno.serve(async (req) => {
 
     console.log(`EOD analytics for ${dateStr} (${dayName})`);
 
-    const { data: profiles } = await supabase.from("agent_profiles").select("id, email, position, quota_email, quota_chat, quota_phone");
+    // Fetch profiles excluding Team Leads, Technical Support, and Logistics
+    const { data: profiles } = await supabase
+      .from("agent_profiles")
+      .select("id, email, position, quota_email, quota_chat, quota_phone")
+      .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`);
+    
     if (!profiles?.length) return new Response(JSON.stringify({ success: true, message: "No profiles" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { data: dirs } = await supabase.from("agent_directory").select("email, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off");
     const dirMap = new Map<string, any>(); dirs?.forEach(d => dirMap.set(d.email.toLowerCase(), d));
 
-    const startOfDay = `${dateStr}T00:00:00.000Z`, endOfDay = `${dateStr}T23:59:59.999Z`;
-    const { data: events } = await supabase.from("profile_events").select("profile_id, event_type, created_at").gte("created_at", startOfDay).lte("created_at", endOfDay);
-    const { data: tickets } = await supabase.from("ticket_logs").select("agent_email, ticket_type").gte("timestamp", startOfDay).lte("timestamp", endOfDay);
+    // EST boundaries: midnight EST = 5:00 AM UTC
+    const startOfDayEST = `${dateStr}T05:00:00.000Z`;
+    const nextDateForEnd = new Date(dateStr);
+    nextDateForEnd.setDate(nextDateForEnd.getDate() + 1);
+    const endOfDayEST = `${nextDateForEnd.toISOString().split("T")[0]}T04:59:59.999Z`;
+
+    const { data: events } = await supabase.from("profile_events").select("profile_id, event_type, created_at").gte("created_at", startOfDayEST).lte("created_at", endOfDayEST);
+    const { data: tickets } = await supabase.from("ticket_logs").select("agent_email, ticket_type").gte("timestamp", startOfDayEST).lte("timestamp", endOfDayEST);
     const { data: gaps } = await supabase.from("ticket_gap_daily").select("agent_email, avg_gap_seconds").eq("date", dateStr);
     const { data: incidents } = await supabase.from("agent_reports").select("agent_email, incident_type").eq("incident_date", dateStr);
 
@@ -142,26 +155,42 @@ Deno.serve(async (req) => {
 
     // Notifications - only send when NOT in silent mode (scheduled runs only)
     if (!silent) {
-      const { data: admins } = await supabase.from("user_roles").select("email").in("role", ["admin", "hr", "super_admin"]);
+      // Fetch ALL users for email notifications (agents + admins)
+      const { data: allProfiles } = await supabase
+        .from("agent_profiles")
+        .select("email")
+        .neq("employment_status", "Terminated");
+
+      const { data: admins } = await supabase
+        .from("user_roles")
+        .select("email")
+        .in("role", ["admin", "hr", "super_admin"]);
+
+      const allEmails = new Set<string>();
+      allProfiles?.forEach(p => allEmails.add(p.email.toLowerCase()));
+      admins?.forEach(a => allEmails.add(a.email.toLowerCase()));
+
       const adminEmails = [...new Set(admins?.map(x => x.email.toLowerCase()) || [])];
       const title = `📊 EOD Team Analytics: ${dateStr}`;
       const statusEmoji = status === "good" ? "✅" : status === "warning" ? "⚠️" : "🚨";
       const msg = `${statusEmoji} ${status.toUpperCase()}: ${a.attendance.active} active, ${a.productivity.total} tickets, ${a.compliance.cleanRate.toFixed(0)}% clean`;
 
+      // In-app notifications for admins only
       const notifs = adminEmails.map(email => ({ user_email: email, title, message: msg, type: "eod_analytics", reference_type: "agent_reports", reference_id: null }));
       if (notifs.length > 0) await supabase.from("notifications").insert(notifs);
 
-      // Email
-      if (resendApiKey && adminEmails.length > 0) {
+      // Email to ALL users
+      const allEmailRecipients = Array.from(allEmails);
+      if (resendApiKey && allEmailRecipients.length > 0) {
         const fmtH = (h: number) => { const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60); return hrs === 0 ? `${mins}m` : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`; };
         const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;"><div style="background:#fff;border-radius:12px;padding:24px;"><h1 style="text-align:center;font-size:24px;">📊 EOD Team Analytics</h1><p style="text-align:center;color:#64748b;">${dateStr}</p><div style="background:${status === "good" ? "#10b981" : status === "warning" ? "#f59e0b" : "#ef4444"}15;border-left:4px solid ${status === "good" ? "#10b981" : status === "warning" ? "#f59e0b" : "#ef4444"};padding:16px;border-radius:8px;margin-bottom:24px;"><strong>${statusEmoji} ${status.toUpperCase()}</strong>${details.map(d => `<div style="font-size:13px;margin-top:4px;">${d}</div>`).join("")}</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>👥 Attendance</strong> (${a.attendance.active} active)<br>On-Time: ${a.attendance.onTimeRate.toFixed(0)}% | Shift Complete: ${a.attendance.fullShiftRate.toFixed(0)}%</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>📈 Productivity</strong><br>Tickets: ${a.productivity.total} | Quota Met: ${a.productivity.quotaRate.toFixed(0)}% | Gap: ${a.productivity.avgGap?.toFixed(1) ?? "--"} min</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>⏱️ Time</strong><br>Avg Hours: ${a.time.avgLogged !== null ? fmtH(a.time.avgLogged) : "--"} / ${a.time.avgRequired !== null ? fmtH(a.time.avgRequired) : "--"} required</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;"><strong>✅ Compliance</strong><br>Clean: ${a.compliance.cleanRate.toFixed(0)}% | Incidents: ${a.compliance.incidents}</div></div></body></html>`;
-        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@vfsoperations.online>", to: adminEmails, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent"); } catch (e) { console.error("Email error:", e); }
+        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@vfsoperations.online>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
       }
 
-      // Slack
+      // Slack to a_agent_reports channel
       if (slackBotToken) {
         const slackMsg = `📊 *EOD Team Analytics - ${dateStr}*\n\n${statusEmoji} *${status.toUpperCase()}*\n\n👥 Attendance: ${a.attendance.active} active | On-Time: ${a.attendance.onTimeRate.toFixed(0)}% | Complete: ${a.attendance.fullShiftRate.toFixed(0)}%\n📈 Productivity: ${a.productivity.total} tickets | Quota: ${a.productivity.quotaRate.toFixed(0)}% | Gap: ${a.productivity.avgGap?.toFixed(1) ?? "--"} min\n✅ Compliance: Clean ${a.compliance.cleanRate.toFixed(0)}% | Incidents: ${a.compliance.incidents}`;
-        try { await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${slackBotToken}` }, body: JSON.stringify({ channel: "#a_pb_mgt", text: slackMsg, mrkdwn: true }) }); console.log("Slack sent"); } catch (e) { console.error("Slack error:", e); }
+        try { await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${slackBotToken}` }, body: JSON.stringify({ channel: "a_agent_reports", text: slackMsg, mrkdwn: true }) }); console.log("Slack sent to a_agent_reports"); } catch (e) { console.error("Slack error:", e); }
       }
     }
 

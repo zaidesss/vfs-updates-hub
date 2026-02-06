@@ -149,7 +149,7 @@ export function IndividualAgentAnalytics() {
         .order('created_at'),
       supabase.from('ticket_logs')
         .select('ticket_type')
-        .or(`agent_email.eq.${email},agent_name.eq.${agentTag}`)
+        .or(`agent_email.ilike.${email},agent_name.ilike.${agentTag}`)
         .gte('timestamp', startOfDayEST)
         .lte('timestamp', endOfDayEST),
       supabase.from('ticket_gap_daily')
@@ -254,7 +254,7 @@ export function IndividualAgentAnalytics() {
         .order('created_at'),
       supabase.from('ticket_logs')
         .select('ticket_type, timestamp')
-        .or(`agent_email.eq.${email},agent_name.eq.${agentTag}`)
+        .or(`agent_email.ilike.${email},agent_name.ilike.${agentTag}`)
         .gte('timestamp', startOfWeekEST)
         .lte('timestamp', endOfWeekEST),
       supabase.from('ticket_gap_daily')
