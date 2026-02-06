@@ -222,8 +222,9 @@ export function calculateTotalHours(entry: Partial<DirectoryEntry>): {
     // Parse actual break duration from break schedule
     const breakDurationPerDay = parseScheduleHours(entry.break_schedule ?? null);
     
-    // Weekday breaks only (no Revalida deduction anymore)
-    unpaidBreakHours = workingWeekdays * breakDurationPerDay;
+    // Deduct breaks for ALL scheduled working days (weekdays + weekends)
+    const totalWorkingDays = workingWeekdays + workingWeekendDays;
+    unpaidBreakHours = totalWorkingDays * breakDurationPerDay;
   }
   
   // Fixed weekly additions (paid activities)

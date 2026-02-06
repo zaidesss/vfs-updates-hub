@@ -88,8 +88,9 @@ export function calculateProfileTotalHours(profile: Partial<AgentProfileInput>):
   if (hasBreakSchedule) {
     // Parse actual break duration from break schedule
     const breakDurationPerDay = parseScheduleHours(profile.break_schedule);
-    // Weekday breaks only
-    unpaidBreakHours = workingWeekdays * breakDurationPerDay;
+    // Deduct breaks for ALL scheduled working days (weekdays + weekends)
+    const totalWorkingDays = workingWeekdays + workingWeekendDays;
+    unpaidBreakHours = totalWorkingDays * breakDurationPerDay;
   }
   
   // Fixed weekly additions (paid activities)
