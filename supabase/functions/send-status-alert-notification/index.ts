@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
             'Authorization': `Bearer ${slackBotToken}`,
           },
           body: JSON.stringify({
-            channel: 'a_pb_mgt',
+            channel: 'a_agent_reports',
             text: slackMessage,
           }),
         });

@@ -5,6 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Positions to exclude from team analytics (still included in individual analytics)
+const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -48,20 +51,26 @@ Deno.serve(async (req) => {
 
     console.log(`Weekly analytics for ${weekStartStr} to ${weekEndStr}`);
 
-    // Fetch all profiles
-    const { data: profiles } = await supabase.from("agent_profiles").select("id, email, full_name, position, quota_email, quota_chat, quota_phone");
+    // Fetch profiles excluding Team Leads, Technical Support, and Logistics
+    const { data: profiles } = await supabase
+      .from("agent_profiles")
+      .select("id, email, full_name, position, quota_email, quota_chat, quota_phone")
+      .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`);
+    
     if (!profiles?.length) return new Response(JSON.stringify({ success: true, message: "No profiles" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     // Fetch directories for schedule info
     const { data: dirs } = await supabase.from("agent_directory").select("email, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off");
     const dirMap = new Map<string, any>(); dirs?.forEach(d => dirMap.set(d.email.toLowerCase(), d));
 
-    // Fetch events for the week
-    const startOfWeek = `${weekStartStr}T00:00:00.000Z`;
-    const endOfWeek = `${weekEndStr}T23:59:59.999Z`;
+    // EST boundaries: midnight EST = 5:00 AM UTC
+    const startOfWeekEST = `${weekStartStr}T05:00:00.000Z`;
+    const nextDayAfterEnd = new Date(weekEndStr);
+    nextDayAfterEnd.setDate(nextDayAfterEnd.getDate() + 1);
+    const endOfWeekEST = `${nextDayAfterEnd.toISOString().split("T")[0]}T04:59:59.999Z`;
     
-    const { data: events } = await supabase.from("profile_events").select("profile_id, event_type, created_at").gte("created_at", startOfWeek).lte("created_at", endOfWeek);
-    const { data: tickets } = await supabase.from("ticket_logs").select("agent_email, ticket_type").gte("timestamp", startOfWeek).lte("timestamp", endOfWeek);
+    const { data: events } = await supabase.from("profile_events").select("profile_id, event_type, created_at").gte("created_at", startOfWeekEST).lte("created_at", endOfWeekEST);
+    const { data: tickets } = await supabase.from("ticket_logs").select("agent_email, ticket_type").gte("timestamp", startOfWeekEST).lte("timestamp", endOfWeekEST);
     const { data: gaps } = await supabase.from("ticket_gap_daily").select("agent_email, avg_gap_seconds, date").gte("date", weekStartStr).lte("date", weekEndStr);
     const { data: incidents } = await supabase.from("agent_reports").select("agent_email, incident_type").gte("incident_date", weekStartStr).lte("incident_date", weekEndStr);
 
@@ -214,17 +223,33 @@ Deno.serve(async (req) => {
 
     // Notifications - only when NOT in silent mode
     if (!silent) {
-      const { data: admins } = await supabase.from("user_roles").select("email").in("role", ["admin", "hr", "super_admin"]);
+      // Fetch ALL users for email notifications (agents + admins)
+      const { data: allProfiles } = await supabase
+        .from("agent_profiles")
+        .select("email")
+        .neq("employment_status", "Terminated");
+
+      const { data: admins } = await supabase
+        .from("user_roles")
+        .select("email")
+        .in("role", ["admin", "hr", "super_admin"]);
+
+      const allEmails = new Set<string>();
+      allProfiles?.forEach(p => allEmails.add(p.email.toLowerCase()));
+      admins?.forEach(a => allEmails.add(a.email.toLowerCase()));
+
       const adminEmails = [...new Set(admins?.map(x => x.email.toLowerCase()) || [])];
       const title = `📊 Weekly Team Analytics: ${weekStartStr} to ${weekEndStr}`;
       const statusEmoji = status === "good" ? "✅" : status === "warning" ? "⚠️" : "🚨";
       const msg = `${statusEmoji} ${status.toUpperCase()}: ${analytics.productivity.total} tickets, ${analytics.attendance.attendanceRate.toFixed(0)}% attendance, ${analytics.compliance.cleanRate.toFixed(0)}% clean`;
 
+      // In-app notifications for admins only
       const notifs = adminEmails.map(email => ({ user_email: email, title, message: msg, type: "weekly_analytics", reference_type: "agent_reports", reference_id: null }));
       if (notifs.length > 0) await supabase.from("notifications").insert(notifs);
 
-      // Email
-      if (resendApiKey && adminEmails.length > 0) {
+      // Email to ALL users
+      const allEmailRecipients = Array.from(allEmails);
+      if (resendApiKey && allEmailRecipients.length > 0) {
         const fmtH = (h: number) => { const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60); return hrs === 0 ? `${mins}m` : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`; };
         const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;">
           <div style="background:#fff;border-radius:12px;padding:24px;">
@@ -256,13 +281,13 @@ Deno.serve(async (req) => {
             </div>
           </div>
         </body></html>`;
-        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@vfsoperations.online>", to: adminEmails, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent"); } catch (e) { console.error("Email error:", e); }
+        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@vfsoperations.online>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
       }
 
-      // Slack
+      // Slack to a_agent_reports channel
       if (slackBotToken) {
         const slackMsg = `📊 *Weekly Team Analytics*\n*${weekStartStr} to ${weekEndStr}*\n\n${statusEmoji} *${status.toUpperCase()}*\n\n👥 Attendance: ${analytics.attendance.attendanceRate.toFixed(0)}% | On-Time: ${analytics.attendance.onTimeRate.toFixed(0)}% | Full Shift: ${analytics.attendance.fullShiftRate.toFixed(0)}%\n📈 Productivity: ${analytics.productivity.total} tickets | Quota: ${analytics.productivity.quotaRate.toFixed(0)}%\n✅ Compliance: ${analytics.compliance.cleanRate.toFixed(0)}% clean | ${analytics.compliance.totalIncidents} incidents`;
-        try { await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${slackBotToken}` }, body: JSON.stringify({ channel: "#a_pb_mgt", text: slackMsg, mrkdwn: true }) }); console.log("Slack sent"); } catch (e) { console.error("Slack error:", e); }
+        try { await fetch("https://slack.com/api/chat.postMessage", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${slackBotToken}` }, body: JSON.stringify({ channel: "a_agent_reports", text: slackMsg, mrkdwn: true }) }); console.log("Slack sent to a_agent_reports"); } catch (e) { console.error("Slack error:", e); }
       }
     }
 
