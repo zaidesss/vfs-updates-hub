@@ -1,100 +1,137 @@
 
-# Fix Sync: Use First Available Schedule Instead of Fixed Day
 
-## Problem Identified
+# Fix Demo Guide Interactivity Issues
 
-The calculation and sync logic uses `mon_schedule` as the representative weekday schedule and `sat_schedule` as the representative weekend schedule. When an agent has Monday or Saturday as a day off, these fields are `null`, causing the hours calculation to be wrong.
+## Problems Identified
 
-**Example - Pauline Carbajosa:**
-- Days off: `['Sun', 'Mon']`
-- `mon_schedule = null` (Monday is off)
-- Actual working weekdays: Tue-Fri all have `12:00 PM - 7:30 PM`
-- **Current result:** weekday_total_hours = 0 (WRONG)
-- **Expected result:** weekday_total_hours = 4 days × 7.5 hours = 30 hours
+| Issue | Symptom | Root Cause |
+|-------|---------|------------|
+| Guide card disappears | Grey screen, can't exit | Card rendered off-screen when target element not found |
+| Full background blur | Blurs entire page instead of spotlight | Spotlight div doesn't render when target is null, but backdrop still shows |
+| Unresponsive/frozen | Can't click any buttons | Card has no explicit background, becomes invisible against backdrop |
+| No exit option | Must refresh page | Backdrop blocks all interaction, card is invisible |
 
-## Root Cause
+---
 
-| File | Bug Location | Issue |
-|------|--------------|-------|
-| `src/lib/profileTotalHours.ts` | Lines 55-58 | Uses `mon_schedule` and `sat_schedule` as representatives |
-| `src/lib/masterDirectoryApi.ts` | Lines 544-545 | Uses `mon_schedule` and `sat_schedule` for sync |
-| `src/lib/masterDirectoryApi.ts` | Lines 185-186 | Uses `weekday_schedule` and `weekend_schedule` for calculation |
+## Technical Root Causes
+
+### 1. Missing Explicit Background on Card
+The Card component relies on `bg-card` CSS variable which can fail when:
+- Combined with `backdrop-blur-sm` on the parent overlay
+- The stacking context makes it transparent
+
+### 2. Card Position Calculation Goes Off-Screen
+When `targetRect` is null or the calculated position is negative/beyond viewport, the card becomes invisible but the blocking backdrop remains.
+
+### 3. No Click Handler on Backdrop
+Users cannot dismiss the guide by clicking outside (on the backdrop).
+
+---
 
 ## Solution
 
-Create helper functions to find the **first available schedule** from the per-day fields, not just Monday/Saturday.
+### File 1: `src/components/PageDemoGuide.tsx`
+
+**Changes:**
+1. Add explicit solid background to the Card (`bg-card` + fallback)
+2. Add click-to-close on backdrop
+3. Ensure card position is always within viewport bounds
+4. Add fallback center positioning when target not found
+
+```tsx
+// 1. Backdrop - make it clickable to close
+<div 
+  className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
+  onClick={onClose}
+/>
+
+// 2. Card - add explicit background and ensure it's always visible
+<Card
+  className="fixed z-[102] w-[90vw] max-w-md shadow-2xl border-primary/20 bg-card"
+  style={{
+    ...getCardPosition(),
+    backgroundColor: 'hsl(var(--card))', // Explicit fallback
+  }}
+>
+```
+
+### 3. Improve Position Calculation
+Ensure card never renders off-screen:
+
+```tsx
+const getCardPosition = () => {
+  const cardWidth = 400;
+  const cardHeight = 300;
+  const padding = 20;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  // Default to center if no target
+  if (!targetRect || currentStepData?.position === 'center') {
+    return {
+      position: 'fixed' as const,
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+    };
+  }
+  
+  // Calculate position based on target
+  let top = 0;
+  let left = 0;
+  
+  switch (currentStepData?.position) {
+    case 'bottom':
+      top = targetRect.bottom + padding;
+      left = targetRect.left;
+      break;
+    // ... other cases
+  }
+  
+  // CLAMP to viewport bounds
+  top = Math.max(padding, Math.min(top, viewportHeight - cardHeight - padding));
+  left = Math.max(padding, Math.min(left, viewportWidth - cardWidth - padding));
+  
+  return {
+    position: 'fixed' as const,
+    top: `${top}px`,
+    left: `${left}px`,
+  };
+};
+```
 
 ---
 
-## Technical Changes
+### File 2: `src/components/DemoTour.tsx`
 
-### File 1: `src/lib/profileTotalHours.ts`
-
-Add helper function and update schedule retrieval:
-
-```typescript
-// Helper to get first available weekday schedule
-function getFirstWeekdaySchedule(profile: Partial<AgentProfileInput>): string | null | undefined {
-  return profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
-         profile.thu_schedule || profile.fri_schedule;
-}
-
-// Helper to get first available weekend schedule
-function getFirstWeekendSchedule(profile: Partial<AgentProfileInput>): string | null | undefined {
-  return profile.sat_schedule || profile.sun_schedule;
-}
-```
-
-Then update lines 55-58:
-```typescript
-// Get weekday schedule from first available working day
-const dailyWeekdayHours = parseScheduleHours(getFirstWeekdaySchedule(profile));
-// Get weekend schedule from first available weekend day
-const dailyWeekendHours = parseScheduleHours(getFirstWeekendSchedule(profile));
-```
-
----
-
-### File 2: `src/lib/masterDirectoryApi.ts`
-
-Update sync logic (lines 544-545):
-
-```typescript
-// Find first available weekday schedule (not just Monday)
-weekday_schedule: profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
-                  profile.thu_schedule || profile.fri_schedule || null,
-// Find first available weekend schedule (not just Saturday)
-weekend_schedule: profile.sat_schedule || profile.sun_schedule || null,
-```
+Apply the same fixes for the global tour component.
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/lib/profileTotalHours.ts` | Add helpers and use first available schedule |
-| `src/lib/masterDirectoryApi.ts` | Update sync to use first available schedule |
+| File | Changes |
+|------|---------|
+| `src/components/PageDemoGuide.tsx` | Add backdrop click handler, explicit Card background, viewport clamping |
+| `src/components/DemoTour.tsx` | Same fixes for global tour |
 
 ---
 
 ## Expected Results After Fix
 
-**For Pauline Carbajosa (days off: Sun, Mon):**
-
-| Metric | Before (Bug) | After (Fixed) |
-|--------|--------------|---------------|
-| weekday_schedule | null | 12:00 PM - 7:30 PM |
-| weekday_total_hours | 0 | 30 (4 days × 7.5h) |
-| weekend_total_hours | 7.5 | 7.5 |
-| unpaid_break_hours | 2.5 | 2.5 |
-| overall_total_hours | 6 | 36 |
+| Scenario | Before | After |
+|----------|--------|-------|
+| Target element not found | Grey screen, frozen | Card shows centered, can close |
+| Card position off-screen | Card invisible, backdrop blocks | Card clamped to viewport |
+| Click on backdrop | Nothing happens | Closes the guide |
+| Card background | Sometimes transparent | Always solid background |
 
 ---
 
 ## Implementation Notes
 
-After applying this fix:
-1. The profile page will show correct total hours immediately
-2. Master Directory needs a "Sync from Bios" click to recalculate stored values
-3. All agents with non-Monday/Saturday day offs will be fixed
+1. Both components (`PageDemoGuide.tsx` and `DemoTour.tsx`) share similar code and need the same fixes
+2. The explicit `backgroundColor` style is a fallback in case CSS variables fail
+3. Viewport clamping ensures the card is always visible and accessible
+4. Backdrop click provides an escape hatch even if buttons are somehow unreachable
+
