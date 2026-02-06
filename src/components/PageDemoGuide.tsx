@@ -88,8 +88,15 @@ export function PageDemoGuide({ pageId, isOpen, onClose, isAdmin, isHR }: PageDe
 
   if (!isOpen || steps.length === 0) return null;
 
-  // Calculate card position based on target
-  const getCardPosition = () => {
+  // Calculate card position based on target with viewport clamping
+  const getCardPosition = (): React.CSSProperties => {
+    const cardWidth = 400;
+    const cardHeight = 300;
+    const padding = 20;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 768;
+
+    // Default to center if no target or position is center
     if (!targetRect || currentStepData?.position === 'center') {
       return {
         position: 'fixed' as const,
@@ -99,49 +106,49 @@ export function PageDemoGuide({ pageId, isOpen, onClose, isAdmin, isHR }: PageDe
       };
     }
 
-    const padding = 20;
-    const cardWidth = 400;
-    const cardHeight = 300;
+    let top = 0;
+    let left = 0;
 
     switch (currentStepData?.position) {
       case 'bottom':
-        return {
-          position: 'fixed' as const,
-          top: `${targetRect.bottom + padding}px`,
-          left: `${Math.max(padding, Math.min(targetRect.left, window.innerWidth - cardWidth - padding))}px`,
-        };
+        top = targetRect.bottom + padding;
+        left = targetRect.left;
+        break;
       case 'top':
-        return {
-          position: 'fixed' as const,
-          top: `${targetRect.top - cardHeight - padding}px`,
-          left: `${Math.max(padding, Math.min(targetRect.left, window.innerWidth - cardWidth - padding))}px`,
-        };
+        top = targetRect.top - cardHeight - padding;
+        left = targetRect.left;
+        break;
       case 'right':
-        return {
-          position: 'fixed' as const,
-          top: `${targetRect.top}px`,
-          left: `${targetRect.right + padding}px`,
-        };
+        top = targetRect.top;
+        left = targetRect.right + padding;
+        break;
       case 'left':
-        return {
-          position: 'fixed' as const,
-          top: `${targetRect.top}px`,
-          left: `${targetRect.left - cardWidth - padding}px`,
-        };
+        top = targetRect.top;
+        left = targetRect.left - cardWidth - padding;
+        break;
       default:
-        return {
-          position: 'fixed' as const,
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-        };
+        top = targetRect.bottom + padding;
+        left = targetRect.left;
     }
+
+    // CLAMP to viewport bounds - ensure card is always visible
+    top = Math.max(padding, Math.min(top, viewportHeight - cardHeight - padding));
+    left = Math.max(padding, Math.min(left, viewportWidth - cardWidth - padding));
+
+    return {
+      position: 'fixed' as const,
+      top: `${top}px`,
+      left: `${left}px`,
+    };
   };
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm" />
+      {/* Backdrop - clickable to close */}
+      <div 
+        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm cursor-pointer" 
+        onClick={onClose}
+      />
 
       {/* Spotlight highlight */}
       {targetRect && (
@@ -157,10 +164,13 @@ export function PageDemoGuide({ pageId, isOpen, onClose, isAdmin, isHR }: PageDe
         />
       )}
 
-      {/* Tour Card */}
+      {/* Tour Card - with explicit background for reliability */}
       <Card
-        className="fixed z-[102] w-[90vw] max-w-md shadow-2xl border-primary/20"
-        style={getCardPosition()}
+        className="fixed z-[102] w-[90vw] max-w-md shadow-2xl border-primary/20 bg-card"
+        style={{
+          ...getCardPosition(),
+          backgroundColor: 'hsl(var(--card))',
+        }}
       >
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
