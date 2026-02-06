@@ -118,6 +118,13 @@ export default function ManageProfilesPage() {
       break_schedule: profile?.break_schedule || '',
       weekday_ot_schedule: profile?.weekday_ot_schedule || '',
       weekend_ot_schedule: profile?.weekend_ot_schedule || '',
+      mon_ot_schedule: profile?.mon_ot_schedule || '',
+      tue_ot_schedule: profile?.tue_ot_schedule || '',
+      wed_ot_schedule: profile?.wed_ot_schedule || '',
+      thu_ot_schedule: profile?.thu_ot_schedule || '',
+      fri_ot_schedule: profile?.fri_ot_schedule || '',
+      sat_ot_schedule: profile?.sat_ot_schedule || '',
+      sun_ot_schedule: profile?.sun_ot_schedule || '',
       day_off: profile?.day_off || [],
       ot_enabled: profile?.ot_enabled || false,
     });
