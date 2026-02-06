@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
 import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, eachWeekOfInterval } from 'date-fns';
@@ -561,13 +562,15 @@ export default function TeamScorecard() {
                 )}
               </Tooltip>
             )}
+            
+            <PageGuideButton pageId="scorecard" data-tour="date-filter" />
           </div>
         </div>
 
-        {/* Filters Card */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
+         {/* Filters Card */}
+         <Card>
+           <CardContent className="pt-6">
+             <div className="flex flex-col gap-4" data-tour="date-filter">
               {/* Row 1: Date Selectors */}
               <div className="flex flex-wrap gap-4 items-end">
                 {/* Year Selector */}

@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { 
   Plus, 
   Search, 
@@ -311,26 +312,29 @@ export default function QAEvaluations() {
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">QA Evaluations</h1>
-            <p className="text-muted-foreground">
-              {canViewAll ? 'Quality assurance evaluations for all agents' : 'Your quality assurance evaluations'}
-            </p>
-          </div>
-          {canCreate && (
-            <Button onClick={() => navigate('/team-performance/qa-evaluations/new')}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Evaluation
-            </Button>
-          )}
-        </div>
+         {/* Header */}
+         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+           <div>
+             <h1 className="text-2xl font-bold">QA Evaluations</h1>
+             <p className="text-muted-foreground">
+               {canViewAll ? 'Quality assurance evaluations for all agents' : 'Your quality assurance evaluations'}
+             </p>
+           </div>
+           <div className="flex gap-2">
+             {canCreate && (
+               <Button onClick={() => navigate('/team-performance/qa-evaluations/new')} data-tour="create-qa">
+                 <Plus className="h-4 w-4 mr-2" />
+                 New Evaluation
+               </Button>
+             )}
+             <PageGuideButton pageId="qa-evaluations" />
+           </div>
+         </div>
 
-        {/* Filters Section - Year, Month, Week selectors in a row */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:flex-wrap">
+         {/* Filters Section - Year, Month, Week selectors in a row */}
+         <Card>
+           <CardContent className="pt-6">
+             <div className="flex flex-col gap-4 md:flex-row md:items-end md:flex-wrap" data-tour="qa-date-filter">
               {/* Year Selector */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-muted-foreground">Year</label>
@@ -410,7 +414,7 @@ export default function QAEvaluations() {
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-4" data-tour="qa-stats">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Evaluations</CardTitle>
@@ -495,8 +499,8 @@ export default function QAEvaluations() {
                   </Button>
                 )}
               </div>
-            ) : (
-              <Table>
+             ) : (
+               <Table data-tour="qa-table">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Ref #</TableHead>

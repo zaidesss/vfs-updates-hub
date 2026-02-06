@@ -5,6 +5,7 @@ import { fetchLoggedInTeamMembers, CategorizedTeamMembers, TeamMemberStatus } fr
 import { StatusCard } from '@/components/team-status/StatusCard';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -103,48 +104,50 @@ export default function TeamStatusBoard() {
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Team Status Board</h1>
-            <p className="text-muted-foreground">
-              {totalOnline} team member{totalOnline !== 1 ? 's' : ''} online
-            </p>
-          </div>
+       {/* Header */}
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+         <div>
+           <h1 className="text-2xl font-bold text-foreground">Team Status Board</h1>
+           <p className="text-muted-foreground">
+             {totalOnline} team member{totalOnline !== 1 ? 's' : ''} online
+           </p>
+         </div>
 
-          <div className="flex items-center gap-2">
-            {/* Sort Toggle */}
-            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
-              <Button
-                variant={sortBy === 'login' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setSortBy('login')}
-                className="text-xs"
-              >
-                By Login
-              </Button>
-              <Button
-                variant={sortBy === 'name' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setSortBy('name')}
-                className="text-xs"
-              >
-                By Name
-              </Button>
-            </div>
+         <div className="flex items-center gap-2">
+           {/* Sort Toggle */}
+           <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+             <Button
+               variant={sortBy === 'login' ? 'secondary' : 'ghost'}
+               size="sm"
+               onClick={() => setSortBy('login')}
+               className="text-xs"
+             >
+               By Login
+             </Button>
+             <Button
+               variant={sortBy === 'name' ? 'secondary' : 'ghost'}
+               size="sm"
+               onClick={() => setSortBy('name')}
+               className="text-xs"
+             >
+               By Name
+             </Button>
+           </div>
 
-            {/* Refresh Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadData}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="ml-2 hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
-        </div>
+           {/* Refresh Button */}
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={loadData}
+             disabled={isLoading}
+           >
+             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+             <span className="ml-2 hidden sm:inline">Refresh</span>
+           </Button>
+           
+           <PageGuideButton pageId="team-status" />
+         </div>
+       </div>
 
         {/* Error State */}
         {error && (
