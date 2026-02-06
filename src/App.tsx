@@ -6,8 +6,10 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UpdatesProvider } from "@/context/UpdatesContext";
 import { DemoTourProvider } from "@/context/DemoTourContext";
+import { PageDemoProvider } from "@/context/PageDemoContext";
 import { ProfileCompletionProvider } from "@/context/ProfileCompletionContext";
 import { DemoTourWrapper } from "@/components/DemoTourWrapper";
+import { PageDemoGuideWrapper } from "@/components/PageDemoGuideWrapper";
 import { ProfileCompletionWrapper } from "@/components/ProfileCompletionWrapper";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -326,15 +328,18 @@ const App = () => (
       <AuthProvider>
         <UpdatesProvider>
           <DemoTourProvider>
-            <ProfileCompletionProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <AppRoutes />
-                <DemoTourWrapper />
-                <ProfileCompletionWrapper />
-              </BrowserRouter>
-            </ProfileCompletionProvider>
+            <PageDemoProvider>
+              <ProfileCompletionProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <AppRoutes />
+                  <DemoTourWrapper />
+                  <PageDemoGuideWrapper />
+                  <ProfileCompletionWrapper />
+                </BrowserRouter>
+              </ProfileCompletionProvider>
+            </PageDemoProvider>
           </DemoTourProvider>
         </UpdatesProvider>
       </AuthProvider>
