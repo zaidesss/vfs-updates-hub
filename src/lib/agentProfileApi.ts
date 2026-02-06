@@ -368,8 +368,12 @@ async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
     sat_schedule: input.sat_schedule || null,
     sun_schedule: input.sun_schedule || null,
     break_schedule: input.break_schedule || null,
-    weekday_ot_schedule: input.weekday_ot_schedule || null,
-    weekend_ot_schedule: input.weekend_ot_schedule || null,
+    // Derive weekday OT summary from first available Mon-Fri OT schedule
+    weekday_ot_schedule: input.mon_ot_schedule || input.tue_ot_schedule || 
+                         input.wed_ot_schedule || input.thu_ot_schedule || 
+                         input.fri_ot_schedule || null,
+    // Derive weekend OT summary from first available Sat-Sun OT schedule
+    weekend_ot_schedule: input.sat_ot_schedule || input.sun_ot_schedule || null,
     // Per-day OT schedules
     mon_ot_schedule: input.mon_ot_schedule || null,
     tue_ot_schedule: input.tue_ot_schedule || null,
