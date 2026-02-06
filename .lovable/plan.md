@@ -1,103 +1,162 @@
 
 
-# Fix: OT Schedule Sync + Automatic Sync Already Exists
+# EOD/Weekly Analytics & Per-Agent Performance Dashboard
 
-## Good News: Automatic Sync Already Works!
+## Problem Summary
 
-Looking at the code, automatic syncing from Bios to Master Directory is **already implemented**:
+1. **EOD notifications spam**: The `generate-eod-analytics` edge function sends Slack/Email notifications on every page view because the UI calls it directly to fetch data
+2. **Wrong timing**: No dedicated schedule exists for EOD reports at 11:59 PM EST
+3. **Missing weekly reports**: No weekly team analytics exist
+4. **Missing per-agent analytics**: Current `AgentAnalyticsPanel` only shows incident history, not daily/weekly performance metrics
 
-**File: `src/lib/agentProfileApi.ts` (Lines 447-453)**
+---
+
+## Solution Overview
+
+| Feature | Implementation |
+|---------|---------------|
+| EOD Report @ 11:59 PM EST | Add `silent` mode to edge function + new cron job |
+| Weekly Report @ Monday 12 AM EST | New edge function + cron job |
+| Per-Agent Analytics | New component with day/week selector |
+
+---
+
+## Technical Implementation
+
+### Part 1: Fix EOD Notifications (Stop Page-View Spam)
+
+**File: `supabase/functions/generate-eod-analytics/index.ts`**
+
+Add `silent` flag support to skip notifications when called from UI:
+
 ```typescript
-// Sync to agent_directory for Master Directory visibility
-try {
-  await syncProfileToDirectory(input);
-} catch (syncError) {
-  console.error('Failed to sync profile to directory:', syncError);
-  // Don't fail the save for sync errors
+// Parse request body
+let targetDate: Date;
+let silent = false;
+try { 
+  const body = await req.json(); 
+  targetDate = body.date ? new Date(body.date) : new Date(Date.now() - 86400000);
+  silent = body.silent === true;
+} catch { 
+  targetDate = new Date(Date.now() - 86400000); 
+}
+
+// Wrap notifications in conditional (lines 138-159)
+if (!silent) {
+  // Send Slack, Email, In-App notifications
 }
 ```
 
-Every time a profile is saved via `upsertProfile()`, it automatically calls `syncProfileToDirectory()` to update the Master Directory.
+**File: `src/lib/agentReportsApi.ts`**
+
+Update `fetchEODAnalytics` to pass `silent: true`:
+
+```typescript
+body: JSON.stringify({ date, silent: true }),
+```
 
 ---
 
-## The Real Issue: OT Summary Logic Bug
+### Part 2: EOD Report Cron Job @ 11:59 PM EST
 
-The problem is that the sync function tries to use fields that don't exist in the input:
+**Schedule**: `59 4 * * *` (4:59 AM UTC = 11:59 PM EST)
 
-| Line | Current Code | Problem |
-|------|--------------|---------|
-| 371 | `weekday_ot_schedule: input.weekday_ot_schedule \|\| null` | `weekday_ot_schedule` is NOT a field in `AgentProfileInput` |
-| 372 | `weekend_ot_schedule: input.weekend_ot_schedule \|\| null` | `weekend_ot_schedule` is NOT a field in `AgentProfileInput` |
+This will call `generate-eod-analytics` WITHOUT the silent flag, triggering notifications for **today's** data (same day, end of day).
 
-The agent_profiles table stores **per-day OT** (`mon_ot_schedule`, `tue_ot_schedule`, etc.), but the Master Directory displays **summary columns** that need to be derived.
+**SQL to add cron job:**
+```sql
+SELECT cron.schedule(
+  'eod-analytics-daily',
+  '59 4 * * *',
+  $$
+  SELECT net.http_post(
+    url:='https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/generate-eod-analytics',
+    headers:='{"Content-Type": "application/json", "Authorization": "Bearer <ANON_KEY>"}'::jsonb,
+    body:='{"date": null}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
+
+Note: The function will use "today's" date when called at 11:59 PM EST.
 
 ---
 
-## Solution: Fix OT Summary Derivation
+### Part 3: Weekly Team Analytics
 
-### File 1: `src/lib/agentProfileApi.ts`
+**New Edge Function: `supabase/functions/generate-weekly-analytics/index.ts`**
 
-**Lines 371-372 - Derive OT summary from per-day fields:**
+Aggregates the entire previous week (Mon-Sun) data:
+- Attendance summary (total active days, avg on-time rate, avg full-shift rate)
+- Productivity summary (total tickets, avg quota rate, avg gap)
+- Time summary (total hours, avg hours per day)
+- Compliance summary (total incidents, clean rate)
+- Top performers / bottom performers lists
 
-```typescript
-// Before:
-weekday_ot_schedule: input.weekday_ot_schedule || null,
-weekend_ot_schedule: input.weekend_ot_schedule || null,
+**Cron Schedule**: `0 5 * * 1` (5:00 AM UTC = 12:00 AM EST on Monday)
 
-// After:
-// Derive weekday OT summary from first available Mon-Fri OT schedule
-weekday_ot_schedule: input.mon_ot_schedule || input.tue_ot_schedule || 
-                     input.wed_ot_schedule || input.thu_ot_schedule || 
-                     input.fri_ot_schedule || null,
-// Derive weekend OT summary from first available Sat-Sun OT schedule
-weekend_ot_schedule: input.sat_ot_schedule || input.sun_ot_schedule || null,
-```
+---
 
-### File 2: `src/lib/masterDirectoryApi.ts`
+### Part 4: Per-Agent Analytics Panel
 
-**Lines 531-532 - Same fix for bulk sync:**
+**New Component: `src/components/agent-reports/IndividualAgentAnalytics.tsx`**
 
-```typescript
-// Before:
-weekday_ot_schedule: profile.weekday_ot_schedule || null,
-weekend_ot_schedule: profile.weekend_ot_schedule || null,
+Features:
+- Agent selector dropdown (for admins) or auto-select current user
+- Date/Week toggle mode
+- Date picker (single date or week picker)
+- Shows individual agent metrics:
+  - Attendance: login time, logout time, hours worked
+  - Productivity: tickets by type, quota progress, avg gap
+  - Compliance: incidents for the period
+  - Time tracking: break duration, bio usage
 
-// After:
-// Derive weekday OT summary from first available Mon-Fri OT schedule
-weekday_ot_schedule: profile.mon_ot_schedule || profile.tue_ot_schedule || 
-                     profile.wed_ot_schedule || profile.thu_ot_schedule || 
-                     profile.fri_ot_schedule || null,
-// Derive weekend OT summary from first available Sat-Sun OT schedule
-weekend_ot_schedule: profile.sat_ot_schedule || profile.sun_ot_schedule || null,
-```
+**Integration points:**
+- Uses existing `ticket_logs`, `profile_events`, `agent_reports`, `ticket_gap_daily` tables
+- Fetches data via existing APIs or new RPC function
 
 ---
 
 ## Summary of Changes
 
-| File | Lines | Change |
-|------|-------|--------|
-| `src/lib/agentProfileApi.ts` | 371-372 | Derive OT summary from per-day fields |
-| `src/lib/masterDirectoryApi.ts` | 531-532 | Same derivation for bulk sync |
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/generate-weekly-analytics/index.ts` | Weekly team analytics edge function |
+| `src/components/agent-reports/IndividualAgentAnalytics.tsx` | Per-agent performance panel with date/week selector |
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `supabase/functions/generate-eod-analytics/index.ts` | Add `silent` flag support |
+| `src/lib/agentReportsApi.ts` | Pass `silent: true` from UI calls; add weekly analytics fetch |
+| `src/pages/AgentReports.tsx` | Add individual agent analytics section |
+
+### Database Changes
+
+| Type | Details |
+|------|---------|
+| Cron Job | `eod-analytics-daily` at 11:59 PM EST |
+| Cron Job | `weekly-analytics-monday` at 12:00 AM EST Monday |
 
 ---
 
-## How It Works After Fix
+## Notification Schedule After Fix
 
-1. **Individual Save** (Automatic): When any profile is saved in Bios, `syncProfileToDirectory()` automatically runs and correctly populates OT summary columns
-
-2. **Bulk Sync** (Manual): When "Sync from Bios" button is clicked, `syncAllProfilesToDirectory()` correctly populates OT summary for all profiles
+| Report | When | Slack | Email | In-App |
+|--------|------|-------|-------|--------|
+| EOD Team Analytics | 11:59 PM EST daily | ✓ | ✓ | ✓ |
+| Weekly Team Analytics | Monday 12:00 AM EST | ✓ | ✓ | ✓ |
+| UI Panel View | On demand | ✗ | ✗ | ✗ |
 
 ---
 
-## Expected Result for Malcolm
+## Expected Result
 
-After fix, when Malcolm's profile is saved (or bulk sync is run):
-
-| Column | Current | After Fix |
-|--------|---------|-----------|
-| Weekday OT | `-` (NULL) | `5:30 PM-7:30 PM` |
-| Weekend OT | `-` (NULL) | `5:00 PM-7:00 PM` |
-| OT Hours | `10.0` | `10.0` (unchanged, already correct) |
+1. **No more Slack spam** - UI views use silent mode
+2. **EOD report at 11:59 PM EST** - Same-day summary delivered end of each day
+3. **Weekly report on Mondays** - Previous week summary delivered at midnight
+4. **Per-agent analytics** - Admins/HR can view individual agent performance with day/week granularity
 
