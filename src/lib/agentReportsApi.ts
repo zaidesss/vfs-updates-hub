@@ -459,7 +459,7 @@ export async function fetchEODAnalytics(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ date }),
+        body: JSON.stringify({ date, silent: true }),
       }
     );
 
