@@ -1,162 +1,118 @@
 
+# Device Restart Escalation & Edit Restrictions
 
-# EOD/Weekly Analytics & Per-Agent Performance Dashboard
+## Overview
 
-## Problem Summary
-
-1. **EOD notifications spam**: The `generate-eod-analytics` edge function sends Slack/Email notifications on every page view because the UI calls it directly to fetch data
-2. **Wrong timing**: No dedicated schedule exists for EOD reports at 11:59 PM EST
-3. **Missing weekly reports**: No weekly team analytics exist
-4. **Missing per-agent analytics**: Current `AgentAnalyticsPanel` only shows incident history, not daily/weekly performance metrics
+This plan adds the ability to escalate "Device Restart" (EXCESSIVE_RESTARTS) incidents to Outage Requests as "Equipment Issue" and implements field-level restrictions on the Outage Request edit form.
 
 ---
 
-## Solution Overview
+## Current Behavior
 
-| Feature | Implementation |
+| Feature | Current State |
 |---------|---------------|
-| EOD Report @ 11:59 PM EST | Add `silent` mode to edge function + new cron job |
-| Weekly Report @ Monday 12 AM EST | New edge function + cron job |
-| Per-Agent Analytics | New component with day/week selector |
+| EXCESSIVE_RESTARTS escalation | Not allowed - only LATE_LOGIN, EARLY_OUT, TIME_NOT_MET can escalate |
+| Equipment Issue outage reason | Already exists in OUTAGE_REASONS list |
+| Edit form for users | All fields are editable when user edits their own request |
+| Edit form for admins | All fields are editable (via isAdminEditing flag) |
 
 ---
 
-## Technical Implementation
+## Changes Required
 
-### Part 1: Fix EOD Notifications (Stop Page-View Spam)
-
-**File: `supabase/functions/generate-eod-analytics/index.ts`**
-
-Add `silent` flag support to skip notifications when called from UI:
-
-```typescript
-// Parse request body
-let targetDate: Date;
-let silent = false;
-try { 
-  const body = await req.json(); 
-  targetDate = body.date ? new Date(body.date) : new Date(Date.now() - 86400000);
-  silent = body.silent === true;
-} catch { 
-  targetDate = new Date(Date.now() - 86400000); 
-}
-
-// Wrap notifications in conditional (lines 138-159)
-if (!silent) {
-  // Send Slack, Email, In-App notifications
-}
-```
+### Part 1: Enable Device Restart Escalation
 
 **File: `src/lib/agentReportsApi.ts`**
 
-Update `fetchEODAnalytics` to pass `silent: true`:
+1. Add `EXCESSIVE_RESTARTS` to the `ESCALATABLE_INCIDENT_TYPES` array (line 80)
+2. Add a case in `getOutageReasonForIncident` to return `'Equipment Issue'` for `EXCESSIVE_RESTARTS` (line 92-101)
 
-```typescript
-body: JSON.stringify({ date, silent: true }),
-```
+**File: `src/lib/leaveRequestApi.ts`**
 
----
+3. Update `EscalatedOutageInput` interface to include `'Equipment Issue'` as a valid outage reason (line 744)
 
-### Part 2: EOD Report Cron Job @ 11:59 PM EST
+**File: `src/components/agent-reports/ReportDetailDialog.tsx`**
 
-**Schedule**: `59 4 * * *` (4:59 AM UTC = 11:59 PM EST)
-
-This will call `generate-eod-analytics` WITHOUT the silent flag, triggering notifications for **today's** data (same day, end of day).
-
-**SQL to add cron job:**
-```sql
-SELECT cron.schedule(
-  'eod-analytics-daily',
-  '59 4 * * *',
-  $$
-  SELECT net.http_post(
-    url:='https://rsjjvgyobtazxgeedmvi.supabase.co/functions/v1/generate-eod-analytics',
-    headers:='{"Content-Type": "application/json", "Authorization": "Bearer <ANON_KEY>"}'::jsonb,
-    body:='{"date": null}'::jsonb
-  ) AS request_id;
-  $$
-);
-```
-
-Note: The function will use "today's" date when called at 11:59 PM EST.
+4. Add a case in `getEscalationTimeRange` for `EXCESSIVE_RESTARTS` (line 98-147)
+   - Since restart duration is tracked cumulatively, use a fallback time range based on the incident date
+5. Update the type cast when creating escalation input (line 180+)
 
 ---
 
-### Part 3: Weekly Team Analytics
+### Part 2: Restrict User Editing on Outage Requests
 
-**New Edge Function: `supabase/functions/generate-weekly-analytics/index.ts`**
+**File: `src/pages/LeaveRequest.tsx`**
 
-Aggregates the entire previous week (Mon-Sun) data:
-- Attendance summary (total active days, avg on-time rate, avg full-shift rate)
-- Productivity summary (total tickets, avg quota rate, avg gap)
-- Time summary (total hours, avg hours per day)
-- Compliance summary (total incidents, clean rate)
-- Top performers / bottom performers lists
+Users editing their own requests should ONLY be able to add remarks. Admins can edit all fields.
 
-**Cron Schedule**: `0 5 * * 1` (5:00 AM UTC = 12:00 AM EST on Monday)
+**Changes to form fields (lines 734-947):**
 
----
+| Field | Current | After Change |
+|-------|---------|--------------|
+| Agent Name | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Client Name | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Team Lead | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Role | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Start Date | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| End Date | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Start Time | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| End Time | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Outage Reason | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Attachment | Editable | `disabled={!!editingRequest && !isAdmin}` |
+| Remarks | Only for auto-generated | **Always visible when editing** |
 
-### Part 4: Per-Agent Analytics Panel
-
-**New Component: `src/components/agent-reports/IndividualAgentAnalytics.tsx`**
-
-Features:
-- Agent selector dropdown (for admins) or auto-select current user
-- Date/Week toggle mode
-- Date picker (single date or week picker)
-- Shows individual agent metrics:
-  - Attendance: login time, logout time, hours worked
-  - Productivity: tickets by type, quota progress, avg gap
-  - Compliance: incidents for the period
-  - Time tracking: break duration, bio usage
-
-**Integration points:**
-- Uses existing `ticket_logs`, `profile_events`, `agent_reports`, `ticket_gap_daily` tables
-- Fetches data via existing APIs or new RPC function
+**Changes to Remarks section (line 950):**
+- Remove the condition that limits remarks to auto-generated requests only
+- Show remarks field for ALL edit scenarios
+- Add helper text explaining that users can only modify remarks
 
 ---
 
-## Summary of Changes
+## Summary of Files to Modify
 
-### Files to Create
-
-| File | Purpose |
+| File | Changes |
 |------|---------|
-| `supabase/functions/generate-weekly-analytics/index.ts` | Weekly team analytics edge function |
-| `src/components/agent-reports/IndividualAgentAnalytics.tsx` | Per-agent performance panel with date/week selector |
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/generate-eod-analytics/index.ts` | Add `silent` flag support |
-| `src/lib/agentReportsApi.ts` | Pass `silent: true` from UI calls; add weekly analytics fetch |
-| `src/pages/AgentReports.tsx` | Add individual agent analytics section |
-
-### Database Changes
-
-| Type | Details |
-|------|---------|
-| Cron Job | `eod-analytics-daily` at 11:59 PM EST |
-| Cron Job | `weekly-analytics-monday` at 12:00 AM EST Monday |
+| `src/lib/agentReportsApi.ts` | Add EXCESSIVE_RESTARTS to escalatable types + mapping |
+| `src/lib/leaveRequestApi.ts` | Update EscalatedOutageInput interface |
+| `src/components/agent-reports/ReportDetailDialog.tsx` | Add time range case + fix type cast |
+| `src/pages/LeaveRequest.tsx` | Disable fields for user edits; show remarks always |
 
 ---
 
-## Notification Schedule After Fix
+## User Experience After Changes
 
-| Report | When | Slack | Email | In-App |
-|--------|------|-------|-------|--------|
-| EOD Team Analytics | 11:59 PM EST daily | ✓ | ✓ | ✓ |
-| Weekly Team Analytics | Monday 12:00 AM EST | ✓ | ✓ | ✓ |
-| UI Panel View | On demand | ✗ | ✗ | ✗ |
+### Agent Reports Page (Escalation)
+- "Excessive Restarts" incidents will now show the "Escalate as Outage" option
+- Clicking escalate creates an outage request with reason "Equipment Issue"
+- Duplicate prevention still applies (won't create if Equipment Issue already exists for that date)
+
+### Outage Requests Page (Editing)
+
+**Regular User editing their own request:**
+- All fields are grayed out/disabled (read-only)
+- Only the Remarks field is editable
+- Helper text: "Note: Core details are read-only. You can only update remarks."
+
+**Admin editing any request:**
+- All fields remain editable (no changes to admin behavior)
+- Remarks field also available
 
 ---
 
-## Expected Result
+## Technical Details
 
-1. **No more Slack spam** - UI views use silent mode
-2. **EOD report at 11:59 PM EST** - Same-day summary delivered end of each day
-3. **Weekly report on Mondays** - Previous week summary delivered at midnight
-4. **Per-agent analytics** - Admins/HR can view individual agent performance with day/week granularity
+### Escalation Time Range for Device Restarts
 
+Since EXCESSIVE_RESTARTS incidents store cumulative restart duration rather than specific timestamps, the escalation will use:
+- A default time range (e.g., shift start + 1 hour) as a placeholder
+- The remarks field can be used to add specific timing details if needed
+
+### Edit Form Disabled Logic
+
+```tsx
+// Pattern applied to all form fields:
+disabled={!!editingRequest && !isAdmin}
+
+// For fields that were already conditionally disabled (like agent_name for directory users):
+disabled={isDirectoryUser || (!!editingRequest && !isAdmin)}
+```
