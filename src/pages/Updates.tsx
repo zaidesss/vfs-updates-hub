@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { UpdateCard } from '@/components/UpdateCard';
 import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
 import { QuestionThreadDialog } from '@/components/QuestionThreadDialog';
@@ -140,6 +141,7 @@ export default function Updates() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <PageGuideButton pageId="updates" />
             <Button
               variant="outline"
               size="sm"
@@ -153,6 +155,7 @@ export default function Updates() {
               <CreateUpdateDialog 
                 onUpdateCreated={handleRefresh}
                 buttonSize="sm"
+                data-tour="create-update"
               />
             )}
           </div>
@@ -192,7 +195,7 @@ export default function Updates() {
           </div>
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
-            <TabsList>
+            <TabsList data-tour="updates-tabs">
               <TabsTrigger value="unread" className="gap-1.5">
                 Unread
                 {unreadCount > 0 && (
@@ -225,7 +228,7 @@ export default function Updates() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-4" data-tour="updates-list">
             {filteredUpdates.map((update, index) => (
               <div 
                 key={update.id} 

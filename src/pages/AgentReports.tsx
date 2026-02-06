@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -105,25 +106,28 @@ export default function AgentReports() {
     <Layout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileWarning className="h-6 w-6 text-primary" />
-            Agent Reports
-          </h1>
-          <p className="text-muted-foreground">
-            Behavioral and compliance incident reports for investigation and validation
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <FileWarning className="h-6 w-6 text-primary" />
+              Agent Reports
+            </h1>
+            <p className="text-muted-foreground">
+              Behavioral and compliance incident reports for investigation and validation
+            </p>
+          </div>
+          <PageGuideButton pageId="agent-reports" />
         </div>
 
         {/* Summary Cards */}
-        <ReportSummaryCards summary={summary} isLoading={isLoading} />
+        <ReportSummaryCards summary={summary} isLoading={isLoading} data-tour="summary-cards" />
 
         {/* Filters */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Filters</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent data-tour="report-filters">
             <ReportFilters
               year={year}
               month={month}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
+import { PageGuideButton } from '@/components/PageGuideButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -243,7 +244,9 @@ export default function MasterDirectory() {
             </p>
           </div>
           <div className="flex gap-2">
+            <PageGuideButton pageId="master-directory" />
             <Button
+              data-tour="sync-button"
               onClick={handleSyncAll}
               disabled={isSyncing || isSaving}
               variant="outline"
@@ -252,6 +255,7 @@ export default function MasterDirectory() {
               {isSyncing ? 'Syncing...' : 'Sync from Bios'}
             </Button>
             <Button
+              data-tour="save-button"
               onClick={handleSave}
               disabled={!hasChanges || isSaving}
               className={cn(
@@ -268,7 +272,7 @@ export default function MasterDirectory() {
         </div>
 
         {/* Filter Bar */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3" data-tour="filter-bar">
           {/* Search */}
           <div className="relative w-full sm:w-auto sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -337,6 +341,7 @@ export default function MasterDirectory() {
         <div 
           className="border rounded-lg overflow-auto data-table-scroll"
           style={{ height: 'calc(100vh - 220px)' }}
+          data-tour="directory-table"
         >
           <div className="min-w-[2000px]">
             <Table>
