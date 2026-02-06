@@ -1,163 +1,100 @@
 
+# Fix Sync: Use First Available Schedule Instead of Fixed Day
 
-# Fix OT Schedule Loading & Hours Calculation Issues
+## Problem Identified
 
-## Issues Identified
+The calculation and sync logic uses `mon_schedule` as the representative weekday schedule and `sat_schedule` as the representative weekend schedule. When an agent has Monday or Saturday as a day off, these fields are `null`, causing the hours calculation to be wrong.
 
-### Issue 1: OT Schedule Values Disappear After Save
-**Root Cause**: The per-day OT schedule fields (`mon_ot_schedule` through `sun_ot_schedule`) are NOT being loaded from the database into the component state when the profile is fetched. When the profile is saved, these fields are sent as empty strings, overwriting the saved data.
+**Example - Pauline Carbajosa:**
+- Days off: `['Sun', 'Mon']`
+- `mon_schedule = null` (Monday is off)
+- Actual working weekdays: Tue-Fri all have `12:00 PM - 7:30 PM`
+- **Current result:** weekday_total_hours = 0 (WRONG)
+- **Expected result:** weekday_total_hours = 4 days × 7.5 hours = 30 hours
 
-**Affected Files**:
-- `src/pages/AgentProfile.tsx` (lines 154-166) - Missing per-day OT fields in `loadProfile()`
-- `src/pages/ManageProfiles.tsx` (lines 111-122) - Missing per-day OT fields in `handleSelectUser()`
+## Root Cause
 
-### Issue 2: Upwork Hours Not Including OT in Agent Profile
-**Root Cause**: The OT schedule fields are not being loaded (Issue 1), so `calculateProfileTotalHours()` receives empty/undefined values for OT schedules, resulting in 0 OT hours in the calculation.
+| File | Bug Location | Issue |
+|------|--------------|-------|
+| `src/lib/profileTotalHours.ts` | Lines 55-58 | Uses `mon_schedule` and `sat_schedule` as representatives |
+| `src/lib/masterDirectoryApi.ts` | Lines 544-545 | Uses `mon_schedule` and `sat_schedule` for sync |
+| `src/lib/masterDirectoryApi.ts` | Lines 185-186 | Uses `weekday_schedule` and `weekend_schedule` for calculation |
 
-### Issue 3: Break Deduction Ignores Weekend Working Days
-**Root Cause**: Both calculation functions only deduct breaks for weekdays, ignoring agents who work weekends with scheduled breaks.
+## Solution
 
-**Affected Files**:
-- `src/lib/profileTotalHours.ts` (line 92)
-- `src/lib/masterDirectoryApi.ts` (line 226)
-
----
-
-## Solution Overview
-
-| Issue | Fix |
-|-------|-----|
-| OT schedules disappear | Add missing per-day OT fields to profile loading in both pages |
-| Upwork hours missing OT | Fixed automatically once OT fields are loaded |
-| Weekend breaks ignored | Update break calculation to include all working days |
+Create helper functions to find the **first available schedule** from the per-day fields, not just Monday/Saturday.
 
 ---
 
 ## Technical Changes
 
-### File 1: `src/pages/AgentProfile.tsx`
+### File 1: `src/lib/profileTotalHours.ts`
 
-**Location**: `loadProfile()` function, around lines 162-166
-
-Add the missing per-day OT schedule fields after `weekend_ot_schedule`:
+Add helper function and update schedule retrieval:
 
 ```typescript
-weekday_ot_schedule: result.data.weekday_ot_schedule || '',
-weekend_ot_schedule: result.data.weekend_ot_schedule || '',
-// ADD THESE MISSING FIELDS:
-mon_ot_schedule: result.data.mon_ot_schedule || '',
-tue_ot_schedule: result.data.tue_ot_schedule || '',
-wed_ot_schedule: result.data.wed_ot_schedule || '',
-thu_ot_schedule: result.data.thu_ot_schedule || '',
-fri_ot_schedule: result.data.fri_ot_schedule || '',
-sat_ot_schedule: result.data.sat_ot_schedule || '',
-sun_ot_schedule: result.data.sun_ot_schedule || '',
-day_off: result.data.day_off || [],
+// Helper to get first available weekday schedule
+function getFirstWeekdaySchedule(profile: Partial<AgentProfileInput>): string | null | undefined {
+  return profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
+         profile.thu_schedule || profile.fri_schedule;
+}
+
+// Helper to get first available weekend schedule
+function getFirstWeekendSchedule(profile: Partial<AgentProfileInput>): string | null | undefined {
+  return profile.sat_schedule || profile.sun_schedule;
+}
 ```
 
-Also add to the initial state definition (lines 83-90) and the fallback "new profile" section (lines 227-232).
-
----
-
-### File 2: `src/pages/ManageProfiles.tsx`
-
-**Location**: `handleSelectUser()` function, around lines 119-122
-
-Add the missing per-day OT schedule fields after `weekend_ot_schedule`:
-
+Then update lines 55-58:
 ```typescript
-weekday_ot_schedule: profile?.weekday_ot_schedule || '',
-weekend_ot_schedule: profile?.weekend_ot_schedule || '',
-// ADD THESE MISSING FIELDS:
-mon_ot_schedule: profile?.mon_ot_schedule || '',
-tue_ot_schedule: profile?.tue_ot_schedule || '',
-wed_ot_schedule: profile?.wed_ot_schedule || '',
-thu_ot_schedule: profile?.thu_ot_schedule || '',
-fri_ot_schedule: profile?.fri_ot_schedule || '',
-sat_ot_schedule: profile?.sat_ot_schedule || '',
-sun_ot_schedule: profile?.sun_ot_schedule || '',
-day_off: profile?.day_off || [],
+// Get weekday schedule from first available working day
+const dailyWeekdayHours = parseScheduleHours(getFirstWeekdaySchedule(profile));
+// Get weekend schedule from first available weekend day
+const dailyWeekendHours = parseScheduleHours(getFirstWeekendSchedule(profile));
 ```
 
 ---
 
-### File 3: `src/lib/profileTotalHours.ts`
+### File 2: `src/lib/masterDirectoryApi.ts`
 
-**Location**: Lines 87-93 (break calculation)
-
-Update break calculation to include weekend working days:
+Update sync logic (lines 544-545):
 
 ```typescript
-// BEFORE (Bug):
-let unpaidBreakHours = 0;
-if (hasBreakSchedule) {
-  const breakDurationPerDay = parseScheduleHours(profile.break_schedule);
-  // Weekday breaks only
-  unpaidBreakHours = workingWeekdays * breakDurationPerDay;
-}
-
-// AFTER (Fixed):
-let unpaidBreakHours = 0;
-if (hasBreakSchedule) {
-  const breakDurationPerDay = parseScheduleHours(profile.break_schedule);
-  // Deduct breaks for ALL scheduled working days (weekdays + weekends)
-  const totalWorkingDays = workingWeekdays + workingWeekendDays;
-  unpaidBreakHours = totalWorkingDays * breakDurationPerDay;
-}
-```
-
----
-
-### File 4: `src/lib/masterDirectoryApi.ts`
-
-**Location**: Lines 220-227 (break calculation)
-
-Apply the same fix:
-
-```typescript
-// BEFORE (Bug):
-let unpaidBreakHours = 0;
-if (hasBreakSchedule) {
-  const breakDurationPerDay = parseScheduleHours(entry.break_schedule ?? null);
-  // Weekday breaks only (no Revalida deduction anymore)
-  unpaidBreakHours = workingWeekdays * breakDurationPerDay;
-}
-
-// AFTER (Fixed):
-let unpaidBreakHours = 0;
-if (hasBreakSchedule) {
-  const breakDurationPerDay = parseScheduleHours(entry.break_schedule ?? null);
-  // Deduct breaks for ALL scheduled working days (weekdays + weekends)
-  const totalWorkingDays = workingWeekdays + workingWeekendDays;
-  unpaidBreakHours = totalWorkingDays * breakDurationPerDay;
-}
+// Find first available weekday schedule (not just Monday)
+weekday_schedule: profile.mon_schedule || profile.tue_schedule || profile.wed_schedule || 
+                  profile.thu_schedule || profile.fri_schedule || null,
+// Find first available weekend schedule (not just Saturday)
+weekend_schedule: profile.sat_schedule || profile.sun_schedule || null,
 ```
 
 ---
 
 ## Files to Modify
 
-| File | Change Description |
-|------|-------------------|
-| `src/pages/AgentProfile.tsx` | Add per-day OT fields to profile loading and initial state |
-| `src/pages/ManageProfiles.tsx` | Add per-day OT fields to profile loading |
-| `src/lib/profileTotalHours.ts` | Fix break deduction to include weekend working days |
-| `src/lib/masterDirectoryApi.ts` | Fix break deduction to include weekend working days |
+| File | Change |
+|------|--------|
+| `src/lib/profileTotalHours.ts` | Add helpers and use first available schedule |
+| `src/lib/masterDirectoryApi.ts` | Update sync to use first available schedule |
 
 ---
 
 ## Expected Results After Fix
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| Save OT schedule, refresh page | OT values disappear | OT values persist |
-| Agent Profile total hours with OT | Missing OT hours | Includes OT hours |
-| Agent working 6 days with 1hr break | 5hr break deduction | 6hr break deduction |
-| Master Directory total hours | Correct | Correct (now consistent) |
+**For Pauline Carbajosa (days off: Sun, Mon):**
+
+| Metric | Before (Bug) | After (Fixed) |
+|--------|--------------|---------------|
+| weekday_schedule | null | 12:00 PM - 7:30 PM |
+| weekday_total_hours | 0 | 30 (4 days × 7.5h) |
+| weekend_total_hours | 7.5 | 7.5 |
+| unpaid_break_hours | 2.5 | 2.5 |
+| overall_total_hours | 6 | 36 |
 
 ---
 
-## Implementation Approach
+## Implementation Notes
 
-I recommend implementing all four fixes together since they are related to the same data flow (schedules and hours calculation). This ensures consistency between Agent Profile and Master Directory views.
-
+After applying this fix:
+1. The profile page will show correct total hours immediately
+2. Master Directory needs a "Sync from Bios" click to recalculate stored values
+3. All agents with non-Monday/Saturday day offs will be fixed
