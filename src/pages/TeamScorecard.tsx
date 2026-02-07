@@ -61,6 +61,7 @@ interface EditedMetrics {
   callAht?: number | null;
   chatAht?: number | null;
   chatFrt?: number | null;
+  orderEscalation?: number | null;
 }
 
 type ScoreFilter = 'all' | 'excellent' | 'good' | 'needs-improvement' | 'on-leave';
@@ -275,6 +276,7 @@ export default function TeamScorecard() {
             call_aht_seconds: edits.callAht,
             chat_aht_seconds: edits.chatAht,
             chat_frt_seconds: edits.chatFrt,
+            order_escalation: edits.orderEscalation,
           })
         )
       );
@@ -353,7 +355,7 @@ export default function TeamScorecard() {
   });
 
   // Handle metric edit
-  const handleMetricEdit = useCallback((agentEmail: string, metricKey: 'callAht' | 'chatAht' | 'chatFrt', value: number | null) => {
+  const handleMetricEdit = useCallback((agentEmail: string, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation', value: number | null) => {
     const emailLower = agentEmail.toLowerCase();
     setEditedMetrics(prev => {
       const current = prev[emailLower] || {};
@@ -364,7 +366,8 @@ export default function TeamScorecard() {
         const isOriginal = 
           (updated.callAht === undefined || updated.callAht === scorecard.callAht) &&
           (updated.chatAht === undefined || updated.chatAht === scorecard.chatAht) &&
-          (updated.chatFrt === undefined || updated.chatFrt === scorecard.chatFrt);
+          (updated.chatFrt === undefined || updated.chatFrt === scorecard.chatFrt) &&
+          (updated.orderEscalation === undefined || updated.orderEscalation === scorecard.orderEscalation);
         
         if (isOriginal) {
           const { [emailLower]: _, ...rest } = prev;
@@ -377,7 +380,7 @@ export default function TeamScorecard() {
   }, [scorecards]);
 
   // Get displayed value (edited or original)
-  const getDisplayValue = useCallback((scorecard: AgentScorecard, metricKey: 'callAht' | 'chatAht' | 'chatFrt'): number | null => {
+  const getDisplayValue = useCallback((scorecard: AgentScorecard, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation'): number | null => {
     const edits = editedMetrics[scorecard.agent.email.toLowerCase()];
     if (edits && edits[metricKey] !== undefined) {
       return edits[metricKey]!;
@@ -390,11 +393,12 @@ export default function TeamScorecard() {
   const isAllMode = supportType === 'all';
   const showTypeColumn = isAllMode;
   const showProductivity = isAllMode || ['Hybrid Support', 'Email Support'].includes(supportType);
+  const showOrderEscalation = isAllMode || supportType === 'Logistics'; // New for Logistics
   const showCallAht = isAllMode || ['Hybrid Support', 'Phone Support'].includes(supportType);
   const showChatAht = isAllMode || ['Hybrid Support', 'Chat Support'].includes(supportType);
   const showChatFrt = isAllMode || ['Hybrid Support', 'Chat Support'].includes(supportType);
-  const showQA = isAllMode || supportType !== 'Logistics';
-  const showRevalida = isAllMode || supportType !== 'Logistics';
+  const showQA = true; // Now enabled for all including Logistics
+  const showRevalida = true; // Now enabled for all including Logistics
   const showOtProductivity = isAllMode || supportType !== 'Logistics';
 
   // Get metric goal from DB config, with fallback to defaults
@@ -424,13 +428,15 @@ export default function TeamScorecard() {
   };
 
   // Check if metric applies to agent's support type
-  const metricApplies = (agentPosition: string | null, metricType: 'productivity' | 'callAht' | 'chatAht' | 'chatFrt' | 'qa' | 'revalida' | 'otProductivity'): boolean => {
+  const metricApplies = (agentPosition: string | null, metricType: 'productivity' | 'callAht' | 'chatAht' | 'chatFrt' | 'qa' | 'revalida' | 'otProductivity' | 'orderEscalation'): boolean => {
     if (!isAllMode) return true; // In specific mode, all shown columns apply
     
     const pos = agentPosition || '';
     switch (metricType) {
       case 'productivity':
         return ['Hybrid Support', 'Email Support'].includes(pos);
+      case 'orderEscalation':
+        return pos === 'Logistics';
       case 'callAht':
         return ['Hybrid Support', 'Phone Support'].includes(pos);
       case 'chatAht':
@@ -438,6 +444,7 @@ export default function TeamScorecard() {
         return ['Hybrid Support', 'Chat Support'].includes(pos);
       case 'qa':
       case 'revalida':
+        return true; // Now applies to all including Logistics
       case 'otProductivity':
         return pos !== 'Logistics';
       default:
@@ -810,6 +817,18 @@ export default function TeamScorecard() {
                         )}
                         {showQA && <TableHead className="text-center">QA</TableHead>}
                         {showRevalida && <TableHead className="text-center">Revalida</TableHead>}
+                        {showOrderEscalation && (
+                          <TableHead className="text-center">
+                            <Tooltip>
+                              <TooltipTrigger className="cursor-help">
+                                Order Esc.
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Order Escalation & Intervention %</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableHead>
+                        )}
                         <TableHead className="text-center">Reliability</TableHead>
                         {showOtProductivity && <TableHead className="text-center">OT Prod.</TableHead>}
                         <TableHead className="text-center">Final Score</TableHead>
@@ -940,6 +959,24 @@ export default function TeamScorecard() {
                                     <span className="text-muted-foreground">-</span>
                                   </div>
                                 )
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                          )}
+
+                          {showOrderEscalation && (
+                            <TableCell className="text-center">
+                              {metricApplies(scorecard.agent.position, 'orderEscalation') ? (
+                                <EditableMetricCell
+                                  value={getDisplayValue(scorecard, 'orderEscalation')}
+                                  originalValue={scorecard.orderEscalation}
+                                  goal={getMetricGoal('order_escalation', scorecard.agent.position)}
+                                  isEditable={canSave}
+                                  onEdit={(val) => handleMetricEdit(scorecard.agent.email, 'orderEscalation', val)}
+                                  formatValue={(v) => v !== null ? `${v}%` : '-'}
+                                  isPercentMode={true}
+                                />
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}

@@ -44,6 +44,7 @@ export interface AgentScorecard {
   revalida: number | null;
   reliability: number | null;
   otProductivity: number | null;
+  orderEscalation: number | null; // For Logistics - manual percentage input
   finalScore: number | null;
   isOnLeave: boolean;
   scheduledDays: number;
@@ -84,6 +85,7 @@ export interface ZendeskAgentMetrics {
   chat_frt_seconds: number | null;
   total_calls: number | null;
   total_chats: number | null;
+  order_escalation: number | null;
 }
 
 // Constants
@@ -128,6 +130,7 @@ interface ScorecardRPCResult {
   call_aht_seconds: number | null;
   chat_aht_seconds: number | null;
   chat_frt_seconds: number | null;
+  order_escalation: number | null;
   is_saved: boolean;
 }
 
@@ -276,7 +279,7 @@ export async function fetchZendeskMetrics(
 ): Promise<ZendeskAgentMetrics[]> {
   let query = supabase
     .from('zendesk_agent_metrics')
-    .select('agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds, total_calls, total_chats')
+    .select('agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds, total_calls, total_chats, order_escalation')
     .eq('week_start', weekStart)
     .eq('week_end', weekEnd);
 
@@ -426,7 +429,7 @@ export async function fetchWeeklyScorecardRPC(
       return { data: legacyData, fromRPC: false };
     }
 
-    const rpcData = (rpcResult.data || []) as ScorecardRPCResult[];
+    const rpcData = (rpcResult.data || []) as unknown as ScorecardRPCResult[];
     const configMap = new Map(configResults.map(r => [r.type, r.config]));
     const config = supportType === 'all' ? [] : (configResults[0]?.config || []);
 
@@ -534,6 +537,9 @@ export async function fetchWeeklyScorecardRPC(
           case 'ot_productivity':
             metricValue = otProductivity;
             break;
+          case 'order_escalation':
+            metricValue = row.order_escalation;
+            break;
         }
 
         if (metricValue !== null && metricValue !== undefined) {
@@ -559,6 +565,7 @@ export async function fetchWeeklyScorecardRPC(
         revalida: row.revalida_score,
         reliability,
         otProductivity,
+        orderEscalation: row.order_escalation,
         finalScore: isOnLeave ? null : finalScore,
         isOnLeave,
         scheduledDays,
@@ -722,6 +729,7 @@ export async function fetchWeeklyScorecard(
         revalida: saved.revalida,
         reliability: saved.reliability,
         otProductivity: saved.ot_productivity,
+        orderEscalation: (saved as any).order_escalation ?? null,
         finalScore: saved.final_score,
         isOnLeave: saved.is_on_leave || false,
         scheduledDays: saved.scheduled_days || 0,
@@ -820,6 +828,9 @@ export async function fetchWeeklyScorecard(
         case 'chat_frt':
           metricValue = chatFrt;
           break;
+        case 'order_escalation':
+          metricValue = zendesk?.order_escalation ?? null;
+          break;
       }
 
       if (metricValue !== null && metricValue !== undefined) {
@@ -845,6 +856,7 @@ export async function fetchWeeklyScorecard(
       revalida: revalidaMap.get(agentEmailLower) ?? null,
       reliability,
       otProductivity: null, // Placeholder
+      orderEscalation: zendesk?.order_escalation ?? null,
       finalScore: isOnLeave ? null : finalScore,
       isOnLeave,
       scheduledDays,
@@ -918,6 +930,7 @@ export async function upsertZendeskMetrics(
     call_aht_seconds?: number | null;
     chat_aht_seconds?: number | null;
     chat_frt_seconds?: number | null;
+    order_escalation?: number | null;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const { error } = await supabase
