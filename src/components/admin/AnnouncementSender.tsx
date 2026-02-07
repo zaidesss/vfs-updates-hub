@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Megaphone, Send, Loader2, Users, UserCheck, Shield, Mail } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { EmailPreview } from './EmailPreview';
 
 type RecipientGroup = 'all_users' | 'team_leads' | 'management' | 'custom';
 
@@ -30,6 +32,7 @@ const SUBJECT_LIMIT = 200;
 const BODY_LIMIT = 10000;
 
 export function AnnouncementSender() {
+  const { user } = useAuth();
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>('all_users');
@@ -38,6 +41,30 @@ export function AnnouncementSender() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [recipientCount, setRecipientCount] = useState<number | null>(null);
   const [isLoadingCount, setIsLoadingCount] = useState(false);
+  const [senderName, setSenderName] = useState<string>('');
+
+  // Fetch sender's full name on mount
+  useEffect(() => {
+    const fetchSenderName = async () => {
+      if (!user?.email) return;
+      
+      const { data } = await supabase
+        .from('agent_profiles')
+        .select('full_name, agent_name')
+        .eq('email', user.email.toLowerCase())
+        .maybeSingle();
+      
+      if (data?.full_name) {
+        setSenderName(data.full_name);
+      } else if (data?.agent_name) {
+        setSenderName(data.agent_name);
+      } else {
+        setSenderName(user.email);
+      }
+    };
+
+    fetchSenderName();
+  }, [user?.email]);
 
   const getCustomEmailsArray = (): string[] => {
     if (!customEmails.trim()) return [];
@@ -284,39 +311,39 @@ export function AnnouncementSender() {
 
       {/* Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 p-6 pb-4">
             <DialogTitle>Confirm Send Announcement</DialogTitle>
             <DialogDescription>
-              Please review the details before sending.
+              Review the email preview before sending.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="grid gap-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Recipients:</span>
-                <span className="font-medium">
-                  {isLoadingCount ? (
-                    <Loader2 className="h-4 w-4 animate-spin inline" />
-                  ) : (
-                    `${recipientCount ?? 0} ${selectedOption?.label ?? ''}`
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subject:</span>
-                <span className="font-medium truncate max-w-[250px]">{subject}</span>
-              </div>
+          <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
+            {/* Recipient info */}
+            <div className="flex items-center justify-between text-sm bg-muted/50 rounded-lg p-3">
+              <span className="text-muted-foreground">Sending to:</span>
+              <span className="font-medium">
+                {isLoadingCount ? (
+                  <Loader2 className="h-4 w-4 animate-spin inline" />
+                ) : (
+                  `${recipientCount ?? 0} ${selectedOption?.label ?? ''}`
+                )}
+              </span>
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-3">
-              <p className="text-sm text-muted-foreground mb-1">Preview (first 200 chars):</p>
-              <p className="text-sm">{body.slice(0, 200)}{body.length > 200 ? '...' : ''}</p>
+            {/* Full email preview */}
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Email Preview:</p>
+              <EmailPreview 
+                senderName={senderName || user?.email || 'Unknown'}
+                subject={subject}
+                body={body}
+              />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 p-6 pt-4 border-t">
             <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
               Cancel
             </Button>
