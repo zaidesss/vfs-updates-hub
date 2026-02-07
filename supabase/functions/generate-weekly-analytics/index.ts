@@ -223,20 +223,11 @@ Deno.serve(async (req) => {
 
     // Notifications - only when NOT in silent mode
     if (!silent) {
-      // Fetch ALL users for email notifications (agents + admins)
-      const { data: allProfiles } = await supabase
-        .from("agent_profiles")
-        .select("email")
-        .neq("employment_status", "Terminated");
-
+      // Fetch admin/HR/super_admin roles for notifications
       const { data: admins } = await supabase
         .from("user_roles")
         .select("email")
         .in("role", ["admin", "hr", "super_admin"]);
-
-      const allEmails = new Set<string>();
-      allProfiles?.forEach(p => allEmails.add(p.email.toLowerCase()));
-      admins?.forEach(a => allEmails.add(a.email.toLowerCase()));
 
       const adminEmails = [...new Set(admins?.map(x => x.email.toLowerCase()) || [])];
       const title = `📊 Weekly Team Analytics: ${weekStartStr} to ${weekEndStr}`;
@@ -247,9 +238,8 @@ Deno.serve(async (req) => {
       const notifs = adminEmails.map(email => ({ user_email: email, title, message: msg, type: "weekly_analytics", reference_type: "agent_reports", reference_id: null }));
       if (notifs.length > 0) await supabase.from("notifications").insert(notifs);
 
-      // Email to ALL users
-      const allEmailRecipients = Array.from(allEmails);
-      if (resendApiKey && allEmailRecipients.length > 0) {
+      // Email to admin/HR/super_admin only
+      if (resendApiKey && adminEmails.length > 0) {
         const fmtH = (h: number) => { const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60); return hrs === 0 ? `${mins}m` : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`; };
         const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;">
           <div style="background:#fff;border-radius:12px;padding:24px;">
@@ -281,7 +271,7 @@ Deno.serve(async (req) => {
             </div>
           </div>
         </body></html>`;
-        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
+        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>", to: adminEmails, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to admin roles"); } catch (e) { console.error("Email error:", e); }
       }
 
       // Slack to a_agent_reports channel
