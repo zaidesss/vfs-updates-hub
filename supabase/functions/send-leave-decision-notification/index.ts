@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,15 +34,6 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
-      return new Response(
-        JSON.stringify({ error: "Email service not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -201,40 +193,26 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Send email to agent with admins in CC
-    const emailPayload: Record<string, unknown> = {
-      from: "VFS Agent Portal <notifications@resend.dev>",
+    const emailResult = await sendEmail({
       to: [payload.agentEmail],
+      cc: recipientEmails.length > 0 ? recipientEmails : undefined,
       subject: `${config.emoji} ${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request ${config.label}: ${payload.agentName} - ${payload.outageReason}`,
       html: emailHtml,
-    };
-
-    if (recipientEmails.length > 0) {
-      emailPayload.cc = recipientEmails;
-    }
-
-    const emailResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(emailPayload),
     });
 
-    const emailResult = await emailResponse.json();
-    console.log("Email send result:", emailResult);
-
-    if (!emailResponse.ok) {
-      console.error("Failed to send email:", emailResult);
+    if (!emailResult.success) {
+      console.error("Failed to send email:", emailResult.error);
       // Return success since notification was created, but note email failure
       return new Response(
-        JSON.stringify({ success: true, notificationCreated: true, emailFailed: true, details: emailResult }),
+        JSON.stringify({ success: true, notificationCreated: true, emailFailed: true, details: emailResult.error }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log("Email sent successfully:", emailResult.messageId);
+
     return new Response(
-      JSON.stringify({ success: true, emailId: emailResult.id, notificationCreated: true }),
+      JSON.stringify({ success: true, emailId: emailResult.messageId, notificationCreated: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

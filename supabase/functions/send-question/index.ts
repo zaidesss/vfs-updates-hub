@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +12,6 @@ const corsHeaders = {
 const NAME_DIRECTORY: Record<string, string> = {
   "hr@virtualfreelancesolutions.com": "HR Department",
   "admin@virtualfreelancesolutions.com": "Admin",
-  // Add more as needed
 };
 
 const getNameByEmail = (email: string): string => {
@@ -30,7 +27,6 @@ interface QuestionRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -40,7 +36,6 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Received question for update: ${updateTitle} from ${userEmail}`);
 
-    // Save the question to the database
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -63,9 +58,7 @@ const handler = async (req: Request): Promise<Response> => {
     const posterName = getNameByEmail(userEmail);
     const appUrl = 'https://vfs-updates-hub.lovable.app';
 
-    // Send email to HR
-    const emailResponse = await resend.emails.send({
-      from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>",
+    const emailResult = await sendEmail({
       to: ["hr@virtualfreelancesolutions.com"],
       subject: `Question ${referenceNumber}: ${updateTitle}`,
       html: `
@@ -95,7 +88,11 @@ const handler = async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    if (!emailResult.success) {
+      console.error("Failed to send email:", emailResult.error);
+    } else {
+      console.log("Email sent successfully:", emailResult.messageId);
+    }
 
     return new Response(JSON.stringify({ success: true, referenceNumber }), {
       status: 200,

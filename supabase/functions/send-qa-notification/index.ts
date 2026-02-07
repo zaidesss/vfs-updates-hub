@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -81,18 +82,6 @@ const handler = async (req: Request): Promise<Response> => {
     let subject: string;
     let htmlContent: string;
 
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    if (!RESEND_API_KEY) {
-      console.error('RESEND_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ error: 'Email service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Use the verified subdomain from Resend
-    const senderEmail = 'Agent Portal <noreply@updates.virtualfreelancesolutions.com>';
-
     if (type === 'new_evaluation') {
       subject = `QA Evaluation Completed - ${evaluation.audit_date} - Ticket #${evaluation.ticket_id}`;
       htmlContent = `
@@ -119,25 +108,16 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      // Send to agent using Resend API
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: senderEmail,
-          to: [evaluation.agent_email],
-          cc: filteredCcEmails.length > 0 ? filteredCcEmails : undefined,
-          subject,
-          html: htmlContent,
-        }),
+      // Send to agent
+      const emailResult = await sendEmail({
+        to: [evaluation.agent_email],
+        cc: filteredCcEmails.length > 0 ? filteredCcEmails : undefined,
+        subject,
+        html: htmlContent,
       });
 
-      if (!emailRes.ok) {
-        const errText = await emailRes.text();
-        console.error('Failed to send new evaluation email:', errText);
+      if (!emailResult.success) {
+        console.error('Failed to send new evaluation email:', emailResult.error);
         
         // Log failure event
         await supabase
@@ -148,12 +128,11 @@ const handler = async (req: Request): Promise<Response> => {
             event_description: `Email failed to send to ${evaluation.agent_email}`,
             actor_email: evaluation.evaluator_email,
             actor_name: evaluation.evaluator_name,
-            metadata: { error: errText, to: evaluation.agent_email },
+            metadata: { error: emailResult.error, to: evaluation.agent_email },
           });
         
-        // Return error so UI can show toast
         return new Response(
-          JSON.stringify({ error: 'Failed to send email', details: errText }),
+          JSON.stringify({ error: 'Failed to send email', details: emailResult.error }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -167,7 +146,7 @@ const handler = async (req: Request): Promise<Response> => {
           event_description: `Notification email sent to ${evaluation.agent_email}`,
           actor_email: evaluation.evaluator_email,
           actor_name: evaluation.evaluator_name,
-          metadata: { to: evaluation.agent_email, cc: filteredCcEmails },
+          metadata: { to: evaluation.agent_email, cc: filteredCcEmails, messageId: emailResult.messageId },
         });
 
       // Mark notification as sent only after success
@@ -198,25 +177,16 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      // Send to admins with agent in CC using Resend API
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: senderEmail,
-          to: filteredCcEmails.length > 0 ? filteredCcEmails : [evaluation.agent_email],
-          cc: filteredCcEmails.length > 0 ? [evaluation.agent_email] : undefined,
-          subject,
-          html: htmlContent,
-        }),
+      // Send to admins with agent in CC
+      const emailResult = await sendEmail({
+        to: filteredCcEmails.length > 0 ? filteredCcEmails : [evaluation.agent_email],
+        cc: filteredCcEmails.length > 0 ? [evaluation.agent_email] : undefined,
+        subject,
+        html: htmlContent,
       });
 
-      if (!emailRes.ok) {
-        const errText = await emailRes.text();
-        console.error('Failed to send acknowledgment email:', errText);
+      if (!emailResult.success) {
+        console.error('Failed to send acknowledgment email:', emailResult.error);
         
         // Log failure event
         await supabase
@@ -227,11 +197,11 @@ const handler = async (req: Request): Promise<Response> => {
             event_description: `Acknowledgment email failed to send`,
             actor_email: evaluation.agent_email,
             actor_name: evaluation.agent_name,
-            metadata: { error: errText },
+            metadata: { error: emailResult.error },
           });
         
         return new Response(
-          JSON.stringify({ error: 'Failed to send email', details: errText }),
+          JSON.stringify({ error: 'Failed to send email', details: emailResult.error }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -245,7 +215,7 @@ const handler = async (req: Request): Promise<Response> => {
           event_description: `Acknowledgment notification sent to admins`,
           actor_email: evaluation.agent_email,
           actor_name: evaluation.agent_name,
-          metadata: { to: filteredCcEmails },
+          metadata: { to: filteredCcEmails, messageId: emailResult.messageId },
         });
     }
 

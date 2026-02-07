@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +54,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const slackWebhookUrl = Deno.env.get('SLACK_WEBHOOK_URL');
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
 
     const { updateTitle, isEdit, referenceNumber } = await req.json();
 
@@ -100,15 +99,11 @@ serve(async (req) => {
     }
 
     // Send email notifications
-    if (resendApiKey && emails.length > 0) {
+    if (emails.length > 0) {
       try {
-        const resend = new Resend(resendApiKey);
-        
-        // Send to all users (Resend supports up to 50 recipients per call)
         const emoji = isEdit ? '✏️' : '📢';
-        // Use verified domain email - must match domain verified in Resend
-        const emailResponse = await resend.emails.send({
-          from: 'VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>',
+        
+        const emailResult = await sendEmail({
           to: emails,
           subject: `${notificationType} Update${refDisplay}: ${updateTitle}`,
           html: `
@@ -132,14 +127,18 @@ serve(async (req) => {
           `,
         });
 
-        console.log('Email sent successfully:', emailResponse);
-        results.email = true;
-        results.emailCount = emails.length;
+        if (emailResult.success) {
+          console.log('Email sent successfully:', emailResult.messageId);
+          results.email = true;
+          results.emailCount = emails.length;
+        } else {
+          console.error('Email error:', emailResult.error);
+        }
       } catch (emailError) {
         console.error('Email error:', emailError);
       }
     } else {
-      console.log('No Resend API key configured or no users to notify');
+      console.log('No users to notify');
     }
 
     // Create in-app notifications for all active users

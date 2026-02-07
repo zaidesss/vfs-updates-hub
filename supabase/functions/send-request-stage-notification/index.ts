@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,8 +75,7 @@ serve(async (req: Request): Promise<Response> => {
     
     // Email to submitter
     try {
-      await resend.emails.send({
-        from: "VFS Agent Portal <onboarding@resend.dev>",
+      const emailResult = await sendEmail({
         to: [submitterEmail],
         subject: `${statusEmoji} ${refDisplay}Request ${statusText}`,
         html: `
@@ -100,7 +97,19 @@ serve(async (req: Request): Promise<Response> => {
           </div>
         `,
       });
-      console.log("Email sent to submitter");
+      
+      if (!emailResult.success) {
+        console.error("Failed to send email to submitter:", emailResult.error);
+        await supabase.from('failed_emails').insert({
+          function_name: 'send-request-stage-notification',
+          recipient_email: submitterEmail,
+          subject: `${statusEmoji} ${refDisplay}Request ${statusText}`,
+          error_message: emailResult.error,
+          payload: payload,
+        });
+      } else {
+        console.log("Email sent to submitter");
+      }
     } catch (emailErr) {
       console.error("Failed to send email to submitter:", emailErr);
       await supabase.from('failed_emails').insert({
@@ -127,8 +136,7 @@ serve(async (req: Request): Promise<Response> => {
       
       // Email to next approver
       try {
-        await resend.emails.send({
-          from: "VFS Agent Portal <onboarding@resend.dev>",
+        const emailResult = await sendEmail({
           to: [nextApproverEmail],
           subject: `📋 ${refDisplay}Request Awaiting Your Approval`,
           html: `
@@ -147,7 +155,19 @@ serve(async (req: Request): Promise<Response> => {
             </div>
           `,
         });
-        console.log("Email sent to next approver");
+        
+        if (!emailResult.success) {
+          console.error("Failed to send email to next approver:", emailResult.error);
+          await supabase.from('failed_emails').insert({
+            function_name: 'send-request-stage-notification',
+            recipient_email: nextApproverEmail,
+            subject: `📋 ${refDisplay}Request Awaiting Your Approval`,
+            error_message: emailResult.error,
+            payload: { ...payload, notificationType: 'next_approver' },
+          });
+        } else {
+          console.log("Email sent to next approver");
+        }
       } catch (emailErr) {
         console.error("Failed to send email to next approver:", emailErr);
         await supabase.from('failed_emails').insert({

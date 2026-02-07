@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +17,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -29,18 +28,16 @@ serve(async (req) => {
 
     if (adminsError) throw adminsError;
 
-    if (!resendApiKey || !superAdmins?.length) {
-      return new Response(JSON.stringify({ message: 'No super admins or API key configured' }), {
+    if (!superAdmins?.length) {
+      return new Response(JSON.stringify({ message: 'No super admins configured' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const resend = new Resend(resendApiKey);
-
+    let emailsSent = 0;
     for (const admin of superAdmins) {
-      await resend.emails.send({
-        from: 'VFS Agent Portal <notifications@lovableproject.com>',
-        to: admin.email,
+      const emailResult = await sendEmail({
+        to: [admin.email],
         subject: `Profile Change Request - ${referenceNumber}`,
         html: `
           <h2>New Profile Change Request</h2>
@@ -54,11 +51,17 @@ serve(async (req) => {
             ${reason ? `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Reason:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${reason}</td></tr>` : ''}
           </table>
           <p>Please log in to the portal to review and approve/reject this request.</p>
-        `
+        `,
       });
+      
+      if (emailResult.success) {
+        emailsSent++;
+      } else {
+        console.error(`Failed to send email to ${admin.email}:`, emailResult.error);
+      }
     }
 
-    return new Response(JSON.stringify({ success: true, emailsSent: superAdmins.length }), {
+    return new Response(JSON.stringify({ success: true, emailsSent }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 

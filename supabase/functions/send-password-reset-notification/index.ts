@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,8 +18,6 @@ serve(async (req) => {
   }
 
   try {
-    const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
     const { email, userName }: PasswordResetNotificationRequest = await req.json();
 
     if (!email) {
@@ -34,8 +32,7 @@ serve(async (req) => {
 
     console.log(`Sending password reset notification to ${normalizedEmail}`);
 
-    const emailResponse = await resend.emails.send({
-      from: "VFS Agent Portal <onboarding@resend.dev>",
+    const emailResult = await sendEmail({
       to: [normalizedEmail],
       subject: "Password Change Required",
       html: `
@@ -54,7 +51,15 @@ serve(async (req) => {
       `,
     });
 
-    console.log("Password reset notification sent:", emailResponse);
+    if (!emailResult.success) {
+      console.error("Failed to send password reset notification:", emailResult.error);
+      return new Response(
+        JSON.stringify({ error: emailResult.error }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Password reset notification sent:", emailResult.messageId);
 
     return new Response(
       JSON.stringify({ success: true, message: "Notification sent successfully" }),
