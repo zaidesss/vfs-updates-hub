@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendEmail } from '../_shared/gmail-sender.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,15 +42,6 @@ const handler = async (req: Request): Promise<Response> => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-
-    if (!RESEND_API_KEY) {
-      console.error('RESEND_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ error: 'Email service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -101,26 +93,17 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
-    // Send email via Resend
-    const emailRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'VFS Agent Portal <noreply@updates.virtualfreelancesolutions.com>',
-        to: recipientList,
-        subject,
-        html: htmlContent,
-      }),
+    // Send email via Gmail API
+    const emailRes = await sendEmail({
+      to: recipientList,
+      subject,
+      html: htmlContent,
     });
 
-    if (!emailRes.ok) {
-      const errText = await emailRes.text();
-      console.error('Failed to send email:', errText);
+    if (!emailRes.success) {
+      console.error('Failed to send email:', emailRes.error);
       return new Response(
-        JSON.stringify({ error: 'Failed to send email', details: errText }),
+        JSON.stringify({ error: 'Failed to send email', details: emailRes.error }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

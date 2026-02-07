@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +15,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -58,36 +57,33 @@ serve(async (req) => {
       .select('email, name')
       .in('role', ['admin', 'super_admin']);
 
-    if (adminsError) throw adminsError;
-
-    if (!resendApiKey || !adminUsers?.length) {
-      return new Response(JSON.stringify({ message: 'No admins or API key configured' }), {
+    if (!adminUsers?.length) {
+      return new Response(JSON.stringify({ message: 'No admins configured' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const resend = new Resend(resendApiKey);
     const emailsSent: string[] = [];
 
     for (const { profile, entry } of upcomingProgressions) {
       const agentName = profile.full_name || profile.email;
+      const html = `
+        <h2>Rate Progression Reminder</h2>
+        <p>This is a reminder that a rate progression is coming up in 7 days.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Agent:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${agentName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Email:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${profile.email}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Current Rate:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">$${profile.hourly_rate || 'N/A'}/hr</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>New Rate:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">$${entry.rate}/hr</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Effective Date:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${entry.date}</td></tr>
+        </table>
+      `;
       
       for (const admin of adminUsers) {
-        await resend.emails.send({
-          from: 'VFS Agent Portal <notifications@lovableproject.com>',
-          to: admin.email,
+        await sendEmail({
+          to: [admin.email],
           subject: `Upcoming Rate Progression - ${agentName}`,
-          html: `
-            <h2>Rate Progression Reminder</h2>
-            <p>This is a reminder that a rate progression is coming up in 7 days.</p>
-            <table style="border-collapse: collapse; margin: 20px 0;">
-              <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Agent:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${agentName}</td></tr>
-              <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Email:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${profile.email}</td></tr>
-              <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Current Rate:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">$${profile.hourly_rate || 'N/A'}/hr</td></tr>
-              <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>New Rate:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">$${entry.rate}/hr</td></tr>
-              <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Effective Date:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${entry.date}</td></tr>
-            </table>
-          `
+          html,
         });
         emailsSent.push(admin.email);
       }

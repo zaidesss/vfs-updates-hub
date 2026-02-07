@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const ZENDESK_API_TOKEN = Deno.env.get("ZENDESK_API_TOKEN_ZD1");
 const ZENDESK_ADMIN_EMAIL = Deno.env.get("ZENDESK_ADMIN_EMAIL");
 
@@ -407,30 +406,25 @@ async function sendFailureEmail(
   ticketsRequested: number,
   errorMessage: string
 ): Promise<void> {
-  if (!RESEND_API_KEY) {
-    console.error("RESEND_API_KEY not configured, cannot send failure email");
-    return;
-  }
-
-  const resend = new Resend(RESEND_API_KEY);
   const now = new Date().toISOString();
 
+  const html = `
+    <h2>Ticket Assignment Failed</h2>
+    <p><strong>Agent:</strong> ${agentName} (${agentEmail})</p>
+    <p><strong>Time:</strong> ${now}</p>
+    <p><strong>Instance:</strong> ${zendeskInstance}</p>
+    <p><strong>View:</strong> ${viewName} (${viewId})</p>
+    <p><strong>Tickets Requested:</strong> ${ticketsRequested}</p>
+    <p><strong>Error:</strong> ${errorMessage}</p>
+    <br/>
+    <p>Please check the <code>ticket_assignment_logs</code> table for more details.</p>
+  `;
+
   try {
-    await resend.emails.send({
-      from: "VFS Portal <no-reply@vfs-services.com>",
+    await sendEmail({
       to: ["malcom@persistbrands.com"],
       subject: `Ticket Assignment Failed - ${agentName}`,
-      html: `
-        <h2>Ticket Assignment Failed</h2>
-        <p><strong>Agent:</strong> ${agentName} (${agentEmail})</p>
-        <p><strong>Time:</strong> ${now}</p>
-        <p><strong>Instance:</strong> ${zendeskInstance}</p>
-        <p><strong>View:</strong> ${viewName} (${viewId})</p>
-        <p><strong>Tickets Requested:</strong> ${ticketsRequested}</p>
-        <p><strong>Error:</strong> ${errorMessage}</p>
-        <br/>
-        <p>Please check the <code>ticket_assignment_logs</code> table for more details.</p>
-      `,
+      html,
     });
     console.log("Failure notification email sent");
   } catch (err) {
