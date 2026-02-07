@@ -2454,10 +2454,12 @@ export type Database = {
           fri_schedule: string
           is_saved: boolean
           mon_schedule: string
+          ot_email_count: number
           profile_id: string
           qa_average: number
           quota_chat: number
           quota_email: number
+          quota_ot_email: number
           quota_phone: number
           revalida_score: number
           sat_schedule: string
