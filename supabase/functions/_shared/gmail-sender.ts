@@ -22,7 +22,7 @@ interface EmailOptions {
   bcc?: string[];
   subject: string;
   html: string;
-  from?: string; // Defaults to noreply@virtualfreelancesolutions.com
+  from?: string; // Defaults to hr@virtualfreelancesolutions.com
   fromName?: string; // Defaults to "Agent Portal"
 }
 
@@ -33,7 +33,7 @@ interface SendResult {
 }
 
 // Default sender configuration
-const DEFAULT_SENDER_EMAIL = 'noreply@virtualfreelancesolutions.com';
+const DEFAULT_SENDER_EMAIL = 'hr@virtualfreelancesolutions.com';
 const DEFAULT_SENDER_NAME = 'Agent Portal';
 
 /**
