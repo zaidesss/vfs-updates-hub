@@ -1,72 +1,139 @@
 
 
-# Fix OT Login and BIO Events in Today's Activity
+# Reliability Calculation with Outage-Based Deductions
 
-## Problem Summary
+## Summary
 
-OT Login and Bio Break events are not appearing in the "Today's Activity" section of the Agent Dashboard. Investigation confirms the database constraints are rejecting these events.
+This update modifies how **Reliability** is calculated in the Team Scorecard. Instead of the current formula that adjusts scheduled days by approved leave, the new approach starts at 100% reliability and **deducts 1% for each outage day** from the Outages page, **except for "Planned Leave"** which has no deduction.
 
-## Root Cause
+## Current Behavior
 
-The `profile_events` table has three CHECK constraints:
-- `valid_event_type` - Correctly includes `BIO_START`, `BIO_END`, `OT_LOGIN`, `OT_LOGOUT`
-- `valid_prev_status` - Only allows: `LOGGED_OUT`, `LOGGED_IN`, `ON_BREAK`, `COACHING`, `RESTARTING`
-- `valid_new_status` - Only allows: `LOGGED_OUT`, `LOGGED_IN`, `ON_BREAK`, `COACHING`, `RESTARTING`
+Currently, reliability is calculated as:
+```
+adjustedScheduledDays = scheduledDays - approved_leave_days
+reliability = (daysPresent / adjustedScheduledDays) × 100
+```
 
-When an agent triggers a BIO or OT event:
-1. The `profile_status` table updates correctly (agent status changes to `ON_BIO` or `ON_OT`)
-2. The `profile_events` insert fails silently because `ON_BIO` and `ON_OT` are not in the allowed status values
-3. Since no event record is created, Today's Activity shows nothing
+This effectively "excuses" all approved outages from the calculation, meaning an agent with approved leave doesn't get penalized.
 
-Evidence: Your agent has used 102 seconds of bio time (18 remaining out of 120), but zero BIO_START or BIO_END events exist in the database.
+## New Behavior
+
+The new formula will be:
+```
+reliability = 100 - (unplanned_outage_days × 1)
+```
+
+Where:
+- **Planned Leave**: No deduction (fully excused)
+- **All other outage reasons**: 1% deduction per day
+  - Medical Leave: 1% per day
+  - Late Login: 1% per day  
+  - Power Outage: 1% per day
+  - Wi-Fi Issue: 1% per day
+  - Equipment Issue: 1% per day
+  - Undertime: 1% per day
+  - Unplanned: 1% per day
+
+**Example**: Agent has 2 days Medical Leave + 1 day Planned Leave + 1 day Late Login
+- Deduction = 2% (Medical) + 0% (Planned) + 1% (Late Login) = 3%
+- Reliability = 100% - 3% = 97%
 
 ---
 
-## Solution
+## Implementation Steps
 
-### Database Migration
+### Step 1: Update SQL RPC Function (get_weekly_scorecard_data)
+Modify the `leave_days` CTE to return separate counts:
+- `planned_leave_days`: Days where `outage_reason = 'Planned Leave'`
+- `unplanned_outage_days`: Days where `outage_reason != 'Planned Leave'`
 
-Update the status constraints to include `ON_BIO` and `ON_OT`:
+Add new return columns to the function signature.
 
-```sql
--- Drop existing status constraints
-ALTER TABLE profile_events DROP CONSTRAINT IF EXISTS valid_prev_status;
-ALTER TABLE profile_events DROP CONSTRAINT IF EXISTS valid_new_status;
+### Step 2: Update TypeScript Interface
+Add `unplanned_outage_days` to:
+- `ScorecardRPCResult` interface
+- `AgentScorecard` interface
 
--- Recreate with all statuses including ON_BIO and ON_OT
-ALTER TABLE profile_events ADD CONSTRAINT valid_prev_status 
-CHECK (prev_status = ANY (ARRAY[
-  'LOGGED_OUT'::text, 
-  'LOGGED_IN'::text, 
-  'ON_BREAK'::text, 
-  'COACHING'::text, 
-  'RESTARTING'::text,
-  'ON_BIO'::text,
-  'ON_OT'::text
-]));
+### Step 3: Update Reliability Calculation
+Change the calculation logic in both:
+- `fetchWeeklyScorecardRPC()` function
+- `fetchWeeklyScorecard()` legacy function
 
-ALTER TABLE profile_events ADD CONSTRAINT valid_new_status 
-CHECK (new_status = ANY (ARRAY[
-  'LOGGED_OUT'::text, 
-  'LOGGED_IN'::text, 
-  'ON_BREAK'::text, 
-  'COACHING'::text, 
-  'RESTARTING'::text,
-  'ON_BIO'::text,
-  'ON_OT'::text
-]));
+New logic:
+```typescript
+// Start at 100% and deduct 1% per unplanned outage day
+const reliability = Math.max(0, 100 - unplannedOutageDays);
 ```
+
+### Step 4: Update countApprovedLeaveDays Function
+Create a new function `countOutageDaysByType()` that returns:
+```typescript
+{
+  plannedLeaveDays: number;
+  unplannedOutageDays: number;
+}
+```
+
+### Step 5: Preserve Data in Saved Scorecards
+Ensure `unplanned_outage_days` is saved when admin freezes scorecard results.
 
 ---
 
 ## Technical Details
 
-| Aspect | Current State | After Fix |
-|--------|---------------|-----------|
-| `valid_event_type` constraint | Already correct (includes OT/BIO events) | No change needed |
-| `valid_prev_status` constraint | Missing `ON_BIO`, `ON_OT` | Updated to include both |
-| `valid_new_status` constraint | Missing `ON_BIO`, `ON_OT` | Updated to include both |
-| UI Components | Already configured correctly | Will display events once recorded |
+### Database Migration SQL
+
+```sql
+-- Update get_weekly_scorecard_data RPC to return outage breakdown
+-- Modify leave_days CTE:
+leave_days AS (
+  SELECT 
+    LOWER(lr.agent_email) as email,
+    COUNT(DISTINCT d.dt::date) FILTER (
+      WHERE lr.outage_reason = 'Planned Leave'
+    ) as planned_leave_days,
+    COUNT(DISTINCT d.dt::date) FILTER (
+      WHERE lr.outage_reason != 'Planned Leave'
+    ) as unplanned_outage_days
+  FROM leave_requests lr
+  CROSS JOIN LATERAL generate_series(
+    GREATEST(lr.start_date, p_week_start),
+    LEAST(lr.end_date, p_week_end),
+    '1 day'::interval
+  ) as d(dt)
+  WHERE lr.status = 'approved'
+    AND lr.start_date <= p_week_end
+    AND lr.end_date >= p_week_start
+  GROUP BY LOWER(lr.agent_email)
+)
+```
+
+### Interface Updates
+
+```typescript
+interface ScorecardRPCResult {
+  // ... existing fields
+  planned_leave_days: number;
+  unplanned_outage_days: number;
+}
+
+interface AgentScorecard {
+  // ... existing fields
+  plannedLeaveDays: number;
+  unplannedOutageDays: number;
+}
+```
+
+### Reliability Calculation
+
+```typescript
+// In fetchWeeklyScorecardRPC and fetchWeeklyScorecard:
+const reliability = Math.max(0, 100 - row.unplanned_outage_days);
+
+// isOnLeave check: agent is considered on leave only if 
+// they have planned leave covering all scheduled days
+const isOnLeave = row.planned_leave_days >= scheduledDays;
+```
 
 ---
 
@@ -74,17 +141,32 @@ CHECK (new_status = ANY (ARRAY[
 
 | File | Changes |
 |------|---------|
-| `supabase/migrations/[new].sql` | Add migration to update status constraints |
-
-No frontend changes required - the `DailyEventSummary.tsx` and `LiveActivityFeed.tsx` components already have proper configuration for BIO and OT event types.
+| `supabase/migrations/[new].sql` | Update RPC to return outage breakdown |
+| `src/lib/scorecardApi.ts` | Update interfaces, calculation logic, and legacy function |
+| `saved_scorecards` table | Add `unplanned_outage_days` column for persistence |
 
 ---
 
-## Verification Steps
+## Outage Reasons Reference
 
-After the fix:
-1. Login to dashboard and trigger "Bio Break"
-2. Confirm event appears in Today's Activity with cyan "Bio Break" label
-3. Login to OT and confirm "OT Started" appears with purple label
-4. Verify events also appear in Team Status Board's Live Activity Feed
+From the database:
+| Outage Reason | Deduction |
+|---------------|-----------|
+| Planned Leave | 0% (exempt) |
+| Medical Leave | 1% per day |
+| Late Login | 1% per day |
+| Power Outage | 1% per day |
+| Wi-Fi Issue | 1% per day |
+| Equipment Issue | 1% per day |
+| Undertime | 1% per day |
+| Unplanned | 1% per day |
+
+---
+
+## UI Impact
+
+The scorecard display will show reliability as before, but the underlying calculation changes:
+- An agent with 0 unplanned outage days: 100% reliability
+- An agent with 3 unplanned outage days: 97% reliability
+- An agent on 5-day Planned Leave: Shows "On Leave" status (no score)
 
