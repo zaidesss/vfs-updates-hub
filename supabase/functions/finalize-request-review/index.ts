@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,7 +39,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -102,84 +102,62 @@ serve(async (req) => {
     }
 
     // Send notification to HR
-    if (resendApiKey) {
-      const decisionLabels: Record<string, string> = {
-        'create_new': 'Create New Article',
-        'update_existing': 'Update Existing Article',
-        'reject': 'Rejected',
-      };
+    const decisionLabels: Record<string, string> = {
+      'create_new': 'Create New Article',
+      'update_existing': 'Update Existing Article',
+      'reject': 'Rejected',
+    };
 
-      const statusLabel = decision === 'reject' ? 'Rejected' : 'Approved';
+    const statusLabel = decision === 'reject' ? 'Rejected' : 'Approved';
 
-      try {
-        // Notify HR
-        const hrEmailResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: "VFS Updates Hub <onboarding@resend.dev>",
-            to: [HR_EMAIL],
-            subject: `[${statusLabel}]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${decisionLabels[decision]}`,
-            html: `
-              <h2>Article Request ${statusLabel}</h2>
-              ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
-              <p>Patrick has completed the final review for the following request.</p>
-              <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
-              ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-              <hr style="margin: 20px 0;">
-              <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
-              <p><strong>Request Type:</strong> ${request.request_type}</p>
-              <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
-              <p><strong>Priority:</strong> ${request.priority}</p>
-              <p><strong>Description:</strong></p>
-              <p>${request.description}</p>
-              ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
-            `,
-          }),
-        });
-        if (hrEmailResponse.ok) {
-          console.log("Sent final decision notification to HR");
-        } else {
-          console.error("Error sending HR notification:", await hrEmailResponse.text());
-        }
-      } catch (emailError) {
-        console.error("Error sending HR notification:", emailError);
-      }
+    try {
+      // Notify HR
+      const html = `
+        <h2>Article Request ${statusLabel}</h2>
+        ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
+        <p>Patrick has completed the final review for the following request.</p>
+        <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
+        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+        <hr style="margin: 20px 0;">
+        <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
+        <p><strong>Request Type:</strong> ${request.request_type}</p>
+        <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
+        <p><strong>Priority:</strong> ${request.priority}</p>
+        <p><strong>Description:</strong></p>
+        <p>${request.description}</p>
+        ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
+      `;
+      
+      await sendEmail({
+        to: [HR_EMAIL],
+        subject: `[${statusLabel}]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${decisionLabels[decision]}`,
+        html,
+      });
+      console.log("Sent final decision notification to HR");
+    } catch (emailError) {
+      console.error("Error sending HR notification:", emailError);
+    }
 
-      // Also notify the original submitter
-      try {
-        const submitterEmailResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: "VFS Updates Hub <onboarding@resend.dev>",
-            to: [request.submitted_by],
-            subject: `Your Article Request${request.reference_number ? ` (${request.reference_number})` : ''} has been ${statusLabel}`,
-            html: `
-              <h2>Your Request has been ${statusLabel}</h2>
-              ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
-              <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
-              ${notes ? `<p><strong>Reviewer Notes:</strong> ${notes}</p>` : ''}
-              <hr style="margin: 20px 0;">
-              <p><strong>Your Original Request:</strong></p>
-              <p>${request.description}</p>
-            `,
-          }),
-        });
-        if (submitterEmailResponse.ok) {
-          console.log("Sent notification to submitter:", request.submitted_by);
-        } else {
-          console.error("Error sending submitter notification:", await submitterEmailResponse.text());
-        }
-      } catch (emailError) {
-        console.error("Error sending submitter notification:", emailError);
-      }
+    // Also notify the original submitter
+    try {
+      const html = `
+        <h2>Your Request has been ${statusLabel}</h2>
+        ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
+        <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
+        ${notes ? `<p><strong>Reviewer Notes:</strong> ${notes}</p>` : ''}
+        <hr style="margin: 20px 0;">
+        <p><strong>Your Original Request:</strong></p>
+        <p>${request.description}</p>
+      `;
+      
+      await sendEmail({
+        to: [request.submitted_by],
+        subject: `Your Article Request${request.reference_number ? ` (${request.reference_number})` : ''} has been ${statusLabel}`,
+        html,
+      });
+      console.log("Sent notification to submitter:", request.submitted_by);
+    } catch (emailError) {
+      console.error("Error sending submitter notification:", emailError);
     }
 
     return new Response(

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +28,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -112,43 +112,31 @@ serve(async (req) => {
       }
 
       // Notify Patrick that it's ready for final review
-      if (resendApiKey) {
-        try {
-          const emailResponse = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${resendApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              from: "VFS Updates Hub <onboarding@resend.dev>",
-              to: [FINAL_APPROVER.email],
-              subject: `[Final Review Required]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request Ready for Decision`,
-              html: `
-                <h2>Article Request Ready for Final Review</h2>
-                ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
-                <p>All pre-approvers have approved the following request. Your final decision is needed.</p>
-                <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
-                <p><strong>Type:</strong> ${request.request_type}</p>
-                <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
-                <p><strong>Priority:</strong> ${request.priority}</p>
-                <p><strong>Description:</strong></p>
-                <p>${request.description}</p>
-                ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
-                <p style="margin-top: 20px;">
-                  Please log in to the VFS Updates Hub to review and make your decision.
-                </p>
-              `,
-            }),
-          });
-          if (emailResponse.ok) {
-            console.log("Sent final review notification to Patrick");
-          } else {
-            console.error("Error sending notification to Patrick:", await emailResponse.text());
-          }
-        } catch (emailError) {
-          console.error("Error sending notification to Patrick:", emailError);
-        }
+      const html = `
+        <h2>Article Request Ready for Final Review</h2>
+        ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
+        <p>All pre-approvers have approved the following request. Your final decision is needed.</p>
+        <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
+        <p><strong>Type:</strong> ${request.request_type}</p>
+        <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
+        <p><strong>Priority:</strong> ${request.priority}</p>
+        <p><strong>Description:</strong></p>
+        <p>${request.description}</p>
+        ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
+        <p style="margin-top: 20px;">
+          Please log in to the VFS Updates Hub to review and make your decision.
+        </p>
+      `;
+      
+      try {
+        await sendEmail({
+          to: [FINAL_APPROVER.email],
+          subject: `[Final Review Required]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request Ready for Decision`,
+          html,
+        });
+        console.log("Sent final review notification to Patrick");
+      } catch (emailError) {
+        console.error("Error sending notification to Patrick:", emailError);
       }
 
       return new Response(
