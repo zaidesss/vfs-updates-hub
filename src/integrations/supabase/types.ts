@@ -232,6 +232,7 @@ export type Database = {
           primary_internet_speed: string | null
           quota_chat: number | null
           quota_email: number | null
+          quota_ot_email: number | null
           quota_phone: number | null
           rate_history: Json | null
           sat_ot_schedule: string | null
@@ -296,6 +297,7 @@ export type Database = {
           primary_internet_speed?: string | null
           quota_chat?: number | null
           quota_email?: number | null
+          quota_ot_email?: number | null
           quota_phone?: number | null
           rate_history?: Json | null
           sat_ot_schedule?: string | null
@@ -360,6 +362,7 @@ export type Database = {
           primary_internet_speed?: string | null
           quota_chat?: number | null
           quota_email?: number | null
+          quota_ot_email?: number | null
           quota_phone?: number | null
           rate_history?: Json | null
           sat_ot_schedule?: string | null
@@ -2018,6 +2021,7 @@ export type Database = {
           agent_name: string
           created_at: string | null
           id: string
+          is_ot: boolean | null
           status: string
           ticket_id: string
           ticket_type: string
@@ -2029,6 +2033,7 @@ export type Database = {
           agent_name: string
           created_at?: string | null
           id?: string
+          is_ot?: boolean | null
           status: string
           ticket_id: string
           ticket_type: string
@@ -2040,6 +2045,7 @@ export type Database = {
           agent_name?: string
           created_at?: string | null
           id?: string
+          is_ot?: boolean | null
           status?: string
           ticket_id?: string
           ticket_type?: string

@@ -687,6 +687,26 @@ export function WorkConfigurationSection({
                 </div>
               </div>
             </div>
+
+            {/* OT Productivity */}
+            <div className="space-y-3">
+              <ProfileSectionHeader title="OT Productivity" badge="hr" locked={!canEdit} />
+              <p className="text-xs text-muted-foreground">OT productivity is measured in emails handled during OT hours.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">OT Email Quota</Label>
+                  <Input
+                    type="number"
+                    value={profile.quota_ot_email ?? ''}
+                    onChange={(e) => onInputChange('quota_ot_email', e.target.value ? parseInt(e.target.value) : null)}
+                    placeholder="0"
+                    disabled={!canEdit}
+                    className={cn('text-xs', !canEdit && 'bg-muted')}
+                  />
+                  <p className="text-xs text-muted-foreground">Daily quota for emails during OT</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -57,14 +57,38 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Try to match agent_name with agent_directory.agent_tag
+    // Try to match agent_name with agent_directory.agent_tag (case-insensitive)
     const { data: agentData } = await supabase
       .from('agent_directory')
       .select('email')
-      .eq('agent_tag', payload.agent_name)
+      .ilike('agent_tag', payload.agent_name)
       .maybeSingle()
 
     const agentEmail = agentData?.email || null
+
+    // Check if agent is currently on OT to set is_ot flag
+    let isOt = false
+    if (agentEmail) {
+      // Get agent's profile_id and check their current status
+      const { data: profileData } = await supabase
+        .from('agent_profiles')
+        .select('id')
+        .ilike('email', agentEmail)
+        .maybeSingle()
+      
+      if (profileData?.id) {
+        const { data: statusData } = await supabase
+          .from('profile_status')
+          .select('current_status')
+          .eq('profile_id', profileData.id)
+          .maybeSingle()
+        
+        if (statusData?.current_status === 'ON_OT') {
+          isOt = true
+          console.log(`Agent ${payload.agent_name} is ON_OT, marking ticket as OT`)
+        }
+      }
+    }
 
     // Normalize ticket_type (Zendesk sends things like "Mail", "Chat", "Phone")
     let normalizedType = 'Email'
@@ -77,7 +101,7 @@ Deno.serve(async (req) => {
       normalizedType = 'Email'
     }
 
-    // Insert ticket log
+    // Insert ticket log with is_ot flag
     const { data, error } = await supabase
       .from('ticket_logs')
       .insert({
@@ -88,6 +112,7 @@ Deno.serve(async (req) => {
         ticket_type: normalizedType,
         agent_name: payload.agent_name,
         agent_email: agentEmail,
+        is_ot: isOt,
       })
       .select()
       .single()
@@ -100,10 +125,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Ticket log inserted successfully:', data.id)
+    console.log('Ticket log inserted successfully:', data.id, isOt ? '(OT)' : '')
 
     return new Response(
-      JSON.stringify({ success: true, id: data.id }),
+      JSON.stringify({ success: true, id: data.id, is_ot: isOt }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

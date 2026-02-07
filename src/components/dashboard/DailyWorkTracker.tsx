@@ -1,15 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { BarChart3, RefreshCw, Mail, MessageCircle, Phone, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle } from 'lucide-react';
+import { BarChart3, RefreshCw, Mail, MessageCircle, Phone, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle, Zap } from 'lucide-react';
 import { formatGapTime } from '@/lib/agentDashboardApi';
 import { cn } from '@/lib/utils';
 
-interface TicketCountByType {
-  email: number;
-  chat: number;
-  call: number;
-}
+import { TicketCountByType } from '@/lib/agentDashboardApi';
 
 interface DailyWorkTrackerProps {
   // Position-specific quotas and counts
@@ -17,6 +13,7 @@ interface DailyWorkTrackerProps {
   quotaEmail: number | null;
   quotaChat: number | null;
   quotaPhone: number | null;
+  quotaOtEmail: number | null;
   ticketCounts: TicketCountByType;
   avgGapSeconds: number | null;
   onRefresh: () => void;
@@ -29,6 +26,8 @@ interface DailyWorkTrackerProps {
   upworkError?: string | null;
   upworkSyncedAt?: string | null;  // When data was last synced from Upwork
   hasUpworkContract?: boolean;
+  // OT tracking
+  isOnOT?: boolean;
 }
 
 /**
@@ -98,6 +97,7 @@ export function DailyWorkTracker({
   quotaEmail, 
   quotaChat,
   quotaPhone,
+  quotaOtEmail,
   ticketCounts,
   avgGapSeconds,
   onRefresh,
@@ -108,8 +108,12 @@ export function DailyWorkTracker({
   upworkError,
   upworkSyncedAt,
   hasUpworkContract,
+  isOnOT,
 }: DailyWorkTrackerProps) {
   const { showEmail, showChat, showCall } = getVisibleTicketTypes(position, quotaChat, quotaPhone);
+  
+  // Show OT Email bar if agent is currently on OT or has OT tickets today
+  const showOtEmail = isOnOT || (ticketCounts.otEmail > 0);
 
   // Calculate variance between portal and Upwork hours (only if both are available)
   const hasUpworkData = upworkHours !== null && upworkHours !== undefined;
@@ -136,8 +140,8 @@ export function DailyWorkTracker({
     return `${h}h ${m}m`;
   };
 
-  // Count how many ticket type bars we're showing
-  const ticketBarsCount = [showEmail, showChat, showCall].filter(Boolean).length;
+  // Count how many ticket type bars we're showing (include OT Email if visible)
+  const ticketBarsCount = [showEmail, showChat, showCall, showOtEmail].filter(Boolean).length;
 
   // Determine grid columns for the bottom row (Avg Gap, Portal Time, Upwork Time)
   const timeMetricsCount = hasUpworkContract ? 3 : 2;
@@ -170,7 +174,8 @@ export function DailyWorkTracker({
             "grid gap-4",
             ticketBarsCount === 1 && "grid-cols-1",
             ticketBarsCount === 2 && "grid-cols-1 md:grid-cols-2",
-            ticketBarsCount >= 3 && "grid-cols-1 md:grid-cols-3"
+            ticketBarsCount === 3 && "grid-cols-1 md:grid-cols-3",
+            ticketBarsCount >= 4 && "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
           )}>
             {showEmail && (
               <TicketProgressBar
@@ -197,6 +202,15 @@ export function DailyWorkTracker({
                 count={ticketCounts.call}
                 quota={quotaPhone}
                 colorClass="text-amber-600"
+              />
+            )}
+            {showOtEmail && (
+              <TicketProgressBar
+                icon={<Zap className="h-4 w-4" />}
+                label="OT Email"
+                count={ticketCounts.otEmail}
+                quota={quotaOtEmail}
+                colorClass="text-violet-600"
               />
             )}
           </div>
