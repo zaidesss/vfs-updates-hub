@@ -1,6 +1,20 @@
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  getCurrentESTDayKey, 
+  getCurrentESTTimeMinutes, 
+  getTodayEST,
+  parseScheduleRange,
+  isTimeInScheduleRange,
+} from './timezoneUtils';
 
-export type ProfileStatus = 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'LOGGED_OUT';
+export type ProfileStatus = 
+  | 'LOGGED_IN' 
+  | 'ON_BREAK' 
+  | 'COACHING' 
+  | 'LOGGED_OUT'
+  | 'ON_OT'
+  | 'RESTARTING'
+  | 'ON_BIO';
 
 export type SupportCategory = 
   | 'phoneSupport' 
@@ -20,6 +34,11 @@ export interface TeamMemberStatus {
   statusSince: string;
   shiftSchedule: string | null;
   breakSchedule: string | null;
+  // Schedule-based visibility fields
+  isScheduledNow: boolean;
+  outageReason: string | null;
+  hasApprovedOutage: boolean;
+  otSchedule: string | null;
 }
 
 export interface CategorizedTeamMembers {
@@ -48,8 +67,65 @@ function categorizeByPosition(position: string | null): SupportCategory {
   return 'other';
 }
 
-export async function fetchLoggedInTeamMembers(): Promise<{
+// Day key to database column mapping
+const DAY_SCHEDULE_MAP: Record<string, string> = {
+  mon: 'mon_schedule',
+  tue: 'tue_schedule',
+  wed: 'wed_schedule',
+  thu: 'thu_schedule',
+  fri: 'fri_schedule',
+  sat: 'sat_schedule',
+  sun: 'sun_schedule',
+};
+
+const DAY_OT_SCHEDULE_MAP: Record<string, string> = {
+  mon: 'mon_ot_schedule',
+  tue: 'tue_ot_schedule',
+  wed: 'wed_ot_schedule',
+  thu: 'thu_ot_schedule',
+  fri: 'fri_ot_schedule',
+  sat: 'sat_ot_schedule',
+  sun: 'sun_ot_schedule',
+};
+
+// Convert day key to display format for day_off array matching
+const DAY_OFF_MAP: Record<string, string> = {
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+  sun: 'Sun',
+};
+
+/**
+ * Check if an agent is within their scheduled visibility window.
+ * This includes regular shift + OT schedule.
+ */
+function isWithinScheduleWindow(
+  regularSchedule: string | null,
+  otSchedule: string | null,
+  currentTimeMinutes: number
+): boolean {
+  // Check regular schedule
+  const regularRange = parseScheduleRange(regularSchedule);
+  if (regularRange && isTimeInScheduleRange(currentTimeMinutes, regularRange.start, regularRange.end)) {
+    return true;
+  }
+  
+  // Check OT schedule
+  const otRange = parseScheduleRange(otSchedule);
+  if (otRange && isTimeInScheduleRange(currentTimeMinutes, otRange.start, otRange.end)) {
+    return true;
+  }
+  
+  return false;
+}
+
+export async function fetchScheduledTeamMembers(): Promise<{
   categories: CategorizedTeamMembers;
+  totalScheduled: number;
   totalOnline: number;
   error: string | null;
 }> {
@@ -64,91 +140,152 @@ export async function fetchLoggedInTeamMembers(): Promise<{
   };
 
   try {
-    // Fetch all profile_status records where user is NOT logged out
-    const { data: statusData, error: statusError } = await supabase
-      .from('profile_status')
-      .select('profile_id, current_status, status_since')
-      .neq('current_status', 'LOGGED_OUT');
+    // Get current EST day and time
+    const currentDayKey = getCurrentESTDayKey();
+    const currentTimeMinutes = getCurrentESTTimeMinutes();
+    const todayStr = getTodayEST();
+    
+    const scheduleColumn = DAY_SCHEDULE_MAP[currentDayKey];
+    const otScheduleColumn = DAY_OT_SCHEDULE_MAP[currentDayKey];
+    const dayOffDisplay = DAY_OFF_MAP[currentDayKey];
 
-    if (statusError) {
-      console.error('Error fetching profile_status:', statusError);
-      return { categories: emptyCategories, totalOnline: 0, error: statusError.message };
+    // Fetch all active agent profiles with schedules (parallel queries)
+    const [profilesResult, statusesResult, outagesResult] = await Promise.all([
+      // Fetch all active profiles with per-day schedules
+      supabase
+        .from('agent_profiles')
+        .select(`
+          id, 
+          email, 
+          full_name, 
+          position,
+          day_off,
+          break_schedule,
+          mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule,
+          mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule
+        `)
+        .neq('employment_status', 'Terminated'),
+      
+      // Fetch all profile statuses (including LOGGED_OUT for reference)
+      supabase
+        .from('profile_status')
+        .select('profile_id, current_status, status_since'),
+      
+      // Fetch approved outages covering today
+      supabase
+        .from('leave_requests')
+        .select('agent_email, outage_reason, start_date, end_date, start_time, end_time')
+        .eq('status', 'approved')
+        .lte('start_date', todayStr)
+        .gte('end_date', todayStr),
+    ]);
+
+    if (profilesResult.error) {
+      console.error('Error fetching agent_profiles:', profilesResult.error);
+      return { categories: emptyCategories, totalScheduled: 0, totalOnline: 0, error: profilesResult.error.message };
     }
 
-    if (!statusData || statusData.length === 0) {
-      return { categories: emptyCategories, totalOnline: 0, error: null };
-    }
-
-    const profileIds = statusData.map(s => s.profile_id);
-
-    // Fetch from the restricted view (only non-sensitive fields)
-    const { data: profilesData, error: profilesError } = await supabase
-      .from('agent_profiles_team_status')
-      .select('id, email, full_name, position')
-      .in('id', profileIds);
-
-    if (profilesError) {
-      console.error('Error fetching agent_profiles_team_status:', profilesError);
-      return { categories: emptyCategories, totalOnline: 0, error: profilesError.message };
-    }
-
-    if (!profilesData || profilesData.length === 0) {
-      return { categories: emptyCategories, totalOnline: 0, error: null };
-    }
-
-    // Get emails to fetch from agent_directory
-    const emails = profilesData.map(p => p.email).filter(Boolean);
-
-    // Fetch agent_directory for schedule info
-    const { data: directoryData, error: directoryError } = await supabase
-      .from('agent_directory')
-      .select('email, weekday_schedule, break_schedule')
-      .in('email', emails);
-
-    if (directoryError) {
-      console.error('Error fetching agent_directory:', directoryError);
-      // Continue without directory data - not a fatal error
-    }
+    const profiles = profilesResult.data || [];
+    const statuses = statusesResult.data || [];
+    const outages = outagesResult.data || [];
 
     // Create lookup maps
-    const directoryMap = new Map<string, { weekday_schedule: string | null; break_schedule: string | null }>();
-    if (directoryData) {
-      directoryData.forEach(d => {
-        directoryMap.set(d.email, {
-          weekday_schedule: d.weekday_schedule,
-          break_schedule: d.break_schedule,
-        });
-      });
-    }
-
     const statusMap = new Map<string, { current_status: string; status_since: string }>();
-    statusData.forEach(s => {
+    statuses.forEach(s => {
       statusMap.set(s.profile_id, {
         current_status: s.current_status,
         status_since: s.status_since,
       });
     });
 
-    // Build team member status list
-    const allMembers: TeamMemberStatus[] = profilesData
-      .map(profile => {
-        const status = statusMap.get(profile.id);
-        const directory = profile.email ? directoryMap.get(profile.email) : undefined;
+    const outageMap = new Map<string, { outage_reason: string; start_time?: string; end_time?: string }>();
+    outages.forEach(o => {
+      if (o.agent_email) {
+        outageMap.set(o.agent_email.toLowerCase(), {
+          outage_reason: o.outage_reason,
+          start_time: o.start_time,
+          end_time: o.end_time,
+        });
+      }
+    });
 
-        if (!status) return null;
+    // Process each profile for schedule-based visibility
+    const allMembers: TeamMemberStatus[] = [];
+    let onlineCount = 0;
 
-        return {
-          profileId: profile.id,
-          email: profile.email,
-          fullName: profile.full_name || profile.email,
-          position: profile.position,
-          currentStatus: status.current_status as ProfileStatus,
-          statusSince: status.status_since,
-          shiftSchedule: directory?.weekday_schedule || null,
-          breakSchedule: directory?.break_schedule || null,
-        };
-      })
-      .filter((m): m is TeamMemberStatus => m !== null);
+    profiles.forEach(profile => {
+      const email = (profile.email || '').toLowerCase();
+      
+      // Check if today is their day off
+      const dayOffArray = profile.day_off || [];
+      if (dayOffArray.includes(dayOffDisplay)) {
+        return; // Skip - it's their day off
+      }
+      
+      // Get today's schedules using dynamic property access
+      const todaySchedule = (profile as any)[scheduleColumn] as string | null;
+      const todayOtSchedule = (profile as any)[otScheduleColumn] as string | null;
+      
+      // Skip if no schedule for today (Day Off in schedule field)
+      if (!todaySchedule || todaySchedule.toLowerCase() === 'day off' || todaySchedule.toLowerCase() === 'off') {
+        return;
+      }
+      
+      // Check if within visibility window
+      const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
+      
+      if (!isScheduled) {
+        return; // Skip - not within their schedule window
+      }
+      
+      // Get status info
+      const statusInfo = statusMap.get(profile.id);
+      const currentStatus = (statusInfo?.current_status || 'LOGGED_OUT') as ProfileStatus;
+      const statusSince = statusInfo?.status_since || new Date().toISOString();
+      
+      // Check for approved outage
+      const outageInfo = outageMap.get(email);
+      let hasApprovedOutage = false;
+      let outageReason: string | null = null;
+      
+      if (outageInfo) {
+        // Check if outage covers current time
+        if (outageInfo.start_time && outageInfo.end_time) {
+          const outageStart = parseInt(outageInfo.start_time.replace(':', ''), 10) || 0;
+          const outageEnd = parseInt(outageInfo.end_time.replace(':', ''), 10) || 2400;
+          const currentHHMM = Math.floor(currentTimeMinutes / 60) * 100 + (currentTimeMinutes % 60);
+          
+          if (currentHHMM >= outageStart && currentHHMM <= outageEnd) {
+            hasApprovedOutage = true;
+            outageReason = outageInfo.outage_reason;
+          }
+        } else {
+          // Full day outage
+          hasApprovedOutage = true;
+          outageReason = outageInfo.outage_reason;
+        }
+      }
+      
+      // Count as online if logged in and not on outage
+      if (currentStatus !== 'LOGGED_OUT' && !hasApprovedOutage) {
+        onlineCount++;
+      }
+      
+      allMembers.push({
+        profileId: profile.id,
+        email: profile.email || '',
+        fullName: profile.full_name || profile.email || 'Unknown',
+        position: profile.position,
+        currentStatus,
+        statusSince,
+        shiftSchedule: todaySchedule,
+        breakSchedule: profile.break_schedule,
+        isScheduledNow: true,
+        outageReason,
+        hasApprovedOutage,
+        otSchedule: todayOtSchedule,
+      });
+    });
 
     // Sort by status_since (most recent first)
     allMembers.sort((a, b) => new Date(b.statusSince).getTime() - new Date(a.statusSince).getTime());
@@ -169,9 +306,28 @@ export async function fetchLoggedInTeamMembers(): Promise<{
       categories[category].push(member);
     });
 
-    return { categories, totalOnline: allMembers.length, error: null };
+    return { 
+      categories, 
+      totalScheduled: allMembers.length, 
+      totalOnline: onlineCount, 
+      error: null 
+    };
   } catch (err) {
-    console.error('Unexpected error in fetchLoggedInTeamMembers:', err);
-    return { categories: emptyCategories, totalOnline: 0, error: 'An unexpected error occurred' };
+    console.error('Unexpected error in fetchScheduledTeamMembers:', err);
+    return { categories: emptyCategories, totalScheduled: 0, totalOnline: 0, error: 'An unexpected error occurred' };
   }
+}
+
+// Legacy function - keeping for backward compatibility if needed elsewhere
+export async function fetchLoggedInTeamMembers(): Promise<{
+  categories: CategorizedTeamMembers;
+  totalOnline: number;
+  error: string | null;
+}> {
+  const result = await fetchScheduledTeamMembers();
+  return {
+    categories: result.categories,
+    totalOnline: result.totalOnline,
+    error: result.error,
+  };
 }
