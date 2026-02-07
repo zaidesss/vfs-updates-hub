@@ -22,6 +22,7 @@ export interface AgentProfile {
   quota_email: number | null;
   quota_chat: number | null;
   quota_phone: number | null;
+  quota_ot_email: number | null;
   day_off: string[] | null;
   mon_schedule: string | null;
   tue_schedule: string | null;
@@ -107,6 +108,7 @@ interface ScorecardRPCResult {
   quota_email: number | null;
   quota_chat: number | null;
   quota_phone: number | null;
+  quota_ot_email: number | null;
   day_off: string[] | null;
   mon_schedule: string | null;
   tue_schedule: string | null;
@@ -118,6 +120,7 @@ interface ScorecardRPCResult {
   email_count: number;
   chat_count: number;
   call_count: number;
+  ot_email_count: number;
   qa_average: number | null;
   revalida_score: number | null;
   days_with_login: number;
@@ -146,7 +149,7 @@ export async function fetchScorecardConfig(supportType: string): Promise<Scoreca
 export async function fetchEligibleAgents(supportType: string): Promise<AgentProfile[]> {
   let query = supabase
     .from('agent_profiles')
-    .select('id, email, full_name, agent_name, position, employment_status, quota_email, quota_chat, quota_phone, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+    .select('id, email, full_name, agent_name, position, employment_status, quota_email, quota_chat, quota_phone, quota_ot_email, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
     .neq('employment_status', 'Terminated')
     .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`)
     .order('full_name');
@@ -470,6 +473,7 @@ export async function fetchWeeklyScorecardRPC(
         quota_email: row.quota_email,
         quota_chat: row.quota_chat,
         quota_phone: row.quota_phone,
+        quota_ot_email: row.quota_ot_email,
         day_off: row.day_off,
         mon_schedule: row.mon_schedule,
         tue_schedule: row.tue_schedule,
@@ -482,6 +486,17 @@ export async function fetchWeeklyScorecardRPC(
 
       const weeklyQuota = getWeeklyQuota(agentProfile, agentSupportType, adjustedScheduledDays);
       const productivity = weeklyQuota > 0 ? (productivityCount / weeklyQuota) * 100 : null;
+
+      // Calculate OT productivity: (OT Email Count / (quota_ot_email × days with OT work)) × 100
+      // For now, we use days_with_login as an approximation for OT days worked
+      // TODO: Track actual OT days separately if needed
+      let otProductivity: number | null = null;
+      if (row.ot_email_count > 0 && row.quota_ot_email && row.quota_ot_email > 0) {
+        // Use days_with_login as approximation for OT days worked
+        const otDaysWorked = row.days_with_login > 0 ? row.days_with_login : 1;
+        const weeklyOtQuota = row.quota_ot_email * otDaysWorked;
+        otProductivity = weeklyOtQuota > 0 ? (row.ot_email_count / weeklyOtQuota) * 100 : null;
+      }
 
       // Calculate final score
       const agentConfig = supportType === 'all'
@@ -516,6 +531,9 @@ export async function fetchWeeklyScorecardRPC(
           case 'chat_frt':
             metricValue = row.chat_frt_seconds;
             break;
+          case 'ot_productivity':
+            metricValue = otProductivity;
+            break;
         }
 
         if (metricValue !== null && metricValue !== undefined) {
@@ -540,7 +558,7 @@ export async function fetchWeeklyScorecardRPC(
         qa: row.qa_average,
         revalida: row.revalida_score,
         reliability,
-        otProductivity: null,
+        otProductivity,
         finalScore: isOnLeave ? null : finalScore,
         isOnLeave,
         scheduledDays,
