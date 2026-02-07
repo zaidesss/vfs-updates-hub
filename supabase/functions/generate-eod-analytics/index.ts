@@ -155,20 +155,11 @@ Deno.serve(async (req) => {
 
     // Notifications - only send when NOT in silent mode (scheduled runs only)
     if (!silent) {
-      // Fetch ALL users for email notifications (agents + admins)
-      const { data: allProfiles } = await supabase
-        .from("agent_profiles")
-        .select("email")
-        .neq("employment_status", "Terminated");
-
+      // Fetch admin/HR/super_admin roles for notifications
       const { data: admins } = await supabase
         .from("user_roles")
         .select("email")
         .in("role", ["admin", "hr", "super_admin"]);
-
-      const allEmails = new Set<string>();
-      allProfiles?.forEach(p => allEmails.add(p.email.toLowerCase()));
-      admins?.forEach(a => allEmails.add(a.email.toLowerCase()));
 
       const adminEmails = [...new Set(admins?.map(x => x.email.toLowerCase()) || [])];
       const title = `📊 EOD Team Analytics: ${dateStr}`;
@@ -179,12 +170,11 @@ Deno.serve(async (req) => {
       const notifs = adminEmails.map(email => ({ user_email: email, title, message: msg, type: "eod_analytics", reference_type: "agent_reports", reference_id: null }));
       if (notifs.length > 0) await supabase.from("notifications").insert(notifs);
 
-      // Email to ALL users
-      const allEmailRecipients = Array.from(allEmails);
-      if (resendApiKey && allEmailRecipients.length > 0) {
+      // Email to admin/HR/super_admin only
+      if (resendApiKey && adminEmails.length > 0) {
         const fmtH = (h: number) => { const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60); return hrs === 0 ? `${mins}m` : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`; };
         const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;"><div style="background:#fff;border-radius:12px;padding:24px;"><h1 style="text-align:center;font-size:24px;">📊 EOD Team Analytics</h1><p style="text-align:center;color:#64748b;">${dateStr}</p><div style="background:${status === "good" ? "#10b981" : status === "warning" ? "#f59e0b" : "#ef4444"}15;border-left:4px solid ${status === "good" ? "#10b981" : status === "warning" ? "#f59e0b" : "#ef4444"};padding:16px;border-radius:8px;margin-bottom:24px;"><strong>${statusEmoji} ${status.toUpperCase()}</strong>${details.map(d => `<div style="font-size:13px;margin-top:4px;">${d}</div>`).join("")}</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>👥 Attendance</strong> (${a.attendance.active} active)<br>On-Time: ${a.attendance.onTimeRate.toFixed(0)}% | Shift Complete: ${a.attendance.fullShiftRate.toFixed(0)}%</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>📈 Productivity</strong><br>Tickets: ${a.productivity.total} | Quota Met: ${a.productivity.quotaRate.toFixed(0)}% | Gap: ${a.productivity.avgGap?.toFixed(1) ?? "--"} min</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:16px;"><strong>⏱️ Time</strong><br>Avg Hours: ${a.time.avgLogged !== null ? fmtH(a.time.avgLogged) : "--"} / ${a.time.avgRequired !== null ? fmtH(a.time.avgRequired) : "--"} required</div><div style="background:#f1f5f9;padding:16px;border-radius:8px;"><strong>✅ Compliance</strong><br>Clean: ${a.compliance.cleanRate.toFixed(0)}% | Incidents: ${a.compliance.incidents}</div></div></body></html>`;
-        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
+        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>", to: adminEmails, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to admin roles"); } catch (e) { console.error("Email error:", e); }
       }
 
       // Slack to a_agent_reports channel
