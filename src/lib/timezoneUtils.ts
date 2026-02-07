@@ -129,3 +129,114 @@ export function generateWeekDates(weekStartDate: Date): string[] {
   }
   return dates;
 }
+
+/**
+ * Get current EST day key ('mon', 'tue', etc.)
+ * Used for schedule-based visibility checks.
+ */
+export function getCurrentESTDayKey(): string {
+  const estDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+  }).format(new Date());
+  return estDay.toLowerCase().slice(0, 3);
+}
+
+/**
+ * Get current EST time as minutes from midnight.
+ * Used for checking if current time falls within a schedule window.
+ */
+export function getCurrentESTTimeMinutes(): number {
+  const estParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  
+  const hour = parseInt(estParts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(estParts.find(p => p.type === 'minute')?.value || '0', 10);
+  return hour * 60 + minute;
+}
+
+/**
+ * Get today's date in EST as 'YYYY-MM-DD'.
+ */
+export function getTodayEST(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+/**
+ * Parse a time string like "9:00 AM" or "17:30" to minutes from midnight.
+ */
+export function parseTimeToMinutes(timeStr: string): number | null {
+  if (!timeStr) return null;
+  
+  const cleanTime = timeStr.trim().toUpperCase();
+  
+  // Handle 12-hour format (e.g., "9:00 AM", "5:30 PM")
+  const match12 = cleanTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (match12) {
+    let hours = parseInt(match12[1], 10);
+    const minutes = parseInt(match12[2], 10);
+    const period = match12[3].toUpperCase();
+    
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    
+    return hours * 60 + minutes;
+  }
+  
+  // Handle 24-hour format (e.g., "17:30")
+  const match24 = cleanTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const minutes = parseInt(match24[2], 10);
+    return hours * 60 + minutes;
+  }
+  
+  return null;
+}
+
+/**
+ * Parse a schedule range like "9:00 AM - 5:30 PM" into start/end minutes.
+ * Handles midnight-crossing schedules (e.g., "8:00 PM - 3:30 AM").
+ */
+export function parseScheduleRange(schedule: string | null): { start: number; end: number } | null {
+  if (!schedule || schedule.toLowerCase() === 'day off' || schedule.toLowerCase() === 'off') {
+    return null;
+  }
+  
+  const parts = schedule.split('-').map(s => s.trim());
+  if (parts.length !== 2) return null;
+  
+  const start = parseTimeToMinutes(parts[0]);
+  const end = parseTimeToMinutes(parts[1]);
+  
+  if (start === null || end === null) return null;
+  
+  return { start, end };
+}
+
+/**
+ * Check if a given time (in minutes) falls within a schedule range.
+ * Handles midnight-crossing schedules (e.g., 8 PM - 3:30 AM).
+ */
+export function isTimeInScheduleRange(
+  currentMinutes: number, 
+  scheduleStart: number, 
+  scheduleEnd: number
+): boolean {
+  if (scheduleStart <= scheduleEnd) {
+    // Normal schedule (e.g., 9:00 AM - 5:30 PM)
+    return currentMinutes >= scheduleStart && currentMinutes <= scheduleEnd;
+  } else {
+    // Midnight-crossing schedule (e.g., 8:00 PM - 3:30 AM)
+    return currentMinutes >= scheduleStart || currentMinutes <= scheduleEnd;
+  }
+}

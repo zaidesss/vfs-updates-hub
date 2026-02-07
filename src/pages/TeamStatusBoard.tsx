@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
-import { fetchLoggedInTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
+import { fetchScheduledTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
 import { StatusCard } from '@/components/team-status/StatusCard';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,7 @@ export default function TeamStatusBoard() {
     techSupport: [],
     other: [],
   });
+  const [totalScheduled, setTotalScheduled] = useState(0);
   const [totalOnline, setTotalOnline] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,12 +78,13 @@ export default function TeamStatusBoard() {
     setIsLoading(true);
     setError(null);
     
-    const result = await fetchLoggedInTeamMembers();
+    const result = await fetchScheduledTeamMembers();
     
     if (result.error) {
       setError(result.error);
     } else {
       setCategories(result.categories);
+      setTotalScheduled(result.totalScheduled);
       setTotalOnline(result.totalOnline);
     }
     
@@ -109,7 +111,7 @@ export default function TeamStatusBoard() {
          <div>
            <h1 className="text-2xl font-bold text-foreground">Team Status Board</h1>
            <p className="text-muted-foreground">
-             {totalOnline} team member{totalOnline !== 1 ? 's' : ''} online
+             {totalScheduled} scheduled now ({totalOnline} online)
            </p>
          </div>
 
@@ -164,18 +166,18 @@ export default function TeamStatusBoard() {
         )}
 
         {/* Empty State */}
-        {!isLoading && !error && totalOnline === 0 && (
+        {!isLoading && !error && totalScheduled === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium text-foreground">No one is online</h3>
+            <h3 className="text-lg font-medium text-foreground">No one is scheduled right now</h3>
             <p className="text-muted-foreground">
-              Team members will appear here when they log in.
+              Team members will appear here during their scheduled shift hours.
             </p>
           </div>
         )}
 
         {/* Main Content - Two Column Layout */}
-        {!isLoading && !error && totalOnline > 0 && (
+        {!isLoading && !error && totalScheduled > 0 && (
           <div className={`grid gap-6 ${isMobile ? 'grid-cols-1' : hasLeadsOrTech && hasSupportAgents ? 'lg:grid-cols-[2fr_1fr]' : 'grid-cols-1'}`}>
             {/* Support Agents Section (Left Column) */}
             {hasSupportAgents && (
