@@ -97,6 +97,7 @@ export interface DashboardProfile {
   quota_email: number | null;
   quota_chat: number | null;
   quota_phone: number | null;
+  quota_ot_email: number | null;
 }
 
 export interface ProfileStatusRecord {
@@ -281,7 +282,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
     // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, upwork_contract_id, ot_enabled, position, quota_email, quota_chat, quota_phone')
+      .select('id, email, full_name, upwork_contract_id, ot_enabled, position, quota_email, quota_chat, quota_phone, quota_ot_email')
       .eq('id', profileId)
       .single();
 
@@ -337,6 +338,7 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       quota_email: profile.quota_email || null,
       quota_chat: profile.quota_chat || null,
       quota_phone: profile.quota_phone || null,
+      quota_ot_email: profile.quota_ot_email || null,
     };
 
     return { data: dashboardProfile, error: null };
@@ -1648,42 +1650,52 @@ export interface TicketCountByType {
   chat: number;
   call: number;
   total: number;
+  otEmail: number;
 }
 
 /**
  * Fetch today's ticket count broken down by type (Email, Chat, Call)
+ * Also separates OT emails from regular emails using the is_ot flag
  */
 export async function getTodayTicketCountByType(agentTag: string): Promise<{ data: TicketCountByType; error: string | null }> {
   try {
-    // Get today's date range in UTC
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Import timezone utility for EST boundaries
+    const { getESTDayBoundaries, getTodayEST } = await import('@/lib/timezoneUtils');
+    const { start, end } = getESTDayBoundaries(getTodayEST());
 
-    // Fetch all tickets for today to count by type
+    // Fetch all tickets for today to count by type (includes is_ot flag)
     const { data, error } = await supabase
       .from('ticket_logs')
-      .select('ticket_type')
+      .select('ticket_type, is_ot')
       .ilike('agent_name', agentTag)
-      .gte('timestamp', startOfDay.toISOString())
-      .lte('timestamp', endOfDay.toISOString());
+      .gte('timestamp', start)
+      .lte('timestamp', end);
 
     if (error) {
-      return { data: { email: 0, chat: 0, call: 0, total: 0 }, error: error.message };
+      return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: error.message };
     }
 
-    // Count by type (case-insensitive)
+    // Count by type (case-insensitive), separate OT emails
     let emailCount = 0;
     let chatCount = 0;
     let callCount = 0;
+    let otEmailCount = 0;
 
     (data || []).forEach((row) => {
       const type = (row.ticket_type || '').toLowerCase();
-      if (type === 'email') emailCount++;
-      else if (type === 'chat') chatCount++;
-      else if (type === 'call') callCount++;
+      const isOt = row.is_ot === true;
+      
+      if (type === 'email') {
+        if (isOt) {
+          otEmailCount++;
+        } else {
+          emailCount++;
+        }
+      } else if (type === 'chat') {
+        chatCount++;
+      } else if (type === 'call') {
+        callCount++;
+      }
     });
 
     return {
@@ -1691,12 +1703,13 @@ export async function getTodayTicketCountByType(agentTag: string): Promise<{ dat
         email: emailCount,
         chat: chatCount,
         call: callCount,
-        total: emailCount + chatCount + callCount,
+        total: emailCount + chatCount + callCount + otEmailCount,
+        otEmail: otEmailCount,
       },
       error: null,
     };
   } catch (err: any) {
-    return { data: { email: 0, chat: 0, call: 0, total: 0 }, error: err.message };
+    return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: err.message };
   }
 }
 

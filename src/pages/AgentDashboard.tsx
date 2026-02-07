@@ -95,7 +95,7 @@ export default function AgentDashboard() {
   
   // Daily Work Tracker state
   const [agentTag, setAgentTag] = useState<string | null>(null);
-  const [ticketCounts, setTicketCounts] = useState<TicketCountByType>({ email: 0, chat: 0, call: 0, total: 0 });
+  const [ticketCounts, setTicketCounts] = useState<TicketCountByType>({ email: 0, chat: 0, call: 0, total: 0, otEmail: 0 });
   const [avgGapSeconds, setAvgGapSeconds] = useState<number | null>(null);
   const [isRefreshingTracker, setIsRefreshingTracker] = useState(false);
   
@@ -488,6 +488,7 @@ export default function AgentDashboard() {
           quotaEmail={profile.quota_email}
           quotaChat={profile.quota_chat}
           quotaPhone={profile.quota_phone}
+          quotaOtEmail={profile.quota_ot_email}
           ticketCounts={ticketCounts}
           avgGapSeconds={avgGapSeconds}
           onRefresh={handleRefreshTracker}
@@ -498,6 +499,7 @@ export default function AgentDashboard() {
           upworkError={upworkError}
           upworkSyncedAt={upworkSyncedAt}
           hasUpworkContract={!!profile.upwork_contract_id}
+          isOnOT={status === 'ON_OT'}
         />
       </div>
     </Layout>
