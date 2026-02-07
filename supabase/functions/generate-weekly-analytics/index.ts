@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
             </div>
           </div>
         </body></html>`;
-        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@vfsoperations.online>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
+        try { await fetch("https://api.resend.com/emails", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` }, body: JSON.stringify({ from: "VFS Updates Hub <noreply@updates.virtualfreelancesolutions.com>", to: allEmailRecipients, subject: `${title} - ${status.toUpperCase()}`, html }) }); console.log("Email sent to all users"); } catch (e) { console.error("Email error:", e); }
       }
 
       // Slack to a_agent_reports channel
