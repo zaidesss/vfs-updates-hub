@@ -51,6 +51,7 @@ import { CreateUpdateDialog } from '@/components/admin/CreateUpdateDialog';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
+import { AnnouncementSender } from '@/components/admin/AnnouncementSender';
 
 export default function Admin() {
   const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
@@ -643,6 +644,9 @@ export default function Admin() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Announcement Sender - Visible to Admins and HR */}
+        <AnnouncementSender />
 
         {/* User Management - Only visible to admins, not HR */}
         {isAdmin && (

@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.send-custom-action-notification]
 verify_jwt = false
+
+[functions.send-announcement]
+verify_jwt = false
