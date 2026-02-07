@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { startOfWeek, endOfWeek, format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
@@ -16,6 +16,7 @@ import { StatusButtons } from '@/components/dashboard/StatusButtons';
 import { DailyWorkTracker } from '@/components/dashboard/DailyWorkTracker';
 import { DailyEventSummary } from '@/components/dashboard/DailyEventSummary';
 import { WeeklySummaryCard } from '@/components/dashboard/WeeklySummaryCard';
+import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelector';
 
 import {
   fetchDashboardProfile,
@@ -28,7 +29,10 @@ import {
   calculateAttendanceForWeek,
   getAgentTagByEmail,
   getTodayTicketCountByType,
+  getWeekTicketCountByType,
+  getWeekAvgGapData,
   fetchUpworkTimeFromCache,
+  fetchUpworkTimeForWeek,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
   type DashboardProfile,
@@ -39,7 +43,6 @@ import {
   type ApprovedLeave,
   type TicketCountByType,
 } from '@/lib/agentDashboardApi';
-import { format } from 'date-fns';
 
 /**
  * Calculate bio allowance based on shift duration
@@ -85,6 +88,11 @@ export default function AgentDashboard() {
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
   
+  // Week selector state
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
+  const weekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
+  
   // Bio break state
   const [bioTimeRemaining, setBioTimeRemaining] = useState<number | null>(null);
   const [bioAllowance, setBioAllowance] = useState<number | null>(null);
@@ -121,7 +129,7 @@ export default function AgentDashboard() {
       // This reduces 4+ queries to 2 queries
       const [profileResult, rpcResult, statusResult] = await Promise.all([
         fetchDashboardProfile(profileId),
-        fetchAgentDashboardRPC(profileId),
+        fetchAgentDashboardRPC(profileId, selectedDate), // Pass selected date for week calculation
         getProfileStatus(profileId), // Still need this for bio fields not in RPC
       ]);
 
@@ -141,8 +149,6 @@ export default function AgentDashboard() {
       if (rpcResult.data) {
         setStatus(rpcResult.data.current_status);
         setStatusSince(rpcResult.data.status_since);
-        // RPC provides avg gap, but we'll fetch per-type tickets below
-        setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
       } else if (statusResult.data) {
         // Fallback to direct status query
         setStatus(statusResult.data.current_status);
@@ -157,12 +163,7 @@ export default function AgentDashboard() {
         bioExceededNotifiedRef.current = false;
       }
 
-      // Calculate week dates
-      const today = new Date();
-      const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
-      const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
-
-      // Fetch login events, all events (for breaks), and approved leaves in parallel
+      // Fetch login events, all events (for breaks), and approved leaves in parallel for selected week
       const [loginEventsResult, allEventsResult, leavesResult] = await Promise.all([
         getWeekLoginEvents(profileId, weekStart, weekEnd),
         getWeekAllEvents(profileId, weekStart, weekEnd),
@@ -170,22 +171,23 @@ export default function AgentDashboard() {
       ]);
 
       const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
-      const allEvents: ProfileEvent[] = allEventsResult.data || [];
+      const fetchedAllEvents: ProfileEvent[] = allEventsResult.data || [];
       const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
 
-      // Calculate attendance for each day of the week (with break tracking)
+      // Calculate attendance for each day of the selected week (with break tracking)
       const weekAttendance = calculateAttendanceForWeek(
         profileResult.data,
         loginEvents,
         approvedLeaves,
         weekStart,
-        allEvents  // Pass all events for break calculation
+        fetchedAllEvents  // Pass all events for break calculation
       );
 
       setAttendance(weekAttendance);
-      setAllEvents(allEvents);
+      setAllEvents(fetchedAllEvents);
 
       // Check for today's attendance and auto-generate Late Login outage if needed
+      const today = new Date();
       const todayStr = format(today, 'yyyy-MM-dd');
       const todayAttendance = weekAttendance.find(
         (d) => format(d.date, 'yyyy-MM-dd') === todayStr
@@ -230,28 +232,34 @@ export default function AgentDashboard() {
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
         setAgentTag(tag);
-        // Fetch per-type ticket breakdown (RPC only provides total)
-        const ticketResult = await getTodayTicketCountByType(tag);
+        // Fetch per-type ticket breakdown for the selected week
+        const ticketResult = await getWeekTicketCountByType(tag, weekStart, weekEnd);
         setTicketCounts(ticketResult.data);
+        
+        // Fetch avg gap for the selected week
+        const gapResult = await getWeekAvgGapData(tag, weekStart, weekEnd);
+        setAvgGapSeconds(gapResult.data.avgGapSeconds);
       }
       
-      // Calculate portal hours and login time from today's attendance
-      const todayAttendanceForHours = weekAttendance.find(
-        (d) => format(d.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
-      );
-      if (todayAttendanceForHours?.hoursWorkedMinutes) {
-        setPortalHours(todayAttendanceForHours.hoursWorkedMinutes / 60);
-      }
-      if (todayAttendanceForHours?.loginTime) {
-        setPortalLoginTime(todayAttendanceForHours.loginTime);
-      }
+      // Calculate portal hours from the selected week's attendance
+      let totalPortalMinutes = 0;
+      weekAttendance.forEach((day) => {
+        if (day.hoursWorkedMinutes) {
+          totalPortalMinutes += day.hoursWorkedMinutes;
+        }
+      });
+      setPortalHours(totalPortalMinutes / 60);
       
-      // Fetch Upwork hours from cache if contract ID exists
+      // Get login time from first day with a login in the week
+      const firstLoginDay = weekAttendance.find((d) => d.loginTime);
+      setPortalLoginTime(firstLoginDay?.loginTime || null);
+      
+      // Fetch Upwork hours from cache for the selected week if contract ID exists
       if (profileResult.data.upwork_contract_id) {
-        const todayStr = format(today, 'yyyy-MM-dd');
-        const upworkResult = await fetchUpworkTimeFromCache(
+        const upworkResult = await fetchUpworkTimeForWeek(
           profileResult.data.upwork_contract_id,
-          todayStr
+          weekStart,
+          weekEnd
         );
         if (upworkResult.error) {
           setUpworkError(upworkResult.error);
@@ -268,7 +276,7 @@ export default function AgentDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [profileId]);
+  }, [profileId, selectedDate, weekStart, weekEnd]);
 
   useEffect(() => {
     loadDashboardData();
@@ -449,11 +457,27 @@ export default function AgentDashboard() {
         {/* Profile Header */}
         <ProfileHeader profile={profile} />
 
-        {/* Shift Schedule with Attendance */}
-        <ShiftScheduleTable profile={profile} attendance={attendance} />
+        {/* Shift Schedule with Attendance and Week Selector */}
+        <ShiftScheduleTable 
+          profile={profile} 
+          attendance={attendance}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+          weekSelector={
+            <DashboardWeekSelector 
+              selectedDate={selectedDate} 
+              onDateChange={setSelectedDate} 
+            />
+          }
+        />
 
         {/* Weekly Summary */}
-        <WeeklySummaryCard attendance={attendance} allEvents={allEvents} />
+        <WeeklySummaryCard 
+          attendance={attendance} 
+          allEvents={allEvents}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+        />
 
         {/* Today's Activity + Status Control - side by side on larger screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -16,6 +16,9 @@ import { cn } from '@/lib/utils';
 interface ShiftScheduleTableProps {
   profile: DashboardProfile;
   attendance: DayAttendance[];
+  weekStart: Date;
+  weekEnd: Date;
+  weekSelector?: React.ReactNode;
 }
 
 const DAYS = [
@@ -160,7 +163,7 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
   return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
 
-export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTableProps) {
+export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, weekSelector }: ShiftScheduleTableProps) {
   const dayOffArray = profile.day_off || [];
   
   const getScheduleForDay = (dayKey: string, dayShort: string): string => {
@@ -186,20 +189,16 @@ export function ShiftScheduleTable({ profile, attendance }: ShiftScheduleTablePr
     return dayOffArray.includes(dayShort);
   };
 
-  const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary" />
-          Shift Schedule
-          <span className="text-sm font-normal text-muted-foreground ml-2">
-            ({format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')})
-          </span>
-        </CardTitle>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            Shift Schedule
+          </CardTitle>
+          {weekSelector}
+        </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
