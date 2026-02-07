@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,14 +24,6 @@ serve(async (req) => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.log("RESEND_API_KEY not configured, skipping email notifications");
-      return new Response(JSON.stringify({ success: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const payload: RequestNotificationPayload = await req.json();
 
     console.log("Sending request notifications to approvers:", payload.approverEmails);
@@ -40,71 +33,63 @@ serve(async (req) => {
       : '';
 
     const emailPromises = payload.approverEmails.map(email =>
-      fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: "VFS Updates Hub <onboarding@resend.dev>",
-          to: [email],
-          subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
-          html: `
-            <h2>New Article Request ${refBadge}</h2>
-            <p>A new request requires your approval.</p>
-            
-            <table style="border-collapse: collapse; margin: 20px 0;">
-              ${payload.referenceNumber ? `
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Reference:</td>
-                <td style="padding: 8px;"><code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">${payload.referenceNumber}</code></td>
-              </tr>
-              ` : ''}
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Submitted By:</td>
-                <td style="padding: 8px;">${payload.submittedBy}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Request Type:</td>
-                <td style="padding: 8px;">${payload.requestType === 'new_article' ? 'New Article' : payload.requestType === 'update_existing' ? 'Update Existing' : 'General'}</td>
-              </tr>
-              ${payload.category ? `
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Category:</td>
-                <td style="padding: 8px;">${payload.category}</td>
-              </tr>
-              ` : ''}
-              ${payload.sampleTicket ? `
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Sample Ticket:</td>
-                <td style="padding: 8px;">${payload.sampleTicket}</td>
-              </tr>
-              ` : ''}
-              <tr>
-                <td style="padding: 8px; font-weight: bold;">Priority:</td>
-                <td style="padding: 8px;">${payload.priority}</td>
-              </tr>
-            </table>
-            
-            <h3>Description:</h3>
-            <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${payload.description}</p>
-            
-            <p style="margin-top: 20px;">
-              <strong>Please log in to the VFS Updates Hub to review and approve this request.</strong>
-            </p>
-            
-            <p style="color: #666; font-size: 12px; margin-top: 30px;">
-              This is an automated message from VFS Updates Hub.
-            </p>
-          `,
-        }),
+      sendEmail({
+        to: [email],
+        subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
+        html: `
+          <h2>New Article Request ${refBadge}</h2>
+          <p>A new request requires your approval.</p>
+          
+          <table style="border-collapse: collapse; margin: 20px 0;">
+            ${payload.referenceNumber ? `
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Reference:</td>
+              <td style="padding: 8px;"><code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">${payload.referenceNumber}</code></td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Submitted By:</td>
+              <td style="padding: 8px;">${payload.submittedBy}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Request Type:</td>
+              <td style="padding: 8px;">${payload.requestType === 'new_article' ? 'New Article' : payload.requestType === 'update_existing' ? 'Update Existing' : 'General'}</td>
+            </tr>
+            ${payload.category ? `
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Category:</td>
+              <td style="padding: 8px;">${payload.category}</td>
+            </tr>
+            ` : ''}
+            ${payload.sampleTicket ? `
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Sample Ticket:</td>
+              <td style="padding: 8px;">${payload.sampleTicket}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Priority:</td>
+              <td style="padding: 8px;">${payload.priority}</td>
+            </tr>
+          </table>
+          
+          <h3>Description:</h3>
+          <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${payload.description}</p>
+          
+          <p style="margin-top: 20px;">
+            <strong>Please log in to the VFS Updates Hub to review and approve this request.</strong>
+          </p>
+          
+          <p style="color: #666; font-size: 12px; margin-top: 30px;">
+            This is an automated message from VFS Updates Hub.
+          </p>
+        `,
       })
     );
 
     const results = await Promise.allSettled(emailPromises);
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failedCount = results.filter(r => r.status === 'rejected').length;
+    const successCount = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
+    const failedCount = results.filter(r => r.status === 'rejected' || !(r.value as any).success).length;
 
     console.log(`Sent ${successCount} emails, ${failedCount} failed`);
 

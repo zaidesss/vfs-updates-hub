@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +20,6 @@ interface ReplyNotificationRequest {
 serve(async (req: Request): Promise<Response> => {
   console.log("send-question-reply-notification function called");
 
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -33,7 +30,6 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`Processing reply notification for question ${questionId} (${referenceNumber || 'no ref'})`);
     console.log(`Update: ${updateTitle}, Replied by: ${repliedBy}, User: ${userEmail}`);
 
-    // Create in-app notification
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
@@ -64,10 +60,8 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Send email notification
     const refDisplay = referenceNumber ? `[${referenceNumber}] ` : '';
-    const emailResponse = await resend.emails.send({
-      from: "VFS Agent Portal <onboarding@resend.dev>",
+    const emailResult = await sendEmail({
       to: [userEmail],
       subject: `${refDisplay}Your question about "${updateTitle}" has been answered`,
       html: `
@@ -91,10 +85,14 @@ serve(async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Reply notification email sent successfully:", emailResponse);
+    if (!emailResult.success) {
+      console.error("Failed to send reply notification email:", emailResult.error);
+    } else {
+      console.log("Reply notification email sent successfully:", emailResult.messageId);
+    }
 
     return new Response(
-      JSON.stringify({ success: true, emailResponse }),
+      JSON.stringify({ success: true, emailResult }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {

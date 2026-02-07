@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,15 +31,6 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
-      return new Response(
-        JSON.stringify({ error: "Email service not configured" }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -174,33 +166,23 @@ serve(async (req: Request): Promise<Response> => {
 </html>
     `;
 
-    // Send email using Resend API directly
-    const emailResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "VFS Updates Hub <onboarding@resend.dev>",
-        to: recipientEmails,
-        cc: [payload.agentEmail],
-        subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request: ${payload.agentName} - ${payload.outageReason}`,
-        html: emailHtml,
-      }),
+    // Send email using Gmail API
+    const emailResult = await sendEmail({
+      to: recipientEmails,
+      cc: [payload.agentEmail],
+      subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}Leave Request: ${payload.agentName} - ${payload.outageReason}`,
+      html: emailHtml,
     });
-
-    const emailResult = await emailResponse.json();
     
-    if (!emailResponse.ok) {
-      console.error("Error sending email:", emailResult);
+    if (!emailResult.success) {
+      console.error("Error sending email:", emailResult.error);
       return new Response(
-        JSON.stringify({ error: "Failed to send email", details: emailResult }),
+        JSON.stringify({ error: "Failed to send email", details: emailResult.error }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    console.log("Email sent successfully:", emailResult);
+    console.log("Email sent successfully:", emailResult.messageId);
 
     return new Response(
       JSON.stringify({ success: true, emailResult }),
