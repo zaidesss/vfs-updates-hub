@@ -88,8 +88,12 @@ export default function AgentDashboard() {
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
   
-  // Week selector state
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Week selector state - use EST for consistent week boundaries
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // Get current date in EST timezone
+    const now = new Date();
+    return new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  });
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
   const weekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
   

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { format, startOfWeek, endOfWeek, addWeeks, isSameWeek } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addWeeks, isSameWeek, differenceInWeeks } from 'date-fns';
 
 interface DashboardWeekSelectorProps {
   selectedDate: Date;
@@ -16,41 +16,59 @@ interface WeekOption {
   isCurrent: boolean;
 }
 
+// Anchor date: Monday, February 3, 2025 (launch week)
+const ANCHOR_DATE = new Date('2025-02-03T05:00:00.000Z'); // Midnight EST = 05:00 UTC
+
+/**
+ * Get current date in EST timezone
+ */
+function getTodayInEST(): Date {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+}
+
 export function DashboardWeekSelector({ 
   selectedDate, 
   onDateChange,
   className 
 }: DashboardWeekSelectorProps) {
-  const today = new Date();
+  // Get today in EST for consistent week calculations
+  const todayEST = getTodayInEST();
 
-  // Generate 10 weeks: 5 past, current, 4 future
+  // Generate rolling window of weeks from anchor date
   const weekOptions = useMemo(() => {
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+    const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+    const weeksElapsed = differenceInWeeks(currentWeekStart, ANCHOR_DATE);
+    
+    // Calculate start offset (max 10 weeks shown, hide older ones)
+    const startOffset = Math.max(0, weeksElapsed - 9);
+    const numWeeks = Math.min(weeksElapsed + 1, 10);
+    
     const weeks: WeekOption[] = [];
 
-    for (let i = -5; i <= 4; i++) {
-      const weekStart = addWeeks(currentWeekStart, i);
+    for (let i = 0; i < numWeeks; i++) {
+      const weekStart = addWeeks(ANCHOR_DATE, startOffset + i);
       const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-      const weekNumber = i + 6; // Week 1-10 (current = Week 6)
+      const isCurrent = isSameWeek(weekStart, currentWeekStart, { weekStartsOn: 1 });
       
       weeks.push({
         id: weekStart.toISOString(),
-        label: `Week ${weekNumber} (${format(weekStart, 'MM/dd')} - ${format(weekEnd, 'MM/dd')})`,
+        label: `${format(weekStart, 'MM/dd')} - ${format(weekEnd, 'MM/dd')}`,
         startDate: weekStart,
         endDate: weekEnd,
-        isCurrent: i === 0,
+        isCurrent,
       });
     }
 
     return weeks;
-  }, [today.toDateString()]);
+  }, [todayEST.toDateString()]);
 
   // Find the currently selected week's ID
   const selectedWeekId = useMemo(() => {
     const found = weekOptions.find(week => 
       isSameWeek(week.startDate, selectedDate, { weekStartsOn: 1 })
     );
-    return found?.id || weekOptions.find(w => w.isCurrent)?.id || weekOptions[5]?.id;
+    return found?.id || weekOptions.find(w => w.isCurrent)?.id || weekOptions[weekOptions.length - 1]?.id;
   }, [selectedDate, weekOptions]);
 
   const handleValueChange = (value: string) => {
@@ -62,7 +80,7 @@ export function DashboardWeekSelector({
 
   return (
     <Select value={selectedWeekId} onValueChange={handleValueChange}>
-      <SelectTrigger className={`w-[220px] ${className || ''}`}>
+      <SelectTrigger className={`w-[180px] ${className || ''}`}>
         <SelectValue placeholder="Select week" />
       </SelectTrigger>
       <SelectContent className="bg-popover z-50">
