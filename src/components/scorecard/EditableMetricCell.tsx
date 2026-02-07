@@ -13,6 +13,7 @@ interface EditableMetricCellProps {
   onEdit: (value: number | null) => void;
   formatValue: (value: number | null) => string;
   className?: string;
+  isPercentMode?: boolean; // When true, uses higher-is-better calculation
 }
 
 // Parse time input - accepts mm:ss format or plain seconds
@@ -21,7 +22,7 @@ function parseTimeInput(input: string): number | null {
   if (!trimmed) return null;
   
   // Remove 's' suffix if present (e.g., "420s" -> "420")
-  const cleanedInput = trimmed.replace(/s$/i, '');
+  const cleanedInput = trimmed.replace(/s$/i, '').replace(/%$/i, '');
   
   // Check for mm:ss format
   if (cleanedInput.includes(':')) {
@@ -33,14 +34,22 @@ function parseTimeInput(input: string): number | null {
     return mins * 60 + secs;
   }
   
-  // Otherwise treat as seconds
-  const seconds = parseInt(cleanedInput, 10);
-  return isNaN(seconds) ? null : seconds;
+  // Otherwise treat as number (seconds or percentage)
+  const num = parseFloat(cleanedInput);
+  return isNaN(num) ? null : num;
 }
 
 // Calculate percentage: (goal / actual) * 100 for AHT/FRT (lower is better)
-function calculatePercentage(value: number | null, goal: number): number | null {
-  if (value === null || value === 0 || goal === 0) return null;
+// Or (actual / goal) * 100 for percent mode (higher is better)
+function calculatePercentage(value: number | null, goal: number, isPercentMode: boolean = false): number | null {
+  if (value === null || goal === 0) return null;
+  if (isPercentMode) {
+    // For percentage mode (e.g., Order Escalation), value IS the percentage
+    // Calculate vs goal: (actual / goal) * 100
+    return Math.min(100, (value / goal) * 100);
+  }
+  // For AHT/FRT: lower is better
+  if (value === 0) return null;
   return Math.min(100, (goal / value) * 100);
 }
 
@@ -52,6 +61,15 @@ function getPercentageColor(percentage: number | null): string {
   return 'text-red-600 dark:text-red-400';
 }
 
+// Get color based on percentage for percent mode (higher is better)
+function getPercentModeColor(value: number | null, goal: number): string {
+  if (value === null) return 'text-muted-foreground';
+  const pct = (value / goal) * 100;
+  if (pct >= 100) return 'text-green-600 dark:text-green-400';
+  if (pct >= 80) return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
 export function EditableMetricCell({
   value,
   originalValue,
@@ -60,13 +78,14 @@ export function EditableMetricCell({
   onEdit,
   formatValue,
   className,
+  isPercentMode = false,
 }: EditableMetricCellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   
   const displayValue = value;
-  const percentage = calculatePercentage(displayValue, goal);
+  const percentage = calculatePercentage(displayValue, goal, isPercentMode);
   const isEdited = originalValue !== null && value !== null && value !== originalValue;
   
   useEffect(() => {
@@ -140,15 +159,16 @@ export function EditableMetricCell({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="h-6 w-16 text-center text-sm px-1"
-        placeholder="seconds"
+          placeholder={isPercentMode ? "e.g. 95" : "seconds"}
         />
       ) : (
-        <span className="text-foreground font-medium">
+        <span className={cn("font-medium", isPercentMode ? getPercentModeColor(displayValue, goal) : "text-foreground")}>
           {formatValue(displayValue)}
         </span>
       )}
       
-      {percentage !== null && (
+      {/* Only show percentage for non-percent mode (AHT/FRT) */}
+      {!isPercentMode && percentage !== null && (
         <span className={cn("text-xs", getPercentageColor(percentage))}>
           {percentage.toFixed(1)}%
         </span>
