@@ -50,6 +50,8 @@ export interface AgentScorecard {
   scheduledDays: number;
   daysPresent: number;
   approvedLeaveDays: number;
+  plannedLeaveDays: number;
+  unplannedOutageDays: number;
   isSaved?: boolean;
 }
 
@@ -127,6 +129,8 @@ interface ScorecardRPCResult {
   revalida_score: number | null;
   days_with_login: number;
   approved_leave_days: number;
+  planned_leave_days: number;
+  unplanned_outage_days: number;
   call_aht_seconds: number | null;
   chat_aht_seconds: number | null;
   chat_frt_seconds: number | null;
@@ -192,7 +196,7 @@ export function getScheduledDays(profile: AgentProfile, weekStart: Date, weekEnd
 
 // Count approved leave days within a week
 export function countApprovedLeaveDays(
-  leaveRequests: Array<{ start_date: string; end_date: string; status: string; agent_email: string }>,
+  leaveRequests: Array<{ start_date: string; end_date: string; status: string; agent_email: string; outage_reason?: string }>,
   agentEmail: string,
   weekStart: Date,
   weekEnd: Date
@@ -216,6 +220,53 @@ export function countApprovedLeaveDays(
   }
 
   return leaveDays;
+}
+
+// Count outage days by type (planned vs unplanned) for reliability deduction calculation
+// Planned Leave = 0% deduction, all other outage reasons = 1% deduction per day
+export function countOutageDaysByType(
+  leaveRequests: Array<{ start_date: string; end_date: string; status: string; agent_email: string; outage_reason?: string }>,
+  agentEmail: string,
+  weekStart: Date,
+  weekEnd: Date
+): { plannedLeaveDays: number; unplannedOutageDays: number } {
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  let plannedLeaveDays = 0;
+  let unplannedOutageDays = 0;
+
+  const approvedLeaves = leaveRequests.filter(
+    lr => lr.agent_email.toLowerCase() === agentEmail.toLowerCase() && lr.status === 'approved'
+  );
+
+  // Track which days have been counted to avoid double-counting
+  const countedDays = new Map<string, string>(); // date -> outage_reason
+
+  for (const day of weekDays) {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    for (const leave of approvedLeaves) {
+      const leaveStart = parseISO(leave.start_date);
+      const leaveEnd = parseISO(leave.end_date);
+      if (isWithinInterval(day, { start: leaveStart, end: leaveEnd })) {
+        // Only count each day once (prefer planned leave if overlapping)
+        if (!countedDays.has(dayStr)) {
+          countedDays.set(dayStr, leave.outage_reason || 'Unplanned');
+        } else if (leave.outage_reason === 'Planned Leave' && countedDays.get(dayStr) !== 'Planned Leave') {
+          countedDays.set(dayStr, 'Planned Leave');
+        }
+      }
+    }
+  }
+
+  // Count by type
+  for (const reason of countedDays.values()) {
+    if (reason === 'Planned Leave') {
+      plannedLeaveDays++;
+    } else {
+      unplannedOutageDays++;
+    }
+  }
+
+  return { plannedLeaveDays, unplannedOutageDays };
 }
 
 // Count days with LOGIN event
@@ -374,6 +425,7 @@ export async function saveScorecard(
     scheduled_days: sc.scheduledDays,
     days_present: sc.daysPresent,
     approved_leave_days: sc.approvedLeaveDays,
+    unplanned_outage_days: sc.unplannedOutageDays,
     is_on_leave: sc.isOnLeave,
     saved_by: savedBy,
     saved_at: now,
@@ -439,14 +491,16 @@ export async function fetchWeeklyScorecardRPC(
       
       // Calculate scheduled days from day_off + schedules
       const scheduledDays = calculateScheduledDaysFromRPC(row, weekStart, weekEnd);
+      
+      // New reliability calculation: 100% - (unplanned_outage_days × 1%)
+      // Planned Leave = no deduction, all other outage reasons = 1% deduction per day
+      const reliability = Math.max(0, 100 - row.unplanned_outage_days);
+      
+      // Agent is considered on leave only if they have planned leave covering all scheduled days
+      const isOnLeave = row.planned_leave_days >= scheduledDays;
+      
+      // For productivity quota calculation, adjust by total approved leave
       const adjustedScheduledDays = Math.max(0, scheduledDays - row.approved_leave_days);
-      
-      // Calculate reliability
-      const reliability = adjustedScheduledDays > 0
-        ? Math.min(100, (row.days_with_login / adjustedScheduledDays) * 100)
-        : 100;
-      
-      const isOnLeave = row.approved_leave_days >= scheduledDays;
 
       // Calculate productivity based on support type
       let productivityCount = 0;
@@ -571,6 +625,8 @@ export async function fetchWeeklyScorecardRPC(
         scheduledDays,
         daysPresent: row.days_with_login,
         approvedLeaveDays: row.approved_leave_days,
+        plannedLeaveDays: row.planned_leave_days,
+        unplannedOutageDays: row.unplanned_outage_days,
         isSaved: row.is_saved,
       };
     });
@@ -660,7 +716,7 @@ export async function fetchWeeklyScorecard(
       .lte('created_at', weekEnd.toISOString()),
     supabase
       .from('leave_requests')
-      .select('agent_email, start_date, end_date, status')
+      .select('agent_email, start_date, end_date, status, outage_reason')
       .eq('status', 'approved')
       .lte('start_date', weekEndStr)
       .gte('end_date', weekStartStr),
@@ -735,6 +791,8 @@ export async function fetchWeeklyScorecard(
         scheduledDays: saved.scheduled_days || 0,
         daysPresent: saved.days_present || 0,
         approvedLeaveDays: saved.approved_leave_days || 0,
+        plannedLeaveDays: (saved as any).planned_leave_days ?? 0,
+        unplannedOutageDays: (saved as any).unplanned_outage_days ?? 0,
         isSaved: true,
       });
       continue;
@@ -743,12 +801,16 @@ export async function fetchWeeklyScorecard(
     // Calculate live values
     const scheduledDays = getScheduledDays(agent, weekStart, weekEnd);
     const approvedLeaveDays = countApprovedLeaveDays(leaveRequests, agent.email, weekStart, weekEnd);
+    const { plannedLeaveDays, unplannedOutageDays } = countOutageDaysByType(leaveRequests, agent.email, weekStart, weekEnd);
     const adjustedScheduledDays = Math.max(0, scheduledDays - approvedLeaveDays);
     const daysPresent = countDaysWithLogin(profileEvents, agent.id, weekStart, weekEnd);
-    const reliability = adjustedScheduledDays > 0
-      ? Math.min(100, (daysPresent / adjustedScheduledDays) * 100)
-      : 100;
-    const isOnLeave = approvedLeaveDays >= scheduledDays;
+    
+    // New reliability calculation: 100% - (unplanned_outage_days × 1%)
+    // Planned Leave = no deduction, all other outage reasons = 1% deduction per day
+    const reliability = Math.max(0, 100 - unplannedOutageDays);
+    
+    // Agent is considered on leave only if they have planned leave covering all scheduled days
+    const isOnLeave = plannedLeaveDays >= scheduledDays;
 
     // Calculate ticket counts
     // Determine which support type to use for this agent's calculations
@@ -862,6 +924,8 @@ export async function fetchWeeklyScorecard(
       scheduledDays,
       daysPresent,
       approvedLeaveDays,
+      plannedLeaveDays,
+      unplannedOutageDays,
       isSaved: false,
     });
   }
