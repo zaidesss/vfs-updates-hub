@@ -1,109 +1,72 @@
 
 
-# Logistics Scorecard Enhancement Plan
+# Fix OT Login and BIO Events in Today's Activity
 
-## Summary
+## Problem Summary
 
-This update enhances the Logistics position scorecard to include:
-1. **Order Escalation and Intervention** (35% weight, 95% goal) - Manual percentage input replacing Productivity
-2. **QA** (30% weight, 95% goal) - Auto-populated from QA Evaluations
-3. **Revalida** (5% weight, 95% goal) - Auto-populated from Revalida page
-4. **Reliability** (30% weight, 98% goal) - Already implemented
+OT Login and Bio Break events are not appearing in the "Today's Activity" section of the Agent Dashboard. Investigation confirms the database constraints are rejecting these events.
 
----
+## Root Cause
 
-## What's Already Working
+The `profile_events` table has three CHECK constraints:
+- `valid_event_type` - Correctly includes `BIO_START`, `BIO_END`, `OT_LOGIN`, `OT_LOGOUT`
+- `valid_prev_status` - Only allows: `LOGGED_OUT`, `LOGGED_IN`, `ON_BREAK`, `COACHING`, `RESTARTING`
+- `valid_new_status` - Only allows: `LOGGED_OUT`, `LOGGED_IN`, `ON_BREAK`, `COACHING`, `RESTARTING`
 
-The good news is that most of the infrastructure already exists:
-- The database RPC (`get_weekly_scorecard_data`) already fetches QA and Revalida scores for all agents
-- The `AgentScorecard` interface already has `qa` and `revalida` fields
-- The frontend currently hides these columns for Logistics with a visibility flag
+When an agent triggers a BIO or OT event:
+1. The `profile_status` table updates correctly (agent status changes to `ON_BIO` or `ON_OT`)
+2. The `profile_events` insert fails silently because `ON_BIO` and `ON_OT` are not in the allowed status values
+3. Since no event record is created, Today's Activity shows nothing
 
-The main changes needed are:
-1. Enable QA and Revalida columns for Logistics
-2. Add manual input capability for "Order Escalation and Intervention"
-3. Update the scorecard configuration in the database
+Evidence: Your agent has used 102 seconds of bio time (18 remaining out of 120), but zero BIO_START or BIO_END events exist in the database.
 
 ---
 
-## Implementation Steps
+## Solution
 
-### Step 1: Database Configuration Update
-Update `scorecard_config` table for Logistics support type:
-- Add `productivity` metric (renamed to "Order Escalation and Intervention") with 35% weight, 95% goal
-- Add `qa` metric with 30% weight, 95% goal
-- Add `revalida` metric with 5% weight, 95% goal
-- Update existing `reliability` metric to 30% weight, 98% goal
+### Database Migration
 
-### Step 2: Database Schema Changes
-Add columns to `zendesk_agent_metrics` table:
-- `order_escalation NUMERIC` - For storing manual Order Escalation percentage
-- Also add to `saved_scorecards` table for data persistence
+Update the status constraints to include `ON_BIO` and `ON_OT`:
 
-### Step 3: Update SQL RPC
-Modify `get_weekly_scorecard_data` to return the new `order_escalation` field from `zendesk_agent_metrics`.
+```sql
+-- Drop existing status constraints
+ALTER TABLE profile_events DROP CONSTRAINT IF EXISTS valid_prev_status;
+ALTER TABLE profile_events DROP CONSTRAINT IF EXISTS valid_new_status;
 
-### Step 4: API Layer Updates (scorecardApi.ts)
-- Add `orderEscalation` to `AgentScorecard` interface
-- Update `upsertZendeskMetrics` to support `order_escalation`
-- Modify score calculation to use `order_escalation` for Logistics instead of ticket-based productivity
+-- Recreate with all statuses including ON_BIO and ON_OT
+ALTER TABLE profile_events ADD CONSTRAINT valid_prev_status 
+CHECK (prev_status = ANY (ARRAY[
+  'LOGGED_OUT'::text, 
+  'LOGGED_IN'::text, 
+  'ON_BREAK'::text, 
+  'COACHING'::text, 
+  'RESTARTING'::text,
+  'ON_BIO'::text,
+  'ON_OT'::text
+]));
 
-### Step 5: UI Updates (TeamScorecard.tsx)
-- Enable QA and Revalida columns for Logistics (`showQA`, `showRevalida`)
-- Replace "Productivity" column with "Order Escalation" for Logistics agents
-- Make the Order Escalation cell editable (percentage input mode)
-- Update `metricApplies` function to include Logistics for `qa` and `revalida`
-
-### Step 6: EditableMetricCell Enhancement
-Add a "percentage mode" to handle direct percentage inputs:
-- Accepts values like "95" or "85.5"
-- Displays with % suffix
-- Uses "higher is better" calculation (actual/goal × 100)
+ALTER TABLE profile_events ADD CONSTRAINT valid_new_status 
+CHECK (new_status = ANY (ARRAY[
+  'LOGGED_OUT'::text, 
+  'LOGGED_IN'::text, 
+  'ON_BREAK'::text, 
+  'COACHING'::text, 
+  'RESTARTING'::text,
+  'ON_BIO'::text,
+  'ON_OT'::text
+]));
+```
 
 ---
 
 ## Technical Details
 
-### Database Changes
-
-```sql
--- Update scorecard_config for Logistics
-UPDATE scorecard_config 
-SET weight = 30, goal = 98, display_order = 4 
-WHERE support_type = 'Logistics' AND metric_key = 'reliability';
-
-INSERT INTO scorecard_config (support_type, metric_key, weight, goal, is_enabled, display_order)
-VALUES 
-  ('Logistics', 'order_escalation', 35, 95, true, 1),
-  ('Logistics', 'qa', 30, 95, true, 2),
-  ('Logistics', 'revalida', 5, 95, true, 3);
-
--- Add order_escalation column
-ALTER TABLE zendesk_agent_metrics ADD COLUMN order_escalation NUMERIC;
-ALTER TABLE saved_scorecards ADD COLUMN order_escalation NUMERIC;
-```
-
-### Interface Updates
-
-```typescript
-// AgentScorecard interface
-export interface AgentScorecard {
-  // ... existing fields
-  orderEscalation: number | null; // New field for Logistics
-}
-```
-
-### Column Visibility Logic Change
-
-```typescript
-// Current (hides for Logistics)
-const showQA = isAllMode || supportType !== 'Logistics';
-const showRevalida = isAllMode || supportType !== 'Logistics';
-
-// Updated (shows for everyone)
-const showQA = true;
-const showRevalida = true;
-```
+| Aspect | Current State | After Fix |
+|--------|---------------|-----------|
+| `valid_event_type` constraint | Already correct (includes OT/BIO events) | No change needed |
+| `valid_prev_status` constraint | Missing `ON_BIO`, `ON_OT` | Updated to include both |
+| `valid_new_status` constraint | Missing `ON_BIO`, `ON_OT` | Updated to include both |
+| UI Components | Already configured correctly | Will display events once recorded |
 
 ---
 
@@ -111,24 +74,17 @@ const showRevalida = true;
 
 | File | Changes |
 |------|---------|
-| `supabase/migrations/[new].sql` | Update scorecard_config, add order_escalation columns |
-| `src/lib/scorecardApi.ts` | Add orderEscalation field, update save/fetch logic |
-| `src/pages/TeamScorecard.tsx` | Enable columns for Logistics, rename Productivity header |
-| `src/components/scorecard/EditableMetricCell.tsx` | Add percentage input mode |
-| `get_weekly_scorecard_data` (RPC) | Return order_escalation from zendesk_agent_metrics |
+| `supabase/migrations/[new].sql` | Add migration to update status constraints |
+
+No frontend changes required - the `DailyEventSummary.tsx` and `LiveActivityFeed.tsx` components already have proper configuration for BIO and OT event types.
 
 ---
 
-## UI Preview
+## Verification Steps
 
-After implementation, the Logistics Scorecard will display:
-
-| Agent Name | Order Escalation | QA | Revalida | Reliability | Final Score |
-|------------|------------------|-----|----------|-------------|-------------|
-| John Doe   | 92% (editable)   | 98% | 95%      | 100%        | 95.4%       |
-
-- **Order Escalation**: Manual input with percentage format
-- **QA**: Auto-populated from QA Evaluations (existing data)
-- **Revalida**: Auto-populated from Revalida page (existing data)
-- **Reliability**: Already working (attendance-based)
+After the fix:
+1. Login to dashboard and trigger "Bio Break"
+2. Confirm event appears in Today's Activity with cyan "Bio Break" label
+3. Login to OT and confirm "OT Started" appears with purple label
+4. Verify events also appear in Team Status Board's Live Activity Feed
 
