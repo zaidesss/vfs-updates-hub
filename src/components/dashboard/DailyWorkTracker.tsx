@@ -152,7 +152,7 @@ export function DailyWorkTracker({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
-            Daily Work Tracker
+            Work Tracker
           </CardTitle>
           <Button
             variant="ghost"

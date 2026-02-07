@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 interface WeeklySummaryCardProps {
   attendance: DayAttendance[];
   allEvents?: ProfileEvent[];
+  weekStart: Date;
+  weekEnd: Date;
   className?: string;
 }
 
@@ -30,10 +32,7 @@ interface SummaryMetric {
   subtext?: string;
 }
 
-export function WeeklySummaryCard({ attendance, allEvents = [], className }: WeeklySummaryCardProps) {
-  const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekEnd, className }: WeeklySummaryCardProps) {
 
   // Calculate metrics
   const workingDays = attendance.filter(

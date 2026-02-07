@@ -228,8 +228,10 @@ export function isValidTransition(currentStatus: ProfileStatus, eventType: Event
 /**
  * Fetch consolidated dashboard data via RPC
  * Returns status, login time, and ticket metrics in a single call
+ * @param profileId - The agent's profile ID
+ * @param referenceDate - Optional date to calculate week boundaries (defaults to current date)
  */
-export async function fetchAgentDashboardRPC(profileId: string): Promise<{
+export async function fetchAgentDashboardRPC(profileId: string, referenceDate?: Date): Promise<{
   data: {
     current_status: ProfileStatus;
     status_since: string | null;
@@ -244,9 +246,16 @@ export async function fetchAgentDashboardRPC(profileId: string): Promise<{
   error: string | null;
 }> {
   try {
-    const { data, error } = await supabase.rpc('get_agent_dashboard_data', {
+    const rpcParams: { p_profile_id: string; p_reference_date?: string } = {
       p_profile_id: profileId,
-    });
+    };
+    
+    // Add reference date if provided
+    if (referenceDate) {
+      rpcParams.p_reference_date = format(referenceDate, 'yyyy-MM-dd');
+    }
+    
+    const { data, error } = await supabase.rpc('get_agent_dashboard_data', rpcParams);
     
     if (error) {
       return { data: null, error: error.message };
@@ -1713,6 +1722,117 @@ export async function getTodayTicketCountByType(agentTag: string): Promise<{ dat
   }
 }
 
+/**
+ * Fetch ticket count broken down by type for a week date range
+ * Aggregates tickets from startDate to endDate (inclusive)
+ */
+export async function getWeekTicketCountByType(
+  agentTag: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{ data: TicketCountByType; error: string | null }> {
+  try {
+    // Format dates to ISO strings for timezone-aware query
+    const startStr = format(startDate, 'yyyy-MM-dd') + 'T00:00:00.000Z';
+    const endStr = format(endDate, 'yyyy-MM-dd') + 'T23:59:59.999Z';
+
+    // Fetch all tickets for the date range (includes is_ot flag)
+    const { data, error } = await supabase
+      .from('ticket_logs')
+      .select('ticket_type, is_ot')
+      .ilike('agent_name', agentTag)
+      .gte('timestamp', startStr)
+      .lte('timestamp', endStr);
+
+    if (error) {
+      return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: error.message };
+    }
+
+    // Count by type (case-insensitive), separate OT emails
+    let emailCount = 0;
+    let chatCount = 0;
+    let callCount = 0;
+    let otEmailCount = 0;
+
+    (data || []).forEach((row) => {
+      const type = (row.ticket_type || '').toLowerCase();
+      const isOt = row.is_ot === true;
+      
+      if (type === 'email') {
+        if (isOt) {
+          otEmailCount++;
+        } else {
+          emailCount++;
+        }
+      } else if (type === 'chat') {
+        chatCount++;
+      } else if (type === 'call') {
+        callCount++;
+      }
+    });
+
+    return {
+      data: {
+        email: emailCount,
+        chat: chatCount,
+        call: callCount,
+        total: emailCount + chatCount + callCount + otEmailCount,
+        otEmail: otEmailCount,
+      },
+      error: null,
+    };
+  } catch (err: any) {
+    return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: err.message };
+  }
+}
+
+/**
+ * Fetch average gap data for a week date range
+ * Returns the average of all daily gaps in the range
+ */
+export async function getWeekAvgGapData(
+  agentTag: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{ data: { avgGapSeconds: number | null }; error: string | null }> {
+  try {
+    const startStr = format(startDate, 'yyyy-MM-dd');
+    const endStr = format(endDate, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('ticket_gap_daily')
+      .select('avg_gap_seconds, ticket_count')
+      .ilike('agent_name', agentTag)
+      .gte('date', startStr)
+      .lte('date', endStr);
+
+    if (error) {
+      return { data: { avgGapSeconds: null }, error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return { data: { avgGapSeconds: null }, error: null };
+    }
+
+    // Calculate weighted average gap based on ticket counts
+    let totalWeightedGap = 0;
+    let totalTickets = 0;
+
+    data.forEach((row) => {
+      if (row.avg_gap_seconds !== null && row.ticket_count > 0) {
+        totalWeightedGap += row.avg_gap_seconds * row.ticket_count;
+        totalTickets += row.ticket_count;
+      }
+    });
+
+    const avgGap = totalTickets > 0 ? Math.round(totalWeightedGap / totalTickets) : null;
+
+    return { data: { avgGapSeconds: avgGap }, error: null };
+  } catch (err: any) {
+    return { data: { avgGapSeconds: null }, error: err.message };
+  }
+}
+
 
 export async function getTodayGapData(agentTag: string): Promise<{ 
   data: { avgGapSeconds: number | null; ticketCount: number } | null; 
@@ -1841,6 +1961,66 @@ export async function fetchUpworkTimeFromCache(
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Exception fetching Upwork cache:', errorMessage);
+    return { hours: null, syncedAt: null, error: errorMessage };
+  }
+}
+
+/**
+ * Fetch Upwork time from cache for a week date range
+ * Sums total_hours from upwork_daily_logs for all days in the range
+ */
+export async function fetchUpworkTimeForWeek(
+  contractId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{ 
+  hours: number | null; 
+  syncedAt: string | null;
+  error: string | null 
+}> {
+  try {
+    const startStr = format(startDate, 'yyyy-MM-dd');
+    const endStr = format(endDate, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('upwork_daily_logs')
+      .select('total_hours, fetched_at')
+      .eq('contract_id', contractId)
+      .gte('date', startStr)
+      .lte('date', endStr);
+
+    if (error) {
+      console.error('Error fetching Upwork cache for week:', error);
+      return { hours: null, syncedAt: null, error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      // No cached data yet - not an error, just no data
+      return { hours: null, syncedAt: null, error: null };
+    }
+
+    // Sum all hours in the range
+    let totalHours = 0;
+    let latestSync: string | null = null;
+
+    data.forEach((row) => {
+      if (row.total_hours !== null) {
+        totalHours += row.total_hours;
+      }
+      // Track the most recent sync time
+      if (row.fetched_at && (!latestSync || row.fetched_at > latestSync)) {
+        latestSync = row.fetched_at;
+      }
+    });
+
+    return { 
+      hours: totalHours, 
+      syncedAt: latestSync,
+      error: null 
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Exception fetching Upwork cache for week:', errorMessage);
     return { hours: null, syncedAt: null, error: errorMessage };
   }
 }
