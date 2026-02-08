@@ -1,68 +1,105 @@
 
+# Comprehensive Fix for Revalida 2.0 System
 
-# Fix: Add Delete Button for Deactivated Batches in Revalida 2.0
+## Issues Identified
 
-## Problem
-The delete button is missing for **deactivated** batches (Inactive status with time remaining). Currently only Draft and Expired batches can be deleted.
+### 1. **"Create New Batch" Button Does Nothing** (CRITICAL)
+**Location:** `src/pages/RevalidaV2.tsx` (line 156)
 
-## Root Cause
-In `BatchManagementV2.tsx` (line 215), delete button shows only for:
-```typescript
-{(isDraftBatch(batch) || isExpired(batch)) && (...)}
+**Root Cause:** The "Create New Batch" button in the Manage Batches tab navigates to `?tab=create`, but the Tabs component uses `defaultValue="manage"` and **never reads the URL parameter**. The tab stays on "manage" even when the URL says `?tab=create`.
+
+**Fix:** Make the Tabs component controlled by reading the `tab` query parameter and using `onValueChange` to update the URL.
+
+---
+
+### 2. **ContractManager Ref Warning** (MINOR - but indicates potential issue)
+**Location:** `src/components/revalida-v2/ContractManager.tsx`
+
+**Root Cause:** The `ContractManager` component is used inside `TabsContent` but doesn't properly forward refs. The warning appears in console: "Function components cannot be given refs."
+
+**Fix:** Wrap the component with `forwardRef` to prevent React warnings.
+
+---
+
+### 3. **RLS Policies May Block API Operations** (POTENTIAL)
+The edge function for creating batches uses a service role key, but the frontend API calls use the client's session. Need to verify RLS policies allow batch creation.
+
+---
+
+### 4. **Generation Parameter Validation Too Strict** (CRITICAL)
+**Location:** `supabase/functions/generate-revalida-v2/index.ts` (line 32)
+
+**Root Cause:** The validation checks `!mcqCount || !tfCount || !situationalCount` - but if user sets any count to **0**, it's treated as missing (falsy). For example, if they want 5 MCQ, 0 T/F, and 2 Situational, it will reject the request.
+
+**Fix:** Change validation to check for `undefined` or `null` instead of falsy values.
+
+---
+
+## Summary of All Fixes
+
+| Issue | File | Change |
+|-------|------|--------|
+| Tab navigation broken | `src/pages/RevalidaV2.tsx` | Make Tabs controlled, read `tab` query param |
+| ContractManager ref warning | `src/components/revalida-v2/ContractManager.tsx` | Add `forwardRef` wrapper |
+| Generation rejects 0 values | `supabase/functions/generate-revalida-v2/index.ts` | Fix parameter validation |
+
+---
+
+## Technical Implementation
+
+### Fix 1: Tab Navigation (RevalidaV2.tsx)
+
+**Current code (lines 145-172):**
+```tsx
+<Tabs defaultValue="manage" className="w-full">
+  <TabsList>
+    <TabsTrigger value="manage">Manage Batches</TabsTrigger>
+    <TabsTrigger value="contracts">Knowledge Base</TabsTrigger>
+    <TabsTrigger value="create">Create New</TabsTrigger>
+  </TabsList>
+  ...
+</Tabs>
 ```
 
-But `isDraftBatch` checks `!batch.is_active && !batch.start_at` - which excludes batches that were published then deactivated (they have `start_at` set).
+**New code:**
+- Import `useSearchParams` from react-router-dom
+- Extract `tab` from search params
+- Use controlled Tabs with `value` and `onValueChange`
+- Navigate to update URL when tabs change
 
-## Solution
-Update the delete condition to include **all inactive batches** (not just drafts):
+### Fix 2: ContractManager Ref (ContractManager.tsx)
 
-| Batch State | Should Show Delete? |
-|-------------|---------------------|
-| Draft (never published) | ✅ Yes |
-| Active (live) | ❌ No (must deactivate first) |
-| Deactivated (was active, now stopped) | ✅ Yes |
-| Expired (deadline passed) | ✅ Yes |
+Wrap component export with `React.forwardRef` to properly forward refs from TabsContent.
 
-## File to Change
+### Fix 3: Edge Function Validation (generate-revalida-v2/index.ts)
 
-**`src/components/revalida-v2/BatchManagementV2.tsx`**
-
-Change line 215 from:
+Change from:
 ```typescript
-{(isDraftBatch(batch) || isExpired(batch)) && (
+if (!batchId || !mcqCount || !tfCount || !situationalCount) {
 ```
 
 To:
 ```typescript
-{(!isActive(batch)) && (
+if (!batchId || mcqCount === undefined || tfCount === undefined || situationalCount === undefined) {
 ```
-
-This covers:
-- Draft batches (not active, never started)
-- Deactivated batches (not active, was started)
-- Expired batches (not active due to deadline)
-
-Only **currently active** batches require deactivation first.
 
 ---
 
-## Additional Fix: Exclude Internal Operations from AI Question Generation
+## Items Already Working
 
-**`supabase/functions/generate-revalida-v2/index.ts`**
-
-Add filter to exclude `internal_operations` category:
-```typescript
-.not("category", "eq", "internal_operations")
-```
-
-This ensures HR/operational articles don't get used for question generation.
+- Delete button for non-active batches
+- Test interface (rubric hidden after previous fix)
+- Question submission (unique constraint added)
+- Internal operations exclusion from KB query
+- Deactivate functionality
+- Publish functionality
+- Agent test taking flow
 
 ---
 
-## Summary of Changes
+## Next Steps After Implementation
 
-| File | Change |
-|------|--------|
-| `src/components/revalida-v2/BatchManagementV2.tsx` | Show delete for all non-active batches |
-| `supabase/functions/generate-revalida-v2/index.ts` | Exclude internal_operations from KB query |
-
+1. Test "Create New Batch" button from Manage Batches tab
+2. Create a batch with some question counts set to 0
+3. Verify no console warnings about refs
+4. Test the entire flow: create batch, generate questions, publish, take test, submit
