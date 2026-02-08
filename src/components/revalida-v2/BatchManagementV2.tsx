@@ -244,8 +244,8 @@ export function BatchManagementV2({
                         </AlertDialog>
                       )}
 
-                      {/* Delete button - for drafts (any status) or expired */}
-                      {(isDraftBatch(batch) || isExpired(batch)) && (
+                      {/* Delete button - for any non-active batch */}
+                      {(!isActive(batch)) && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
