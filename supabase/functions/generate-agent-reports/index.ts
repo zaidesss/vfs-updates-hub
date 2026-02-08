@@ -770,18 +770,10 @@ Deno.serve(async (req) => {
         `;
 
         try {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${resendApiKey}`,
-            },
-            body: JSON.stringify({
-              from: 'VFS Updates Hub <noreply@vfsoperations.online>',
-              to: adminEmails,
-              subject: title,
-              html: htmlBody,
-            }),
+          await sendEmail({
+            to: adminEmails,
+            subject: title,
+            html: htmlBody,
           });
         } catch (emailErr) {
           console.error('Email send error:', emailErr);

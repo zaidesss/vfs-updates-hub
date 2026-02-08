@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,8 +19,7 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -110,10 +109,10 @@ serve(async (req) => {
     const hrEmails = [...new Set((hrUsers as { email: string }[] || []).map(u => u.email))];
     console.log(`Sending mismatch report to ${hrEmails.length} HR/Super Admin users`);
 
-    if (!resendApiKey || hrEmails.length === 0) {
+    if (hrEmails.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
-        message: "Mismatches found but no email sent (no API key or HR emails)",
+        message: "Mismatches found but no email sent (no HR emails)",
         mismatches 
       }), {
         status: 200,
@@ -219,10 +218,7 @@ serve(async (req) => {
       </html>
     `;
 
-    const resend = new Resend(resendApiKey);
-    
-    const emailResponse = await resend.emails.send({
-      from: "VFS Agent Portal <noreply@updates.virtualfreelancesolutions.com>",
+    const emailResponse = await sendEmail({
       to: hrEmails,
       subject: `⚠️ Daily User/Profile Mismatch Report - ${totalMismatches} issue${totalMismatches === 1 ? '' : 's'} found`,
       html: emailHtml,
