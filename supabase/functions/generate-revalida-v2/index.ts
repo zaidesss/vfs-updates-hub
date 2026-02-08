@@ -59,11 +59,12 @@ export async function handler(req: Request): Promise<Response> {
     previousSunday.setDate(previousMonday.getDate() + 6);
     previousSunday.setHours(23, 59, 59, 999);
 
-    // Fetch KB articles from previous week
+    // Fetch KB articles from previous week (exclude Revalida schedule announcements)
     const { data: updates, error: updatesError } = await supabase
       .from("updates")
       .select("id, title, summary, body, category, posted_at")
       .eq("status", "published")
+      .not("title", "ilike", "Revalida%")
       .gte("posted_at", previousMonday.toISOString())
       .lte("posted_at", previousSunday.toISOString())
       .order("posted_at", { ascending: false });
@@ -150,6 +151,7 @@ export async function handler(req: Request): Promise<Response> {
 CONTEXT:
 - This week's focus is on reinforcing key processes and handling scenarios.
 - Generate questions that test understanding of recent updates and compliance with service standards.
+- IMPORTANT: Do NOT generate questions about Revalida test schedules, deadlines, or announcements. Only use actual knowledge content.
 
 KNOWLEDGE BASE ARTICLES (Recent Updates):
 ${kbContent || "No recent updates"}
