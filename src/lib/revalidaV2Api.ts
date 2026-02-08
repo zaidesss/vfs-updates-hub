@@ -433,3 +433,109 @@ export const calculateAttemptScore = async (attemptId: string) => {
     percentage: Math.round(percentage * 100) / 100,
   };
 };
+
+// ============================================
+// PUBLISH BATCH (48-HOUR WINDOW)
+// ============================================
+
+export const publishBatch = async (batchId: string) => {
+  const now = new Date();
+  const endAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // +48 hours
+  
+  // Deactivate any currently active batch first
+  await supabase
+    .from('revalida_v2_batches')
+    .update({ is_active: false })
+    .eq('is_active', true)
+    .neq('id', batchId);
+  
+  return await updateBatch(batchId, {
+    is_active: true,
+    start_at: now.toISOString(),
+    end_at: endAt.toISOString(),
+  });
+};
+
+// ============================================
+// FETCH EXISTING ATTEMPT (NO AUTO-CREATE)
+// ============================================
+
+export const fetchMyAttempt = async (batchId: string, agentEmail: string): Promise<RevalidaV2Attempt | null> => {
+  const { data, error } = await supabase
+    .from('revalida_v2_attempts')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('agent_email', agentEmail)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as RevalidaV2Attempt | null;
+};
+
+// ============================================
+// DEADLINE HELPERS
+// ============================================
+
+export function isDeadlinePassed(endAt: string | null | undefined): boolean {
+  if (!endAt) return false;
+  return new Date() > new Date(endAt);
+}
+
+export function getTimeRemaining(endAt: string | null | undefined): string {
+  if (!endAt) return '';
+  const now = new Date();
+  const end = new Date(endAt);
+  const diff = end.getTime() - now.getTime();
+  
+  if (diff <= 0) return 'Expired';
+  
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h remaining`;
+  }
+  return `${hours}h ${minutes}m remaining`;
+}
+
+// ============================================
+// START ATTEMPT (WITH DEADLINE CHECK)
+// ============================================
+
+export const startAttempt = async (batchId: string, agentEmail: string): Promise<RevalidaV2Attempt> => {
+  // Check if batch deadline has passed
+  const batch = await getBatch(batchId);
+  if (isDeadlinePassed(batch.end_at)) {
+    throw new Error('This assessment has expired');
+  }
+
+  // Check if attempt already exists
+  const existing = await fetchMyAttempt(batchId, agentEmail);
+  if (existing) {
+    return existing;
+  }
+
+  // Create new attempt with randomized question order
+  const questions = await getQuestionsByBatch(batchId);
+  const questionOrder = questions
+    .map(q => q.id)
+    .sort(() => Math.random() - 0.5);
+
+  const { data, error } = await supabase
+    .from('revalida_v2_attempts')
+    .insert([
+      {
+        batch_id: batchId,
+        agent_email: agentEmail,
+        status: 'in_progress',
+        started_at: new Date().toISOString(),
+        question_order: questionOrder,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RevalidaV2Attempt;
+};

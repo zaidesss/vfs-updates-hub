@@ -7,10 +7,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-if (import.meta.main) {
-  console.error("This script should be run via Supabase Edge Functions");
-}
-
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

@@ -330,6 +330,14 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/team-performance/revalida-v2/:batchId/:section"
+        element={
+          <ProtectedRoute>
+            <RevalidaV2 />
+          </ProtectedRoute>
+        }
+      />
       {/* Redirects for old routes */}
       <Route path="/user-guide" element={<Navigate to="/help-center" replace />} />
       <Route path="/announcements" element={<Navigate to="/help-center" replace />} />
