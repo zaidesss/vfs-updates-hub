@@ -1833,6 +1833,165 @@ export async function getWeekAvgGapData(
   }
 }
 
+/**
+ * Fetch ticket count broken down by type for a single day
+ * Uses EST day boundaries for accurate timezone handling
+ */
+export async function getDayTicketCountByType(
+  agentTag: string,
+  date: Date
+): Promise<{ data: TicketCountByType; error: string | null }> {
+  try {
+    // Format date to string for EST boundary calculation
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const { getESTDayBoundaries } = await import('@/lib/timezoneUtils');
+    const { start, end } = getESTDayBoundaries(dateStr);
+
+    // Fetch all tickets for the day (includes is_ot flag)
+    const { data, error } = await supabase
+      .from('ticket_logs')
+      .select('ticket_type, is_ot')
+      .ilike('agent_name', agentTag)
+      .gte('timestamp', start)
+      .lte('timestamp', end);
+
+    if (error) {
+      return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: error.message };
+    }
+
+    // Count by type (case-insensitive), separate OT emails
+    let emailCount = 0;
+    let chatCount = 0;
+    let callCount = 0;
+    let otEmailCount = 0;
+
+    (data || []).forEach((row) => {
+      const type = (row.ticket_type || '').toLowerCase();
+      const isOt = row.is_ot === true;
+      
+      if (type === 'email') {
+        if (isOt) {
+          otEmailCount++;
+        } else {
+          emailCount++;
+        }
+      } else if (type === 'chat') {
+        chatCount++;
+      } else if (type === 'call') {
+        callCount++;
+      }
+    });
+
+    return {
+      data: {
+        email: emailCount,
+        chat: chatCount,
+        call: callCount,
+        total: emailCount + chatCount + callCount + otEmailCount,
+        otEmail: otEmailCount,
+      },
+      error: null,
+    };
+  } catch (err: any) {
+    return { data: { email: 0, chat: 0, call: 0, total: 0, otEmail: 0 }, error: err.message };
+  }
+}
+
+/**
+ * Fetch average gap data for a single day
+ */
+export async function getDayAvgGapData(
+  agentTag: string,
+  date: Date
+): Promise<{ data: { avgGapSeconds: number | null }; error: string | null }> {
+  try {
+    const dateStr = format(date, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('ticket_gap_daily')
+      .select('avg_gap_seconds')
+      .ilike('agent_name', agentTag)
+      .eq('date', dateStr)
+      .maybeSingle();
+
+    if (error) {
+      return { data: { avgGapSeconds: null }, error: error.message };
+    }
+
+    return { data: { avgGapSeconds: data?.avg_gap_seconds ?? null }, error: null };
+  } catch (err: any) {
+    return { data: { avgGapSeconds: null }, error: err.message };
+  }
+}
+
+/**
+ * Fetch portal hours for a single day from attendance data
+ * Returns hours worked in decimal format
+ */
+export async function getDayPortalHours(
+  profileId: string,
+  date: Date
+): Promise<{ data: { hours: number | null; loginTime: string | null }; error: string | null }> {
+  try {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const startOfDay = dateStr + 'T00:00:00.000Z';
+    const endOfDay = dateStr + 'T23:59:59.999Z';
+
+    // Fetch login/logout events for this specific day
+    const { data, error } = await supabase
+      .from('profile_events')
+      .select('event_type, created_at')
+      .eq('profile_id', profileId)
+      .in('event_type', ['LOGIN', 'LOGOUT', 'OT_LOGIN', 'OT_LOGOUT'])
+      .gte('created_at', startOfDay)
+      .lte('created_at', endOfDay)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { data: { hours: null, loginTime: null }, error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return { data: { hours: null, loginTime: null }, error: null };
+    }
+
+    // Find first login and last logout
+    let firstLogin: Date | null = null;
+    let lastLogout: Date | null = null;
+    let firstLoginTime: string | null = null;
+
+    data.forEach((event) => {
+      const eventTime = new Date(event.created_at);
+      if (event.event_type === 'LOGIN' || event.event_type === 'OT_LOGIN') {
+        if (!firstLogin) {
+          firstLogin = eventTime;
+          firstLoginTime = formatTimeInEST(eventTime);
+        }
+      } else if (event.event_type === 'LOGOUT' || event.event_type === 'OT_LOGOUT') {
+        lastLogout = eventTime;
+      }
+    });
+
+    if (!firstLogin) {
+      return { data: { hours: null, loginTime: null }, error: null };
+    }
+
+    // If no logout yet, use current time for calculation
+    const endTime = lastLogout || new Date();
+    const hoursWorked = (endTime.getTime() - firstLogin.getTime()) / (1000 * 60 * 60);
+
+    return { 
+      data: { 
+        hours: Math.round(hoursWorked * 100) / 100, 
+        loginTime: firstLoginTime 
+      }, 
+      error: null 
+    };
+  } catch (err: any) {
+    return { data: { hours: null, loginTime: null }, error: err.message };
+  }
+}
+
 
 export async function getTodayGapData(agentTag: string): Promise<{ 
   data: { avgGapSeconds: number | null; ticketCount: number } | null; 
