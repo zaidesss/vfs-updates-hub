@@ -17,11 +17,11 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("VITE_SUPABASE_URL");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Missing Supabase configuration");
+      throw new Error(`Missing Supabase configuration: URL=${!!supabaseUrl}, KEY=${!!supabaseKey}`);
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -83,13 +83,16 @@ export async function handler(req: Request): Promise<Response> {
         `
         id,
         agent_email,
-        evaluation_date,
+        audit_date,
+        accuracy_feedback,
+        compliance_feedback,
+        customer_exp_feedback,
         qa_evaluation_scores(subcategory, ai_justification),
-        qa_action_needed(action_needed)
+        qa_action_needed(action_plan_id, custom_action)
       `
       )
-      .gte("evaluation_date", previousMonday.toISOString().split("T")[0])
-      .lte("evaluation_date", previousSunday.toISOString().split("T")[0]);
+      .gte("audit_date", previousMonday.toISOString().split("T")[0])
+      .lte("audit_date", previousSunday.toISOString().split("T")[0]);
 
     if (qaError) {
       console.error("QA evaluations fetch error:", qaError);
@@ -117,7 +120,9 @@ export async function handler(req: Request): Promise<Response> {
     const qaContent = (qaEvaluations || [])
       .map(
         (e: any) =>
-          `Agent: ${e.agent_email}\nDate: ${e.evaluation_date}\nAI Suggestions: ${
+          `Agent: ${e.agent_email}\nDate: ${e.audit_date}\nFeedback: ${
+            [e.accuracy_feedback, e.compliance_feedback, e.customer_exp_feedback].filter(Boolean).join(' | ') || 'N/A'
+          }\nAI Suggestions: ${
             e.qa_evaluation_scores?.[0]?.ai_justification || "N/A"
           }`
       )
@@ -128,11 +133,16 @@ export async function handler(req: Request): Promise<Response> {
       .join("\n\n---\n\n");
 
     // Call Lovable AI to generate questions
-    const aiResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+        Authorization: `Bearer ${lovableApiKey}`,
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
@@ -201,12 +211,18 @@ Return ONLY the JSON, no other text.`,
     });
 
     if (!aiResponse.ok) {
-      const error = await aiResponse.json();
-      throw new Error(`AI generation failed: ${JSON.stringify(error)}`);
+      const errorText = await aiResponse.text();
+      console.error("AI API error response:", errorText);
+      throw new Error(`AI generation failed: ${errorText.substring(0, 200)}`);
     }
 
     const aiResult = await aiResponse.json();
-    const content = aiResult.choices[0].message.content;
+    const content = aiResult.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.error("AI response structure:", JSON.stringify(aiResult));
+      throw new Error("No content in AI response");
+    }
 
     // Parse AI response
     let questions;

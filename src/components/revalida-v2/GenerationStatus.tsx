@@ -1,14 +1,33 @@
 import { useState } from 'react';
-import { RevalidaV2Batch } from '@/lib/revalidaV2Api';
+import { RevalidaV2Batch, generateQuestions } from '@/lib/revalidaV2Api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Clock, AlertCircle, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, Clock, AlertCircle, Zap, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface GenerationStatusProps {
   batch: RevalidaV2Batch;
 }
 
 export const GenerationStatus = ({ batch }: GenerationStatusProps) => {
+  const queryClient = useQueryClient();
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await generateQuestions(batch.id);
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', batch.id] });
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-questions', batch.id] });
+      toast.success('Questions generated successfully!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to generate questions');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
   const getStatusIcon = () => {
     switch (batch.generation_status) {
       case 'pending':
@@ -90,7 +109,7 @@ export const GenerationStatus = ({ batch }: GenerationStatusProps) => {
         )}
 
         {batch.generation_status === 'failed' && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-sm text-destructive">
               ✗ Generation failed
             </p>
@@ -99,6 +118,23 @@ export const GenerationStatus = ({ batch }: GenerationStatusProps) => {
                 Error: {batch.generation_error}
               </p>
             )}
+            <Button
+              size="sm"
+              onClick={handleRetry}
+              disabled={isRetrying}
+            >
+              {isRetrying ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry Generation
+                </>
+              )}
+            </Button>
           </div>
         )}
 
