@@ -36,6 +36,7 @@ import {
   getDayPortalHours,
   fetchUpworkTimeFromCache,
   fetchUpworkTimeForWeek,
+  fetchUpworkTimeForDay,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
   type DashboardProfile,
@@ -244,18 +245,19 @@ export default function AgentDashboard() {
 
       // Fetch agent tag for detailed ticket breakdown
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
+      
+      // Determine the appropriate day to fetch data for (shared across branches)
+      const now = new Date();
+      const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+      const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
+      
+      // Default day: today for current week, Sunday for past weeks
+      const defaultDay = isCurrentWeek ? todayEST : weekEnd;
+      setSelectedDay(defaultDay);
+      
       if (tag) {
         setAgentTag(tag);
-        
-        // Determine the appropriate day to fetch data for
-        const now = new Date();
-        const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-        const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
-        const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
-        
-        // Default day: today for current week, Sunday for past weeks
-        const defaultDay = isCurrentWeek ? todayEST : weekEnd;
-        setSelectedDay(defaultDay);
         
         // Fetch per-type ticket breakdown for the selected day
         const ticketResult = await getDayTicketCountByType(tag, defaultDay);
@@ -270,27 +272,18 @@ export default function AgentDashboard() {
         setPortalHours(portalResult.data.hours);
         setPortalLoginTime(portalResult.data.loginTime);
       } else {
-        // No tag, still calculate portal hours from attendance
-        const now = new Date();
-        const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-        const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
-        const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
-        const defaultDay = isCurrentWeek ? todayEST : weekEnd;
-        setSelectedDay(defaultDay);
-        
-        // Get portal hours from the attendance for the selected day
+        // No tag, get portal hours from the attendance for the selected day
         const dayStr = format(defaultDay, 'yyyy-MM-dd');
         const dayAttendance = weekAttendance.find((d) => format(d.date, 'yyyy-MM-dd') === dayStr);
         setPortalHours(dayAttendance?.hoursWorkedMinutes ? dayAttendance.hoursWorkedMinutes / 60 : null);
         setPortalLoginTime(dayAttendance?.loginTime || null);
       }
       
-      // Fetch Upwork hours from cache for the selected week if contract ID exists
+      // Fetch Upwork hours for the selected day if contract ID exists
       if (profileResult.data.upwork_contract_id) {
-        const upworkResult = await fetchUpworkTimeForWeek(
+        const upworkResult = await fetchUpworkTimeForDay(
           profileResult.data.upwork_contract_id,
-          weekStart,
-          weekEnd
+          defaultDay
         );
         if (upworkResult.error) {
           setUpworkError(upworkResult.error);
@@ -315,22 +308,39 @@ export default function AgentDashboard() {
 
   // Refresh tracker data for the selected day
   const handleRefreshTracker = async () => {
-    if (!agentTag || !profileId) return;
+    if (!profileId) return;
     
     setIsRefreshingTracker(true);
     try {
-      // Fetch ticket breakdown by type for selected day
-      const ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
-      setTicketCounts(ticketResult.data);
-      
-      // Fetch avg gap for selected day
-      const gapResult = await getDayAvgGapData(agentTag, selectedDay);
-      setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      // Fetch ticket and gap data if agent tag is available
+      if (agentTag) {
+        // Fetch ticket breakdown by type for selected day
+        const ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
+        setTicketCounts(ticketResult.data);
+        
+        // Fetch avg gap for selected day
+        const gapResult = await getDayAvgGapData(agentTag, selectedDay);
+        setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      }
       
       // Fetch portal hours for selected day
       const portalResult = await getDayPortalHours(profileId, selectedDay);
       setPortalHours(portalResult.data.hours);
       setPortalLoginTime(portalResult.data.loginTime);
+      
+      // Fetch Upwork hours for selected day if contract exists
+      if (profile?.upwork_contract_id) {
+        const upworkResult = await fetchUpworkTimeForDay(profile.upwork_contract_id, selectedDay);
+        if (upworkResult.error) {
+          setUpworkError(upworkResult.error);
+          setUpworkHours(null);
+          setUpworkSyncedAt(null);
+        } else {
+          setUpworkHours(upworkResult.hours);
+          setUpworkSyncedAt(upworkResult.syncedAt);
+          setUpworkError(null);
+        }
+      }
     } catch (err) {
       console.error('Failed to refresh tracker:', err);
     } finally {
@@ -342,22 +352,39 @@ export default function AgentDashboard() {
   const handleDayChange = async (date: Date) => {
     setSelectedDay(date);
     
-    if (!agentTag || !profileId) return;
+    if (!profileId) return;
     
     setIsRefreshingTracker(true);
     try {
-      // Fetch ticket breakdown by type for the selected day
-      const ticketResult = await getDayTicketCountByType(agentTag, date);
-      setTicketCounts(ticketResult.data);
-      
-      // Fetch avg gap for the selected day
-      const gapResult = await getDayAvgGapData(agentTag, date);
-      setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      // Fetch ticket and gap data if agent tag is available
+      if (agentTag) {
+        // Fetch ticket breakdown by type for the selected day
+        const ticketResult = await getDayTicketCountByType(agentTag, date);
+        setTicketCounts(ticketResult.data);
+        
+        // Fetch avg gap for the selected day
+        const gapResult = await getDayAvgGapData(agentTag, date);
+        setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      }
       
       // Fetch portal hours for the selected day
       const portalResult = await getDayPortalHours(profileId, date);
       setPortalHours(portalResult.data.hours);
       setPortalLoginTime(portalResult.data.loginTime);
+      
+      // Fetch Upwork hours for the selected day if contract exists
+      if (profile?.upwork_contract_id) {
+        const upworkResult = await fetchUpworkTimeForDay(profile.upwork_contract_id, date);
+        if (upworkResult.error) {
+          setUpworkError(upworkResult.error);
+          setUpworkHours(null);
+          setUpworkSyncedAt(null);
+        } else {
+          setUpworkHours(upworkResult.hours);
+          setUpworkSyncedAt(upworkResult.syncedAt);
+          setUpworkError(null);
+        }
+      }
     } catch (err) {
       console.error('Failed to load day data:', err);
     } finally {
