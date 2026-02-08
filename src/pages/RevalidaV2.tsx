@@ -4,15 +4,15 @@ import { useAuth } from '@/context/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RevalidaV2Batch,
-  RevalidaV2Question,
   RevalidaV2Attempt,
-  RevalidaV2Answer,
   listBatches,
   getBatch,
   getQuestionsByBatch,
   fetchMyAttempt,
   getAnswersByAttempt,
   publishBatch,
+  deactivateBatch,
+  deleteBatch,
   isDeadlinePassed,
 } from '@/lib/revalidaV2Api';
 import { Layout } from '@/components/Layout';
@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BatchConfigForm } from '@/components/revalida-v2/BatchConfigForm';
+import { BatchManagementV2 } from '@/components/revalida-v2/BatchManagementV2';
 import { ContractManager } from '@/components/revalida-v2/ContractManager';
 import { QuestionPreview } from '@/components/revalida-v2/QuestionPreview';
 import { GenerationStatus } from '@/components/revalida-v2/GenerationStatus';
@@ -39,7 +40,7 @@ export default function RevalidaV2() {
   // Admin access includes admin, super_admin, and HR roles
   const hasAdminAccess = isAdmin || isSuperAdmin || isHR;
 
-  const { data: batches = [] } = useQuery({
+  const { data: batches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ['revalida-v2-batches'],
     queryFn: listBatches,
   });
@@ -78,16 +79,42 @@ export default function RevalidaV2() {
     navigate(`/team-performance/revalida-v2/${batch.id}`);
   };
 
-  const handlePublish = async () => {
-    if (!batchId) return;
+  const handlePublish = async (id?: string) => {
+    const targetId = id || batchId;
+    if (!targetId) return;
     try {
-      await publishBatch(batchId);
-      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', batchId] });
+      await publishBatch(targetId);
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', targetId] });
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
       toast.success('Batch published successfully! Assessment window: 48 hours.');
     } catch (error) {
       toast.error('Failed to publish batch');
     }
+  };
+
+  const handleDeactivate = async (id: string) => {
+    try {
+      await deactivateBatch(id);
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', id] });
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
+      toast.success('Batch deactivated successfully.');
+    } catch (error) {
+      toast.error('Failed to deactivate batch');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteBatch(id);
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
+      toast.success('Batch deleted successfully.');
+    } catch (error) {
+      toast.error('Failed to delete batch');
+    }
+  };
+
+  const handleEditBatch = (id: string) => {
+    navigate(`/team-performance/revalida-v2/${id}`);
   };
 
   const handleTestComplete = (score: number, percentage: number) => {
@@ -123,40 +150,16 @@ export default function RevalidaV2() {
             </TabsList>
 
             <TabsContent value="manage" className="space-y-4">
-              {batches.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-muted-foreground">No batches created yet</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                batches.map(batch => (
-                  <Card key={batch.id} className="cursor-pointer" onClick={() => navigate(`/team-performance/revalida-v2/${batch.id}`)}>
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle>{batch.title}</CardTitle>
-                          <CardDescription>
-                            {batch.mcq_count} MCQ • {batch.tf_count} T/F • {batch.situational_count} Situational
-                          </CardDescription>
-                        </div>
-                        <Badge variant={batch.is_active ? 'default' : 'secondary'}>
-                          {batch.is_active ? 'Active' : 'Draft'}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground">
-                      <p>Total Points: {batch.total_points}</p>
-                      <p>Status: {batch.generation_status}</p>
-                      {batch.is_active && batch.end_at && (
-                        <p className={isDeadlinePassed(batch.end_at) ? 'text-destructive' : 'text-amber-600'}>
-                          {isDeadlinePassed(batch.end_at) ? 'Expired' : `Ends: ${new Date(batch.end_at).toLocaleString()}`}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+              <BatchManagementV2
+                batches={batches}
+                isLoading={batchesLoading}
+                onCreateNew={() => navigate('/team-performance/revalida-v2?tab=create')}
+                onEditBatch={handleEditBatch}
+                onPublish={handlePublish}
+                onDeactivate={handleDeactivate}
+                onDelete={handleDelete}
+                onViewBatch={(id) => navigate(`/team-performance/revalida-v2/${id}`)}
+              />
             </TabsContent>
 
             <TabsContent value="contracts">
