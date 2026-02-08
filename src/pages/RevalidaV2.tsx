@@ -200,7 +200,7 @@ export default function RevalidaV2() {
 
             <TabsContent value="questions">
               {currentBatch.generation_status === 'completed' && (
-                <QuestionPreview batch={currentBatch} onPublish={handlePublish} />
+                <QuestionPreview batch={currentBatch} onPublish={() => handlePublish(batchId)} />
               )}
             </TabsContent>
 
