@@ -12,7 +12,7 @@ import { PageGuideButton } from '@/components/PageGuideButton';
 import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
 import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
-import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
+import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
@@ -298,6 +298,35 @@ export default function AgentProfilePage() {
         variant: 'destructive'
       });
       return;
+    }
+    
+    // Validate OT schedule conflicts (only if OT is enabled)
+    if (profile.ot_enabled) {
+      const otConflictChecks = [
+        { otKey: 'mon_ot_schedule', regularKey: 'mon_schedule', label: 'Monday' },
+        { otKey: 'tue_ot_schedule', regularKey: 'tue_schedule', label: 'Tuesday' },
+        { otKey: 'wed_ot_schedule', regularKey: 'wed_schedule', label: 'Wednesday' },
+        { otKey: 'thu_ot_schedule', regularKey: 'thu_schedule', label: 'Thursday' },
+        { otKey: 'fri_ot_schedule', regularKey: 'fri_schedule', label: 'Friday' },
+        { otKey: 'sat_ot_schedule', regularKey: 'sat_schedule', label: 'Saturday' },
+        { otKey: 'sun_ot_schedule', regularKey: 'sun_schedule', label: 'Sunday' },
+      ];
+      
+      const otConflicts = otConflictChecks.filter(check => {
+        const regularSchedule = profile[check.regularKey as keyof typeof profile] as string;
+        const otSchedule = profile[check.otKey as keyof typeof profile] as string;
+        const result = validateOTScheduleConflict(regularSchedule, otSchedule);
+        return !result.isValid;
+      });
+      
+      if (otConflicts.length > 0) {
+        toast({
+          title: 'OT Schedule Conflict',
+          description: `${otConflicts.map(c => c.label).join(', ')} OT starts before regular shift ends. OT must start at or after regular shift end time.`,
+          variant: 'destructive'
+        });
+        return;
+      }
     }
     
     setIsSaving(true);
