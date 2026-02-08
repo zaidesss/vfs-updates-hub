@@ -2128,6 +2128,54 @@ export async function fetchUpworkTimeFromCache(
  * Fetch Upwork time from cache for a week date range
  * Sums total_hours from upwork_daily_logs for all days in the range
  */
+/**
+ * Fetch Upwork time from local cache for a single day
+ * Queries upwork_daily_logs for that specific date
+ */
+export async function fetchUpworkTimeForDay(
+  contractId: string,
+  date: Date
+): Promise<{ 
+  hours: number | null; 
+  syncedAt: string | null;
+  error: string | null 
+}> {
+  try {
+    const dateStr = format(date, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('upwork_daily_logs')
+      .select('total_hours, fetched_at')
+      .eq('contract_id', contractId)
+      .eq('date', dateStr)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching Upwork cache for day:', error);
+      return { hours: null, syncedAt: null, error: error.message };
+    }
+
+    if (!data) {
+      // No cached data for this day - not an error, just no data
+      return { hours: null, syncedAt: null, error: null };
+    }
+
+    return { 
+      hours: data.total_hours, 
+      syncedAt: data.fetched_at,
+      error: null 
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Upwork day cache error:', errorMsg);
+    return { hours: null, syncedAt: null, error: errorMsg };
+  }
+}
+
+/**
+ * Fetch Upwork time from local cache for a week range
+ * Sums total_hours from upwork_daily_logs for all days in the range
+ */
 export async function fetchUpworkTimeForWeek(
   contractId: string,
   startDate: Date,
