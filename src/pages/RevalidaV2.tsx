@@ -29,16 +29,12 @@ import { AlertCircle, CheckCircle2, Clock, Play } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function RevalidaV2() {
-  const { user } = useAuth();
+  const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
   const { batchId, section } = useParams<{ batchId?: string; section?: string }>();
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  // Check if user is admin (would be from user roles in real scenario)
-  useEffect(() => {
-    // For now, assume certain users are admins based on email
-    setIsAdmin(user?.email?.includes('admin') || user?.email?.includes('test'));
-  }, [user]);
+  
+  // Admin access includes admin, super_admin, and HR roles
+  const hasAdminAccess = isAdmin || isSuperAdmin || isHR;
 
   const { data: batches = [] } = useQuery({
     queryKey: ['revalida-v2-batches'],
@@ -94,7 +90,7 @@ export default function RevalidaV2() {
   };
 
   // Admin Dashboard
-  if (!batchId && isAdmin) {
+  if (!batchId && hasAdminAccess) {
     return (
       <Layout>
         <div className="space-y-8">
@@ -169,7 +165,7 @@ export default function RevalidaV2() {
             </p>
           </div>
 
-          {isAdmin ? (
+          {hasAdminAccess ? (
             // Admin View
             <Tabs defaultValue="generation" className="w-full">
               <TabsList>
@@ -260,7 +256,7 @@ export default function RevalidaV2() {
           </p>
         </div>
 
-        {!isAdmin ? (
+        {!hasAdminAccess ? (
           <div className="grid gap-4">
             {batches.filter(b => b.is_active).map(batch => (
               <Card key={batch.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/team-performance/revalida-v2/${batch.id}`)}>
