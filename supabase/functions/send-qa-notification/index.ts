@@ -63,18 +63,26 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch all admins, HR, and super admins for CC
-    const { data: adminUsers } = await supabase
-      .from('user_roles')
-      .select('email, name, role')
-      .in('role', ['admin', 'hr', 'super_admin']);
+    // Fetch agent's profile to get their team lead
+    const { data: agentProfile } = await supabase
+      .from('agent_profiles')
+      .select('team_lead')
+      .eq('email', evaluation.agent_email.toLowerCase())
+      .single();
 
-    // Filter out terminated agents from CC list
-    const ccEmails = [...new Set((adminUsers as { email: string }[] || []).map(u => u.email))]
-      .filter(e => !terminatedEmails.has(e.toLowerCase()));
-    
-    // Remove the agent email from CC if present
-    const filteredCcEmails = ccEmails.filter(e => e !== evaluation.agent_email);
+    let teamLeadEmail: string | null = null;
+
+    if (agentProfile?.team_lead) {
+      // Find team lead's email by matching their full name
+      const { data: teamLeadProfile } = await supabase
+        .from('agent_profiles')
+        .select('email')
+        .eq('full_name', agentProfile.team_lead)
+        .neq('employment_status', 'Terminated')
+        .single();
+      
+      teamLeadEmail = teamLeadProfile?.email || null;
+    }
 
     const previewUrl = Deno.env.get('SITE_URL') || 'https://vfs-updates-hub.lovable.app';
     const evaluationUrl = `${previewUrl}/team-performance/qa-evaluations/${evaluationId}`;
@@ -108,10 +116,12 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      // Send to agent
+      // Send to agent with team lead in CC (if exists)
       const emailResult = await sendEmail({
         to: [evaluation.agent_email],
-        cc: filteredCcEmails.length > 0 ? filteredCcEmails : undefined,
+        cc: teamLeadEmail && teamLeadEmail !== evaluation.agent_email 
+          ? [teamLeadEmail] 
+          : undefined,
         subject,
         html: htmlContent,
       });
@@ -146,7 +156,7 @@ const handler = async (req: Request): Promise<Response> => {
           event_description: `Notification email sent to ${evaluation.agent_email}`,
           actor_email: evaluation.evaluator_email,
           actor_name: evaluation.evaluator_name,
-          metadata: { to: evaluation.agent_email, cc: filteredCcEmails, messageId: emailResult.messageId },
+          metadata: { to: evaluation.agent_email, cc: teamLeadEmail ? [teamLeadEmail] : [], messageId: emailResult.messageId },
         });
 
       // Mark notification as sent only after success
@@ -177,10 +187,10 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      // Send to admins with agent in CC
+      // Send to team lead with agent in CC (if team lead exists)
       const emailResult = await sendEmail({
-        to: filteredCcEmails.length > 0 ? filteredCcEmails : [evaluation.agent_email],
-        cc: filteredCcEmails.length > 0 ? [evaluation.agent_email] : undefined,
+        to: teamLeadEmail ? [teamLeadEmail] : [evaluation.agent_email],
+        cc: teamLeadEmail ? [evaluation.agent_email] : undefined,
         subject,
         html: htmlContent,
       });
@@ -212,10 +222,10 @@ const handler = async (req: Request): Promise<Response> => {
         .insert({
           evaluation_id: evaluationId,
           event_type: 'acknowledgment_notification_sent',
-          event_description: `Acknowledgment notification sent to admins`,
+          event_description: `Acknowledgment notification sent to team lead`,
           actor_email: evaluation.agent_email,
           actor_name: evaluation.agent_name,
-          metadata: { to: filteredCcEmails, messageId: emailResult.messageId },
+          metadata: { to: teamLeadEmail ? [teamLeadEmail] : [evaluation.agent_email], messageId: emailResult.messageId },
         });
     }
 
