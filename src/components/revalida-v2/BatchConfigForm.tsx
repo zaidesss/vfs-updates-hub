@@ -119,7 +119,7 @@ export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
                 min="0"
                 max="20"
                 value={formData.mcqCount}
-                onChange={(e) => handleChange('mcqCount', parseInt(e.target.value))}
+                onChange={(e) => handleChange('mcqCount', parseInt(e.target.value) || 0)}
               />
             </div>
 
@@ -131,7 +131,7 @@ export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
                 min="0"
                 max="20"
                 value={formData.tfCount}
-                onChange={(e) => handleChange('tfCount', parseInt(e.target.value))}
+                onChange={(e) => handleChange('tfCount', parseInt(e.target.value) || 0)}
               />
             </div>
 
@@ -143,7 +143,7 @@ export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
                 min="0"
                 max="10"
                 value={formData.situationalCount}
-                onChange={(e) => handleChange('situationalCount', parseInt(e.target.value))}
+                onChange={(e) => handleChange('situationalCount', parseInt(e.target.value) || 0)}
               />
             </div>
 

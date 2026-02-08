@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RevalidaV2Batch,
   RevalidaV2Question,
@@ -10,9 +10,10 @@ import {
   listBatches,
   getBatch,
   getQuestionsByBatch,
-  getOrCreateAttempt,
+  fetchMyAttempt,
   getAnswersByAttempt,
-  updateBatch,
+  publishBatch,
+  isDeadlinePassed,
 } from '@/lib/revalidaV2Api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,13 +26,15 @@ import { QuestionPreview } from '@/components/revalida-v2/QuestionPreview';
 import { GenerationStatus } from '@/components/revalida-v2/GenerationStatus';
 import { TestInterface } from '@/components/revalida-v2/TestInterface';
 import { SituationalGrading } from '@/components/revalida-v2/SituationalGrading';
-import { AlertCircle, CheckCircle2, Clock, Play } from 'lucide-react';
+import { BatchCardV2 } from '@/components/revalida-v2/BatchCardV2';
+import { AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function RevalidaV2() {
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
   const { batchId, section } = useParams<{ batchId?: string; section?: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   
   // Admin access includes admin, super_admin, and HR roles
   const hasAdminAccess = isAdmin || isSuperAdmin || isHR;
@@ -53,15 +56,16 @@ export default function RevalidaV2() {
     enabled: !!batchId,
   });
 
-  const { data: attempt } = useQuery({
-    queryKey: ['revalida-v2-attempt', batchId, user?.email],
+  // Agent: fetch existing attempt (no auto-create)
+  const { data: attempt, refetch: refetchAttempt } = useQuery({
+    queryKey: ['revalida-v2-my-attempt', batchId, user?.email],
     queryFn: async () => {
       if (batchId && user?.email) {
-        return getOrCreateAttempt(batchId, user.email);
+        return fetchMyAttempt(batchId, user.email);
       }
       return null;
     },
-    enabled: !!batchId && !!user?.email,
+    enabled: !!batchId && !!user?.email && !hasAdminAccess,
   });
 
   const { data: answers = [] } = useQuery({
@@ -77,19 +81,29 @@ export default function RevalidaV2() {
   const handlePublish = async () => {
     if (!batchId) return;
     try {
-      await updateBatch(batchId, { is_active: true });
-      toast.success('Batch published successfully!');
+      await publishBatch(batchId);
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', batchId] });
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
+      toast.success('Batch published successfully! Assessment window: 48 hours.');
     } catch (error) {
       toast.error('Failed to publish batch');
     }
   };
 
   const handleTestComplete = (score: number, percentage: number) => {
-    // Navigate to results or show completion screen
-    toast.success(`Test completed! Score: ${score} (${percentage}%)`);
+    refetchAttempt();
+    toast.success(`Test submitted! Your score will be available after AI review.`);
+    navigate(`/team-performance/revalida-v2/${batchId}`);
   };
 
-  // Admin Dashboard
+  const handleAttemptStarted = (newAttempt: RevalidaV2Attempt) => {
+    queryClient.setQueryData(['revalida-v2-my-attempt', batchId, user?.email], newAttempt);
+  };
+
+  // Check if we're in take test mode
+  const isTakeMode = section === 'take';
+
+  // Admin Dashboard (no batchId)
   if (!batchId && hasAdminAccess) {
     return (
       <Layout>
@@ -134,6 +148,11 @@ export default function RevalidaV2() {
                     <CardContent className="text-sm text-muted-foreground">
                       <p>Total Points: {batch.total_points}</p>
                       <p>Status: {batch.generation_status}</p>
+                      {batch.is_active && batch.end_at && (
+                        <p className={isDeadlinePassed(batch.end_at) ? 'text-destructive' : 'text-amber-600'}>
+                          {isDeadlinePassed(batch.end_at) ? 'Expired' : `Ends: ${new Date(batch.end_at).toLocaleString()}`}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 ))
@@ -153,8 +172,8 @@ export default function RevalidaV2() {
     );
   }
 
-  // Batch Detail / Take Test View
-  if (batchId && currentBatch) {
+  // Batch Detail View - Admin
+  if (batchId && currentBatch && hasAdminAccess) {
     return (
       <Layout>
         <div className="space-y-6">
@@ -165,87 +184,131 @@ export default function RevalidaV2() {
             </p>
           </div>
 
-          {hasAdminAccess ? (
-            // Admin View
-            <Tabs defaultValue="generation" className="w-full">
-              <TabsList>
-                <TabsTrigger value="generation">Generation Status</TabsTrigger>
-                <TabsTrigger value="questions">Questions</TabsTrigger>
-                <TabsTrigger value="grading">Grading</TabsTrigger>
-              </TabsList>
+          <Tabs defaultValue="generation" className="w-full">
+            <TabsList>
+              <TabsTrigger value="generation">Generation Status</TabsTrigger>
+              <TabsTrigger value="questions">Questions</TabsTrigger>
+              <TabsTrigger value="grading">Grading</TabsTrigger>
+            </TabsList>
 
-              <TabsContent value="generation">
-                <GenerationStatus batch={currentBatch} />
-              </TabsContent>
+            <TabsContent value="generation">
+              <GenerationStatus batch={currentBatch} />
+            </TabsContent>
 
-              <TabsContent value="questions">
-                {currentBatch.generation_status === 'completed' && (
-                  <QuestionPreview batch={currentBatch} onPublish={handlePublish} />
-                )}
-              </TabsContent>
+            <TabsContent value="questions">
+              {currentBatch.generation_status === 'completed' && (
+                <QuestionPreview batch={currentBatch} onPublish={handlePublish} />
+              )}
+            </TabsContent>
 
-              <TabsContent value="grading">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <Clock className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-2xl font-bold">0</p>
-                        <p className="text-sm text-muted-foreground">Pending Grading</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <CheckCircle2 className="h-5 w-5 mx-auto mb-2 text-primary" />
-                        <p className="text-2xl font-bold">0</p>
-                        <p className="text-sm text-muted-foreground">AI Graded</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <AlertCircle className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-2xl font-bold">0</p>
-                        <p className="text-sm text-muted-foreground">Overridden</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                {attempt && answers.length > 0 && (
-                  <SituationalGrading
-                    answers={answers}
-                    questions={Object.fromEntries(questions.map(q => [q.id, q]))}
-                  />
-                )}
-              </TabsContent>
-            </Tabs>
-          ) : (
-            // Agent View - Take Test
-            attempt && questions.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Take Assessment</CardTitle>
-                  <CardDescription>Answer all questions to complete the assessment</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TestInterface
-                    attempt={attempt}
-                    questions={questions}
-                    onComplete={handleTestComplete}
-                  />
-                </CardContent>
-              </Card>
-            )
-          )}
+            <TabsContent value="grading">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <Clock className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-2xl font-bold">0</p>
+                      <p className="text-sm text-muted-foreground">Pending Grading</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <CheckCircle2 className="h-5 w-5 mx-auto mb-2 text-primary" />
+                      <p className="text-2xl font-bold">0</p>
+                      <p className="text-sm text-muted-foreground">AI Graded</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <AlertCircle className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-2xl font-bold">0</p>
+                      <p className="text-sm text-muted-foreground">Overridden</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              {attempt && answers.length > 0 && (
+                <SituationalGrading
+                  answers={answers}
+                  questions={Object.fromEntries(questions.map(q => [q.id, q]))}
+                />
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </Layout>
     );
   }
 
-  // Default: Main Revalida 2.0 page
+  // Agent: Take Test Mode
+  if (batchId && currentBatch && isTakeMode && attempt && questions.length > 0) {
+    // Check deadline before showing test interface
+    if (isDeadlinePassed(currentBatch.end_at) && attempt.status === 'in_progress') {
+      return (
+        <Layout>
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+              <h2 className="text-xl font-semibold mb-2">Assessment Expired</h2>
+              <p className="text-muted-foreground mb-4">
+                The deadline for this assessment has passed.
+              </p>
+              <Button onClick={() => navigate('/team-performance/revalida-v2')}>
+                Back to Assessments
+              </Button>
+            </CardContent>
+          </Card>
+        </Layout>
+      );
+    }
+
+    return (
+      <Layout>
+        <Card>
+          <CardHeader>
+            <CardTitle>{currentBatch.title}</CardTitle>
+            <CardDescription>Answer all questions to complete the assessment</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TestInterface
+              attempt={attempt}
+              questions={questions}
+              onComplete={handleTestComplete}
+            />
+          </CardContent>
+        </Card>
+      </Layout>
+    );
+  }
+
+  // Agent: Batch Detail (show BatchCardV2)
+  if (batchId && currentBatch && !hasAdminAccess) {
+    return (
+      <Layout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">Revalida 2.0</h1>
+            <p className="text-muted-foreground mt-2">
+              AI-powered knowledge assessment
+            </p>
+          </div>
+
+          <BatchCardV2
+            batch={currentBatch}
+            attempt={attempt || null}
+            userEmail={user?.email || ''}
+            onAttemptStarted={handleAttemptStarted}
+          />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Default: Agent List View (no batchId)
   return (
     <Layout>
       <div className="space-y-8">
@@ -258,24 +321,35 @@ export default function RevalidaV2() {
 
         {!hasAdminAccess ? (
           <div className="grid gap-4">
-            {batches.filter(b => b.is_active).map(batch => (
-              <Card key={batch.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/team-performance/revalida-v2/${batch.id}`)}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>{batch.title}</CardTitle>
-                      <CardDescription className="mt-2">
-                        Total Points: {batch.total_points}
-                      </CardDescription>
-                    </div>
-                    <Button>
-                      <Play className="h-4 w-4 mr-2" />
-                      Start Assessment
-                    </Button>
-                  </div>
-                </CardHeader>
+            {batches.filter(b => b.is_active).length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <p className="text-muted-foreground">No active assessments available.</p>
+                </CardContent>
               </Card>
-            ))}
+            ) : (
+              batches.filter(b => b.is_active).map(batch => (
+                <Card 
+                  key={batch.id} 
+                  className="cursor-pointer hover:bg-muted/50" 
+                  onClick={() => navigate(`/team-performance/revalida-v2/${batch.id}`)}
+                >
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>{batch.title}</CardTitle>
+                        <CardDescription className="mt-2">
+                          Total Points: {batch.total_points}
+                        </CardDescription>
+                      </div>
+                      <Badge>
+                        {isDeadlinePassed(batch.end_at) ? 'Expired' : 'Active'}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))
+            )}
           </div>
         ) : (
           <div>
