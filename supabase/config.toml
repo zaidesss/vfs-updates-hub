@@ -131,3 +131,9 @@ verify_jwt = false
 
 [functions.send-announcement]
 verify_jwt = false
+
+[functions.generate-revalida-v2]
+verify_jwt = false
+
+[functions.grade-situational-v2]
+verify_jwt = false

@@ -136,6 +136,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/team-performance/agent-reports', label: 'Agent Reports', icon: FileWarning },
         { href: '/team-performance/scorecard', label: 'Scorecard', icon: BarChart3 },
         { href: '/team-performance/revalida', label: 'Revalida', icon: GraduationCap },
+        { href: '/team-performance/revalida-v2', label: 'Revalida 2.0', icon: GraduationCap },
       ],
     });
 
