@@ -117,11 +117,6 @@ export const TestInterface = ({ attempt, questions, onComplete }: TestInterfaceP
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">{orderedQuestion.prompt}</CardTitle>
-          {orderedQuestion.type === 'situational' && orderedQuestion.evaluation_rubric && (
-            <CardDescription className="mt-2 whitespace-pre-wrap">
-              {orderedQuestion.evaluation_rubric}
-            </CardDescription>
-          )}
         </CardHeader>
         <CardContent>
           {orderedQuestion.type === 'mcq' && (
