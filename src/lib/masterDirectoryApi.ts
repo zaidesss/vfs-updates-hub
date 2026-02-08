@@ -137,6 +137,96 @@ export function validateScheduleFormat(schedule: string | null): boolean {
   return SCHEDULE_REGEX.test(schedule.trim());
 }
 
+/**
+ * Extract end time from a schedule string (e.g., "9:00 AM-5:30 PM" → 1050 minutes)
+ */
+function extractScheduleEndTimeMinutes(schedule: string | null): number | null {
+  if (!schedule || schedule.trim() === '') return null;
+  
+  const match = schedule.trim().match(SCHEDULE_REGEX);
+  if (!match) return null;
+  
+  const [, , , , endHour, endMin, endPeriod] = match;
+  
+  // Convert to 24-hour format
+  let end24 = parseInt(endHour);
+  if (endPeriod.toUpperCase() === 'PM' && end24 !== 12) end24 += 12;
+  if (endPeriod.toUpperCase() === 'AM' && end24 === 12) end24 = 0;
+  
+  return end24 * 60 + parseInt(endMin);
+}
+
+/**
+ * Extract start time from a schedule string (e.g., "5:30 PM-7:00 PM" → 1050 minutes)
+ */
+function extractScheduleStartTimeMinutes(schedule: string | null): number | null {
+  if (!schedule || schedule.trim() === '') return null;
+  
+  const match = schedule.trim().match(SCHEDULE_REGEX);
+  if (!match) return null;
+  
+  const [, startHour, startMin, startPeriod] = match;
+  
+  // Convert to 24-hour format
+  let start24 = parseInt(startHour);
+  if (startPeriod.toUpperCase() === 'PM' && start24 !== 12) start24 += 12;
+  if (startPeriod.toUpperCase() === 'AM' && start24 === 12) start24 = 0;
+  
+  return start24 * 60 + parseInt(startMin);
+}
+
+/**
+ * Format minutes to time string (e.g., 1050 → "5:30 PM")
+ */
+function formatMinutesToTime(minutes: number): string {
+  const hours24 = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+  return `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Validate that OT schedule does not conflict with regular schedule.
+ * OT start time must be >= regular schedule end time.
+ */
+export function validateOTScheduleConflict(
+  regularSchedule: string | null | undefined,
+  otSchedule: string | null | undefined
+): { isValid: boolean; error?: string; regularEndTime?: string } {
+  // If either schedule is empty/invalid, skip conflict check
+  if (!regularSchedule || regularSchedule.trim() === '') {
+    return { isValid: true };
+  }
+  if (!otSchedule || otSchedule.trim() === '') {
+    return { isValid: true };
+  }
+  
+  // Skip if either has invalid format (handled by format validation)
+  if (!validateScheduleFormat(regularSchedule) || !validateScheduleFormat(otSchedule)) {
+    return { isValid: true };
+  }
+  
+  const regularEndMinutes = extractScheduleEndTimeMinutes(regularSchedule);
+  const otStartMinutes = extractScheduleStartTimeMinutes(otSchedule);
+  
+  if (regularEndMinutes === null || otStartMinutes === null) {
+    return { isValid: true };
+  }
+  
+  // OT start must be >= regular end
+  if (otStartMinutes < regularEndMinutes) {
+    const regularEndFormatted = formatMinutesToTime(regularEndMinutes);
+    return {
+      isValid: false,
+      error: `OT must start at or after ${regularEndFormatted} (regular shift end)`,
+      regularEndTime: regularEndFormatted
+    };
+  }
+  
+  return { isValid: true };
+}
+
 export function parseScheduleHours(schedule: string | null): number {
   if (!schedule || schedule.trim() === '') return 0;
   

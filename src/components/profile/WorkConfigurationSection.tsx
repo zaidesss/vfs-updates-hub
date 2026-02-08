@@ -15,7 +15,7 @@ import {
   SUPPORT_TYPE_OPTIONS,
   getPositionDefaults 
 } from '@/lib/agentProfileApi';
-import { validateScheduleFormat } from '@/lib/masterDirectoryApi';
+import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
 import { calculateProfileTotalHours } from '@/lib/profileTotalHours';
 import { useAuth } from '@/context/AuthContext';
 import { Clock, Send } from 'lucide-react';
@@ -83,17 +83,47 @@ export function WorkConfigurationSection({
     profile.day_off,
   ]);
 
+  // Mapping of OT fields to their corresponding regular schedule fields
+  const OT_TO_REGULAR_MAPPING: Record<string, keyof AgentProfileInput> = {
+    'mon_ot_schedule': 'mon_schedule',
+    'tue_ot_schedule': 'tue_schedule',
+    'wed_ot_schedule': 'wed_schedule',
+    'thu_ot_schedule': 'thu_schedule',
+    'fri_ot_schedule': 'fri_schedule',
+    'sat_ot_schedule': 'sat_schedule',
+    'sun_ot_schedule': 'sun_schedule',
+  };
+
   // Validation handler for schedule fields
   const handleScheduleBlur = (field: string, value: string) => {
     if (onScheduleBlur) {
       onScheduleBlur(field, value);
       return;
     }
+    
     // Local validation fallback
+    let error: string | undefined;
+    
+    // Step 1: Format validation
     if (value && value !== 'Day Off' && !validateScheduleFormat(value)) {
+      error = 'Invalid format. Use: H:MM AM-H:MM PM (e.g., 8:00 AM-5:00 PM)';
+    }
+    
+    // Step 2: OT conflict validation (only if format is valid)
+    if (!error && field in OT_TO_REGULAR_MAPPING) {
+      const regularField = OT_TO_REGULAR_MAPPING[field];
+      const regularSchedule = profile[regularField] as string | null;
+      const conflictResult = validateOTScheduleConflict(regularSchedule, value);
+      
+      if (!conflictResult.isValid && conflictResult.error) {
+        error = conflictResult.error;
+      }
+    }
+    
+    if (error) {
       setLocalScheduleErrors(prev => ({
         ...prev,
-        [field]: 'Invalid format. Use: H:MM AM-H:MM PM (e.g., 8:00 AM-5:00 PM)'
+        [field]: error!
       }));
     } else {
       setLocalScheduleErrors(prev => {
