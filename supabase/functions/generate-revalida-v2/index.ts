@@ -65,6 +65,7 @@ export async function handler(req: Request): Promise<Response> {
       .select("id, title, summary, body, category, posted_at")
       .eq("status", "published")
       .not("title", "ilike", "Revalida%")
+      .not("category", "eq", "internal_operations")
       .gte("posted_at", previousMonday.toISOString())
       .lte("posted_at", previousSunday.toISOString())
       .order("posted_at", { ascending: false });
