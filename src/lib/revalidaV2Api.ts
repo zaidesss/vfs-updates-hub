@@ -500,6 +500,63 @@ export function getTimeRemaining(endAt: string | null | undefined): string {
 }
 
 // ============================================
+// DEACTIVATE BATCH
+// ============================================
+
+export const deactivateBatch = async (batchId: string) => {
+  const { data, error } = await supabase
+    .from('revalida_v2_batches')
+    .update({ is_active: false })
+    .eq('id', batchId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RevalidaV2Batch;
+};
+
+// ============================================
+// DELETE BATCH (with cascade)
+// ============================================
+
+export const deleteBatch = async (batchId: string) => {
+  // Get all attempts for this batch first
+  const { data: attempts } = await supabase
+    .from('revalida_v2_attempts')
+    .select('id')
+    .eq('batch_id', batchId);
+
+  // Delete answers for all attempts
+  if (attempts && attempts.length > 0) {
+    const attemptIds = attempts.map(a => a.id);
+    await supabase
+      .from('revalida_v2_answers')
+      .delete()
+      .in('attempt_id', attemptIds);
+  }
+
+  // Delete attempts
+  await supabase
+    .from('revalida_v2_attempts')
+    .delete()
+    .eq('batch_id', batchId);
+
+  // Delete questions
+  await supabase
+    .from('revalida_v2_questions')
+    .delete()
+    .eq('batch_id', batchId);
+
+  // Delete batch
+  const { error } = await supabase
+    .from('revalida_v2_batches')
+    .delete()
+    .eq('id', batchId);
+
+  if (error) throw error;
+};
+
+// ============================================
 // START ATTEMPT (WITH DEADLINE CHECK)
 // ============================================
 

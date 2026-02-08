@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { Loader } from 'lucide-react';
 import { RevalidaV2Batch, createBatch, generateQuestions } from '@/lib/revalidaV2Api';
 import { toast } from 'sonner';
 
@@ -12,6 +13,7 @@ interface BatchConfigFormProps {
 }
 
 export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -45,6 +47,9 @@ export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
 
       // Start question generation
       await generateQuestions(newBatch.id);
+      
+      // Invalidate batch list query to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
       
       onBatchCreated(newBatch);
       toast.success('Batch created and question generation started!');
