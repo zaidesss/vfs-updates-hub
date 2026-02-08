@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { RevalidaV2Contract, listContracts, createContract, updateContract, dele
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-export const ContractManager = () => {
+export const ContractManager = forwardRef<HTMLDivElement>((_, ref) => {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [contractName, setContractName] = useState('');
@@ -81,7 +81,7 @@ export const ContractManager = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div ref={ref} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Upload Contract</CardTitle>
@@ -168,4 +168,6 @@ export const ContractManager = () => {
       </Card>
     </div>
   );
-};
+});
+
+ContractManager.displayName = 'ContractManager';

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -35,7 +35,15 @@ export default function RevalidaV2() {
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
   const { batchId, section } = useParams<{ batchId?: string; section?: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  
+  // Get active tab from URL params, default to 'manage'
+  const activeTab = searchParams.get('tab') || 'manage';
+  
+  const handleTabChange = (value: string) => {
+    setSearchParams({ tab: value });
+  };
   
   // Admin access includes admin, super_admin, and HR roles
   const hasAdminAccess = isAdmin || isSuperAdmin || isHR;
@@ -142,7 +150,7 @@ export default function RevalidaV2() {
             </p>
           </div>
 
-          <Tabs defaultValue="manage" className="w-full">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList>
               <TabsTrigger value="manage">Manage Batches</TabsTrigger>
               <TabsTrigger value="contracts">Knowledge Base</TabsTrigger>
@@ -153,7 +161,7 @@ export default function RevalidaV2() {
               <BatchManagementV2
                 batches={batches}
                 isLoading={batchesLoading}
-                onCreateNew={() => navigate('/team-performance/revalida-v2?tab=create')}
+                onCreateNew={() => handleTabChange('create')}
                 onEditBatch={handleEditBatch}
                 onPublish={handlePublish}
                 onDeactivate={handleDeactivate}

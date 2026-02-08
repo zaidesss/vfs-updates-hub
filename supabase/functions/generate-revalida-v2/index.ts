@@ -29,7 +29,7 @@ export async function handler(req: Request): Promise<Response> {
       situationalCount,
     } = await req.json();
 
-    if (!batchId || !mcqCount || !tfCount || !situationalCount) {
+    if (!batchId || mcqCount === undefined || tfCount === undefined || situationalCount === undefined) {
       return new Response(
         JSON.stringify({ error: "Missing required parameters" }),
         { status: 400, headers: corsHeaders }
