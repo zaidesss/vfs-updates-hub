@@ -1763,6 +1763,274 @@ export type Database = {
           },
         ]
       }
+      revalida_v2_answers: {
+        Row: {
+          admin_override_reason: string | null
+          admin_override_score: number | null
+          agent_answer: string | null
+          ai_score_justification: string | null
+          ai_status: string | null
+          ai_suggested_score: number | null
+          attempt_id: string | null
+          created_at: string | null
+          id: string
+          is_correct: boolean | null
+          points_earned: number | null
+          question_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          admin_override_reason?: string | null
+          admin_override_score?: number | null
+          agent_answer?: string | null
+          ai_score_justification?: string | null
+          ai_status?: string | null
+          ai_suggested_score?: number | null
+          attempt_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_earned?: number | null
+          question_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          admin_override_reason?: string | null
+          admin_override_score?: number | null
+          agent_answer?: string | null
+          ai_score_justification?: string | null
+          ai_status?: string | null
+          ai_suggested_score?: number | null
+          attempt_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_earned?: number | null
+          question_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_v2_answers_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_v2_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revalida_v2_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_v2_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revalida_v2_attempts: {
+        Row: {
+          agent_email: string
+          batch_id: string | null
+          created_at: string | null
+          graded_at: string | null
+          id: string
+          percentage: number | null
+          question_order: string[] | null
+          score: number | null
+          started_at: string | null
+          status: string | null
+          submitted_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_email: string
+          batch_id?: string | null
+          created_at?: string | null
+          graded_at?: string | null
+          id?: string
+          percentage?: number | null
+          question_order?: string[] | null
+          score?: number | null
+          started_at?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_email?: string
+          batch_id?: string | null
+          created_at?: string | null
+          graded_at?: string | null
+          id?: string
+          percentage?: number | null
+          question_order?: string[] | null
+          score?: number | null
+          started_at?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_v2_attempts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_v2_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revalida_v2_batches: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          end_at: string
+          generation_error: string | null
+          generation_status: string | null
+          id: string
+          is_active: boolean | null
+          mcq_count: number
+          situational_count: number
+          source_week_start: string | null
+          start_at: string
+          tf_count: number
+          title: string
+          total_points: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          end_at: string
+          generation_error?: string | null
+          generation_status?: string | null
+          id?: string
+          is_active?: boolean | null
+          mcq_count?: number
+          situational_count?: number
+          source_week_start?: string | null
+          start_at: string
+          tf_count?: number
+          title: string
+          total_points?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          end_at?: string
+          generation_error?: string | null
+          generation_status?: string | null
+          id?: string
+          is_active?: boolean | null
+          mcq_count?: number
+          situational_count?: number
+          source_week_start?: string | null
+          start_at?: string
+          tf_count?: number
+          title?: string
+          total_points?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      revalida_v2_contracts: {
+        Row: {
+          file_path: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          parsed_content: string
+          support_type: string | null
+          uploaded_at: string | null
+          uploaded_by: string
+        }
+        Insert: {
+          file_path?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          parsed_content: string
+          support_type?: string | null
+          uploaded_at?: string | null
+          uploaded_by: string
+        }
+        Update: {
+          file_path?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          parsed_content?: string
+          support_type?: string | null
+          uploaded_at?: string | null
+          uploaded_by?: string
+        }
+        Relationships: []
+      }
+      revalida_v2_questions: {
+        Row: {
+          batch_id: string | null
+          choice_a: string | null
+          choice_b: string | null
+          choice_c: string | null
+          choice_d: string | null
+          correct_answer: string | null
+          created_at: string | null
+          evaluation_rubric: string | null
+          id: string
+          order_index: number
+          points: number
+          prompt: string
+          source_excerpt: string | null
+          source_reference: string | null
+          source_type: string
+          type: string
+        }
+        Insert: {
+          batch_id?: string | null
+          choice_a?: string | null
+          choice_b?: string | null
+          choice_c?: string | null
+          choice_d?: string | null
+          correct_answer?: string | null
+          created_at?: string | null
+          evaluation_rubric?: string | null
+          id?: string
+          order_index?: number
+          points?: number
+          prompt: string
+          source_excerpt?: string | null
+          source_reference?: string | null
+          source_type: string
+          type: string
+        }
+        Update: {
+          batch_id?: string | null
+          choice_a?: string | null
+          choice_b?: string | null
+          choice_c?: string | null
+          choice_d?: string | null
+          correct_answer?: string | null
+          created_at?: string | null
+          evaluation_rubric?: string | null
+          id?: string
+          order_index?: number
+          points?: number
+          prompt?: string
+          source_excerpt?: string | null
+          source_reference?: string | null
+          source_type?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revalida_v2_questions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "revalida_v2_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_scorecards: {
         Row: {
           agent_email: string
@@ -2530,6 +2798,7 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: { _email: string }; Returns: boolean }
+      is_revalida_admin: { Args: { _email: string }; Returns: boolean }
       is_super_admin: { Args: { _email: string }; Returns: boolean }
     }
     Enums: {
