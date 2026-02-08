@@ -1,117 +1,101 @@
 
 
-# OT Schedule vs Regular Schedule Conflict Validation
+# Add Day Selector to Work Tracker Component
 
-## Problem Summary
-When an agent's regular shift ends at 5:30 PM and their OT schedule is entered as 5:29 PM-6:30 PM, the system currently accepts this even though it creates a **1-minute overlap** between regular and OT hours. This could lead to incorrect hour calculations and scheduling conflicts.
+## Overview
+Currently, the Work Tracker shows aggregated weekly data when a week is selected. You want the ability to drill down into **specific days** within that week.
 
-## Business Rule
-**OT schedule start time must be greater than or equal to the regular schedule end time for the same day.**
+## Feature Behavior
 
-Example:
-- Regular: 9:00 AM - 5:30 PM
-- OT: 5:29 PM - 6:30 PM → **INVALID** (starts before regular ends)
-- OT: 5:30 PM - 6:30 PM → **VALID** (starts exactly when regular ends)
-- OT: 6:00 PM - 7:00 PM → **VALID** (starts after regular ends)
+| Week Type | Day Selector Behavior |
+|-----------|----------------------|
+| **Past week** (e.g., last week) | Show Mon-Sun, all days selectable |
+| **Current week** | Show Mon-Sun, only past/current days selectable |
+| **Example**: Today is Wednesday | Can select Mon, Tue, Wed. Thu-Sun are disabled |
 
----
+## UI Design
 
-## Implementation Plan
-
-### Step 1: Create Validation Utility Function
-**File:** `src/lib/masterDirectoryApi.ts`
-
-Add a new function `validateOTScheduleConflict()` that:
-1. Parses both regular schedule and OT schedule
-2. Extracts the **end time** of regular schedule
-3. Extracts the **start time** of OT schedule
-4. Compares in minutes (after converting to 24-hour format)
-5. Returns validation result with error message if conflict exists
+The Work Tracker header will include a day selector:
 
 ```text
-┌─────────────────────┐     ┌─────────────────────┐
-│   Regular Schedule  │     │    OT Schedule      │
-│  9:00 AM - 5:30 PM  │────►│  5:30 PM - 6:30 PM  │
-│   End: 17:30 (1050) │     │  Start: 17:30 (1050)│
-└─────────────────────┘     └─────────────────────┘
-           │                           │
-           └───── Must be ≤ ───────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  📊 Work Tracker                        [Mon|Tue|Wed|...|Sun]│
+│                                         ~~~~~~ Day Pills ~~~~~│
+├──────────────────────────────────────────────────────────────┤
+│  Tickets Handled                                             │
+│  📧 Email    5/20     💬 Chat    4/20     📞 Calls   0/20    │
+│  ───────────────      ───────────────     ───────────────    │
+│                                                              │
+│  ⏱ Avg Gap   --      🕐 Portal Time   2h 15m                 │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Step 2: Update WorkConfigurationSection Component
-**File:** `src/components/profile/WorkConfigurationSection.tsx`
+- **Day Pills**: Clickable buttons showing Mon, Tue, Wed, Thu, Fri, Sat, Sun
+- **Selected Day**: Highlighted in primary color
+- **Disabled Days**: Future days (for current week) are grayed out and not clickable
+- **Data shown**: When a day is selected, shows that day's data only
 
-Modify the `handleScheduleBlur` function to:
-1. When an OT schedule field is blurred, check against the corresponding regular schedule
-2. If conflict detected, set an error for that OT field
-3. Display a clear error message: "OT must start at or after regular shift ends"
+## Technical Implementation
 
-Day mapping:
-| OT Field | Compare Against Regular Field |
-|----------|-------------------------------|
-| mon_ot_schedule | mon_schedule |
-| tue_ot_schedule | tue_schedule |
-| wed_ot_schedule | wed_schedule |
-| thu_ot_schedule | thu_schedule |
-| fri_ot_schedule | fri_schedule |
-| sat_ot_schedule | sat_schedule |
-| sun_ot_schedule | sun_schedule |
+### 1. Create Day Selector Component
+**New file:** `src/components/dashboard/WorkTrackerDaySelector.tsx`
 
-### Step 3: Update Save Validation in AgentProfile.tsx
-**File:** `src/pages/AgentProfile.tsx`
+This component will:
+- Accept `weekStart`, `weekEnd`, and `selectedDay` props
+- Determine which days are selectable based on current date
+- Display day abbreviation pills (Mon, Tue, etc.)
+- Return the selected date via callback
 
-Add OT conflict validation alongside existing schedule format validation in `handleSave()`:
-1. Loop through all days
-2. Check if OT schedule conflicts with regular schedule
-3. If any conflicts exist, show toast error and prevent save
+### 2. Add Single-Day API Function
+**File:** `src/lib/agentDashboardApi.ts`
 
----
+Add `getDayTicketCountByType()` function:
+- Takes `agentTag` and a specific `date` (not a range)
+- Fetches ticket counts for that single day only
+- Uses EST day boundaries for accurate timezone handling
 
-## Technical Details
+Add `getDayAvgGapData()` function:
+- Fetches avg gap for a single date from `ticket_gap_daily`
 
-### New Function Signature
-```typescript
-export function validateOTScheduleConflict(
-  regularSchedule: string | null | undefined,
-  otSchedule: string | null | undefined
-): { isValid: boolean; error?: string }
-```
+### 3. Update AgentDashboard.tsx
 
-### Parsing Logic
-Reuse existing schedule parsing regex to extract times, then convert to minutes from midnight for comparison:
-- "5:30 PM" → 17:30 → 1050 minutes
-- "5:29 PM" → 17:29 → 1049 minutes
+Add state:
+- `selectedDay: Date | null` - the specific day selected within the week (defaults to current day for current week, or Friday for past weeks)
 
-Conflict exists when: `OT start time < Regular end time`
+Modify data loading:
+- When `selectedDay` changes, fetch data for that specific day instead of the whole week
+- Portal time and Upwork time should also be filtered to that specific day
 
-### Edge Cases Handled
-1. **Empty schedules** - No validation needed (both must have values)
-2. **Day off** - OT can still be validated independently if day is not a regular work day
-3. **Overnight shifts** - Regular ends after midnight (e.g., 11:00 PM - 7:00 AM) - OT should start after 7:00 AM
-4. **Invalid format** - Skip conflict check if either schedule format is invalid (handled by existing validation)
+### 4. Update DailyWorkTracker Component
 
----
+Add props:
+- `selectedDay: Date` - the day being displayed
+- `weekStart: Date` - start of the selected week
+- `weekEnd: Date` - end of the selected week
+- `onDayChange: (date: Date) => void` - callback when day changes
+
+The component will render the day selector in its header.
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/lib/masterDirectoryApi.ts` | Add `validateOTScheduleConflict()` function |
-| `src/components/profile/WorkConfigurationSection.tsx` | Add OT conflict check on blur |
-| `src/pages/AgentProfile.tsx` | Add OT conflict validation before save |
-| `src/pages/ManageProfiles.tsx` | Add same validation for admin profile editing (if applicable) |
+| `src/components/dashboard/WorkTrackerDaySelector.tsx` | **NEW** - Day selector pill component |
+| `src/lib/agentDashboardApi.ts` | Add `getDayTicketCountByType()` and `getDayAvgGapData()` |
+| `src/pages/AgentDashboard.tsx` | Add `selectedDay` state, update data fetching logic |
+| `src/components/dashboard/DailyWorkTracker.tsx` | Add day selector to header, accept new props |
 
----
+## Edge Cases
 
-## User Experience
+1. **Week changes**: When user picks a different week, reset `selectedDay` to the most recent available day in that week
+2. **Current day progression**: If user is viewing the dashboard at 11 PM on Wednesday, and the clock ticks to Thursday, the selector should update to allow Thursday
+3. **Empty data**: If no tickets for selected day, show zeros/dashes appropriately
 
-**On blur (immediate feedback):**
-When user finishes typing OT schedule, if conflict exists:
-- Field border turns red
-- Error message appears: "OT must start at or after 5:30 PM (regular shift end)"
+## Default Selection Logic
 
-**On save (final validation):**
-If any OT conflicts remain:
-- Toast notification: "Invalid OT Schedule - Monday OT conflicts with regular schedule"
-- Save is blocked
+| Scenario | Default Day Selected |
+|----------|---------------------|
+| Current week, today is Wed | Wednesday (current day) |
+| Past week | Sunday (last day of week) |
+| Week selector changes | Auto-select most recent valid day |
 
