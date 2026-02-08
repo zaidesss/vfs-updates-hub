@@ -42,6 +42,7 @@ import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import AgentReports from "./pages/AgentReports";
 import TeamScorecard from "./pages/TeamScorecard";
 import Revalida from "./pages/Revalida";
+import RevalidaV2 from "./pages/RevalidaV2";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -310,6 +311,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Revalida />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/revalida-v2"
+        element={
+          <ProtectedRoute>
+            <RevalidaV2 />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/revalida-v2/:batchId"
+        element={
+          <ProtectedRoute>
+            <RevalidaV2 />
           </ProtectedRoute>
         }
       />
