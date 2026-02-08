@@ -1,81 +1,142 @@
 
-# Add Full Email Preview to Confirmation Dialog
+
+# Disable Self-Copy Emails & Migrate All Notifications to Gmail API
 
 ## Summary
-Update the confirmation dialog to show a fully rendered preview that matches exactly how the email will appear when received, instead of just the first 200 characters of raw markdown text.
+Two changes are required:
+1. **Disable self-copy**: Remove the behavior where `hr@virtualfreelancesolutions.com` receives a copy of every email it sends
+2. **Migrate to Gmail API**: Update all edge functions still using Resend directly to use the `gmail-sender.ts` utility instead, with Resend as fallback
 
-## Current Issue
-- **Preview shows**: Raw markdown text (e.g., `**Discussion on the implementation**`)
-- **Email received**: Full styled HTML template with gradient header, sender name, formatted content
+## Current State Analysis
 
-## Solution Approach
+### Self-Copy Behavior
+The Gmail API inherently stores a copy of sent emails in the sender's "Sent" folder. There's no explicit "self-copy" code in `gmail-sender.ts`, but when emails are sent via Gmail API from `hr@virtualfreelancesolutions.com`, they automatically appear in that account's Sent folder. **This is standard Gmail behavior and cannot be disabled** without changing the sender address entirely.
 
-### 1. Create a Shared Markdown-to-HTML Utility
-Create a utility function on the frontend that mirrors the edge function's `markdownToHtml` logic so the preview matches the sent email exactly.
+However, if you're seeing HR in the recipient list explicitly, that would be from functions that include HR as a recipient.
 
-**File:** `src/lib/markdownToHtml.ts`
+### Functions Still Using Resend Directly (5 functions)
 
-| Feature | Input | Output |
-|---------|-------|--------|
-| Bold | `**text**` | `<strong>text</strong>` |
-| Italic | `*text*` | `<em>text</em>` |
-| Links | `[text](url)` | `<a href="url">text</a>` |
-| Unordered Lists | `- item` | `<li>item</li>` wrapped in `<ul>` |
-| Ordered Lists | `1. item` | `<li>item</li>` wrapped in `<ol>` |
-| Paragraphs | Plain text | `<p>text</p>` |
+| Function | Current Sender | Status |
+|----------|---------------|--------|
+| `generate-agent-reports` | `noreply@vfsoperations.online` | Uses Resend API directly |
+| `generate-eod-analytics` | `noreply@updates.virtualfreelancesolutions.com` | Uses Resend API directly |
+| `check-user-profile-mismatch` | `noreply@updates.virtualfreelancesolutions.com` | Uses Resend SDK |
+| `change-user-email` | `onboarding@resend.dev` | Uses Resend SDK |
+| `check-full-approval` | Uses Resend API | Uses Resend API directly |
 
-### 2. Create Email Preview Component
-Create a reusable component that renders the exact email template shown in the second image.
+### Functions Already Using Gmail Sender
+All other notification functions (20+) already use `sendEmail()` from `gmail-sender.ts` with `hr@virtualfreelancesolutions.com` as sender.
 
-**File:** `src/components/admin/EmailPreview.tsx`
+## Implementation Plan
 
-**Structure:**
-```text
-+------------------------------------------+
-| 📢 Announcement                          |  <- Purple gradient header
-| From: [Sender Name]                      |
-+------------------------------------------+
-| [Subject as H2]                          |  <- White body section
-|                                          |
-| [Rendered HTML body content]             |
-|   - Bold text rendered                   |
-|   - Lists properly formatted             |
-|   - Links clickable                      |
-+------------------------------------------+
-| Official announcement footer             |  <- Gray footer
-| © 2026 Virtual Freelance Solutions       |
-+------------------------------------------+
+### 1. Update `generate-agent-reports` (Line 773-788)
+**Current:** Direct Resend API with `noreply@vfsoperations.online`
+**Change:** Import and use `sendEmail()` from `gmail-sender.ts`
+
+```typescript
+// BEFORE
+await fetch('https://api.resend.com/emails', {
+  body: JSON.stringify({
+    from: 'VFS Updates Hub <noreply@vfsoperations.online>',
+    to: adminEmails,
+    subject: title,
+    html: htmlBody,
+  }),
+});
+
+// AFTER
+import { sendEmail } from '../_shared/gmail-sender.ts';
+// ...
+await sendEmail({
+  to: adminEmails,
+  subject: title,
+  html: htmlBody,
+});
 ```
 
-### 3. Update Confirmation Dialog
-Modify `AnnouncementSender.tsx` to:
-- Fetch current user's full name for the "From" field
-- Replace text preview with the `EmailPreview` component
-- Make the dialog scrollable for long emails
+### 2. Update `generate-eod-analytics` (Line 177)
+**Current:** Direct Resend API with `noreply@updates.virtualfreelancesolutions.com`
+**Change:** Use `sendEmail()` from `gmail-sender.ts`
 
-### 4. Fetch Sender Name
-Add state and logic to fetch the current user's full name from `agent_profiles` to display in the preview header.
+### 3. Update `check-user-profile-mismatch` (Lines 222-229)
+**Current:** Resend SDK with `noreply@updates.virtualfreelancesolutions.com`
+**Change:** Use `sendEmail()` from `gmail-sender.ts`
 
-## Implementation Details
+### 4. Update `change-user-email` (Lines 149-165)
+**Current:** Resend SDK with `onboarding@resend.dev`
+**Change:** Use `sendEmail()` from `gmail-sender.ts`
 
-### Files to Create
-| File | Purpose |
-|------|---------|
-| `src/lib/markdownToHtml.ts` | Shared markdown conversion utility |
-| `src/components/admin/EmailPreview.tsx` | Styled email template preview component |
+### 5. Update `check-full-approval` (Lines 167-175)
+**Current:** Direct Resend API
+**Change:** Use `sendEmail()` from `gmail-sender.ts`
 
-### Files to Modify
+## Fallback to Resend
+
+The `gmail-sender.ts` utility returns `{ success: false, error }` if Gmail fails. We can optionally add Resend as a fallback by updating the utility or handling failures in each function.
+
+**Recommendation:** Add fallback logic to `gmail-sender.ts` itself:
+
+```typescript
+export async function sendEmail(options): Promise<SendResult> {
+  // Try Gmail first
+  const gmailResult = await sendGmailEmail({ ... });
+  
+  if (gmailResult.success) {
+    return gmailResult;
+  }
+  
+  // Fallback to Resend if Gmail fails
+  console.log('Gmail failed, attempting Resend fallback...');
+  const resendApiKey = Deno.env.get('RESEND_API_KEY');
+  if (resendApiKey) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: `Agent Portal <${options.from || DEFAULT_SENDER_EMAIL}>`,
+          to: options.to,
+          cc: options.cc,
+          subject: options.subject,
+          html: options.html,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, messageId: data.id };
+      }
+    } catch (resendError) {
+      console.error('Resend fallback also failed:', resendError);
+    }
+  }
+  
+  return gmailResult; // Return original Gmail error
+}
+```
+
+## Files to Modify
+
 | File | Changes |
 |------|---------|
-| `src/components/admin/AnnouncementSender.tsx` | Import preview component, fetch sender name, update dialog |
+| `supabase/functions/_shared/gmail-sender.ts` | Add Resend fallback logic |
+| `supabase/functions/generate-agent-reports/index.ts` | Import `sendEmail`, replace direct Resend call |
+| `supabase/functions/generate-eod-analytics/index.ts` | Import `sendEmail`, replace direct Resend call |
+| `supabase/functions/check-user-profile-mismatch/index.ts` | Import `sendEmail`, remove Resend SDK |
+| `supabase/functions/change-user-email/index.ts` | Import `sendEmail`, remove Resend SDK |
+| `supabase/functions/check-full-approval/index.ts` | Import `sendEmail`, replace direct Resend call |
 
-### UI Changes in Dialog
-- Remove: "Preview (first 200 chars)" text section
-- Add: Full `EmailPreview` component with proper styling
-- Add: `max-h-[60vh] overflow-y-auto` for scrollable preview
-- Keep: Recipients count and subject display at top
+## About the "Self-Copy" Issue
 
-### Technical Notes
-- The preview component uses inline styles to match exactly what email clients render
-- The markdown conversion is duplicated on frontend to avoid extra API calls
-- The sender name is fetched once when the dialog opens
+Gmail automatically keeps copies of sent emails in the sender's Sent folder. This is not something we can disable. If you're seeing HR explicitly in email recipients, that would be from code that adds HR to the TO/CC/BCC fields.
+
+After migrating all functions to use `gmail-sender.ts`, all emails will:
+- Come FROM `hr@virtualfreelancesolutions.com`
+- Appear in HR's Sent folder (automatic Gmail behavior)
+- NOT include HR in the recipient list unless explicitly coded
+
+**Note:** The QA notification change (limiting to agent + team lead) is a separate task from the previous message.
+
