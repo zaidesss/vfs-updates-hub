@@ -1,80 +1,68 @@
 
-# Fix Revalida 2.0 Test Submission Failure and Hide Evaluation Rubric
 
-## Summary
-Two issues need fixing:
-1. **Test submission fails** because the database is missing a unique constraint required for the upsert operation
-2. **Evaluation rubric is visible** to agents during situational questions, which should be hidden
+# Fix: Add Delete Button for Deactivated Batches in Revalida 2.0
 
----
+## Problem
+The delete button is missing for **deactivated** batches (Inactive status with time remaining). Currently only Draft and Expired batches can be deleted.
 
-## Issue 1: Test Submission Failure
-
-### Root Cause
-The `upsertAnswer` function in `revalidaV2Api.ts` uses:
+## Root Cause
+In `BatchManagementV2.tsx` (line 215), delete button shows only for:
 ```typescript
-.upsert([answer], { onConflict: 'attempt_id,question_id' })
+{(isDraftBatch(batch) || isExpired(batch)) && (...)}
 ```
 
-However, the `revalida_v2_answers` table has **no unique constraint** on `(attempt_id, question_id)`. The only unique constraint is on `id` (primary key). This causes the upsert to fail.
+But `isDraftBatch` checks `!batch.is_active && !batch.start_at` - which excludes batches that were published then deactivated (they have `start_at` set).
 
-### Fix
-Add a unique constraint on `(attempt_id, question_id)` to the database. This makes sense logically too — each answer should be unique per attempt and question combination.
+## Solution
+Update the delete condition to include **all inactive batches** (not just drafts):
 
-**Database Migration:**
-```sql
-ALTER TABLE public.revalida_v2_answers
-ADD CONSTRAINT revalida_v2_answers_attempt_question_unique 
-UNIQUE (attempt_id, question_id);
+| Batch State | Should Show Delete? |
+|-------------|---------------------|
+| Draft (never published) | ✅ Yes |
+| Active (live) | ❌ No (must deactivate first) |
+| Deactivated (was active, now stopped) | ✅ Yes |
+| Expired (deadline passed) | ✅ Yes |
+
+## File to Change
+
+**`src/components/revalida-v2/BatchManagementV2.tsx`**
+
+Change line 215 from:
+```typescript
+{(isDraftBatch(batch) || isExpired(batch)) && (
 ```
+
+To:
+```typescript
+{(!isActive(batch)) && (
+```
+
+This covers:
+- Draft batches (not active, never started)
+- Deactivated batches (not active, was started)
+- Expired batches (not active due to deadline)
+
+Only **currently active** batches require deactivation first.
 
 ---
 
-## Issue 2: Evaluation Rubric Visible to Agents
+## Additional Fix: Exclude Internal Operations from AI Question Generation
 
-### Root Cause
-In `TestInterface.tsx` (lines 120-124), the evaluation rubric is displayed as part of the question:
-```tsx
-{orderedQuestion.type === 'situational' && orderedQuestion.evaluation_rubric && (
-  <CardDescription className="mt-2 whitespace-pre-wrap">
-    {orderedQuestion.evaluation_rubric}
-  </CardDescription>
-)}
+**`supabase/functions/generate-revalida-v2/index.ts`**
+
+Add filter to exclude `internal_operations` category:
+```typescript
+.not("category", "eq", "internal_operations")
 ```
 
-The rubric is meant for:
-- AI grading (used in the `grade-situational-v2` edge function prompt)
-- Admin review during grading
-
-It should **not** be shown to agents taking the test.
-
-### Fix
-Remove the rubric display from `TestInterface.tsx`. Agents should only see the question prompt and a text area for their response.
-
-**File to Modify:** `src/components/revalida-v2/TestInterface.tsx`
-
-Remove lines 120-124:
-```tsx
-{orderedQuestion.type === 'situational' && orderedQuestion.evaluation_rubric && (
-  <CardDescription className="mt-2 whitespace-pre-wrap">
-    {orderedQuestion.evaluation_rubric}
-  </CardDescription>
-)}
-```
+This ensures HR/operational articles don't get used for question generation.
 
 ---
 
-## Files to Change
+## Summary of Changes
 
-| File | Action | Change |
-|------|--------|--------|
-| Database (migration) | **CREATE** | Add unique constraint on `(attempt_id, question_id)` |
-| `src/components/revalida-v2/TestInterface.tsx` | **MODIFY** | Remove evaluation rubric display (lines 120-124) |
+| File | Change |
+|------|--------|
+| `src/components/revalida-v2/BatchManagementV2.tsx` | Show delete for all non-active batches |
+| `supabase/functions/generate-revalida-v2/index.ts` | Exclude internal_operations from KB query |
 
----
-
-## Verification After Fix
-
-1. **Test submission**: Create a new attempt, answer all questions, and submit. Should complete without error.
-2. **Situational questions**: Confirm agents only see the prompt, not the evaluation rubric.
-3. **Admin grading**: Confirm admins can still see rubrics in the grading interface (not affected by this fix).
