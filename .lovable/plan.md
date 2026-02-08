@@ -1,166 +1,133 @@
 
-# Revalida 2.0 Restrictions Update
+# Fix: Radio Button Selection & Exclude Revalida Schedules
 
 ## Summary
-Apply the same restrictions from the original Revalida page to Revalida 2.0:
-1. **48-hour batch window** - Batches are active for exactly 48 hours after publishing
-2. **Score-only display for agents** - Agents see only their percentage score, not correct answers
-3. **One attempt per batch** - Agents can only take each test once
-4. **Deadline enforcement** - Block test taking after batch ends
-5. **Proper status badges** - Show expired/pending/graded states
+Two bugs identified:
+1. **Radio buttons don't work** - Clicking MCQ/T-F options doesn't register the selection
+2. **Invalid content in tests** - Revalida schedule announcements are being used as source material for questions
 
 ---
 
-## Current Issues Identified
+## Issue 1: Radio Button Not Working
 
-| Issue | Current State | Expected State |
-|-------|--------------|----------------|
-| Publish function | No 48-hour window set | Auto-set `start_at=now`, `end_at=now+48h` |
-| Attempt creation | Auto-creates on page load via query | Only create when agent clicks "Start Test" |
-| Agent view | Directly shows test interface | Show BatchCard with status, only test if started |
-| Score display | Shows raw score | Show percentage only, hide correct answers |
-| Deadline check | Not enforced | Block test start/submit after `end_at` |
-| Unique attempt | No constraint | Add unique constraint on `(batch_id, agent_email)` |
+### Root Cause
+In `TestInterface.tsx`, there's a mismatch between which question ID is used:
+
+```typescript
+// Line 23 - Gets question at current index (not shuffled)
+const currentQuestion = questions[currentIndex];
+
+// Line 25 - Gets question using shuffled order (correct for display)
+const orderedQuestion = questions.find(q => q.id === questionOrder[currentIndex]);
+
+// Line 28-32 - Uses currentQuestion.id to save answer (WRONG!)
+const handleAnswer = (value: string) => {
+  setAnswers(prev => ({
+    ...prev,
+    [currentQuestion?.id]: value,  // ← Saves to wrong ID
+  }));
+};
+
+// Line 128 - Checks orderedQuestion.id for current answer (different ID!)
+<RadioGroup value={answers[orderedQuestion.id] || ''} onValueChange={handleAnswer}>
+```
+
+The component displays `orderedQuestion` but saves answers using `currentQuestion.id`. When question order is shuffled, these are different questions, causing:
+- The saved answer goes to the wrong question
+- The RadioGroup sees no matching value, so nothing appears selected
+
+### Fix
+Replace all uses of `currentQuestion` with `orderedQuestion`:
+
+| Line | Current Code | Fixed Code |
+|------|--------------|------------|
+| 28-32 | `[currentQuestion?.id]: value` | `[orderedQuestion?.id]: value` |
+| Delete line 23 | `const currentQuestion = questions[currentIndex];` | Remove entirely |
+
+---
+
+## Issue 2: Revalida Schedules in Questions
+
+### Root Cause
+The edge function `generate-revalida-v2` fetches all published updates from the previous week without filtering:
+
+```typescript
+// Line 63-69 - No filter for Revalida announcements
+const { data: updates, error: updatesError } = await supabase
+  .from("updates")
+  .select("id, title, summary, body, category, posted_at")
+  .eq("status", "published")  // Only filters by published status
+  // Missing: .not('title', 'ilike', 'Revalida%')
+```
+
+### Data Found
+Articles being incorrectly included:
+- "Revalida — Jan 19-25" (category: internal_operations)
+- "Revalida — Jan 26-Feb 1" (category: internal_operations)  
+- "Revalida — Feb 2-8" (category: internal_operations)
+
+These are announcements about test schedules, not actual knowledge content.
+
+### Fix Options
+
+| Option | Filter Logic | Pros | Cons |
+|--------|--------------|------|------|
+| **A. Title filter** | `.not('title', 'ilike', 'Revalida%')` | Simple, catches current pattern | May miss future variations |
+| **B. Title + body filter** | Filter out titles AND body containing "Revalida schedule" | More thorough | May over-filter |
+| **C. Exclude category** | Don't use `internal_operations` category | Removes all ops announcements | May exclude valid content |
+
+**Recommended: Option A** - Filter by title pattern since all Revalida schedule posts follow "Revalida —" naming convention
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Database Migration
-Add unique constraint to prevent multiple attempts per agent per batch:
-```sql
-ALTER TABLE public.revalida_v2_attempts 
-ADD CONSTRAINT unique_agent_batch_attempt UNIQUE (batch_id, agent_email);
-```
-
-### Step 2: API Layer Updates (`src/lib/revalidaV2Api.ts`)
-- **Add `publishBatch` function**: Sets `is_active=true`, `start_at=now`, `end_at=now+48h`
-- **Add `fetchMyAttempt` function**: Query existing attempt without auto-creating
-- **Add helper functions**: `isDeadlinePassed()` and `getTimeRemaining()`
-- **Update `getOrCreateAttempt`**: Check deadline before creating
-
-### Step 3: Frontend - Agent View Updates (`src/pages/RevalidaV2.tsx`)
-- Replace auto-create query with `fetchMyAttempt` (check only)
-- Show `BatchCardV2` component with:
-  - Time remaining countdown
-  - Status badge (Not Started / In Progress / Pending Review / Graded / Expired)
-  - Score display (percentage only, no correct answers)
-  - Start/Continue Test button
-- Block test interface if deadline passed
-
-### Step 4: Create `BatchCardV2` Component
-Modeled after original `BatchCard.tsx`:
-- Display batch title and total points
-- Show time remaining with countdown
-- Status badges based on attempt state
-- Score result card (percentage only, hide correct answers)
-- Start/Continue test button with loading state
-
-### Step 5: Create `AttemptResultV2` Component
-Modeled after original `AttemptResult.tsx`:
-- Graded state: Show percentage score only
-- Pending state: Show "Pending AI Review" message
-- Note: "Correct answers are not shown"
-
----
-
-## Technical Details
-
-### New/Modified Files
-
-| File | Action | Changes |
-|------|--------|---------|
-| `src/lib/revalidaV2Api.ts` | Modify | Add `publishBatch`, `fetchMyAttempt`, `isDeadlinePassed`, `getTimeRemaining` |
-| `src/pages/RevalidaV2.tsx` | Modify | Refactor agent view with BatchCard pattern, check deadline |
-| `src/components/revalida-v2/BatchCardV2.tsx` | Create | Agent batch card with time remaining, score display |
-| `src/components/revalida-v2/AttemptResultV2.tsx` | Create | Score-only result display |
-| Database migration | Create | Add unique constraint on attempts |
-
-### Publish Batch Logic
+### Step 1: Fix TestInterface.tsx
 ```typescript
-export async function publishBatch(batchId: string) {
-  const now = new Date();
-  const endAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // +48 hours
-  
-  // Deactivate any currently active batch first
-  await supabase
-    .from('revalida_v2_batches')
-    .update({ is_active: false })
-    .eq('is_active', true)
-    .neq('id', batchId);
-  
-  return await updateBatch(batchId, {
-    is_active: true,
-    start_at: now.toISOString(),
-    end_at: endAt.toISOString(),
-  });
-}
+// Remove line 23 entirely:
+// const currentQuestion = questions[currentIndex];
+
+// Update handleAnswer function (line 28-32):
+const handleAnswer = (value: string) => {
+  if (!orderedQuestion) return;
+  setAnswers(prev => ({
+    ...prev,
+    [orderedQuestion.id]: value,
+  }));
+};
 ```
 
-### Deadline Helper Functions
+### Step 2: Fix generate-revalida-v2/index.ts
 ```typescript
-export function isDeadlinePassed(endAt: string | null): boolean {
-  if (!endAt) return false;
-  return new Date() > new Date(endAt);
-}
-
-export function getTimeRemaining(endAt: string | null): string {
-  if (!endAt) return '';
-  const now = new Date();
-  const end = new Date(endAt);
-  const diff = end.getTime() - now.getTime();
-  
-  if (diff <= 0) return 'Expired';
-  
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    return `${days}d ${hours % 24}h remaining`;
-  }
-  return `${hours}h ${minutes}m remaining`;
-}
+// Add filter to exclude Revalida schedule announcements (around line 63-69)
+const { data: updates, error: updatesError } = await supabase
+  .from("updates")
+  .select("id, title, summary, body, category, posted_at")
+  .eq("status", "published")
+  .not('title', 'ilike', 'Revalida%')  // Exclude Revalida schedules
+  .gte("posted_at", previousMonday.toISOString())
+  .lte("posted_at", previousSunday.toISOString())
+  .order("posted_at", { ascending: false });
 ```
 
-### Agent View Flow
-```text
-1. Agent visits /team-performance/revalida-v2
-2. Fetch active batches (is_active = true)
-3. For each batch, fetch their existing attempt (if any)
-4. Display BatchCardV2:
-   - No attempt + deadline not passed → "Start Test" button
-   - In-progress attempt + deadline not passed → "Continue Test" button
-   - Submitted/graded attempt → Show score result
-   - Deadline passed + no attempt → "Expired" badge, no button
-5. Agent clicks "Start Test":
-   - Check deadline again
-   - Create attempt with shuffled question order
-   - Navigate to test interface
-6. Agent completes test:
-   - MCQ/T-F auto-graded
-   - Situational marked as "pending" for AI grading
-   - Show result card with percentage only
+Also add filter in the AI prompt to reinforce this:
+```typescript
+// In the AI prompt, add note:
+"IMPORTANT: Do not generate questions about Revalida test schedules or deadlines."
 ```
 
 ---
 
-## What This Does NOT Change
-- Question generation (AI-powered, not manual)
-- Situational grading (AI-suggested + admin override)
-- Admin dashboard functionality
-- Contract management
-- Source tracking
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/components/revalida-v2/TestInterface.tsx` | Fix answer state to use `orderedQuestion.id` |
+| `supabase/functions/generate-revalida-v2/index.ts` | Add `.not('title', 'ilike', 'Revalida%')` filter |
 
 ---
 
-## Testing Checklist
-After implementation, verify:
-- [ ] Publishing a batch sets 48-hour window correctly
-- [ ] Agent cannot start test after deadline
-- [ ] Agent sees only percentage score, not correct answers
-- [ ] Agent cannot take same batch twice (unique constraint)
-- [ ] Time remaining displays correctly
-- [ ] Status badges show correct states
-- [ ] Continue test works for in-progress attempts
-- [ ] Pending review shows for situational questions
+## Testing After Fix
+1. Create a new batch to verify Revalida schedules are excluded from sources
+2. Take test and verify radio button selection works
+3. Verify answers are correctly saved and auto-graded
