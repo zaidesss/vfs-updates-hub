@@ -237,6 +237,23 @@ Return ONLY the JSON, no other text.`,
       throw new Error("Invalid AI response format");
     }
 
+    // Valid source_type values per database constraint
+    const validSourceTypes = ['kb_article', 'qa_action', 'qa_ai_suggestion', 'contract'];
+    
+    const normalizeSourceType = (rawType: string | undefined): string => {
+      if (!rawType) return 'kb_article';
+      const lower = rawType.toLowerCase().replace(/[^a-z_]/g, '');
+      // Map common AI variations to valid values
+      if (lower.includes('kb') || lower.includes('knowledge') || lower.includes('article')) return 'kb_article';
+      if (lower.includes('qa') && lower.includes('action')) return 'qa_action';
+      if (lower.includes('qa') && (lower.includes('ai') || lower.includes('suggestion'))) return 'qa_ai_suggestion';
+      if (lower.includes('contract')) return 'contract';
+      // Exact match check
+      if (validSourceTypes.includes(lower)) return lower;
+      // Default fallback
+      return 'kb_article';
+    };
+
     // Insert questions into database
     const questionsToInsert = questions.map((q: any, index: number) => ({
       batch_id: batchId,
@@ -249,7 +266,7 @@ Return ONLY the JSON, no other text.`,
       correct_answer: q.correct_answer || null,
       points: q.type === "situational" ? 5 : 1,
       order_index: index,
-      source_type: q.source_type,
+      source_type: normalizeSourceType(q.source_type),
       source_reference: q.source_reference || null,
       source_excerpt: q.source_excerpt || null,
       evaluation_rubric: q.evaluation_rubric || null,
