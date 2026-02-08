@@ -31,6 +31,9 @@ import {
   getTodayTicketCountByType,
   getWeekTicketCountByType,
   getWeekAvgGapData,
+  getDayTicketCountByType,
+  getDayAvgGapData,
+  getDayPortalHours,
   fetchUpworkTimeFromCache,
   fetchUpworkTimeForWeek,
   autoGenerateLateLoginRequest,
@@ -96,6 +99,13 @@ export default function AgentDashboard() {
   });
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
   const weekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
+  
+  // Day selector state - default to current day for current week, or Sunday for past weeks
+  const [selectedDay, setSelectedDay] = useState<Date>(() => {
+    const now = new Date();
+    const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    return todayEST;
+  });
   
   // Bio break state
   const [bioTimeRemaining, setBioTimeRemaining] = useState<number | null>(null);
@@ -236,27 +246,44 @@ export default function AgentDashboard() {
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       if (tag) {
         setAgentTag(tag);
-        // Fetch per-type ticket breakdown for the selected week
-        const ticketResult = await getWeekTicketCountByType(tag, weekStart, weekEnd);
+        
+        // Determine the appropriate day to fetch data for
+        const now = new Date();
+        const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+        const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
+        
+        // Default day: today for current week, Sunday for past weeks
+        const defaultDay = isCurrentWeek ? todayEST : weekEnd;
+        setSelectedDay(defaultDay);
+        
+        // Fetch per-type ticket breakdown for the selected day
+        const ticketResult = await getDayTicketCountByType(tag, defaultDay);
         setTicketCounts(ticketResult.data);
         
-        // Fetch avg gap for the selected week
-        const gapResult = await getWeekAvgGapData(tag, weekStart, weekEnd);
+        // Fetch avg gap for the selected day
+        const gapResult = await getDayAvgGapData(tag, defaultDay);
         setAvgGapSeconds(gapResult.data.avgGapSeconds);
+        
+        // Fetch portal hours for the selected day
+        const portalResult = await getDayPortalHours(profileId, defaultDay);
+        setPortalHours(portalResult.data.hours);
+        setPortalLoginTime(portalResult.data.loginTime);
+      } else {
+        // No tag, still calculate portal hours from attendance
+        const now = new Date();
+        const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+        const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
+        const defaultDay = isCurrentWeek ? todayEST : weekEnd;
+        setSelectedDay(defaultDay);
+        
+        // Get portal hours from the attendance for the selected day
+        const dayStr = format(defaultDay, 'yyyy-MM-dd');
+        const dayAttendance = weekAttendance.find((d) => format(d.date, 'yyyy-MM-dd') === dayStr);
+        setPortalHours(dayAttendance?.hoursWorkedMinutes ? dayAttendance.hoursWorkedMinutes / 60 : null);
+        setPortalLoginTime(dayAttendance?.loginTime || null);
       }
-      
-      // Calculate portal hours from the selected week's attendance
-      let totalPortalMinutes = 0;
-      weekAttendance.forEach((day) => {
-        if (day.hoursWorkedMinutes) {
-          totalPortalMinutes += day.hoursWorkedMinutes;
-        }
-      });
-      setPortalHours(totalPortalMinutes / 60);
-      
-      // Get login time from first day with a login in the week
-      const firstLoginDay = weekAttendance.find((d) => d.loginTime);
-      setPortalLoginTime(firstLoginDay?.loginTime || null);
       
       // Fetch Upwork hours from cache for the selected week if contract ID exists
       if (profileResult.data.upwork_contract_id) {
@@ -286,27 +313,77 @@ export default function AgentDashboard() {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Refresh tracker data manually
+  // Refresh tracker data for the selected day
   const handleRefreshTracker = async () => {
-    if (!agentTag) return;
+    if (!agentTag || !profileId) return;
     
     setIsRefreshingTracker(true);
     try {
-      // Fetch ticket breakdown by type
-      const ticketResult = await getTodayTicketCountByType(agentTag);
+      // Fetch ticket breakdown by type for selected day
+      const ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
       setTicketCounts(ticketResult.data);
       
-      // Use RPC for avg gap
-      if (profileId) {
-        const rpcResult = await fetchAgentDashboardRPC(profileId);
-        if (rpcResult.data) {
-          setAvgGapSeconds(rpcResult.data.avg_response_gap_seconds || null);
-        }
-      }
+      // Fetch avg gap for selected day
+      const gapResult = await getDayAvgGapData(agentTag, selectedDay);
+      setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      
+      // Fetch portal hours for selected day
+      const portalResult = await getDayPortalHours(profileId, selectedDay);
+      setPortalHours(portalResult.data.hours);
+      setPortalLoginTime(portalResult.data.loginTime);
     } catch (err) {
       console.error('Failed to refresh tracker:', err);
     } finally {
       setIsRefreshingTracker(false);
+    }
+  };
+
+  // Handle day selection change within the Work Tracker
+  const handleDayChange = async (date: Date) => {
+    setSelectedDay(date);
+    
+    if (!agentTag || !profileId) return;
+    
+    setIsRefreshingTracker(true);
+    try {
+      // Fetch ticket breakdown by type for the selected day
+      const ticketResult = await getDayTicketCountByType(agentTag, date);
+      setTicketCounts(ticketResult.data);
+      
+      // Fetch avg gap for the selected day
+      const gapResult = await getDayAvgGapData(agentTag, date);
+      setAvgGapSeconds(gapResult.data.avgGapSeconds);
+      
+      // Fetch portal hours for the selected day
+      const portalResult = await getDayPortalHours(profileId, date);
+      setPortalHours(portalResult.data.hours);
+      setPortalLoginTime(portalResult.data.loginTime);
+    } catch (err) {
+      console.error('Failed to load day data:', err);
+    } finally {
+      setIsRefreshingTracker(false);
+    }
+  };
+
+  // Handle week selection change - reset selectedDay to appropriate default
+  const handleWeekChange = (date: Date) => {
+    setSelectedDate(date);
+    
+    const now = new Date();
+    const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const newWeekStart = startOfWeek(date, { weekStartsOn: 1 });
+    const newWeekEnd = endOfWeek(date, { weekStartsOn: 1 });
+    
+    // Check if the new week is the current week
+    const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+    const isCurrentWeek = format(newWeekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
+    
+    if (isCurrentWeek) {
+      // Current week: default to today
+      setSelectedDay(todayEST);
+    } else {
+      // Past week: default to Sunday (end of week)
+      setSelectedDay(newWeekEnd);
     }
   };
 
@@ -470,7 +547,7 @@ export default function AgentDashboard() {
           weekSelector={
             <DashboardWeekSelector 
               selectedDate={selectedDate} 
-              onDateChange={setSelectedDate} 
+              onDateChange={handleWeekChange} 
             />
           }
         />
@@ -528,6 +605,9 @@ export default function AgentDashboard() {
           upworkSyncedAt={upworkSyncedAt}
           hasUpworkContract={!!profile.upwork_contract_id}
           isOnOT={status === 'ON_OT'}
+          weekStart={weekStart}
+          selectedDay={selectedDay}
+          onDayChange={handleDayChange}
         />
       </div>
     </Layout>

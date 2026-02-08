@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { BarChart3, RefreshCw, Mail, MessageCircle, Phone, Timer, Clock, AlertTriangle, CheckCircle2, PlayCircle, Zap } from 'lucide-react';
 import { formatGapTime } from '@/lib/agentDashboardApi';
 import { cn } from '@/lib/utils';
+import { WorkTrackerDaySelector } from './WorkTrackerDaySelector';
 
 import { TicketCountByType } from '@/lib/agentDashboardApi';
 
@@ -28,6 +29,10 @@ interface DailyWorkTrackerProps {
   hasUpworkContract?: boolean;
   // OT tracking
   isOnOT?: boolean;
+  // Day selector props
+  weekStart: Date;
+  selectedDay: Date;
+  onDayChange: (date: Date) => void;
 }
 
 /**
@@ -109,6 +114,9 @@ export function DailyWorkTracker({
   upworkSyncedAt,
   hasUpworkContract,
   isOnOT,
+  weekStart,
+  selectedDay,
+  onDayChange,
 }: DailyWorkTrackerProps) {
   const { showEmail, showChat, showCall } = getVisibleTicketTypes(position, quotaChat, quotaPhone);
   
@@ -149,21 +157,28 @@ export function DailyWorkTracker({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <CardTitle className="text-lg flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
             Work Tracker
           </CardTitle>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            className="h-8 w-8"
-            title="Refresh data"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <WorkTrackerDaySelector
+              weekStart={weekStart}
+              selectedDay={selectedDay}
+              onDayChange={onDayChange}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="h-8 w-8"
+              title="Refresh data"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
