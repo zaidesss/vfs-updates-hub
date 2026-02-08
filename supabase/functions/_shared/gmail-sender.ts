@@ -245,7 +245,8 @@ export async function sendEmail(options: {
     }
   }
   
-  return sendGmailEmail({
+  // Try Gmail API first
+  const gmailResult = await sendGmailEmail({
     to: toArray,
     cc: ccArray,
     subject: options.subject,
@@ -253,4 +254,46 @@ export async function sendEmail(options: {
     from: fromEmail,
     fromName,
   });
+  
+  if (gmailResult.success) {
+    return gmailResult;
+  }
+  
+  // Fallback to Resend if Gmail fails
+  console.log('Gmail failed, attempting Resend fallback...', gmailResult.error);
+  const resendApiKey = Deno.env.get('RESEND_API_KEY');
+  
+  if (resendApiKey) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: `Agent Portal <${fromEmail || DEFAULT_SENDER_EMAIL}>`,
+          to: toArray,
+          cc: ccArray,
+          subject: options.subject,
+          html: options.html,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`Email sent via Resend fallback. Message ID: ${data.id}`);
+        return { success: true, messageId: data.id };
+      } else {
+        const errorText = await response.text();
+        console.error('Resend fallback failed:', errorText);
+      }
+    } catch (resendError) {
+      console.error('Resend fallback error:', resendError);
+    }
+  } else {
+    console.log('No RESEND_API_KEY configured for fallback');
+  }
+  
+  return gmailResult; // Return original Gmail error
 }

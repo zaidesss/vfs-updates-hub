@@ -164,42 +164,29 @@ serve(async (req) => {
       }
 
       // Notify HR
-      if (resendApiKey) {
-        try {
-          const emailResponse = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${resendApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              from: "VFS Updates Hub <onboarding@resend.dev>",
-              to: [HR_EMAIL],
-              subject: `[Approved]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${request.request_type}`,
-              html: `
-                <h2>Article Request Fully Approved</h2>
-                ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
-                <p>The following request has been fully approved and is ready for action.</p>
-                <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
-                <p><strong>Type:</strong> ${request.request_type}</p>
-                <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
-                <p><strong>Priority:</strong> ${request.priority}</p>
-                <p><strong>Description:</strong></p>
-                <p>${request.description}</p>
-                ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
-                <p><strong>Final Decision:</strong> ${request.final_decision || 'Approved'}</p>
-                ${request.final_notes ? `<p><strong>Final Notes:</strong> ${request.final_notes}</p>` : ''}
-              `,
-            }),
-          });
-          if (emailResponse.ok) {
-            console.log("Sent approval notification to HR");
-          } else {
-            console.error("Error sending HR notification:", await emailResponse.text());
-          }
-        } catch (emailError) {
-          console.error("Error sending HR notification:", emailError);
-        }
+      try {
+        const emailHtml = `
+          <h2>Article Request Fully Approved</h2>
+          ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
+          <p>The following request has been fully approved and is ready for action.</p>
+          <p><strong>Submitted by:</strong> ${request.submitted_by}</p>
+          <p><strong>Type:</strong> ${request.request_type}</p>
+          <p><strong>Category:</strong> ${request.category || 'Not specified'}</p>
+          <p><strong>Priority:</strong> ${request.priority}</p>
+          <p><strong>Description:</strong></p>
+          <p>${request.description}</p>
+          ${request.sample_ticket ? `<p><strong>Sample Ticket:</strong> ${request.sample_ticket}</p>` : ''}
+          <p><strong>Final Decision:</strong> ${request.final_decision || 'Approved'}</p>
+          ${request.final_notes ? `<p><strong>Final Notes:</strong> ${request.final_notes}</p>` : ''}
+        `;
+        await sendEmail({
+          to: [HR_EMAIL],
+          subject: `[Approved]${request.reference_number ? ` ${request.reference_number}:` : ''} Article Request: ${request.request_type}`,
+          html: emailHtml,
+        });
+        console.log("Sent approval notification to HR");
+      } catch (emailError) {
+        console.error("Error sending HR notification:", emailError);
       }
 
       return new Response(
