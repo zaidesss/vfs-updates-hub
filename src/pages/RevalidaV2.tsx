@@ -28,7 +28,7 @@ import { GenerationStatus } from '@/components/revalida-v2/GenerationStatus';
 import { TestInterface } from '@/components/revalida-v2/TestInterface';
 import { SituationalGrading } from '@/components/revalida-v2/SituationalGrading';
 import { BatchCardV2 } from '@/components/revalida-v2/BatchCardV2';
-import { AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function RevalidaV2() {
@@ -180,11 +180,21 @@ export default function RevalidaV2() {
     return (
       <Layout>
         <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">{currentBatch.title}</h1>
-            <p className="text-muted-foreground mt-2">
-              {currentBatch.mcq_count} MCQ • {currentBatch.tf_count} T/F • {currentBatch.situational_count} Situational
-            </p>
+          <div className="flex items-start gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/team-performance/revalida-v2')}
+              className="mt-1"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">{currentBatch.title}</h1>
+              <p className="text-muted-foreground mt-2">
+                {currentBatch.mcq_count} MCQ • {currentBatch.tf_count} T/F • {currentBatch.situational_count} Situational
+              </p>
+            </div>
           </div>
 
           <Tabs defaultValue="generation" className="w-full">
@@ -293,11 +303,21 @@ export default function RevalidaV2() {
     return (
       <Layout>
         <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">Revalida 2.0</h1>
-            <p className="text-muted-foreground mt-2">
-              AI-powered knowledge assessment
-            </p>
+          <div className="flex items-start gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/team-performance/revalida-v2')}
+              className="mt-1"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">Revalida 2.0</h1>
+              <p className="text-muted-foreground mt-2">
+                AI-powered knowledge assessment
+              </p>
+            </div>
           </div>
 
           <BatchCardV2
