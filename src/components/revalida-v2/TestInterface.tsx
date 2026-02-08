@@ -20,15 +20,15 @@ export const TestInterface = ({ attempt, questions, onComplete }: TestInterfaceP
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentQuestion = questions[currentIndex];
   const questionOrder = attempt.question_order || questions.map(q => q.id);
   const orderedQuestion = questions.find(q => q.id === questionOrder[currentIndex]);
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   const handleAnswer = (value: string) => {
+    if (!orderedQuestion) return;
     setAnswers(prev => ({
       ...prev,
-      [currentQuestion?.id]: value,
+      [orderedQuestion.id]: value,
     }));
   };
 
