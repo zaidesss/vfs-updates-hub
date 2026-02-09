@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AGENT_DIRECTORY } from '@/lib/agentDirectory';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
@@ -90,6 +90,22 @@ export default function TeamScorecard() {
   const canSave = isAdmin || isSuperAdmin;
   const hasEdits = Object.keys(editedMetrics).length > 0;
 
+  // Detect user's team lead for regular (non-admin) users
+  const userTeamLead = useMemo(() => {
+    if (isAdmin) return null;
+    const email = user?.email?.toLowerCase().trim();
+    if (!email) return null;
+    const info = AGENT_DIRECTORY[email];
+    return info?.teamLead || null;
+  }, [user?.email, isAdmin]);
+
+  // Auto-set team lead filter for regular users
+  useEffect(() => {
+    if (userTeamLead) {
+      setTeamLeadFilter(userTeamLead);
+    }
+  }, [userTeamLead]);
+
   // Calculate available weeks for the selected month
   const availableWeeks = useMemo(() => {
     const year = parseInt(selectedYear);
@@ -168,20 +184,20 @@ export default function TeamScorecard() {
   const handleYearChange = (year: string) => {
     setSelectedYear(year);
     setSelectedWeek('current');
-    setTeamLeadFilter('all');
+    if (!userTeamLead) setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
     setSelectedWeek('current');
-    setTeamLeadFilter('all');
+    if (!userTeamLead) setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
   const handleWeekChange = (week: string) => {
     setSelectedWeek(week);
-    setTeamLeadFilter('all');
+    if (!userTeamLead) setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
@@ -686,19 +702,30 @@ export default function TeamScorecard() {
                 {/* Team Lead Filter */}
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium text-muted-foreground">Team Lead</label>
-                  <Select value={teamLeadFilter} onValueChange={setTeamLeadFilter}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="All Team Leads" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Team Leads</SelectItem>
-                      {availableTeamLeads.map(lead => (
-                        <SelectItem key={lead} value={lead}>
-                          {lead}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {userTeamLead ? (
+                    <Select value={userTeamLead} disabled>
+                      <SelectTrigger className="w-48" disabled>
+                        <SelectValue>{userTeamLead}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={userTeamLead}>{userTeamLead}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select value={teamLeadFilter} onValueChange={setTeamLeadFilter}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="All Team Leads" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Team Leads</SelectItem>
+                        {availableTeamLeads.map(lead => (
+                          <SelectItem key={lead} value={lead}>
+                            {lead}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 {/* Agent Search */}
