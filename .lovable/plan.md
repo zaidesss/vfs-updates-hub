@@ -1,56 +1,46 @@
 
 
-# Fix: Resilient Ticket Assignment (Skip Poison Tickets)
+# Add "Per Team Lead" Filter to Team Scorecard
 
-## Problem
+## What This Does
 
-A single "poison" ticket (e.g., #1218081) that fails Zendesk validation causes the **entire batch to abort**, meaning the agent gets **zero tickets** assigned even though other tickets in the view are perfectly fine.
+Adds a new "Team Lead" dropdown filter to the Scorecard filters row, allowing you to view only agents under a specific team lead (e.g., Jaeran Sanchez, Meryl Jean Iman, Juno Dianne Garciano, Kristin Joann Argao).
 
-## Changes
+## How It Works
 
-### File: `supabase/functions/assign-tickets-on-login/index.ts`
+The filter uses the existing `AGENT_DIRECTORY` data (which already maps each agent to their `teamLead`) to match scorecard agents by email. No database changes needed.
 
-**1. Fetch extra tickets as a buffer**
+## Implementation
 
-Instead of fetching exactly `ticketCount` tickets, fetch `ticketCount + 5` (buffer) so that if some fail, we still have enough to hit the target.
+### File: `src/pages/TeamScorecard.tsx`
 
-**2. Skip unassignable tickets instead of aborting**
+1. **Import** `AGENT_DIRECTORY` from `src/lib/agentDirectory.ts`
+2. **Add state**: `const [teamLeadFilter, setTeamLeadFilter] = useState<string>('all')`
+3. **Derive unique team leads** from the current scorecard data (so only relevant team leads appear)
+4. **Add filter dropdown** in the filters row (between Support Type and Search), labeled "Team Lead"
+5. **Apply filter** in the `filteredScorecards` useMemo -- match agent email against `AGENT_DIRECTORY` to check their `teamLead`
+6. **Include in "Clear" logic** -- reset team lead filter when year/month/week changes
 
-Replace the current "abort on first failure" logic with a skip-and-continue approach:
+### UI Placement
+
+The new dropdown goes in Row 2 of the filters card, right after "Support Type":
 
 ```text
-for each ticket in fetched tickets:
-  if we already assigned enough (== ticketCount): break
-  try to assign ticket (with 1 retry on failure)
-  if success: add to assignedTicketIds
-  if fail after retry: add to skippedTicketIds, continue to next
+Support Type | Team Lead | Search | Score | Sort by
 ```
 
-**3. Log skipped/poison tickets**
+### Filter Logic
 
-Update the `logAssignment` call to include skipped ticket IDs in the error_message field so they are traceable.
+```text
+if teamLeadFilter !== 'all':
+  lookup agent email in AGENT_DIRECTORY
+  keep only agents whose teamLead matches the selected value
+```
 
-**4. Send notification email for skipped tickets**
+## Considerations
 
-After the loop, if any tickets were skipped, send a notification email to `malcom@persistbrands.com` listing the specific problematic ticket IDs, the view, and the agent -- so they can be investigated in Zendesk. This replaces the current "abort and notify" behavior.
+- Agents not in `AGENT_DIRECTORY` (e.g., new hires not yet added) will show under all team lead filters but won't match any specific team lead filter. Should we show them anyway, or hide them?
+- Team leads themselves appear in the scorecard -- they will show under their own filter (since their `teamLead` is typically "Patrick Argao" or themselves).
 
-**5. Return partial success**
-
-The function returns success with the actual number of tickets assigned (which may be less than requested if the view ran out of assignable tickets).
-
-## Result Summary
-
-| Scenario | Before | After |
-|----------|--------|-------|
-| 1 poison ticket in batch of 10 | 0 tickets assigned, full abort | 9+ tickets assigned, poison ticket skipped and reported |
-| All tickets fail | 0 assigned, single failure email | 0 assigned, email listing all failed ticket IDs |
-| No failures | 10 assigned | 10 assigned (no change) |
-
-## Notification Email
-
-Sent to `malcom@persistbrands.com` when any tickets are skipped. Includes:
-- Agent name and email
-- Zendesk instance and view name
-- List of skipped ticket IDs
-- Number successfully assigned vs. requested
+No database or edge function changes required.
 
