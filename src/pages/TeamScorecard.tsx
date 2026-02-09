@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { AGENT_DIRECTORY } from '@/lib/agentDirectory';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ export default function TeamScorecard() {
   
   // Filters
   const [supportType, setSupportType] = useState<string>('all'); // Default to 'all'
+  const [teamLeadFilter, setTeamLeadFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
@@ -166,17 +168,20 @@ export default function TeamScorecard() {
   const handleYearChange = (year: string) => {
     setSelectedYear(year);
     setSelectedWeek('current');
+    setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
     setSelectedWeek('current');
+    setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
   const handleWeekChange = (week: string) => {
     setSelectedWeek(week);
+    setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
@@ -217,10 +222,33 @@ export default function TeamScorecard() {
   });
 
   // Filter and sort scorecards
+  // Derive unique team leads from current scorecard data
+  const availableTeamLeads = useMemo(() => {
+    if (!scorecards) return [];
+    const leads = new Set<string>();
+    scorecards.forEach(sc => {
+      const email = sc.agent.email?.toLowerCase().trim();
+      const agentInfo = email ? AGENT_DIRECTORY[email] : null;
+      if (agentInfo?.teamLead) {
+        leads.add(agentInfo.teamLead);
+      }
+    });
+    return Array.from(leads).sort();
+  }, [scorecards]);
+
   const filteredScorecards = useMemo(() => {
     if (!scorecards) return [];
     
     let filtered = [...scorecards];
+
+    // Team Lead filter
+    if (teamLeadFilter !== 'all') {
+      filtered = filtered.filter(sc => {
+        const email = sc.agent.email?.toLowerCase().trim();
+        const agentInfo = email ? AGENT_DIRECTORY[email] : null;
+        return agentInfo?.teamLead === teamLeadFilter;
+      });
+    }
     
     // Search filter
     if (searchQuery) {
@@ -264,7 +292,7 @@ export default function TeamScorecard() {
     });
     
     return filtered;
-  }, [scorecards, searchQuery, scoreFilter, sortOrder]);
+  }, [scorecards, teamLeadFilter, searchQuery, scoreFilter, sortOrder]);
 
   // Save Changes mutation (saves edited metrics to zendesk_agent_metrics)
   const saveChangesMutation = useMutation({
@@ -649,6 +677,24 @@ export default function TeamScorecard() {
                       {SUPPORT_TYPES.map(type => (
                         <SelectItem key={type} value={type}>
                           {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Team Lead Filter */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Team Lead</label>
+                  <Select value={teamLeadFilter} onValueChange={setTeamLeadFilter}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="All Team Leads" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Team Leads</SelectItem>
+                      {availableTeamLeads.map(lead => (
+                        <SelectItem key={lead} value={lead}>
+                          {lead}
                         </SelectItem>
                       ))}
                     </SelectContent>
