@@ -1,46 +1,64 @@
 
 
-# Add "Per Team Lead" Filter to Team Scorecard
+# Fix: Team Status Board Visibility for All Users
 
-## What This Does
+## Problem
 
-Adds a new "Team Lead" dropdown filter to the Scorecard filters row, allowing you to view only agents under a specific team lead (e.g., Jaeran Sanchez, Meryl Jean Iman, Juno Dianne Garciano, Kristin Joann Argao).
+Regular (non-admin) users can only see **themselves** on the Team Status Board because the data is fetched directly from `agent_profiles`, which has RLS restricting regular users to their own row only.
 
-## How It Works
+## Root Cause
 
-The filter uses the existing `AGENT_DIRECTORY` data (which already maps each agent to their `teamLead`) to match scorecard agents by email. No database changes needed.
+- `teamStatusApi.ts` queries `agent_profiles` for schedule data (shift schedules, OT schedules, day off, break schedule, etc.)
+- RLS on `agent_profiles`: regular users can only SELECT their own row
+- A security-definer view `agent_profiles_team_status` exists that bypasses RLS, but it only exposes `id, email, full_name, position` -- missing all schedule columns
 
-## Implementation
+## Solution
 
-### File: `src/pages/TeamScorecard.tsx`
+Two changes needed:
 
-1. **Import** `AGENT_DIRECTORY` from `src/lib/agentDirectory.ts`
-2. **Add state**: `const [teamLeadFilter, setTeamLeadFilter] = useState<string>('all')`
-3. **Derive unique team leads** from the current scorecard data (so only relevant team leads appear)
-4. **Add filter dropdown** in the filters row (between Support Type and Search), labeled "Team Lead"
-5. **Apply filter** in the `filteredScorecards` useMemo -- match agent email against `AGENT_DIRECTORY` to check their `teamLead`
-6. **Include in "Clear" logic** -- reset team lead filter when year/month/week changes
+### Step 1: Database Migration -- Expand the view
 
-### UI Placement
+Replace the existing `agent_profiles_team_status` view to include the schedule-related columns needed by the Team Status Board. These are **non-sensitive operational data** (shift times, break times, days off):
 
-The new dropdown goes in Row 2 of the filters card, right after "Support Type":
-
-```text
-Support Type | Team Lead | Search | Score | Sort by
+```sql
+CREATE OR REPLACE VIEW public.agent_profiles_team_status AS
+SELECT 
+  id, email, full_name, position, employment_status,
+  day_off, break_schedule,
+  mon_schedule, tue_schedule, wed_schedule, thu_schedule, 
+  fri_schedule, sat_schedule, sun_schedule,
+  mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, 
+  fri_ot_schedule, sat_ot_schedule, sun_ot_schedule
+FROM agent_profiles;
 ```
 
-### Filter Logic
+This view has no `security_invoker`, so it acts as a security definer and bypasses agent_profiles RLS -- allowing all authenticated users to see all team members' schedules. No PII (addresses, government IDs, emergency contacts) is exposed.
 
-```text
-if teamLeadFilter !== 'all':
-  lookup agent email in AGENT_DIRECTORY
-  keep only agents whose teamLead matches the selected value
+### Step 2: Code Change -- Use the view instead of the table
+
+**File: `src/lib/teamStatusApi.ts`**
+
+Change the query from:
+```typescript
+supabase.from('agent_profiles').select(...)
+```
+to:
+```typescript
+supabase.from('agent_profiles_team_status').select(...)
 ```
 
-## Considerations
+Same columns, same filters -- just reading from the view instead of the base table. This is the only code file that needs to change.
 
-- Agents not in `AGENT_DIRECTORY` (e.g., new hires not yet added) will show under all team lead filters but won't match any specific team lead filter. Should we show them anyway, or hide them?
-- Team leads themselves appear in the scorecard -- they will show under their own filter (since their `teamLead` is typically "Patrick Argao" or themselves).
+## What Does NOT Change
 
-No database or edge function changes required.
+- `profile_status` table: already has a policy allowing all authenticated users to view all statuses
+- `leave_requests` table: already has a policy allowing all users to view pending/approved requests
+- No changes to the UI components (`StatusCard`, `TeamStatusBoard`, `LiveActivityFeed`)
+- Admin/HR dashboard link visibility still controlled by role checks in the frontend
+
+## Security
+
+- The expanded view still excludes sensitive PII columns (address, government IDs, emergency contacts, bank details, etc.)
+- Only operational schedule data is added
+- Base table RLS remains unchanged -- direct queries to `agent_profiles` still restricted
 
