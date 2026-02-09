@@ -145,8 +145,9 @@ async function processTicketAssignment(
   }
 
   try {
-    // Step 8: Fetch tickets from Zendesk View
-    const tickets = await fetchTicketsFromView(viewId, ticketCount, agentConfig.zendesk_instance!);
+    // Step 8: Fetch tickets from Zendesk View (with buffer for poison tickets)
+    const fetchCount = ticketCount + 5;
+    const tickets = await fetchTicketsFromView(viewId, fetchCount, agentConfig.zendesk_instance!);
     
     if (!tickets || tickets.length === 0) {
       await releaseLock(supabase, viewId);
@@ -154,27 +155,51 @@ async function processTicketAssignment(
       return { success: true, ticketsAssigned: 0, ticketIds: [], viewName };
     }
 
-    // Step 9: Assign tickets (add agent_tag)
+    // Step 9: Assign tickets with skip-and-continue for poison tickets
     const assignedTicketIds: string[] = [];
+    const skippedTicketIds: string[] = [];
+
     for (const ticket of tickets) {
+      if (assignedTicketIds.length >= ticketCount) break;
+
       const assigned = await assignTicketToAgent(ticket.id, agentConfig.agent_tag!, agentConfig.zendesk_instance!);
-      if (!assigned) {
-        // Retry once
-        const retryAssigned = await assignTicketToAgent(ticket.id, agentConfig.agent_tag!, agentConfig.zendesk_instance!);
-        if (!retryAssigned) {
-          // Failure - abort all, notify admin
-          await releaseLock(supabase, viewId);
-          await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, viewId, viewName, ticketCount, assignedTicketIds.length, assignedTicketIds, "failed", `Failed to assign ticket ${ticket.id}`);
-          await sendFailureEmail(agentConfig.full_name || email, email, agentConfig.zendesk_instance!, viewId, viewName!, ticketCount, `Failed to assign ticket ${ticket.id}`);
-          return { success: false, error: "Failed to assign tickets - admin notified", ticketsAssigned: 0 };
-        }
+      if (assigned) {
+        assignedTicketIds.push(String(ticket.id));
+        continue;
       }
-      assignedTicketIds.push(String(ticket.id));
+
+      // Retry once
+      console.log(`Retrying ticket ${ticket.id}...`);
+      const retryAssigned = await assignTicketToAgent(ticket.id, agentConfig.agent_tag!, agentConfig.zendesk_instance!);
+      if (retryAssigned) {
+        assignedTicketIds.push(String(ticket.id));
+      } else {
+        console.warn(`Skipping poison ticket ${ticket.id} after retry failure`);
+        skippedTicketIds.push(String(ticket.id));
+      }
     }
 
-    // Step 10: Success - release lock and log
+    // Step 10: Release lock and log
     await releaseLock(supabase, viewId);
-    await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, viewId, viewName, ticketCount, assignedTicketIds.length, assignedTicketIds, "success", null);
+
+    const errorMsg = skippedTicketIds.length > 0
+      ? `Skipped poison tickets: ${skippedTicketIds.join(", ")}`
+      : null;
+
+    await logAssignment(
+      supabase, email, agentConfig.full_name, agentConfig.zendesk_instance,
+      viewId, viewName, ticketCount, assignedTicketIds.length, assignedTicketIds,
+      skippedTicketIds.length > 0 && assignedTicketIds.length === 0 ? "failed" : "success",
+      errorMsg
+    );
+
+    // Step 11: Notify about skipped tickets
+    if (skippedTicketIds.length > 0) {
+      await sendSkippedTicketsEmail(
+        agentConfig.full_name || email, email, agentConfig.zendesk_instance!,
+        viewId, viewName!, ticketCount, assignedTicketIds.length, skippedTicketIds
+      );
+    }
 
     return {
       success: true,
@@ -429,5 +454,47 @@ async function sendFailureEmail(
     console.log("Failure notification email sent");
   } catch (err) {
     console.error("Failed to send failure email:", err);
+  }
+}
+
+async function sendSkippedTicketsEmail(
+  agentName: string,
+  agentEmail: string,
+  zendeskInstance: string,
+  viewId: string,
+  viewName: string,
+  ticketsRequested: number,
+  ticketsAssigned: number,
+  skippedTicketIds: string[]
+): Promise<void> {
+  const now = new Date().toISOString();
+  const subdomain = zendeskInstance === "ZD1" ? ZD1_SUBDOMAIN : ZD2_SUBDOMAIN;
+
+  const ticketLinks = skippedTicketIds
+    .map((id) => `<li><a href="https://${subdomain}.zendesk.com/agent/tickets/${id}">#${id}</a></li>`)
+    .join("\n");
+
+  const html = `
+    <h2>⚠️ Ticket Assignment - Skipped Tickets</h2>
+    <p><strong>Agent:</strong> ${agentName} (${agentEmail})</p>
+    <p><strong>Time:</strong> ${now}</p>
+    <p><strong>Instance:</strong> ${zendeskInstance}</p>
+    <p><strong>View:</strong> ${viewName} (${viewId})</p>
+    <p><strong>Requested:</strong> ${ticketsRequested} | <strong>Assigned:</strong> ${ticketsAssigned}</p>
+    <h3>Skipped Ticket IDs (failed Zendesk validation):</h3>
+    <ul>${ticketLinks}</ul>
+    <br/>
+    <p>These tickets could not be assigned and may need manual investigation in Zendesk.</p>
+  `;
+
+  try {
+    await sendEmail({
+      to: ["malcom@persistbrands.com"],
+      subject: `Ticket Assignment - ${skippedTicketIds.length} Skipped Ticket(s) for ${agentName}`,
+      html,
+    });
+    console.log(`Skipped tickets notification sent for ${skippedTicketIds.length} ticket(s)`);
+  } catch (err) {
+    console.error("Failed to send skipped tickets email:", err);
   }
 }
