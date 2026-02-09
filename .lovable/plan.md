@@ -1,87 +1,56 @@
 
 
-# Fix: Stale Session Detection on LOGOUT (With Overnight Schedule Safety)
+# Fix: Resilient Ticket Assignment (Skip Poison Tickets)
 
-## Problem Recap
+## Problem
 
-1. Toggle button means agents in stale sessions can only click "Log Out" (never "Log In")
-2. Current stale detection only runs on `LOGIN` -- so it never fires
-3. We need to add stale detection to `LOGOUT`, BUT we must not break overnight/midnight-crossing schedules
+A single "poison" ticket (e.g., #1218081) that fails Zendesk validation causes the **entire batch to abort**, meaning the agent gets **zero tickets** assigned even though other tickets in the view are perfectly fine.
 
-## The Overnight Schedule Conflict
+## Changes
 
-A naive "is status_since from a different day?" check would **incorrectly** flag agents with schedules like **8:00 PM - 3:30 AM**:
+### File: `supabase/functions/assign-tickets-on-login/index.ts`
 
-```text
-Agent logs in at 8:00 PM on Feb 8
-At 3:30 AM on Feb 9, they click Logout
-status_since = Feb 8, today = Feb 9 --> "stale" = WRONG!
-```
+**1. Fetch extra tickets as a buffer**
 
-This is a **normal** logout for an overnight shift, NOT a forgotten logout.
+Instead of fetching exactly `ticketCount` tickets, fetch `ticketCount + 5` (buffer) so that if some fail, we still have enough to hit the target.
 
-## Solution: Schedule-Aware Stale Detection
+**2. Skip unassignable tickets instead of aborting**
 
-Before declaring a session stale, check the agent's schedule for the login day. If it crosses midnight, calculate when the shift actually ends on the next day. Only flag as stale if the current time is well past that expected end time.
+Replace the current "abort on first failure" logic with a skip-and-continue approach:
 
 ```text
-LOGOUT clicked, status_since is from a previous day:
-  1. Get agent's schedule for the status_since day
-  2. Parse the schedule range (e.g., "8:00 PM - 3:30 AM")
-  3. If schedule crosses midnight (start > end):
-     - Calculate actual shift end on the NEXT calendar day
-     - Add a buffer (e.g., 30 minutes grace)
-     - If current time is BEFORE shift end + buffer --> NOT stale, normal logout
-     - If current time is AFTER shift end + buffer --> STALE, trigger auto-logout
-  4. If schedule does NOT cross midnight:
-     - Any logout from a previous day is stale --> trigger auto-logout
-  5. If no schedule found (blank/null):
-     - Treat as day off, just process the logout normally without incident
+for each ticket in fetched tickets:
+  if we already assigned enough (== ticketCount): break
+  try to assign ticket (with 1 retry on failure)
+  if success: add to assignedTicketIds
+  if fail after retry: add to skippedTicketIds, continue to next
 ```
 
-## Implementation Steps
+**3. Log skipped/poison tickets**
 
-### Step 1: Add Schedule-Aware Stale Detection to LOGOUT
+Update the `logAssignment` call to include skipped ticket IDs in the error_message field so they are traceable.
 
-**File:** `src/lib/agentDashboardApi.ts`
+**4. Send notification email for skipped tickets**
 
-In `recordStatusEvent`, add a new block before the transition validation:
+After the loop, if any tickets were skipped, send a notification email to `malcom@persistbrands.com` listing the specific problematic ticket IDs, the view, and the agent -- so they can be investigated in Zendesk. This replaces the current "abort and notify" behavior.
 
-```text
-if (eventType === 'LOGOUT' && currentStatus !== 'LOGGED_OUT' && status_since is from a previous day):
-  1. Fetch agent's directory entry (to get schedule)
-  2. Get the schedule for the status_since day (e.g., sat_schedule)
-  3. Parse it with parseScheduleRange()
-  4. If midnight-crossing schedule:
-     - Check if now() is still within the expected shift window
-     - If YES: process as normal logout (not stale)
-     - If NO: create SYSTEM_AUTO_LOGOUT + NO_LOGOUT report, then return
-  5. If normal schedule or no schedule:
-     - Create SYSTEM_AUTO_LOGOUT + NO_LOGOUT report, then return
-```
+**5. Return partial success**
 
-This reuses the existing `parseScheduleRange()` and `isTimeInScheduleRange()` utilities from `timezoneUtils.ts`.
+The function returns success with the actual number of tickets assigned (which may be less than requested if the view ran out of assignable tickets).
 
-### Step 2: Fix Blank Schedule = Day Off in Report Generator
+## Result Summary
 
-**File:** `supabase/functions/generate-agent-reports/index.ts`
+| Scenario | Before | After |
+|----------|--------|-------|
+| 1 poison ticket in batch of 10 | 0 tickets assigned, full abort | 9+ tickets assigned, poison ticket skipped and reported |
+| All tickets fail | 0 assigned, single failure email | 0 assigned, email listing all failed ticket IDs |
+| No failures | 10 assigned | 10 assigned (no change) |
 
-Update the skip logic to also treat a blank/null schedule string as a day off, preventing false incident reports on unscheduled days.
+## Notification Email
 
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/lib/agentDashboardApi.ts` | Add schedule-aware stale session detection for LOGOUT events |
-| `supabase/functions/generate-agent-reports/index.ts` | Treat blank/null schedule as day off |
-
-## Edge Cases Handled
-
-| Scenario | Behavior |
-|----------|----------|
-| 9 AM - 5 PM agent forgets logout, clicks Logout next day | Stale detected, NO_LOGOUT report created |
-| 8 PM - 3:30 AM agent logs out at 3:30 AM | Normal logout (within shift window) |
-| 8 PM - 3:30 AM agent forgets logout, clicks Logout at 2 PM next day | Stale detected (well past shift end) |
-| Day off / blank schedule agent clicks Logout | Processed normally, no incident |
-| Agent with OT schedule crossing midnight | OT schedule checked separately if in OT status |
+Sent to `malcom@persistbrands.com` when any tickets are skipped. Includes:
+- Agent name and email
+- Zendesk instance and view name
+- List of skipped ticket IDs
+- Number successfully assigned vs. requested
 
