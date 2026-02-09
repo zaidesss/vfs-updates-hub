@@ -320,7 +320,13 @@ Deno.serve(async (req) => {
 
       // Get schedule for the day
       const schedule = directory ? getScheduleForDay(directory, dayOfWeek) : null;
-      const parsedSchedule = schedule ? parseScheduleRange(schedule) : null;
+      
+      // Skip if blank/null schedule (treat as implicit day off)
+      if (!schedule || schedule.trim() === '') {
+        continue;
+      }
+      
+      const parsedSchedule = parseScheduleRange(schedule);
 
       // ========================
       // Check for NO_LOGOUT

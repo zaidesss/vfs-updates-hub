@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
+import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes } from '@/lib/timezoneUtils';
 
 export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO' | 'ON_OT';
 export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END' | 'OT_LOGIN' | 'OT_LOGOUT';
@@ -470,6 +471,135 @@ export async function updateProfileStatus(
         
         // Update current status to LOGGED_OUT so LOGIN can proceed
         currentStatus = 'LOGGED_OUT';
+      }
+    }
+
+    // Handle stale session detection on LOGOUT attempt
+    // If agent clicks Logout but status_since is from a previous day, this is a forgotten logout
+    // Must check overnight schedules to avoid false positives
+    if (eventType === 'LOGOUT' && currentStatus !== 'LOGGED_OUT' && currentStatusData?.status_since) {
+      const statusDate = new Date(currentStatusData.status_since);
+      const todayStr = getESTDateFromTimestamp(now.toISOString());
+      const statusDateStr = getESTDateFromTimestamp(currentStatusData.status_since);
+      
+      if (statusDateStr !== todayStr) {
+        // Status is from a previous day - check if this is a normal overnight logout
+        let isStale = true;
+        
+        // Fetch agent's directory to get schedule for the status_since day
+        const { data: agentProfileForSchedule } = await supabase
+          .from('agent_profiles')
+          .select('email')
+          .eq('id', profileId)
+          .single();
+        
+        if (agentProfileForSchedule) {
+          const { data: directoryEntry } = await supabase
+            .from('agent_directory')
+            .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
+            .eq('email', agentProfileForSchedule.email)
+            .maybeSingle();
+          
+          if (directoryEntry) {
+            // Get the schedule for the day the agent logged in (status_since day)
+            const statusDayOfWeek = statusDate.getDay(); // Note: uses UTC day, but close enough for schedule lookup
+            const dayScheduleKeys = ['sun_schedule', 'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule'] as const;
+            const scheduleForStatusDay = directoryEntry[dayScheduleKeys[statusDayOfWeek]] as string | null;
+            
+            const parsed = parseScheduleRangeMinutes(scheduleForStatusDay);
+            
+            if (!parsed) {
+              // No schedule (blank/null/day off) - process as normal logout, no incident
+              isStale = false;
+            } else if (parsed.start > parsed.end) {
+              // Midnight-crossing schedule (e.g., 8:00 PM - 3:30 AM)
+              // Check if we're still within the shift window + 30 min buffer
+              const currentMinutes = getCurrentESTTimeMinutes();
+              const shiftEndWithBuffer = parsed.end + 30; // 30 min grace period
+              
+              // Also check if status_since is from exactly yesterday (not 2+ days ago)
+              const statusDateObj = new Date(statusDateStr);
+              const todayDateObj = new Date(todayStr);
+              const daysDiff = Math.floor((todayDateObj.getTime() - statusDateObj.getTime()) / (1000 * 60 * 60 * 24));
+              
+              if (daysDiff === 1 && currentMinutes <= shiftEndWithBuffer) {
+                // Within overnight shift window - this is a normal logout
+                isStale = false;
+              }
+              // else: more than 1 day old OR past the buffer = stale
+            }
+            // else: normal daytime schedule from a previous day = always stale
+          } else {
+            // No directory entry found - no schedule info, process normally
+            isStale = false;
+          }
+        }
+        
+        if (isStale) {
+          console.log(`Stale session detected on LOGOUT for profile ${profileId}. Auto-logging out from ${statusDateStr}`);
+          
+          // Create auto-logout event at end of the stale day (11:59:59 PM EST)
+          const [year, month, day] = statusDateStr.split('-').map(Number);
+          const nextDayDate = new Date(Date.UTC(year, month - 1, day));
+          nextDayDate.setUTCDate(nextDayDate.getUTCDate() + 1);
+          nextDayDate.setUTCHours(4, 59, 59, 0);
+          const autoLogoutTime = nextDayDate;
+          
+          // Record the auto-logout event
+          await supabase.from('profile_events').insert({
+            profile_id: profileId,
+            event_type: 'LOGOUT',
+            prev_status: currentStatus,
+            new_status: 'LOGGED_OUT',
+            triggered_by: 'SYSTEM_AUTO_LOGOUT',
+            created_at: autoLogoutTime.toISOString(),
+          });
+          
+          // Get agent info for the report
+          const { data: agentProfile } = await supabase
+            .from('agent_profiles')
+            .select('email, full_name')
+            .eq('id', profileId)
+            .single();
+          
+          if (agentProfile) {
+            // Create NO_LOGOUT agent report
+            await supabase.from('agent_reports').insert({
+              agent_email: agentProfile.email.toLowerCase(),
+              agent_name: agentProfile.full_name || agentProfile.email,
+              profile_id: profileId,
+              incident_date: statusDateStr,
+              incident_type: 'NO_LOGOUT',
+              severity: 'medium',
+              details: {
+                lastStatus: currentStatus,
+                lastStatusSince: currentStatusData.status_since,
+                autoLogoutTime: autoLogoutTime.toISOString(),
+              },
+              status: 'open',
+            });
+            
+            // Send Slack notification
+            sendStatusAlertNotification(
+              agentProfile.email,
+              agentProfile.full_name || agentProfile.email,
+              'NO_LOGOUT',
+              { lastStatusDate: statusDateStr, severity: 'medium' }
+            ).catch((err) => console.error('Failed to send NO_LOGOUT alert:', err));
+          }
+          
+          // Update profile_status to LOGGED_OUT and return early
+          // (The agent is already logged out now - they don't need a second logout)
+          await supabase
+            .from('profile_status')
+            .update({
+              current_status: 'LOGGED_OUT',
+              status_since: now.toISOString(),
+            })
+            .eq('profile_id', profileId);
+          
+          return { success: true, newStatus: 'LOGGED_OUT' as ProfileStatus, error: null };
+        }
       }
     }
     
