@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+
 import { fetchDashboardData, formatGapTime, AgentDashboardData, parseLocalDate } from '@/lib/ticketLogsApi';
 import { supabase } from '@/integrations/supabase/client';
 import { Mail, MessageCircle, Phone } from 'lucide-react';
@@ -105,26 +105,26 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="w-full">
+        <div className="overflow-auto max-h-[70vh] data-table-scroll w-full">
           <div className="min-w-max">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 bg-card border border-border px-4 py-3 text-left font-medium min-w-[140px]">
+                <tr className="sticky top-0 z-20">
+                  <th className="sticky left-0 z-30 bg-card border border-border px-4 py-3 text-left font-medium min-w-[140px]">
                     Agent
                   </th>
                   {dates.map((date) => (
                     <th
                       key={date}
                       colSpan={3}
-                      className="border border-border px-2 py-2 text-center font-medium bg-muted/50"
+                      className="border border-border px-2 py-2 text-center font-medium bg-muted"
                     >
                       {format(parseLocalDate(date), 'M/d')}
                     </th>
                   ))}
                 </tr>
-                <tr>
-                  <th className="sticky left-0 z-10 bg-card border border-border px-4 py-2 text-left font-medium">
+                <tr className="sticky top-[37px] z-20">
+                  <th className="sticky left-0 z-30 bg-card border border-border px-4 py-2 text-left font-medium">
                     <span className="text-xs text-muted-foreground">Type</span>
                   </th>
                   {dates.map((date) => (
@@ -154,7 +154,7 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
               <tbody>
                 {data.map((agent) => (
                   <tr key={agent.agent_name} className="hover:bg-muted/30">
-                    <td className="sticky left-0 z-10 bg-card border border-border px-4 py-3 font-medium">
+                    <td className="sticky left-0 z-10 bg-card border border-border px-4 py-3 font-medium shadow-[2px_0_4px_-2px_hsl(var(--border))]">
                       <div className="flex flex-col">
                         <span>{agent.agent_name}</span>
                         {agent.dates[0]?.isActive && (
@@ -200,8 +200,7 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
               </tbody>
             </table>
           </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
 
         <div className="flex items-center gap-6 mt-4 text-xs text-muted-foreground justify-center">
           <div className="flex items-center gap-1.5">
