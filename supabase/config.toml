@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.grade-situational-v2]
 verify_jwt = false
+
+[functions.send-revalida-notification]
+verify_jwt = false

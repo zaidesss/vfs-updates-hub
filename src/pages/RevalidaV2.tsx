@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RevalidaV2Batch,
@@ -94,7 +95,24 @@ export default function RevalidaV2() {
       await publishBatch(targetId);
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', targetId] });
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
-      toast.success('Batch published successfully! Assessment window: 48 hours.');
+      
+      // Send email notification (non-blocking)
+      const batch = queryClient.getQueryData<RevalidaV2Batch>(['revalida-v2-batch', targetId]) 
+        || batches.find(b => b.id === targetId);
+      const batchTitle = batch?.title || 'Revalida Assessment';
+      const testUrl = `${window.location.origin}/team-performance/revalida-v2`;
+      
+      supabase.functions.invoke('send-revalida-notification', {
+        body: { batchTitle, testUrl, version: 'v2' },
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to send revalida notification:', error);
+          toast.warning('Published successfully but email notification failed.');
+        } else {
+          toast.success('Revalida test is live! All users have been notified via email.');
+        }
+      });
+      
     } catch (error) {
       toast.error('Failed to publish batch');
     }
