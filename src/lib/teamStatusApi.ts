@@ -60,6 +60,7 @@ function categorizeByPosition(position: string | null): SupportCategory {
   if (positionLower === 'phone support') return 'phoneSupport';
   if (positionLower === 'chat support') return 'chatSupport';
   if (positionLower === 'email support') return 'emailSupport';
+  if (positionLower === 'logistics') return 'emailSupport';
   if (positionLower === 'hybrid support') return 'hybridSupport';
   if (positionLower === 'team lead') return 'teamLeads';
   if (positionLower === 'technical support') return 'techSupport';
