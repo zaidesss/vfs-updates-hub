@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import {
   fetchBatches,
@@ -219,6 +220,28 @@ export default function Revalida() {
     }
   };
 
+  // Send revalida email notification (non-blocking)
+  const sendRevalidaNotification = async (batchTitle: string, version: 'v1' | 'v2') => {
+    try {
+      const testUrl = `${window.location.origin}/${version === 'v2' ? 'team-performance/revalida-v2' : 'team-performance/revalida'}`;
+      const { error } = await supabase.functions.invoke('send-revalida-notification', {
+        body: { batchTitle, testUrl, version },
+      });
+      if (error) throw error;
+      toast({
+        title: 'Revalida test is live!',
+        description: 'All users have been notified via email.',
+      });
+    } catch (err) {
+      console.error('Failed to send revalida notification:', err);
+      toast({
+        title: 'Published successfully',
+        description: 'But email notification failed to send.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Handle save and publish
   const handleSaveAndPublish = async (title: string, questions: QuestionDraft[]) => {
     if (!user?.email) return;
@@ -247,6 +270,9 @@ export default function Revalida() {
         description: 'The test is now available to agents for 48 hours.',
       });
       
+      // Send email notification (non-blocking)
+      sendRevalidaNotification(title, 'v1');
+      
       setShowQuestionBuilder(false);
       setEditingBatch(null);
       setEditingQuestions([]);
@@ -265,10 +291,20 @@ export default function Revalida() {
     }
 
     await publishBatch(batchId);
+    
+    // Get batch title for notification
+    const batch = batches.find(b => b.id === batchId);
+    
     toast({
       title: 'Batch Published',
       description: 'The test is now available to agents for 48 hours.',
     });
+    
+    // Send email notification (non-blocking)
+    if (batch) {
+      sendRevalidaNotification(batch.title, 'v1');
+    }
+    
     await loadBatches();
   };
 
