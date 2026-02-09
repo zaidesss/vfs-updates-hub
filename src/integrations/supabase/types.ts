@@ -2606,22 +2606,73 @@ export type Database = {
     Views: {
       agent_profiles_team_status: {
         Row: {
+          break_schedule: string | null
+          day_off: string[] | null
           email: string | null
+          employment_status: string | null
+          fri_ot_schedule: string | null
+          fri_schedule: string | null
           full_name: string | null
           id: string | null
+          mon_ot_schedule: string | null
+          mon_schedule: string | null
           position: string | null
+          sat_ot_schedule: string | null
+          sat_schedule: string | null
+          sun_ot_schedule: string | null
+          sun_schedule: string | null
+          thu_ot_schedule: string | null
+          thu_schedule: string | null
+          tue_ot_schedule: string | null
+          tue_schedule: string | null
+          wed_ot_schedule: string | null
+          wed_schedule: string | null
         }
         Insert: {
+          break_schedule?: string | null
+          day_off?: string[] | null
           email?: string | null
+          employment_status?: string | null
+          fri_ot_schedule?: string | null
+          fri_schedule?: string | null
           full_name?: string | null
           id?: string | null
+          mon_ot_schedule?: string | null
+          mon_schedule?: string | null
           position?: string | null
+          sat_ot_schedule?: string | null
+          sat_schedule?: string | null
+          sun_ot_schedule?: string | null
+          sun_schedule?: string | null
+          thu_ot_schedule?: string | null
+          thu_schedule?: string | null
+          tue_ot_schedule?: string | null
+          tue_schedule?: string | null
+          wed_ot_schedule?: string | null
+          wed_schedule?: string | null
         }
         Update: {
+          break_schedule?: string | null
+          day_off?: string[] | null
           email?: string | null
+          employment_status?: string | null
+          fri_ot_schedule?: string | null
+          fri_schedule?: string | null
           full_name?: string | null
           id?: string | null
+          mon_ot_schedule?: string | null
+          mon_schedule?: string | null
           position?: string | null
+          sat_ot_schedule?: string | null
+          sat_schedule?: string | null
+          sun_ot_schedule?: string | null
+          sun_schedule?: string | null
+          thu_ot_schedule?: string | null
+          thu_schedule?: string | null
+          tue_ot_schedule?: string | null
+          tue_schedule?: string | null
+          wed_ot_schedule?: string | null
+          wed_schedule?: string | null
         }
         Relationships: []
       }

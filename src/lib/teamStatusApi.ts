@@ -153,7 +153,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const [profilesResult, statusesResult, outagesResult] = await Promise.all([
       // Fetch all active profiles with per-day schedules
       supabase
-        .from('agent_profiles')
+        .from('agent_profiles_team_status')
         .select(`
           id, 
           email, 
