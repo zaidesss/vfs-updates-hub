@@ -1,64 +1,31 @@
 
 
-# Fix: Team Status Board Visibility for All Users
+# Add Logistics Agents to Team Status Board (Under Email Support)
 
-## Problem
+## What This Does
 
-Regular (non-admin) users can only see **themselves** on the Team Status Board because the data is fetched directly from `agent_profiles`, which has RLS restricting regular users to their own row only.
+Logistics agents are currently falling into the "Other" category on the Team Status Board because the position-to-category mapping doesn't recognize "Logistics". This change maps them under **Email Support** so they appear alongside email support agents, sorted by their schedule as usual.
 
-## Root Cause
+## Implementation
 
-- `teamStatusApi.ts` queries `agent_profiles` for schedule data (shift schedules, OT schedules, day off, break schedule, etc.)
-- RLS on `agent_profiles`: regular users can only SELECT their own row
-- A security-definer view `agent_profiles_team_status` exists that bypasses RLS, but it only exposes `id, email, full_name, position` -- missing all schedule columns
+### File: `src/lib/teamStatusApi.ts`
 
-## Solution
+One line addition in the `categorizeByPosition` function:
 
-Two changes needed:
+```
+Current logic:
+  if (positionLower === 'email support') return 'emailSupport';
 
-### Step 1: Database Migration -- Expand the view
-
-Replace the existing `agent_profiles_team_status` view to include the schedule-related columns needed by the Team Status Board. These are **non-sensitive operational data** (shift times, break times, days off):
-
-```sql
-CREATE OR REPLACE VIEW public.agent_profiles_team_status AS
-SELECT 
-  id, email, full_name, position, employment_status,
-  day_off, break_schedule,
-  mon_schedule, tue_schedule, wed_schedule, thu_schedule, 
-  fri_schedule, sat_schedule, sun_schedule,
-  mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, 
-  fri_ot_schedule, sat_ot_schedule, sun_ot_schedule
-FROM agent_profiles;
+Updated logic:
+  if (positionLower === 'email support') return 'emailSupport';
+  if (positionLower === 'logistics') return 'emailSupport';
 ```
 
-This view has no `security_invoker`, so it acts as a security definer and bypasses agent_profiles RLS -- allowing all authenticated users to see all team members' schedules. No PII (addresses, government IDs, emergency contacts) is exposed.
+That's it -- logistics agents will now appear under the "Email Support" category section on the board, still filtered by their actual schedule window.
 
-### Step 2: Code Change -- Use the view instead of the table
+## No Other Changes Needed
 
-**File: `src/lib/teamStatusApi.ts`**
-
-Change the query from:
-```typescript
-supabase.from('agent_profiles').select(...)
-```
-to:
-```typescript
-supabase.from('agent_profiles_team_status').select(...)
-```
-
-Same columns, same filters -- just reading from the view instead of the base table. This is the only code file that needs to change.
-
-## What Does NOT Change
-
-- `profile_status` table: already has a policy allowing all authenticated users to view all statuses
-- `leave_requests` table: already has a policy allowing all users to view pending/approved requests
-- No changes to the UI components (`StatusCard`, `TeamStatusBoard`, `LiveActivityFeed`)
-- Admin/HR dashboard link visibility still controlled by role checks in the frontend
-
-## Security
-
-- The expanded view still excludes sensitive PII columns (address, government IDs, emergency contacts, bank details, etc.)
-- Only operational schedule data is added
-- Base table RLS remains unchanged -- direct queries to `agent_profiles` still restricted
+- No database changes
+- No UI changes (they use the same StatusCard component)
+- Their position will still display as "Logistics" on their individual card
 
