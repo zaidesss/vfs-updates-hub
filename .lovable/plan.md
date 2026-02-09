@@ -1,64 +1,80 @@
 
-# Auto-Email Notification on Revalida Batch Publish
+
+# Team Scorecard: Show Same-Team Scores for Regular Users
 
 ## What Changes
 
-When an admin publishes a Revalida (v1) or Revalida 2.0 batch, the system automatically emails all users with a styled announcement linking to the test. A small toast notification confirms the email was sent.
+Regular (non-admin) users will see scorecard data for all agents under their same team lead, instead of only their own scores. The Team Lead filter will be auto-filled and locked (not editable) for regular users.
 
-## Email Format
+**Example:** If you're under Jaeran Sanchez, you'll see scores for all agents under Jaeran -- but not agents under Meryl or Juno.
 
-- **Subject**: `Revalida: [Batch Title]` (v1) or `Revalida 2.0: [Batch Title]` (v2)
-- **Header**: Purple gradient with "Revalida Assessment" label (same style as announcements)
-- **Body**: Batch title, message ("A new Revalida assessment is now available. You have 48 hours to complete it."), and a styled "Take the Test" button
-- **Recipients**: All users via BCC (same as announcements)
-- **Sender**: hr@virtualfreelancesolutions.com via Gmail API
+Admins and HR users will continue to see all agents with the Team Lead filter fully customizable, no changes for them.
 
-## After Publish Behavior
+## What the Regular User View Looks Like
 
-- Batch publishes first (existing flow unchanged)
-- Email sends in the background (non-blocking)
-- On success: toast shows "Revalida test is live! All users have been notified via email."
-- On failure: toast warning "Published successfully but email notification failed." -- batch stays published
+- **Team Lead filter**: Shows their team lead name, grayed out / disabled (not a dropdown)
+- **All other filters** (Year, Month, Week, Support Type, Search, Score, Sort): Still fully functional
+- **Admin-only buttons** (Save Scorecard, Save Changes, Refresh Metrics): Already hidden for regular users via `canSave` checks -- no change needed
 
 ## Technical Details
 
-### Step 1: New Edge Function
+### File: `src/pages/TeamScorecard.tsx`
 
-**New file**: `supabase/functions/send-revalida-notification/index.ts`
+**1. Detect user's team lead on load**
 
-- Accepts `{ batchTitle, testUrl, version }` ("v1" or "v2")
-- Requires auth (admin/super_admin/HR only)
-- Fetches all emails from `user_roles` table
-- Builds announcement-style HTML email with "Take the Test" CTA button
-- Sends via `sendGmailEmail` with BCC
-- Subject: `Revalida: {title}` or `Revalida 2.0: {title}` based on version
+Using `AGENT_DIRECTORY` (already imported), look up the current user's email to find their `teamLead` value:
 
-**Register in** `supabase/config.toml`:
+```typescript
+const userTeamLead = useMemo(() => {
+  if (isAdmin) return null; // Admins see everything
+  const email = user?.email?.toLowerCase().trim();
+  if (!email) return null;
+  const info = AGENT_DIRECTORY[email];
+  return info?.teamLead || null;
+}, [user?.email, isAdmin]);
 ```
-[functions.send-revalida-notification]
-verify_jwt = false
+
+**2. Auto-set and lock team lead filter for regular users**
+
+- Initialize `teamLeadFilter` to the user's team lead (if regular user)
+- When `userTeamLead` is set, override the filter value and don't allow changes
+- In the filter UI, render the Team Lead selector as disabled with the auto-filled value
+
+**3. Filter scorecards by team lead (client-side)**
+
+The existing `filteredScorecards` logic already filters by `teamLeadFilter`. Since we auto-set it for regular users, the filtering happens automatically -- no additional code needed for the data filtering itself.
+
+**4. Team Lead filter UI change**
+
+For regular users: replace the dropdown with a disabled select showing their team lead name. For admins: keep the current dropdown unchanged.
+
+```tsx
+{/* Team Lead Filter */}
+<div className="flex flex-col gap-2">
+  <label className="...">Team Lead</label>
+  {userTeamLead ? (
+    <Select value={userTeamLead} disabled>
+      <SelectTrigger className="w-48" disabled>
+        <SelectValue>{userTeamLead}</SelectValue>
+      </SelectTrigger>
+    </Select>
+  ) : (
+    // Existing admin dropdown unchanged
+  )}
+</div>
 ```
 
-### Step 2: Revalida v1 (`src/pages/Revalida.tsx`)
+### No Database Changes
 
-Add notification call in two places:
+All filtering happens client-side using the existing `AGENT_DIRECTORY` lookup and the already-present team lead filter logic. The RPC returns all agents, and the frontend filters to the user's team.
 
-1. `handleSaveAndPublish` -- after `publishBatch(batch.id)` succeeds
-2. `handlePublish` -- after `publishBatch(batchId)` succeeds
+### No RLS Changes
 
-Both will call the edge function and show the appropriate toast on success/failure.
-
-### Step 3: Revalida 2.0 (`src/pages/RevalidaV2.tsx`)
-
-Update `handlePublish` -- after `publishBatch(targetId)` succeeds, fetch the batch title from the query cache and invoke the edge function. Show toast on success/failure.
+The scorecard data access is already controlled by the `SECURITY DEFINER` RPC function. Regular users can call the RPC and receive data -- we just filter what they see in the UI.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/send-revalida-notification/index.ts` | New edge function |
-| `supabase/config.toml` | Register new function |
-| `src/pages/Revalida.tsx` | Add email call after publish (2 spots) |
-| `src/pages/RevalidaV2.tsx` | Add email call after publish (1 spot) |
+| `src/pages/TeamScorecard.tsx` | Add `userTeamLead` memo, auto-set filter, disable Team Lead dropdown for regular users |
 
-No database changes needed.
