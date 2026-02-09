@@ -1,42 +1,64 @@
 
+# Auto-Email Notification on Revalida Batch Publish
 
-# Sticky Headers and Horizontal Scrollbar for Ticket Logs and Master Directory
+## What Changes
 
-## Problem
+When an admin publishes a Revalida (v1) or Revalida 2.0 batch, the system automatically emails all users with a styled announcement linking to the test. A small toast notification confirms the email was sent.
 
-When scrolling down through large tables in the Ticket Logs dashboards (ZD1/ZD2) and Master Directory, the date headers (or column headers) disappear, making it hard to know which column you're looking at. The horizontal scrollbar is also only visible at the very bottom of the table.
+## Email Format
 
-## Solution
+- **Subject**: `Revalida: [Batch Title]` (v1) or `Revalida 2.0: [Batch Title]` (v2)
+- **Header**: Purple gradient with "Revalida Assessment" label (same style as announcements)
+- **Body**: Batch title, message ("A new Revalida assessment is now available. You have 48 hours to complete it."), and a styled "Take the Test" button
+- **Recipients**: All users via BCC (same as announcements)
+- **Sender**: hr@virtualfreelancesolutions.com via Gmail API
 
-### 1. TicketDashboard.tsx (affects both ZD1 and ZD2)
+## After Publish Behavior
 
-- Replace the current `ScrollArea` with a plain `div` that has `overflow: auto` and a **fixed max-height** (e.g., `max-h-[70vh]`), so the table scrolls both vertically and horizontally within a contained box.
-- Make the `thead` rows sticky (`sticky top-0 z-20`) so the date row and channel-type icon row stay visible while scrolling down.
-- The horizontal scrollbar will naturally stick to the bottom of the visible container (since it's overflow-auto on a fixed-height div).
-- The "Agent" column already has `sticky left-0` -- just need to increase z-index on the header intersection cell to `z-30` so it stays above both sticky axes.
+- Batch publishes first (existing flow unchanged)
+- Email sends in the background (non-blocking)
+- On success: toast shows "Revalida test is live! All users have been notified via email."
+- On failure: toast warning "Published successfully but email notification failed." -- batch stays published
 
-### 2. MasterDirectory.tsx
+## Technical Details
 
-- The Master Directory **already has** sticky headers (`sticky top-0 z-20/z-30`) and a fixed-height scrollable container (`height: calc(100vh - 220px)`).
-- The horizontal scrollbar is already sticky by virtue of the fixed-height `overflow-auto` container.
-- **No changes needed** for Master Directory -- it already works correctly.
+### Step 1: New Edge Function
 
-## Technical Details (TicketDashboard.tsx only)
+**New file**: `supabase/functions/send-revalida-notification/index.ts`
 
-**Current structure:**
+- Accepts `{ batchTitle, testUrl, version }` ("v1" or "v2")
+- Requires auth (admin/super_admin/HR only)
+- Fetches all emails from `user_roles` table
+- Builds announcement-style HTML email with "Take the Test" CTA button
+- Sends via `sendGmailEmail` with BCC
+- Subject: `Revalida: {title}` or `Revalida 2.0: {title}` based on version
+
+**Register in** `supabase/config.toml`:
 ```
-ScrollArea > div.min-w-max > table > thead (not sticky)
+[functions.send-revalida-notification]
+verify_jwt = false
 ```
 
-**New structure:**
-```
-div.overflow-auto.max-h-[70vh] > div.min-w-max > table > thead (sticky top-0)
-```
+### Step 2: Revalida v1 (`src/pages/Revalida.tsx`)
 
-Changes:
-1. Replace `ScrollArea` + `ScrollBar` with a plain `div` using `overflow-auto max-h-[70vh] data-table-scroll` (reuses existing styled scrollbar CSS)
-2. Add `sticky top-0 z-20 bg-muted/50` to the first header `tr` (dates row)
-3. Add `sticky top-[37px] z-20` to the second header `tr` (icons row) -- offset by the height of the first row
-4. Update the header corner cells (Agent / Type) to `z-30` so they stay on top at the intersection of sticky left + sticky top
-5. Add proper background colors to all sticky header cells so content doesn't bleed through
+Add notification call in two places:
 
+1. `handleSaveAndPublish` -- after `publishBatch(batch.id)` succeeds
+2. `handlePublish` -- after `publishBatch(batchId)` succeeds
+
+Both will call the edge function and show the appropriate toast on success/failure.
+
+### Step 3: Revalida 2.0 (`src/pages/RevalidaV2.tsx`)
+
+Update `handlePublish` -- after `publishBatch(targetId)` succeeds, fetch the batch title from the query cache and invoke the edge function. Show toast on success/failure.
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `supabase/functions/send-revalida-notification/index.ts` | New edge function |
+| `supabase/config.toml` | Register new function |
+| `src/pages/Revalida.tsx` | Add email call after publish (2 spots) |
+| `src/pages/RevalidaV2.tsx` | Add email call after publish (1 spot) |
+
+No database changes needed.
