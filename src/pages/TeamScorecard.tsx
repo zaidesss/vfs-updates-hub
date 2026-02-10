@@ -15,7 +15,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
 import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, eachWeekOfInterval } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, isSameWeek, addWeeks, differenceInWeeks } from 'date-fns';
+import { ANCHOR_DATE, getLastWeekStart } from '@/lib/weekConstants';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { EditableMetricCell } from '@/components/scorecard/EditableMetricCell';
@@ -74,10 +75,12 @@ export default function TeamScorecard() {
   const { now: portalNow } = usePortalClock();
   const queryClient = useQueryClient();
   
-  // Date selectors — use portal clock for current date
-  const [selectedYear, setSelectedYear] = useState<string>(String(portalNow.getFullYear()));
-  const [selectedMonth, setSelectedMonth] = useState<string>(String(portalNow.getMonth() + 1).padStart(2, '0'));
-  const [selectedWeek, setSelectedWeek] = useState<string>('current'); // 'current' or week start ISO string
+  // Default to last week's date for initial Year/Month/Week
+  const lastWeekStart = useMemo(() => getLastWeekStart(portalNow), [portalNow.toDateString()]);
+  
+  const [selectedYear, setSelectedYear] = useState<string>(String(lastWeekStart.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(lastWeekStart.getMonth() + 1).padStart(2, '0'));
+  const [selectedWeek, setSelectedWeek] = useState<string>(format(lastWeekStart, 'yyyy-MM-dd'));
   
   // Filters
   const [supportType, setSupportType] = useState<string>('all'); // Default to 'all'
@@ -113,60 +116,62 @@ export default function TeamScorecard() {
     const month = parseInt(selectedMonth) - 1;
     const monthStart = startOfMonth(new Date(year, month, 1));
     const monthEnd = endOfMonth(new Date(year, month, 1));
+    const currentWeekStart = startOfWeek(portalNow, { weekStartsOn: 1 });
     
-    // Get all Mondays in the month
-    const weeks = eachWeekOfInterval(
-      { start: monthStart, end: monthEnd },
-      { weekStartsOn: 1 }
-    );
+    // Use anchor-based week generation (same logic as DashboardWeekSelector)
+    // Find first anchor-aligned week that overlaps this month
+    const weeksFromAnchorToMonthStart = differenceInWeeks(monthStart, ANCHOR_DATE);
+    const startIdx = Math.max(0, weeksFromAnchorToMonthStart - 1); // one before to catch overlap
+    const weeksFromAnchorToMonthEnd = differenceInWeeks(monthEnd, ANCHOR_DATE);
+    const endIdx = weeksFromAnchorToMonthEnd + 1; // one after to catch overlap
     
-    return weeks.map((weekStart, idx) => {
-      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-      return {
-        value: format(weekStart, 'yyyy-MM-dd'),
-        label: `Week ${idx + 1} (${format(weekStart, 'MM/dd')} - ${format(weekEnd, 'MM/dd')})`,
-        start: weekStart,
-        end: weekEnd,
-      };
-    }).filter(w => {
-      // Only include weeks where at least part falls in this month
-      const weekStartMonth = w.start.getMonth();
-      const isInMonth = weekStartMonth === month || 
-        (w.start <= monthEnd && w.end >= monthStart);
-      return isInMonth;
-    });
-  }, [selectedYear, selectedMonth]);
+    const weeks: { value: string; label: string; start: Date; end: Date; isCurrent: boolean }[] = [];
+    
+    for (let i = startIdx; i <= endIdx; i++) {
+      const ws = addWeeks(ANCHOR_DATE, i);
+      const we = endOfWeek(ws, { weekStartsOn: 1 });
+      
+      // Only include if week overlaps with the selected month
+      if (ws > monthEnd || we < monthStart) continue;
+      
+      const isCurrent = isSameWeek(ws, currentWeekStart, { weekStartsOn: 1 });
+      
+      weeks.push({
+        value: format(ws, 'yyyy-MM-dd'),
+        label: `${format(ws, 'MM/dd')} - ${format(we, 'MM/dd')}`,
+        start: ws,
+        end: we,
+        isCurrent,
+      });
+    }
+
+    return weeks;
+  }, [selectedYear, selectedMonth, portalNow.toDateString()]);
 
   // Determine the current week to display
   const { weekStart, weekEnd } = useMemo(() => {
-    if (selectedWeek === 'current') {
-      // Find the week containing today (portal EST time), or the last week of the month
-      const matchingWeek = availableWeeks.find(w => 
-        portalNow >= w.start && portalNow <= w.end
-      );
-      if (matchingWeek) {
-        return { weekStart: matchingWeek.start, weekEnd: matchingWeek.end };
-      }
-      // Default to last week in month
-      const lastWeek = availableWeeks[availableWeeks.length - 1];
-      if (lastWeek) {
-        return { weekStart: lastWeek.start, weekEnd: lastWeek.end };
-      }
-    }
-    
     // Find the selected week
     const selected = availableWeeks.find(w => w.value === selectedWeek);
     if (selected) {
       return { weekStart: selected.start, weekEnd: selected.end };
     }
     
-    // Fallback to first week
+    // Fallback: find last week in available weeks, or first
+    const lastWeekDate = getLastWeekStart(portalNow);
+    const lastWeekMatch = availableWeeks.find(w => 
+      isSameWeek(w.start, lastWeekDate, { weekStartsOn: 1 })
+    );
+    if (lastWeekMatch) {
+      return { weekStart: lastWeekMatch.start, weekEnd: lastWeekMatch.end };
+    }
+    
     if (availableWeeks.length > 0) {
-      return { weekStart: availableWeeks[0].start, weekEnd: availableWeeks[0].end };
+      const last = availableWeeks[availableWeeks.length - 1];
+      return { weekStart: last.start, weekEnd: last.end };
     }
     
     // Ultimate fallback
-    const fallbackStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const fallbackStart = startOfWeek(portalNow, { weekStartsOn: 1 });
     return { weekStart: fallbackStart, weekEnd: endOfWeek(fallbackStart, { weekStartsOn: 1 }) };
   }, [selectedWeek, availableWeeks]);
 
@@ -183,14 +188,15 @@ export default function TeamScorecard() {
   // Handle year/month changes
   const handleYearChange = (year: string) => {
     setSelectedYear(year);
-    setSelectedWeek('current');
+    // Reset to last available week when changing year
+    setSelectedWeek('');
     if (!userTeamLead) setTeamLeadFilter('all');
     setEditedMetrics({});
   };
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
-    setSelectedWeek('current');
+    setSelectedWeek('');
     if (!userTeamLead) setTeamLeadFilter('all');
     setEditedMetrics({});
   };
@@ -633,7 +639,7 @@ export default function TeamScorecard() {
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 10 }, (_, i) => {
-                        const year = new Date().getFullYear() - i + 1;
+                        const year = portalNow.getFullYear() - i + 1;
                         return (
                           <SelectItem key={year} value={String(year)}>
                             {year}
@@ -670,8 +676,13 @@ export default function TeamScorecard() {
                     </SelectTrigger>
                     <SelectContent>
                       {availableWeeks.map((week) => (
-                        <SelectItem key={week.value} value={week.value}>
+                        <SelectItem 
+                          key={week.value} 
+                          value={week.value}
+                          className={week.isCurrent ? 'font-medium text-primary' : ''}
+                        >
                           {week.label}
+                          {week.isCurrent && ' ✓'}
                         </SelectItem>
                       ))}
                     </SelectContent>

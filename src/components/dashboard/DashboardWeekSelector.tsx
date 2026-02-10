@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, startOfWeek, endOfWeek, addWeeks, isSameWeek, differenceInWeeks } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
+import { ANCHOR_DATE } from '@/lib/weekConstants';
 
 interface DashboardWeekSelectorProps {
   selectedDate: Date;
@@ -17,8 +18,7 @@ interface WeekOption {
   isCurrent: boolean;
 }
 
-// Anchor date: Monday, February 2, 2026 — normalized via startOfWeek to avoid timezone mismatch
-const ANCHOR_DATE = startOfWeek(new Date(2026, 1, 2), { weekStartsOn: 1 });
+// ANCHOR_DATE is now imported from '@/lib/weekConstants'
 
 export function DashboardWeekSelector({ 
   selectedDate, 
@@ -61,7 +61,11 @@ export function DashboardWeekSelector({
     const found = weekOptions.find(week => 
       isSameWeek(week.startDate, selectedDate, { weekStartsOn: 1 })
     );
-    return found?.id || weekOptions.find(w => w.isCurrent)?.id || weekOptions[weekOptions.length - 1]?.id;
+    if (found) return found.id;
+    // Default to last week (the week before current), not current week
+    const lastWeekStart = addWeeks(startOfWeek(now, { weekStartsOn: 1 }), -1);
+    const lastWeek = weekOptions.find(w => isSameWeek(w.startDate, lastWeekStart, { weekStartsOn: 1 }));
+    return lastWeek?.id || weekOptions[weekOptions.length - 1]?.id;
   }, [selectedDate, weekOptions]);
 
   const handleValueChange = (value: string) => {
