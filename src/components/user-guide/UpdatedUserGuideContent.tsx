@@ -1,8 +1,9 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
+import { TeamStatusSection } from './sections/updated/TeamStatusSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -39,6 +40,15 @@ export function UpdatedUserGuideContent() {
         description="Status buttons, profile events timeline, shift schedule, weekly summary, violations, and day selector"
       >
         <UpdatedDashboardSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="team-status"
+        icon={Users}
+        title="Team Status Board"
+        description="Real-time schedule-based visibility, category groupings, status cards, sorting, and Live Activity Feed"
+      >
+        <TeamStatusSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
