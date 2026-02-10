@@ -1,5 +1,5 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle, PieChart } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
@@ -9,6 +9,7 @@ import { TeamScorecardSection } from './sections/updated/TeamScorecardSection';
 import { AgentReportsSection } from './sections/updated/AgentReportsSection';
 import { RevalidaSection } from './sections/updated/RevalidaSection';
 import { OutageRequestsSection } from './sections/updated/OutageRequestsSection';
+import { OutageStatsSection } from './sections/updated/OutageStatsSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -99,6 +100,15 @@ export function UpdatedUserGuideContent() {
         description="Request form, auto-generated requests, conflict detection, override workflow, statuses, audit log, and statistics"
       >
         <OutageRequestsSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="outage-stats"
+        icon={PieChart}
+        title="Outage Statistics"
+        description="Admin analytics — summary cards, trend charts, reason breakdown, repeat offender tracking with HR policy thresholds, and CSV export"
+      >
+        <OutageStatsSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
