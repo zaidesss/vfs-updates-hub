@@ -4,11 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Printer, Download, User, Shield, FileText, Sparkles, HelpCircle } from 'lucide-react';
+import { Printer, Download, User, Shield, FileText, Sparkles, HelpCircle, BookOpen } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 import { UserGuideContent } from '@/components/user-guide/UserGuideContent';
 import { AdminGuideContent } from '@/components/user-guide/AdminGuideContent';
+import { UpdatedUserGuideContent } from '@/components/user-guide/UpdatedUserGuideContent';
 import { QuickSheetsTab } from '@/components/help-center/QuickSheetsTab';
 import { WhatsNewTab } from '@/components/help-center/WhatsNewTab';
 
@@ -83,6 +84,13 @@ export default function HelpCenter() {
                   <User className="h-4 w-4" />
                   User Guide
                 </TabsTrigger>
+                <TabsTrigger 
+                  value="updated-guide" 
+                  className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Updated User Guide
+                </TabsTrigger>
                 {showAdminGuide && (
                   <TabsTrigger 
                     value="admin" 
@@ -113,6 +121,12 @@ export default function HelpCenter() {
               <TabsContent value="user" className="mt-0">
                 <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
                   <UserGuideContent />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="updated-guide" className="mt-0">
+                <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
+                  <UpdatedUserGuideContent />
                 </div>
               </TabsContent>
 
