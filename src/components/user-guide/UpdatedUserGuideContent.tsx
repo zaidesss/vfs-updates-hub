@@ -1,5 +1,5 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
@@ -7,6 +7,7 @@ import { TeamStatusSection } from './sections/updated/TeamStatusSection';
 import { TicketLogsSection } from './sections/updated/TicketLogsSection';
 import { TeamScorecardSection } from './sections/updated/TeamScorecardSection';
 import { AgentReportsSection } from './sections/updated/AgentReportsSection';
+import { RevalidaSection } from './sections/updated/RevalidaSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -79,6 +80,15 @@ export function UpdatedUserGuideContent() {
         description="Compliance incident tracking, EOD/EOW analytics, escalation to outage requests, and notification alerts"
       >
         <AgentReportsSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="revalida"
+        icon={FileText}
+        title="Revalida"
+        description="Weekly knowledge assessments — V1 manual builder, V2 AI-powered generation, grading, and scorecard integration"
+      >
+        <RevalidaSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
