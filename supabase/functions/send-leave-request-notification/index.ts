@@ -79,11 +79,22 @@ serve(async (req: Request): Promise<Response> => {
       ? `${payload.totalDays} day(s) • ${payload.outageDurationHours} hours total`
       : "";
 
-    const attachmentSection = payload.attachmentUrl
-      ? `<tr>
-          <td style="padding: 8px 0; color: #666;">Attachment:</td>
-          <td style="padding: 8px 0;"><a href="${payload.attachmentUrl}" style="color: #2563eb;">View Attachment</a></td>
-        </tr>`
+    // Parse attachmentUrl - handle both single URL and JSON array format
+    let attachmentUrls: string[] = [];
+    if (payload.attachmentUrl) {
+      const val = payload.attachmentUrl.trim();
+      if (val.startsWith('[')) {
+        try { attachmentUrls = JSON.parse(val).filter((u: string) => u); } catch { attachmentUrls = [val]; }
+      } else {
+        attachmentUrls = [val];
+      }
+    }
+
+    const attachmentSection = attachmentUrls.length > 0
+      ? attachmentUrls.map((url: string, i: number) => `<tr>
+          <td style="padding: 8px 0; color: #666;">${attachmentUrls.length === 1 ? 'Attachment:' : `Attachment ${i + 1}:`}</td>
+          <td style="padding: 8px 0;"><a href="${url}" style="color: #2563eb;">View Attachment</a></td>
+        </tr>`).join('')
       : "";
 
     const refDisplay = payload.referenceNumber ? `<span style="background-color: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px;">${payload.referenceNumber}</span>` : '';

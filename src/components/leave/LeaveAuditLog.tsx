@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { History, Clock, User, ArrowRight, FileText, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { fetchLeaveRequestHistory, LeaveRequestHistory } from '@/lib/leaveRequestApi';
+import { fetchLeaveRequestHistory, LeaveRequestHistory, parseAttachmentUrls } from '@/lib/leaveRequestApi';
 
 interface LeaveAuditLogProps {
   isOpen: boolean;
@@ -38,10 +38,16 @@ function formatChangeKey(key: string): string {
 }
 
 // Format value for display
-function formatValue(value: any): string {
+function formatValue(value: any, key?: string): string {
   if (value === null || value === undefined) return 'Not set';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return String(value);
+  // For attachment_url, show count of attachments
+  if (key === 'attachment_url' && typeof value === 'string') {
+    const urls = parseAttachmentUrls(value);
+    if (urls.length === 0) return 'None';
+    return `${urls.length} file(s)`;
+  }
   return String(value);
 }
 
@@ -115,15 +121,15 @@ export function LeaveAuditLog({
                 <span className="font-medium text-muted-foreground">{formatChangeKey(key)}:</span>
                 {key === 'status' ? (
                   <>
-                    <Badge variant={getStatusBadgeVariant(change.old)}>{formatValue(change.old)}</Badge>
+                    <Badge variant={getStatusBadgeVariant(change.old)}>{formatValue(change.old, key)}</Badge>
                     <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    <Badge variant={getStatusBadgeVariant(change.new)}>{formatValue(change.new)}</Badge>
+                    <Badge variant={getStatusBadgeVariant(change.new)}>{formatValue(change.new, key)}</Badge>
                   </>
                 ) : (
                   <>
-                    <span className="text-muted-foreground line-through">{formatValue(change.old)}</span>
+                    <span className="text-muted-foreground line-through">{formatValue(change.old, key)}</span>
                     <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-foreground">{formatValue(change.new)}</span>
+                    <span className="text-foreground">{formatValue(change.new, key)}</span>
                   </>
                 )}
               </div>
@@ -133,7 +139,7 @@ export function LeaveAuditLog({
             return (
               <div key={key} className="text-sm">
                 <span className="font-medium text-muted-foreground">{formatChangeKey(key)}:</span>{' '}
-                <span>{formatValue(change)}</span>
+                <span>{formatValue(change, key)}</span>
               </div>
             );
           }

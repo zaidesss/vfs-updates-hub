@@ -54,6 +54,28 @@ interface ApiResponse<T> {
   error: string | null;
 }
 
+// Parse attachment_url: handles both old single-URL string and new JSON array format
+export function parseAttachmentUrls(attachmentUrl: string | null | undefined): string[] {
+  if (!attachmentUrl) return [];
+  const trimmed = attachmentUrl.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter((u: unknown) => typeof u === 'string' && u);
+    } catch {
+      // Fall through to treat as single URL
+    }
+  }
+  return [trimmed];
+}
+
+// Serialize attachment URLs array to JSON string for storage
+export function serializeAttachmentUrls(urls: string[]): string | null {
+  if (!urls || urls.length === 0) return null;
+  return JSON.stringify(urls);
+}
+
 // Helper to log changes to history
 async function logLeaveRequestChange(
   leaveRequestId: string,
