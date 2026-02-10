@@ -348,6 +348,13 @@ export default function Revalida() {
     }
   };
 
+  // Handle continue test (resume existing attempt without API call)
+  const handleContinueTest = () => {
+    if (myAttempt && activeBatch) {
+      setShowTestForm(true);
+    }
+  };
+
   // Handle submit test
   const handleSubmitTest = async (answers: { question_id: string; answer_value: string }[]) => {
     if (!myAttempt) return;
@@ -592,6 +599,7 @@ export default function Revalida() {
                     batch={activeBatch}
                     attempt={myAttempt}
                     onStartTest={handleStartTest}
+                    onContinueTest={handleContinueTest}
                     isStarting={isStarting}
                   />
                 )}

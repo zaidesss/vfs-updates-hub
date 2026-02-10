@@ -8,10 +8,11 @@ interface BatchCardProps {
   batch: RevalidaBatch;
   attempt: RevalidaAttempt | null;
   onStartTest: () => void;
+  onContinueTest?: () => void;
   isStarting?: boolean;
 }
 
-export function BatchCard({ batch, attempt, onStartTest, isStarting }: BatchCardProps) {
+export function BatchCard({ batch, attempt, onStartTest, onContinueTest, isStarting }: BatchCardProps) {
   const deadlinePassed = isDeadlinePassed(batch.end_at);
   const timeRemaining = getTimeRemaining(batch.end_at);
 
@@ -118,7 +119,7 @@ export function BatchCard({ batch, attempt, onStartTest, isStarting }: BatchCard
         )}
 
         {canContinueTest && (
-          <Button onClick={onStartTest} className="w-full">
+          <Button onClick={onContinueTest || onStartTest} className="w-full">
             <PlayCircle className="h-4 w-4 mr-2" />
             Continue Test
           </Button>
