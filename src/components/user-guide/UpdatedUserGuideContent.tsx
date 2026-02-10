@@ -1,10 +1,11 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3 } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
 import { TeamStatusSection } from './sections/updated/TeamStatusSection';
 import { TicketLogsSection } from './sections/updated/TicketLogsSection';
+import { TeamScorecardSection } from './sections/updated/TeamScorecardSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -59,6 +60,15 @@ export function UpdatedUserGuideContent() {
         description="Zendesk ticket tracking, average gap analysis, OT productivity, and dashboard UI"
       >
         <TicketLogsSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="team-scorecard"
+        icon={Trophy}
+        title="Team Scorecard"
+        description="Weekly weighted performance scores, metric goals, admin controls, and save/freeze workflow"
+      >
+        <TeamScorecardSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
