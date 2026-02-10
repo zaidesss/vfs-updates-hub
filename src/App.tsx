@@ -8,6 +8,7 @@ import { UpdatesProvider } from "@/context/UpdatesContext";
 import { DemoTourProvider } from "@/context/DemoTourContext";
 import { PageDemoProvider } from "@/context/PageDemoContext";
 import { ProfileCompletionProvider } from "@/context/ProfileCompletionContext";
+import { PortalClockProvider } from "@/context/PortalClockContext";
 import { DemoTourWrapper } from "@/components/DemoTourWrapper";
 import { PageDemoGuideWrapper } from "@/components/PageDemoGuideWrapper";
 import { ProfileCompletionWrapper } from "@/components/ProfileCompletionWrapper";
@@ -351,22 +352,24 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider>
-        <UpdatesProvider>
-          <DemoTourProvider>
-            <PageDemoProvider>
-              <ProfileCompletionProvider>
-                <Toaster />
-                <Sonner />
-                <BrowserRouter>
-                  <AppRoutes />
-                  <DemoTourWrapper />
-                  <PageDemoGuideWrapper />
-                  <ProfileCompletionWrapper />
-                </BrowserRouter>
-              </ProfileCompletionProvider>
-            </PageDemoProvider>
-          </DemoTourProvider>
-        </UpdatesProvider>
+        <PortalClockProvider>
+          <UpdatesProvider>
+            <DemoTourProvider>
+              <PageDemoProvider>
+                <ProfileCompletionProvider>
+                  <Toaster />
+                  <Sonner />
+                  <BrowserRouter>
+                    <AppRoutes />
+                    <DemoTourWrapper />
+                    <PageDemoGuideWrapper />
+                    <ProfileCompletionWrapper />
+                  </BrowserRouter>
+                </ProfileCompletionProvider>
+              </PageDemoProvider>
+            </DemoTourProvider>
+          </UpdatesProvider>
+        </PortalClockProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
