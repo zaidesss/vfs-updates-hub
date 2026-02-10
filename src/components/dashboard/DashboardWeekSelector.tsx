@@ -17,7 +17,7 @@ interface WeekOption {
 }
 
 // Anchor date: Monday, February 3, 2025 (launch week)
-const ANCHOR_DATE = new Date('2025-02-03T05:00:00.000Z'); // Midnight EST = 05:00 UTC
+const ANCHOR_DATE = new Date('2026-02-02T05:00:00.000Z'); // Midnight EST = 05:00 UTC
 
 /**
  * Get current date in EST timezone
