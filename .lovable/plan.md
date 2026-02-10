@@ -1,69 +1,39 @@
 
 
-## Fix Duplicate Webhook Entries + Prevent Future Duplicates
+## OT Backfill for Richelle — Feb 9
 
 ### Summary
-The webhook currently has no deduplication logic, allowing Zendesk to fire multiple events for the same ticket within seconds, inflating counts. There are **52 duplicate entries** across the entire `ticket_logs` table, and we need to both clean them up and prevent future ones.
-
-### Deduplication Rule
-**Same `ticket_id` + `agent_name` + `zd_instance` with timestamps within 120 seconds = duplicate webhook fire.** Keep only the earliest entry.
+Mark Richelle's last 35 tickets (by timestamp in EST) on Feb 9 as `is_ot = true`. This will result in 123 regular + 35 OT = 158 total.
 
 ---
 
-### Step 1 — Clean up existing duplicates (data change)
+### Step 1 — Update the last 35 tickets
 
-Run a DELETE query that removes duplicate rows (keeping the earliest entry per group):
+Run an UPDATE query that sets `is_ot = true` on the 35 most recent ticket entries for Richelle on Feb 9 (EST):
 
 ```sql
-DELETE FROM ticket_logs
+UPDATE ticket_logs
+SET is_ot = true
 WHERE id IN (
-  SELECT id FROM (
-    SELECT id,
-      ROW_NUMBER() OVER (
-        PARTITION BY ticket_id, agent_name, zd_instance,
-          -- Group entries within 120-second windows
-          FLOOR(EXTRACT(EPOCH FROM timestamp) / 120)
-        ORDER BY timestamp ASC
-      ) as rn
-    FROM ticket_logs
-  ) ranked
-  WHERE rn > 1
+  SELECT id
+  FROM ticket_logs
+  WHERE agent_name = 'richelle'
+    AND (timestamp AT TIME ZONE 'America/New_York')::date = '2026-02-09'
+  ORDER BY timestamp DESC
+  LIMIT 35
 );
 ```
 
-This removes ~52 duplicate rows while keeping the first occurrence of each.
+### Step 2 — Verify the result
+
+Confirm the final counts:
+- 123 regular (non-OT) tickets
+- 35 OT tickets
+- 158 total
 
 ---
 
-### Step 2 — Add deduplication check to the webhook
-
-Update `zendesk-ticket-webhook/index.ts` to check for an existing entry with the same `ticket_id` + `agent_name` + `zd_instance` within the last 120 seconds before inserting. If a match is found, skip the insert and return a success response indicating it was a duplicate.
-
-```typescript
-// Before inserting, check for recent duplicate
-const twoMinAgo = new Date(new Date(payload.timestamp).getTime() - 120000).toISOString();
-const { data: existing } = await supabase
-  .from('ticket_logs')
-  .select('id')
-  .eq('ticket_id', payload.ticket_id)
-  .eq('agent_name', payload.agent_name)
-  .eq('zd_instance', payload.zd_instance)
-  .gte('timestamp', twoMinAgo)
-  .limit(1);
-
-if (existing && existing.length > 0) {
-  console.log(`Duplicate webhook detected for ticket ${payload.ticket_id}, skipping`);
-  return new Response(
-    JSON.stringify({ success: true, duplicate: true }),
-    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-```
-
----
-
-### What This Fixes
-- Removes 52 inflated entries from historical data
-- Prevents future duplicate webhook fires from Zendesk from creating extra rows
-- Legitimate re-works of the same ticket (more than 2 minutes apart) will still be logged normally
-
+### Technical Details
+- No code changes needed — this is a data-only update
+- The dashboard already supports OT display (violet progress bar) when `is_ot = true`
+- The scorecard function already separates OT vs regular email counts
