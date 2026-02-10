@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { format, addDays, isSameDay, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { usePortalClock } from '@/context/PortalClockContext';
 
 interface WorkTrackerDaySelectorProps {
   weekStart: Date;
@@ -12,14 +13,6 @@ interface WorkTrackerDaySelectorProps {
 const DAY_ABBREVIATIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /**
- * Get current date in EST timezone
- */
-function getTodayInEST(): Date {
-  const now = new Date();
-  return new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-}
-
-/**
  * Day selector pills for the Work Tracker component
  * Shows Mon-Sun, with future days disabled for current week
  */
@@ -28,14 +21,14 @@ export function WorkTrackerDaySelector({
   selectedDay,
   onDayChange,
 }: WorkTrackerDaySelectorProps) {
-  const todayEST = getTodayInEST();
+  const { now } = usePortalClock();
 
   // Generate all 7 days of the week
   const days = useMemo(() => {
     return DAY_ABBREVIATIONS.map((abbr, index) => {
       const date = addDays(weekStart, index);
       // Day is selectable if it's today or in the past
-      const isSelectable = !isAfter(date, todayEST) || isSameDay(date, todayEST);
+      const isSelectable = !isAfter(date, now) || isSameDay(date, now);
       const isSelected = isSameDay(date, selectedDay);
 
       return {
@@ -46,7 +39,7 @@ export function WorkTrackerDaySelector({
         dateStr: format(date, 'yyyy-MM-dd'),
       };
     });
-  }, [weekStart, selectedDay, todayEST.toDateString()]);
+  }, [weekStart, selectedDay, now.toDateString()]);
 
   return (
     <div className="flex items-center gap-1">

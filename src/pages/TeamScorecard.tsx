@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AGENT_DIRECTORY } from '@/lib/agentDirectory';
+import { usePortalClock } from '@/context/PortalClockContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -70,12 +71,12 @@ type SortOrder = 'name-asc' | 'name-desc' | 'score-desc' | 'score-asc';
 
 export default function TeamScorecard() {
   const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { now: portalNow } = usePortalClock();
   const queryClient = useQueryClient();
   
-  // Date selectors (identical to QA Evaluations)
-  const now = new Date();
-  const [selectedYear, setSelectedYear] = useState<string>(String(now.getFullYear()));
-  const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
+  // Date selectors — use portal clock for current date
+  const [selectedYear, setSelectedYear] = useState<string>(String(portalNow.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(portalNow.getMonth() + 1).padStart(2, '0'));
   const [selectedWeek, setSelectedWeek] = useState<string>('current'); // 'current' or week start ISO string
   
   // Filters
@@ -139,10 +140,9 @@ export default function TeamScorecard() {
   // Determine the current week to display
   const { weekStart, weekEnd } = useMemo(() => {
     if (selectedWeek === 'current') {
-      // Find the week containing today, or the last week of the month
-      const today = new Date();
+      // Find the week containing today (portal EST time), or the last week of the month
       const matchingWeek = availableWeeks.find(w => 
-        today >= w.start && today <= w.end
+        portalNow >= w.start && portalNow <= w.end
       );
       if (matchingWeek) {
         return { weekStart: matchingWeek.start, weekEnd: matchingWeek.end };

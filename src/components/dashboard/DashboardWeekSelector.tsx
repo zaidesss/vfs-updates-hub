@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, startOfWeek, endOfWeek, addWeeks, isSameWeek, differenceInWeeks } from 'date-fns';
+import { usePortalClock } from '@/context/PortalClockContext';
 
 interface DashboardWeekSelectorProps {
   selectedDate: Date;
@@ -16,28 +17,19 @@ interface WeekOption {
   isCurrent: boolean;
 }
 
-// Anchor date: Monday, February 3, 2025 (launch week)
-const ANCHOR_DATE = new Date('2026-02-02T05:00:00.000Z'); // Midnight EST = 05:00 UTC
-
-/**
- * Get current date in EST timezone
- */
-function getTodayInEST(): Date {
-  const now = new Date();
-  return new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-}
+// Anchor date: Monday, February 2, 2026 — normalized via startOfWeek to avoid timezone mismatch
+const ANCHOR_DATE = startOfWeek(new Date(2026, 1, 2), { weekStartsOn: 1 });
 
 export function DashboardWeekSelector({ 
   selectedDate, 
   onDateChange,
   className 
 }: DashboardWeekSelectorProps) {
-  // Get today in EST for consistent week calculations
-  const todayEST = getTodayInEST();
+  const { now } = usePortalClock();
 
   // Generate rolling window of weeks from anchor date
   const weekOptions = useMemo(() => {
-    const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
     const weeksElapsed = differenceInWeeks(currentWeekStart, ANCHOR_DATE);
     
     // Show up to 10 weeks: current week + up to 9 past weeks
@@ -62,7 +54,7 @@ export function DashboardWeekSelector({
     }
 
     return weeks;
-  }, [todayEST.toDateString()]);
+  }, [now.toDateString()]);
 
   // Find the currently selected week's ID
   const selectedWeekId = useMemo(() => {
