@@ -50,6 +50,25 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Check for duplicate webhook fire (same ticket within 120 seconds)
+    const twoMinAgo = new Date(new Date(payload.timestamp).getTime() - 120000).toISOString()
+    const { data: existing } = await supabase
+      .from('ticket_logs')
+      .select('id')
+      .eq('ticket_id', payload.ticket_id)
+      .eq('agent_name', payload.agent_name)
+      .eq('zd_instance', payload.zd_instance)
+      .gte('timestamp', twoMinAgo)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      console.log(`Duplicate webhook detected for ticket ${payload.ticket_id}, skipping`)
+      return new Response(
+        JSON.stringify({ success: true, duplicate: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Look up agent via agent_directory using agent_tag (single query for email)
     const { data: agentData } = await supabase
       .from('agent_directory')
