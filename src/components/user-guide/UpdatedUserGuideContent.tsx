@@ -1,11 +1,12 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
 import { TeamStatusSection } from './sections/updated/TeamStatusSection';
 import { TicketLogsSection } from './sections/updated/TicketLogsSection';
 import { TeamScorecardSection } from './sections/updated/TeamScorecardSection';
+import { AgentReportsSection } from './sections/updated/AgentReportsSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -69,6 +70,15 @@ export function UpdatedUserGuideContent() {
         description="Weekly weighted performance scores, metric goals, admin controls, and save/freeze workflow"
       >
         <TeamScorecardSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="agent-reports"
+        icon={FileWarning}
+        title="Agent Reports"
+        description="Compliance incident tracking, EOD/EOW analytics, escalation to outage requests, and notification alerts"
+      >
+        <AgentReportsSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
