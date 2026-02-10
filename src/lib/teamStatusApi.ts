@@ -100,6 +100,17 @@ const DAY_OFF_MAP: Record<string, string> = {
   sun: 'Sun',
 };
 
+// Previous day mapping for overnight schedule carryover
+const PREV_DAY_MAP: Record<string, string> = {
+  mon: 'sun',
+  tue: 'mon',
+  wed: 'tue',
+  thu: 'wed',
+  fri: 'thu',
+  sat: 'fri',
+  sun: 'sat',
+};
+
 /**
  * Check if an agent is within their scheduled visibility window.
  * This includes regular shift + OT schedule.
@@ -149,6 +160,11 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const scheduleColumn = DAY_SCHEDULE_MAP[currentDayKey];
     const otScheduleColumn = DAY_OT_SCHEDULE_MAP[currentDayKey];
     const dayOffDisplay = DAY_OFF_MAP[currentDayKey];
+    
+    // Previous day columns for overnight carryover
+    const prevDayKey = PREV_DAY_MAP[currentDayKey];
+    const prevScheduleColumn = DAY_SCHEDULE_MAP[prevDayKey];
+    const prevOtScheduleColumn = DAY_OT_SCHEDULE_MAP[prevDayKey];
 
     // Fetch all active agent profiles with schedules (parallel queries)
     const [profilesResult, statusesResult, outagesResult] = await Promise.all([
@@ -217,26 +233,71 @@ export async function fetchScheduledTeamMembers(): Promise<{
     profiles.forEach(profile => {
       const email = (profile.email || '').toLowerCase();
       
-      // Check if today is their day off
-      const dayOffArray = profile.day_off || [];
-      if (dayOffArray.includes(dayOffDisplay)) {
-        return; // Skip - it's their day off
-      }
-      
       // Get today's schedules using dynamic property access
       const todaySchedule = (profile as any)[scheduleColumn] as string | null;
       const todayOtSchedule = (profile as any)[otScheduleColumn] as string | null;
       
-      // Skip if no schedule for today (Day Off in schedule field)
-      if (!todaySchedule || todaySchedule.toLowerCase() === 'day off' || todaySchedule.toLowerCase() === 'off') {
-        return;
+      // Get previous day's schedules for overnight carryover
+      const prevSchedule = (profile as any)[prevScheduleColumn] as string | null;
+      const prevOtSchedule = (profile as any)[prevOtScheduleColumn] as string | null;
+      
+      const dayOffArray = profile.day_off || [];
+      const isTodayDayOff = dayOffArray.includes(dayOffDisplay);
+      
+      // Determine active schedule: today first, then previous day overnight carryover
+      let activeSchedule: string | null = null;
+      let activeOtSchedule: string | null = null;
+      let isFromPrevDay = false;
+      
+      // Step 1: Check today's schedule (only if not day off and has a valid schedule)
+      if (!isTodayDayOff && todaySchedule && todaySchedule.toLowerCase() !== 'day off' && todaySchedule.toLowerCase() !== 'off') {
+        const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
+        if (isScheduled) {
+          activeSchedule = todaySchedule;
+          activeOtSchedule = todayOtSchedule;
+        }
       }
       
-      // Check if within visibility window
-      const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
+      // Step 2: If today didn't match, check previous day's overnight schedule
+      if (!activeSchedule) {
+        // Check previous day's regular schedule for overnight carryover
+        const prevRange = parseScheduleRange(prevSchedule);
+        if (prevRange && prevRange.end < prevRange.start) {
+          // It's an overnight shift — check if we're in the post-midnight portion
+          if (currentTimeMinutes <= prevRange.end) {
+            activeSchedule = prevSchedule;
+            activeOtSchedule = prevOtSchedule;
+            isFromPrevDay = true;
+          }
+        }
+        
+        // Also check previous day's OT schedule for overnight carryover
+        if (!activeSchedule) {
+          const prevOtRange = parseScheduleRange(prevOtSchedule);
+          if (prevOtRange && prevOtRange.end < prevOtRange.start) {
+            if (currentTimeMinutes <= prevOtRange.end) {
+              activeSchedule = prevSchedule || 'Overnight';
+              activeOtSchedule = prevOtSchedule;
+              isFromPrevDay = true;
+            }
+          }
+        }
+        
+        // Check if previous day's regular shift + OT extends overnight
+        // e.g., shift 10PM-4:30AM, OT 4:30AM-5:30AM — at 5AM, regular shift ended but OT is still active
+        if (!activeSchedule && prevRange && prevRange.end < prevRange.start) {
+          const prevOtRange = parseScheduleRange(prevOtSchedule);
+          if (prevOtRange && currentTimeMinutes <= prevOtRange.end) {
+            activeSchedule = prevSchedule;
+            activeOtSchedule = prevOtSchedule;
+            isFromPrevDay = true;
+          }
+        }
+      }
       
-      if (!isScheduled) {
-        return; // Skip - not within their schedule window
+      // Skip if no active schedule found
+      if (!activeSchedule) {
+        return;
       }
       
       // Get status info
@@ -279,12 +340,12 @@ export async function fetchScheduledTeamMembers(): Promise<{
         position: profile.position,
         currentStatus,
         statusSince,
-        shiftSchedule: todaySchedule,
+        shiftSchedule: activeSchedule,
         breakSchedule: profile.break_schedule,
         isScheduledNow: true,
         outageReason,
         hasApprovedOutage,
-        otSchedule: todayOtSchedule,
+        otSchedule: activeOtSchedule,
       });
     });
 
