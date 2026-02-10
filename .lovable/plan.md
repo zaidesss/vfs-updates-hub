@@ -1,44 +1,59 @@
 
 
-## Fix: Overnight Shift Report Generation (NO_LOGOUT / EARLY_OUT)
+## Fix: Overnight Schedule Visibility on Team Status Board
 
-### What Happened
-Jaeran Sanchez has an overnight shift: **4:00 PM - 2:00 AM EST**. He logged out at **1:05 AM EST** (55 minutes early). The system should have flagged this as **EARLY_OUT**, but instead flagged **NO_LOGOUT**.
+### Problem
+Precious Mae Gagarra has a Monday shift of **10:00 PM - 4:30 AM** with OT **4:30 AM - 5:30 AM**. At 1:17 AM EST on Tuesday, she should still be visible on the Team Status Board because her Monday shift extends into Tuesday. However, the board only checks Tuesday's schedule (which is her day off), so she disappears at midnight.
 
 ### Root Cause
-The report generator queries events using EST day boundaries: `05:00:00Z to 04:59:59Z next day`. For Jaeran's Feb 9 shift:
-- His LOGIN at 4:04 PM EST (21:04 UTC on Feb 9) falls **inside** the window
-- His LOGOUT at 1:05 AM EST (06:05 UTC on Feb 10) falls **outside** the window (past 04:59:59Z)
+In `src/lib/teamStatusApi.ts`, the `fetchScheduledTeamMembers` function:
+1. Gets the current EST day key (e.g., "tue")
+2. Checks only that day's schedule column (`tue_schedule`)
+3. Skips agents whose current day is a day off
 
-So the system saw a login with no logout and generated a NO_LOGOUT report. An hour later, the EARLY_OUT was also generated separately (possibly by a secondary trigger), resulting in **two conflicting reports**.
+It never looks back at the **previous day's** overnight schedule that may still be active.
 
 ### The Fix
-**File:** `supabase/functions/generate-agent-reports/index.ts`
 
-**Change 1 -- Extend the event query window for overnight shifts**
+**File:** `src/lib/teamStatusApi.ts`
 
-Expand the event query end boundary from `04:59:59Z` (midnight EST) to `09:59:59Z` (5:00 AM EST next day). This 5-hour extension captures logout events for shifts ending up to 5:00 AM EST, which covers all realistic overnight schedules. This only affects the event fetch -- all date-based report attribution still uses the original target date.
+**Change 1 -- Also check previous day's overnight schedule**
+
+After the existing logic that checks today's schedule, add a second pass for agents who were skipped (day off or no schedule today). For these agents:
+- Look up the previous day's schedule column (e.g., if today is Tue, check `mon_schedule` and `mon_ot_schedule`)
+- Parse those schedules and check if they are overnight (end < start)
+- If overnight, check if the current EST time falls within the post-midnight portion (i.e., currentTimeMinutes <= endMinutes)
+- If yes, include the agent on the board with the previous day's schedule info
+
+**Change 2 -- Skip day-off check for previous-day carryover**
+
+The day-off array check currently causes an early return. This needs to be restructured so that even if today is a day off, the previous day's overnight schedule can still make the agent visible.
+
+### Technical Detail
 
 ```text
-Current:  endOfDayEST = nextDayT04:59:59.999Z  (midnight EST)
-Fixed:    endOfDayEST = nextDayT09:59:59.999Z  (5:00 AM EST)
+Current flow:
+  1. Get today's day key (tue)
+  2. If today in day_off array -> SKIP
+  3. If today's schedule is null/off -> SKIP
+  4. Check if current time is in today's schedule window
+
+New flow:
+  1. Get today's day key (tue) AND previous day key (mon)
+  2. Check today's schedule first (same as before)
+  3. If today didn't match (day off, no schedule, or outside window):
+     a. Get previous day's schedule + OT schedule
+     b. If either is overnight (end < start), check if current time
+        falls in the post-midnight portion (currentMinutes <= endMinutes)
+     c. If yes -> include agent, using previous day's schedule as display
 ```
 
-**Change 2 -- Make NO_LOGOUT detection overnight-aware**
+### Previous Day Key Mapping
+A simple helper to get the previous day:
+- mon -> sun, tue -> mon, wed -> tue, etc.
 
-Before flagging NO_LOGOUT, check if the shift is overnight (endMinutes < startMinutes). If so, look for logout events that occurred after midnight EST (in the extended window). If a logout exists in that post-midnight period, skip the NO_LOGOUT flag -- the EARLY_OUT or normal logout logic will handle it instead.
+### Scope
+- Only `src/lib/teamStatusApi.ts` needs changes
+- No database or edge function changes required
+- The `isTimeInScheduleRange` utility in `timezoneUtils.ts` already handles midnight-crossing correctly, but we need to call it with the previous day's schedule data
 
-**Change 3 -- Make EARLY_OUT comparison overnight-aware**
-
-The current comparison `logoutMinutes < parsedSchedule.endMinutes` works correctly for overnight shifts by coincidence (1:05 AM = 65 min < 2:00 AM = 120 min). However, we should add an explicit overnight guard: for overnight shifts, only flag EARLY_OUT if the logout is after midnight (i.e., logoutMinutes < endMinutes and logoutMinutes < startMinutes), to avoid false positives where a logout during the first half of the shift (before midnight) is incorrectly compared.
-
-### Other Considerations Already Handled
-- **Existing wrong reports**: Delete Jaeran's false NO_LOGOUT report (incident from Feb 9) from the database. The EARLY_OUT report already exists and is correct.
-- **Other overnight agents**: The same fix applies to all agents with overnight schedules going forward.
-- **TIME_NOT_MET calculation**: Uses Upwork hours or portal hours, not affected by the event window since those are stored separately.
-- **LATE_LOGIN**: Unaffected -- login always happens in the first half of the shift (before midnight), within the original window.
-
-### Steps (one at a time)
-1. Update the edge function with overnight-aware logic (all 3 changes)
-2. Deploy and verify
-3. Delete Jaeran's false NO_LOGOUT report from the database
