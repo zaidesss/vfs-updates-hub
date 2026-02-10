@@ -1,6 +1,7 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield } from 'lucide-react';
+import { Shield, User } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
+import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -17,9 +18,17 @@ export function UpdatedUserGuideContent() {
         icon={Shield}
         title="User Roles & Permissions"
         description="Role definitions, feature access matrix, restrictions, and escalation rules"
-        defaultOpen
       >
         <UpdatedRolesSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="my-bio"
+        icon={User}
+        title="My Bio (Profile)"
+        description="Personal info, locked work configuration fields, compensation, and how values feed automations"
+      >
+        <UpdatedMyBioSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
