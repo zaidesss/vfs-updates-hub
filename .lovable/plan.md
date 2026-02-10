@@ -1,28 +1,34 @@
 
 
-# Uniform Anchor-Based Week Selection + Default to Last Week
+# Fix Year Selector to Start from 2026
 
-## Status: ✅ COMPLETE
+## Problem
+The Year dropdown on the Team Scorecard generates 10 years going backwards from the current year (line 641-646), showing 2025, 2024, etc. The portal was created in 2026, so years before 2026 are irrelevant.
 
-## What Was Done
+## Solution
+Replace the backward-looking year generation with a range starting from **2026** (the portal's inception year) up to the current year. This means:
 
-### 1. ✅ Created shared `src/lib/weekConstants.ts`
-- Exports `ANCHOR_DATE` (Monday, Feb 2, 2026 normalized via `startOfWeek`)
-- Exports `getLastWeekStart(now)` helper for portal-wide last-week default
+- If the current year is 2026, only "2026" appears
+- If the current year is 2027, "2026" and "2027" appear
+- And so on
 
-### 2. ✅ Updated `DashboardWeekSelector`
-- Imports `ANCHOR_DATE` from shared constant (removed local definition)
-- Default selection changed from current week to **last week**
-- Current week still shows with ✓ checkmark
+## Technical Change
 
-### 3. ✅ Refactored `TeamScorecard` week generation
-- Replaced `eachWeekOfInterval` with anchor-based `addWeeks` from `ANCHOR_DATE`
-- Weeks filtered to overlap with selected Year/Month
-- Current week marked with ✓ and `text-primary` styling
-- Default Year/Month/Week initialized from **last week's** date
-- Removed `'current'` sentinel value — uses actual date string
-- Year dropdown uses `portalNow` instead of `new Date()`
+**File: `src/pages/TeamScorecard.tsx` (lines 641-646)**
 
-### 4. ✅ Both selectors produce identical week boundaries
-- All weeks are integer multiples of 7 days from `ANCHOR_DATE`
-- Dashboard and Scorecard are guaranteed to align
+Replace:
+```typescript
+{Array.from({ length: 10 }, (_, i) => {
+  const year = portalNow.getFullYear() - i + 1;
+```
+
+With:
+```typescript
+{Array.from(
+  { length: portalNow.getFullYear() - 2026 + 1 },
+  (_, i) => 2026 + i
+).reverse().map((year) => (
+```
+
+This generates years from 2026 to the current year (in descending order so the latest year appears first). Optionally, the constant `2026` can be added to `weekConstants.ts` as `PORTAL_START_YEAR` for reuse.
+
