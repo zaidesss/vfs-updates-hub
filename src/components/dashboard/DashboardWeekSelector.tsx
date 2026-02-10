@@ -62,10 +62,10 @@ export function DashboardWeekSelector({
       isSameWeek(week.startDate, selectedDate, { weekStartsOn: 1 })
     );
     if (found) return found.id;
-    // Default to last week (the week before current), not current week
-    const lastWeekStart = addWeeks(startOfWeek(now, { weekStartsOn: 1 }), -1);
-    const lastWeek = weekOptions.find(w => isSameWeek(w.startDate, lastWeekStart, { weekStartsOn: 1 }));
-    return lastWeek?.id || weekOptions[weekOptions.length - 1]?.id;
+    // Default to current week
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const currentWeek = weekOptions.find(w => isSameWeek(w.startDate, currentWeekStart, { weekStartsOn: 1 }));
+    return currentWeek?.id || weekOptions[weekOptions.length - 1]?.id;
   }, [selectedDate, weekOptions]);
 
   const handleValueChange = (value: string) => {

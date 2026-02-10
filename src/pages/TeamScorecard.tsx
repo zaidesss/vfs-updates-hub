@@ -85,12 +85,12 @@ export default function TeamScorecard() {
   const { now: portalNow } = usePortalClock();
   const queryClient = useQueryClient();
   
-  // Default to last week's date for initial Year/Month/Week
-  const lastWeekStart = useMemo(() => getLastWeekStart(portalNow), [portalNow.toDateString()]);
+  // Default to current week for initial Year/Month/Week
+  const currentWeekStart = useMemo(() => startOfWeek(portalNow, { weekStartsOn: 1 }), [portalNow.toDateString()]);
   
-  const [selectedYear, setSelectedYear] = useState<string>(String(lastWeekStart.getFullYear()));
-  const [selectedMonth, setSelectedMonth] = useState<string>(String(lastWeekStart.getMonth() + 1).padStart(2, '0'));
-  const [selectedWeek, setSelectedWeek] = useState<string>(format(lastWeekStart, 'yyyy-MM-dd'));
+  const [selectedYear, setSelectedYear] = useState<string>(String(currentWeekStart.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(currentWeekStart.getMonth() + 1).padStart(2, '0'));
+  const [selectedWeek, setSelectedWeek] = useState<string>(format(currentWeekStart, 'yyyy-MM-dd'));
   
   // Filters
   const [supportType, setSupportType] = useState<string>('all'); // Default to 'all'
