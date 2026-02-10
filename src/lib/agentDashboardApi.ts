@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
-import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes } from '@/lib/timezoneUtils';
+import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
 
 export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO' | 'ON_OT';
 export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END' | 'OT_LOGIN' | 'OT_LOGOUT';
@@ -1502,7 +1502,8 @@ export function calculateAttendanceForWeek(
   ];
 
   const dayOffArray = profile.day_off || [];
-  const today = new Date();
+  const todayEST = getTodayEST();
+  const today = parseDateStringLocal(todayEST);
   today.setHours(0, 0, 0, 0);
 
   // Parse allowed break minutes from profile
@@ -1531,11 +1532,11 @@ export function calculateAttendanceForWeek(
       // Find OT events for this date
       const otLoginEvent = allEvents.find(e => 
         e.event_type === 'OT_LOGIN' && 
-        format(parseISO(e.created_at), 'yyyy-MM-dd') === dateStr
+        getESTDateFromTimestamp(e.created_at) === dateStr
       );
       const otLogoutEvent = allEvents.find(e => 
         e.event_type === 'OT_LOGOUT' && 
-        format(parseISO(e.created_at), 'yyyy-MM-dd') === dateStr
+        getESTDateFromTimestamp(e.created_at) === dateStr
       );
       
       const otLoginTime = otLoginEvent ? formatTimeInEST(parseISO(otLoginEvent.created_at)) : undefined;
@@ -1629,13 +1630,13 @@ export function calculateAttendanceForWeek(
 
     // 4. Find login event for this date
     const loginForDay = statusEvents.find((event) => {
-      const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+      const eventDate = getESTDateFromTimestamp(event.created_at);
       return eventDate === dateStr && event.event_type === 'LOGIN';
     });
 
     // 5. Find logout event for this date
     const logoutForDay = statusEvents.find((event) => {
-      const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+      const eventDate = getESTDateFromTimestamp(event.created_at);
       return eventDate === dateStr && event.event_type === 'LOGOUT';
     });
 
