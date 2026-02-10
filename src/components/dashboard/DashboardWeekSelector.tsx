@@ -40,9 +40,10 @@ export function DashboardWeekSelector({
     const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
     const weeksElapsed = differenceInWeeks(currentWeekStart, ANCHOR_DATE);
     
-    // Calculate start offset (max 10 weeks shown, hide older ones)
-    const startOffset = Math.max(0, weeksElapsed - 9);
-    const numWeeks = Math.min(weeksElapsed + 1, 10);
+    // Show up to 10 weeks: current week + up to 9 past weeks
+    const totalWeeks = Math.min(weeksElapsed + 1, 10);
+    const startOffset = Math.max(0, weeksElapsed + 1 - totalWeeks);
+    const numWeeks = totalWeeks;
     
     const weeks: WeekOption[] = [];
 
