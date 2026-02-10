@@ -168,15 +168,23 @@ function calculateDurations(startDate: string, endDate: string, startTime: strin
   const dailyMinutes = endMinutes - startMinutes;
   const dailyHours = dailyMinutes / 60;
   
-  // Calculate total days
+  // Calculate total days (calendar days)
   const daysDiff = Math.floor((ed.getTime() - sd.getTime()) / (24 * 60 * 60 * 1000)) + 1;
   
+  // Detect overnight shift: end time is earlier than start time (e.g., 20:00-03:30)
+  const isOvernight = (endH * 60 + endM) <= (startH * 60 + startM);
+  
+  // For overnight shifts, the date span inherently includes an extra day per shift,
+  // so subtract 1 to get the actual number of shift repetitions.
+  // e.g., Feb 26 20:00 to Feb 27 03:30 = daysDiff 2, but only 1 shift = 7.5h
+  const effectiveDays = isOvernight ? Math.max(daysDiff - 1, 1) : daysDiff;
+  
   // Total duration
-  const totalHours = dailyHours * daysDiff;
+  const totalHours = dailyHours * effectiveDays;
   
   return {
     outage_duration_hours: Number(totalHours.toFixed(2)),
-    total_days: daysDiff,
+    total_days: effectiveDays,
     daily_hours: Number(dailyHours.toFixed(2))
   };
 }
