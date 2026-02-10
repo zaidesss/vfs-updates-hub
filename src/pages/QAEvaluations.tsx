@@ -86,7 +86,10 @@ export default function QAEvaluations() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState<string>(String(now.getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
-  const [selectedWeek, setSelectedWeek] = useState<string>('all'); // 'all' or week start ISO string
+  const [selectedWeek, setSelectedWeek] = useState<string>(() => {
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    return format(weekStart, 'yyyy-MM-dd');
+  });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<QAEvaluation | null>(null);
