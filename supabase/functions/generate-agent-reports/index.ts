@@ -228,7 +228,8 @@ Deno.serve(async (req) => {
     const nextDay = new Date(targetDateStr);
     nextDay.setDate(nextDay.getDate() + 1);
     const nextDayStr = nextDay.toISOString().split('T')[0];
-    const endOfDayEST = `${nextDayStr}T04:59:59.999Z`;
+    // Extended to 5:00 AM EST (09:59:59 UTC) to capture overnight shift logouts
+    const endOfDayEST = `${nextDayStr}T09:59:59.999Z`;
 
     const { data: allEvents } = await supabase
       .from('profile_events')
@@ -336,40 +337,50 @@ Deno.serve(async (req) => {
       const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
       
       if (loginEvents.length > 0 && logoutEvents.length === 0 && parsedSchedule) {
-        // Calculate how many hours past shift end (using the target date's scheduled end time)
-        // Since this runs the next day for yesterday, we check if 3+ hours passed after shift end
-        const lastLogin = new Date(loginEvents[loginEvents.length - 1].created_at);
-        const lastLoginHour = parseInt(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          hour: '2-digit',
-          hour12: false,
-        }).format(lastLogin));
-        const lastLoginMinute = parseInt(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          minute: '2-digit',
-        }).format(lastLogin));
-        const lastLoginMinutes = lastLoginHour * 60 + lastLoginMinute;
+        // Check if this is an overnight shift (end time < start time, e.g., 4PM-2AM)
+        const isOvernightShift = parsedSchedule.endMinutes < parsedSchedule.startMinutes;
         
-        // If logged in and shift should have ended, calculate hours past
-        // For end-of-day report, anyone still logged in after their shift end is a violation
-        // The 3+ hour threshold is more relevant for real-time detection
-        // For daily reports, if no logout exists and they had a schedule, it's a NO_LOGOUT
-        const reportKey = `${profile.email.toLowerCase()}_NO_LOGOUT`;
-        if (!existingReportSet.has(reportKey)) {
-          reportsToCreate.push({
-            agent_email: profile.email.toLowerCase(),
-            agent_name: agentName,
-            profile_id: profile.id,
-            incident_date: targetDateStr,
-            incident_type: 'NO_LOGOUT',
-            severity: 'high', // Always high for NO_LOGOUT
-            details: {
-              loginTime: loginEvents[0].created_at,
-              scheduledEnd: parsedSchedule.endMinutes,
-              message: 'Agent logged in but did not log out',
-            },
-            status: 'open',
+        let skipNoLogout = false;
+        if (isOvernightShift) {
+          // For overnight shifts, check if there's a logout event in the extended window
+          // that falls after midnight EST (i.e., in the next calendar day's early hours)
+          // These events are in allEvents because we extended endOfDayEST to 09:59:59Z
+          const allProfileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
+          const postMidnightLogouts = allProfileEvents.filter(e => {
+            if (e.event_type !== 'LOGOUT') return false;
+            const eventDate = new Date(e.created_at);
+            const eventHourEST = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/New_York',
+              hour: '2-digit',
+              hour12: false,
+            }).format(eventDate));
+            // Post-midnight means hour 0-4 (12:00 AM - 4:59 AM EST)
+            return eventHourEST < 5;
           });
+          if (postMidnightLogouts.length > 0) {
+            skipNoLogout = true;
+            console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift with post-midnight logout found`);
+          }
+        }
+        
+        if (!skipNoLogout) {
+          const reportKey = `${profile.email.toLowerCase()}_NO_LOGOUT`;
+          if (!existingReportSet.has(reportKey)) {
+            reportsToCreate.push({
+              agent_email: profile.email.toLowerCase(),
+              agent_name: agentName,
+              profile_id: profile.id,
+              incident_date: targetDateStr,
+              incident_type: 'NO_LOGOUT',
+              severity: 'high',
+              details: {
+                loginTime: loginEvents[0].created_at,
+                scheduledEnd: parsedSchedule.endMinutes,
+                message: 'Agent logged in but did not log out',
+              },
+              status: 'open',
+            });
+          }
         }
       }
 
@@ -515,7 +526,26 @@ Deno.serve(async (req) => {
         }).format(logoutTime));
         const logoutMinutes = logoutHour * 60 + logoutMinute;
 
-        if (logoutMinutes < parsedSchedule.endMinutes) {
+        const isOvernightShift = parsedSchedule.endMinutes < parsedSchedule.startMinutes;
+        
+        let isEarlyOut = false;
+        if (isOvernightShift) {
+          // For overnight shifts: only flag EARLY_OUT if logout is after midnight
+          // (logoutMinutes < startMinutes means it's in the early morning hours)
+          // AND the logout is before the scheduled end
+          if (logoutMinutes < parsedSchedule.startMinutes && logoutMinutes < parsedSchedule.endMinutes) {
+            isEarlyOut = true;
+          }
+          // If logout is before midnight (during first half of shift), that's an abnormal
+          // situation handled differently -- not a simple EARLY_OUT comparison
+        } else {
+          // Normal daytime shift: straightforward comparison
+          if (logoutMinutes < parsedSchedule.endMinutes) {
+            isEarlyOut = true;
+          }
+        }
+
+        if (isEarlyOut) {
           const reportKey = `${profile.email.toLowerCase()}_EARLY_OUT`;
           if (!existingReportSet.has(reportKey)) {
             const earlyByMinutes = parsedSchedule.endMinutes - logoutMinutes;
