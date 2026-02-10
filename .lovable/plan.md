@@ -1,43 +1,29 @@
 
 
-# Fix Week Selector: Progressive Rolling Window
+# Fix Upwork Token Refresh Automation
 
-## Problem
+## Root Cause
 
-The week selector anchor is set to February 3, 2025 (nearly a year ago), causing it to always show 10 weeks of old history. The user wants weeks to build up progressively from a recent starting point.
+The `refresh-upwork-tokens` backend function is missing its JWT verification bypass in the configuration. The scheduled job sends requests with the standard key, but the function rejects them silently because JWT verification is enabled by default. This means the proactive token refresh **never actually ran**, and the tokens expired naturally on Feb 9th.
 
-## Solution
+## Fix (1 step, 1 file)
 
-Update the `ANCHOR_DATE` in `DashboardWeekSelector.tsx` to last week (February 2, 2026 -- Monday of last week). This way:
+### Step 1: Add JWT bypass for refresh-upwork-tokens
 
-- **Right now (Feb 10, 2026)**: Shows 2 weeks (02/02 - 02/08 and 02/09 - 02/15)
-- **Next week**: Shows 3 weeks
-- **Keeps growing** until it hits the 10-week cap, then the oldest week drops off
+Add the missing configuration entry to `supabase/config.toml`:
 
-## Change
-
-### File: `src/components/dashboard/DashboardWeekSelector.tsx`
-
-**Line 20**: Change the anchor date:
-
-```
-// Before
-const ANCHOR_DATE = new Date('2025-02-03T05:00:00.000Z');
-
-// After
-const ANCHOR_DATE = new Date('2026-02-02T05:00:00.000Z');
+```toml
+[functions.refresh-upwork-tokens]
+verify_jwt = false
 ```
 
-This is Monday, February 2, 2026 at midnight EST (05:00 UTC), which is the start of last week.
+This allows the scheduled job to successfully invoke the function every 6 hours.
 
-## Result
+### Step 2: Manual Re-authorization (you need to do this)
 
-| Week | What the selector shows |
-|------|------------------------|
-| Current (Feb 10) | 02/02 - 02/08, 02/09 - 02/15 |
-| Feb 17 | 02/02 - 02/08, 02/09 - 02/15, 02/16 - 02/22 |
-| ... | Grows by 1 each week |
-| After 10 weeks | Oldest week drops off, always 10 max |
+Since the current refresh token is expired/invalid, the automation cannot recover on its own. You need to visit the Upwork OAuth callback URL once to get a fresh token pair. After that, the now-working cron job will keep them alive automatically.
 
-Only 1 line changes in 1 file.
+## Why This Happened
+
+The function was created but its config entry was never added to the configuration file, so every scheduled call was silently rejected. The function code and cron job were correct -- it was just this one missing config line.
 
