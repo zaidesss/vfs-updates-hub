@@ -1,46 +1,57 @@
 
 
-# Fix Timezone-Sensitive Event Date Matching in Dashboard
+# Updated User Guide — New Help Center Tab (Step-by-Step Build)
 
-## Problem
-Jaeran's LOGIN event is stored as `2026-02-09T21:04:19Z` (4:04 PM EST Monday). However, the code that matches events to days uses `format(parseISO(event.created_at), 'yyyy-MM-dd')`, which formats using the **browser's local timezone**. For users in timezones ahead of UTC (e.g., Philippines at UTC+8), this timestamp becomes `2026-02-10` (Tuesday), causing Monday to show "Absent" and Tuesday to show "Present (4:04 PM)".
+## Overview
 
-## Root Cause
-In `src/lib/agentDashboardApi.ts`, the `buildWeeklyAttendance` function matches events to days using local timezone formatting instead of EST. Three locations need fixing:
+Create a new "Updated User Guide" tab in the Help Center with extremely detailed, step-by-step documentation for each portal feature. Each section will include image placeholders where you can upload screenshots later. We will build this **one section at a time** so you can review each before moving on.
 
-1. **Line 1505-1506**: `today` is set using `new Date()` (local timezone) instead of EST
-2. **Line 1632**: LOGIN event date matching uses `format(parseISO(...), 'yyyy-MM-dd')` (local timezone)
-3. **Line 1638**: LOGOUT event date matching — same issue
-4. **Line 1534**: OT_LOGIN event date matching — same issue  
-5. **Line 1538**: OT_LOGOUT event date matching — same issue
+## Storage Setup (for guide images)
 
-## Fix
+Create a new public storage bucket called `guide-images` so you can upload screenshots for the guide. Images will be referenced by URL in the guide components.
 
-### File: `src/lib/agentDashboardApi.ts`
+## New Tab Setup
 
-Create a helper function to format a UTC timestamp's date portion in EST:
+Add a new tab titled **"Updated User Guide"** to the Help Center page (between "User Guide" and "Admin Guide"), with its own icon and content component.
 
-```text
-function formatDateInEST(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
-```
+## Build Order (one at a time)
 
-Then update:
+We will build each section in this order, pausing after each for your review:
 
-1. **`today` variable** (line 1505-1506): Use EST-based "today" derived from the portal clock pattern instead of raw `new Date()`
-2. **LOGIN matching** (line 1632): Replace `format(parseISO(event.created_at), 'yyyy-MM-dd')` with `formatDateInEST(parseISO(event.created_at))`
-3. **LOGOUT matching** (line 1638): Same replacement
-4. **OT_LOGIN matching** (line 1534): Same replacement
-5. **OT_LOGOUT matching** (line 1538): Same replacement
+1. **Step 1: Tab structure + Roles section** (detailed role definitions, feature access matrix with checkmarks, restrictions, limitations, escalation rules)
+2. **Step 2: My Bio (Profile)** section (locked fields for users, which values feed automations like quotas/schedules/views, admin-only fields, change request flow)
+3. **Step 3: Dashboard** section (all status buttons: Login/Logout, Break, Coaching, Device Restart, Bio Break, OT; profile events timeline; weekly summary violations like Late Login, Early Out, No Logout, Break Overuse)
+4. **Step 4: Team Status Board** section (real-time status categories, support type groupings, what each card shows)
+5. **Step 5: Ticket Logs** section (ZD1 vs ZD2 instances, daily ticket counts, gap analysis, quota comparison)
+6. **Step 6: Agent Reports** section (automated incident types, severity levels, status flow, escalation process)
+7. **Step 7: Scorecard** section (weekly metrics, components, how scores are calculated, week selector behavior)
+8. **Step 8: Revalida** section (batches, question types, time limits, grading flow, attempt results)
 
-This ensures all event-to-day matching uses EST regardless of the user's browser timezone.
+## Technical Details
 
-## No Database Changes Needed
-The LOGIN event data (`2026-02-09T21:04:19Z`) is correct — it corresponds to 4:04 PM EST on Monday Feb 9. The issue is purely a frontend timezone conversion bug.
+### Database Migration
+- Create a `guide-images` storage bucket (public) with RLS policies allowing authenticated users to read and admins to upload.
+
+### New Files
+- `src/components/user-guide/UpdatedUserGuideContent.tsx` — Main wrapper with accordion sections
+- `src/components/user-guide/sections/updated/*.tsx` — Individual section files (one per step)
+- `src/components/user-guide/GuideImagePlaceholder.tsx` — Reusable placeholder component showing where a screenshot should go, with a description of the expected image
+
+### Modified Files
+- `src/pages/HelpCenter.tsx` — Add the new "Updated User Guide" tab
+
+### GuideImagePlaceholder Component
+A styled placeholder box that shows:
+- A camera/image icon
+- A description of what screenshot goes there (e.g., "Screenshot: Login page with email and password fields")
+- Later, when you upload images to the `guide-images` bucket, these can be swapped to actual `<img>` tags
+
+### Section Content Style
+Each section will follow this pattern:
+- Section title with icon
+- Brief description of what the feature does
+- Step-by-step numbered instructions (extremely specific)
+- Tables for reference data (role access, field descriptions)
+- Callout boxes for warnings, tips, and important notes
+- Image placeholders at key steps
 
