@@ -1,12 +1,15 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, Clock, AlertCircle, Eye } from 'lucide-react';
 import { RevalidaAttempt } from '@/lib/revalidaApi';
 
 interface AttemptResultProps {
   attempt: RevalidaAttempt;
+  canViewResults?: boolean;
+  onViewResults?: () => void;
 }
 
-export function AttemptResult({ attempt }: AttemptResultProps) {
+export function AttemptResult({ attempt, canViewResults, onViewResults }: AttemptResultProps) {
   if (attempt.status === 'graded' && attempt.final_percent !== null) {
     return (
       <Card className="border-green-500/20 bg-green-500/5">
@@ -25,9 +28,16 @@ export function AttemptResult({ attempt }: AttemptResultProps) {
                 <> | Manual: {attempt.manual_score_points}/{attempt.manual_total_points} points</>
               )}
             </p>
-            <p className="text-xs text-muted-foreground">
-              Note: Correct answers are not shown.
-            </p>
+            {canViewResults ? (
+              <Button variant="outline" size="sm" onClick={onViewResults} className="mt-2">
+                <Eye className="h-4 w-4 mr-2" />
+                View My Results
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Note: Correct answers are not shown.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -51,6 +61,12 @@ export function AttemptResult({ attempt }: AttemptResultProps) {
               <p className="text-xs text-muted-foreground">
                 Auto-graded portion: {attempt.auto_score_points}/{attempt.auto_total_points} points
               </p>
+            )}
+            {canViewResults && (
+              <Button variant="outline" size="sm" onClick={onViewResults} className="mt-2">
+                <Eye className="h-4 w-4 mr-2" />
+                View My Results
+              </Button>
             )}
           </div>
         </CardContent>

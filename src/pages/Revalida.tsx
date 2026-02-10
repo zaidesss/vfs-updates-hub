@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { PageGuideButton } from '@/components/PageGuideButton';
+import { isDeadlinePassed } from '@/lib/revalidaApi';
 import {
   fetchBatches,
   fetchBatchById,
@@ -355,7 +356,31 @@ export default function Revalida() {
     }
   };
 
-  // Handle submit test
+  // Handle agent viewing their own results post-expiry
+  const handleViewMyResults = async () => {
+    if (!myAttempt || !activeBatch) return;
+    
+    setViewLoading(true);
+    try {
+      const { batch, questions } = await fetchBatchById(activeBatch.id);
+      const answers = await fetchAnswersForAttempt(myAttempt.id);
+      
+      setViewingAttempt(myAttempt);
+      setViewingBatch(batch);
+      setViewingQuestions(questions);
+      setViewingAnswers(answers);
+    } catch (error: any) {
+      toast({
+        title: 'Error loading results',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  // Check if agent can view detailed results (batch expired or deactivated)
   const handleSubmitTest = async (answers: { question_id: string; answer_value: string }[]) => {
     if (!myAttempt) return;
 
@@ -593,7 +618,14 @@ export default function Revalida() {
             {activeBatch ? (
               <>
                 {myAttempt && myAttempt.status !== 'in_progress' ? (
-                  <AttemptResult attempt={myAttempt} />
+                  <AttemptResult 
+                    attempt={myAttempt} 
+                    canViewResults={
+                      (myAttempt.status === 'graded' || myAttempt.status === 'submitted' || myAttempt.status === 'needs_manual_review') &&
+                      (isDeadlinePassed(activeBatch.end_at) || !activeBatch.is_active)
+                    }
+                    onViewResults={handleViewMyResults}
+                  />
                 ) : (
                   <BatchCard
                     batch={activeBatch}
@@ -643,6 +675,7 @@ export default function Revalida() {
           questions={viewingQuestions}
           answers={viewingAnswers}
           isAdmin={isAdmin}
+          showCorrectAnswers={!isAdmin ? true : undefined}
         />
         
         {/* Batch Detail Dialog (for viewing batch questions) */}
