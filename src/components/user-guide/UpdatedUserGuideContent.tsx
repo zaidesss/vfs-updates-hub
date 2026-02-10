@@ -1,5 +1,5 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle, PieChart, BookOpen } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle, PieChart, BookOpen, Library } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
@@ -11,6 +11,7 @@ import { RevalidaSection } from './sections/updated/RevalidaSection';
 import { OutageRequestsSection } from './sections/updated/OutageRequestsSection';
 import { OutageStatsSection } from './sections/updated/OutageStatsSection';
 import { UpdatesSection as UpdatedUpdatesSection } from './sections/updated/UpdatesSection';
+import { KnowledgeBaseSection } from './sections/updated/KnowledgeBaseSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -119,6 +120,15 @@ export function UpdatedUserGuideContent() {
         description="Process updates hub — cards, acknowledgement, categories, questions & threads, create/edit workflow, and admin compliance dashboard"
       >
         <UpdatedUpdatesSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="knowledge-base"
+        icon={Library}
+        title="Knowledge Base"
+        description="Category-organized article browsing, global and scoped search, Markdown vs Playbook formats, and relationship to Updates"
+      >
+        <KnowledgeBaseSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
