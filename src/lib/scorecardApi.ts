@@ -705,9 +705,9 @@ export async function fetchWeeklyScorecard(
       .lte('timestamp', weekEnd.toISOString()),
     supabase
       .from('qa_evaluations')
-      .select('agent_email, percentage, audit_date')
-      .gte('audit_date', weekStartStr)
-      .lte('audit_date', weekEndStr),
+      .select('agent_email, percentage, work_week_start, audit_date')
+      .gte('work_week_start', weekStartStr)
+      .lte('work_week_start', weekEndStr),
     supabase
       .from('profile_events')
       .select('profile_id, event_type, created_at')
