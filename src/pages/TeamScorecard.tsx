@@ -16,7 +16,7 @@ import { PageGuideButton } from '@/components/PageGuideButton';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
 import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isBefore, isSameWeek, addWeeks, differenceInWeeks } from 'date-fns';
-import { ANCHOR_DATE, getLastWeekStart } from '@/lib/weekConstants';
+import { ANCHOR_DATE, getLastWeekStart, PORTAL_START_YEAR } from '@/lib/weekConstants';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { EditableMetricCell } from '@/components/scorecard/EditableMetricCell';
@@ -638,14 +638,14 @@ export default function TeamScorecard() {
                       <SelectValue placeholder="Year" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: 10 }, (_, i) => {
-                        const year = portalNow.getFullYear() - i + 1;
-                        return (
-                          <SelectItem key={year} value={String(year)}>
-                            {year}
-                          </SelectItem>
-                        );
-                      })}
+                      {Array.from(
+                        { length: portalNow.getFullYear() - PORTAL_START_YEAR + 1 },
+                        (_, i) => PORTAL_START_YEAR + i
+                      ).reverse().map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
