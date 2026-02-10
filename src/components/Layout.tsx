@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useDemoTour } from '@/context/DemoTourContext';
 import { useUpdates } from '@/context/UpdatesContext';
+import { usePortalClock } from '@/context/PortalClockContext';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -35,6 +36,30 @@ interface NavGroup {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   items: NavItem[];
+}
+
+/** Compact live EST clock for the navbar */
+function PortalClockDisplay() {
+  const { now } = usePortalClock();
+  const timeStr = now.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  const shortTimeStr = now.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return (
+    <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground font-mono tabular-nums" title="Portal Time (EST)">
+      <Clock className="h-3.5 w-3.5" />
+      <span className="hidden lg:inline">EST {timeStr}</span>
+      <span className="lg:hidden">{shortTimeStr}</span>
+    </div>
+  );
 }
 
 export function Layout({ children }: LayoutProps) {
@@ -247,6 +272,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           <div className="flex items-center gap-4">
+            <PortalClockDisplay />
             <div className="hidden sm:block text-right">
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
