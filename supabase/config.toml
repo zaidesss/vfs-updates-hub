@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.send-revalida-notification]
 verify_jwt = false
+
+[functions.refresh-upwork-tokens]
+verify_jwt = false
