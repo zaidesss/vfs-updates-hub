@@ -1634,11 +1634,24 @@ export function calculateAttendanceForWeek(
       return eventDate === dateStr && event.event_type === 'LOGIN';
     });
 
-    // 5. Find logout event for this date
-    const logoutForDay = statusEvents.find((event) => {
+    // 5. Find logout event for this date (with overnight shift awareness)
+    const isOvernightShift = scheduleParsed && scheduleParsed.endMinutes < scheduleParsed.startMinutes;
+    let logoutForDay = statusEvents.find((event) => {
       const eventDate = getESTDateFromTimestamp(event.created_at);
       return eventDate === dateStr && event.event_type === 'LOGOUT';
     });
+
+    // For overnight shifts, also search for LOGOUT on the next calendar day
+    if (!logoutForDay && isOvernightShift) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const nextDate = new Date(y, m - 1, d);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+      logoutForDay = statusEvents.find((event) => {
+        const eventDate = getESTDateFromTimestamp(event.created_at);
+        return eventDate === nextDateStr && event.event_type === 'LOGOUT';
+      });
+    }
 
     // Calculate OT for this day
     const otData = calculateOTForDay();
