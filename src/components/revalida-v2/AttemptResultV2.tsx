@@ -1,14 +1,17 @@
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { RevalidaV2Attempt } from '@/lib/revalidaV2Api';
-import { CheckCircle2, Clock, Info } from 'lucide-react';
+import { CheckCircle2, Clock, Info, Eye } from 'lucide-react';
 
 interface AttemptResultV2Props {
   attempt: RevalidaV2Attempt;
   totalPoints: number;
+  canViewResults?: boolean;
+  onViewResults?: () => void;
 }
 
-export function AttemptResultV2({ attempt, totalPoints }: AttemptResultV2Props) {
+export function AttemptResultV2({ attempt, totalPoints, canViewResults, onViewResults }: AttemptResultV2Props) {
   const isPending = attempt.status === 'submitted';
   const isGraded = attempt.status === 'graded';
   const percentage = attempt.percentage ?? 0;
@@ -17,12 +20,6 @@ export function AttemptResultV2({ attempt, totalPoints }: AttemptResultV2Props) 
     if (percentage >= 90) return 'text-green-600';
     if (percentage >= 75) return 'text-amber-600';
     return 'text-red-600';
-  };
-
-  const getProgressColor = () => {
-    if (percentage >= 90) return 'bg-green-600';
-    if (percentage >= 75) return 'bg-amber-500';
-    return 'bg-red-500';
   };
 
   if (isPending) {
@@ -38,6 +35,12 @@ export function AttemptResultV2({ attempt, totalPoints }: AttemptResultV2Props) 
               </p>
             </div>
           </div>
+          {canViewResults && (
+            <Button variant="outline" size="sm" onClick={onViewResults} className="mt-4">
+              <Eye className="h-4 w-4 mr-2" />
+              View My Results
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -61,10 +64,17 @@ export function AttemptResultV2({ attempt, totalPoints }: AttemptResultV2Props) 
           className="h-3" 
         />
 
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Info className="h-4 w-4" />
-          <span>Correct answers are not shown.</span>
-        </div>
+        {canViewResults ? (
+          <Button variant="outline" size="sm" onClick={onViewResults}>
+            <Eye className="h-4 w-4 mr-2" />
+            View My Results
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Info className="h-4 w-4" />
+            <span>Correct answers are not shown.</span>
+          </div>
+        )}
       </div>
     );
   }
