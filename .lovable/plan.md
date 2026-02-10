@@ -1,34 +1,35 @@
 
 
-# Fix Year Selector to Start from 2026
+# Fix QA Score Filtering in Scorecard RPC
 
 ## Problem
-The Year dropdown on the Team Scorecard generates 10 years going backwards from the current year (line 641-646), showing 2025, 2024, etc. The portal was created in 2026, so years before 2026 are irrelevant.
 
-## Solution
-Replace the backward-looking year generation with a range starting from **2026** (the portal's inception year) up to the current year. This means:
+The `get_weekly_scorecard_data` RPC filters QA evaluations by `audit_date` instead of `work_week_start`. This causes evaluations to appear in the wrong week on the scorecard.
 
-- If the current year is 2026, only "2026" appears
-- If the current year is 2027, "2026" and "2027" appear
-- And so on
+**Example:** Jessie Argao has 5 QA evaluations all tagged to work week Feb 2-8 (`work_week_start = 2026-02-02`). However, one of them has `audit_date = 2026-02-10`. When viewing the Feb 9-15 scorecard, the RPC matches that record because `2026-02-10` falls within `Feb 9-15`, incorrectly showing a 100% QA score.
 
-## Technical Change
+## Fix
 
-**File: `src/pages/TeamScorecard.tsx` (lines 641-646)**
+Update the `qa_scores` CTE in the RPC to filter by `work_week_start` instead of `audit_date`.
 
-Replace:
-```typescript
-{Array.from({ length: 10 }, (_, i) => {
-  const year = portalNow.getFullYear() - i + 1;
+**Current (line 97):**
+```sql
+WHERE qe.audit_date >= p_week_start AND qe.audit_date <= p_week_end
 ```
 
-With:
-```typescript
-{Array.from(
-  { length: portalNow.getFullYear() - 2026 + 1 },
-  (_, i) => 2026 + i
-).reverse().map((year) => (
+**New:**
+```sql
+WHERE qe.work_week_start >= p_week_start AND qe.work_week_start <= p_week_end
 ```
 
-This generates years from 2026 to the current year (in descending order so the latest year appears first). Optionally, the constant `2026` can be added to `weekConstants.ts` as `PORTAL_START_YEAR` for reuse.
+This ensures QA scores only appear in the week they were intentionally assigned to, regardless of when the audit was physically conducted.
 
+## Additional Considerations
+
+1. **QA Evaluations list page** -- Does the QA Evaluations page (`/qa-evaluations`) also filter by `audit_date`? If so, the same mismatch could appear there. The `fetchQAEvaluations` API function already filters by `work_week_start`, so this is fine.
+
+2. **Saved scorecards** -- Any previously saved scorecards for Feb 9-15 that captured the incorrect QA value would retain that stale data. These would need to be re-saved after the fix to reflect the corrected score.
+
+## Implementation
+
+A single SQL migration to update the RPC function, replacing `audit_date` with `work_week_start` in the `qa_scores` CTE.
