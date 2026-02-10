@@ -133,26 +133,28 @@ export function generateWeekDates(weekStartDate: Date): string[] {
 /**
  * Get current EST day key ('mon', 'tue', etc.)
  * Used for schedule-based visibility checks.
+ * @param now - Optional Date to use instead of current time (e.g., from PortalClock)
  */
-export function getCurrentESTDayKey(): string {
+export function getCurrentESTDayKey(now?: Date): string {
   const estDay = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
-  }).format(new Date());
+  }).format(now || new Date());
   return estDay.toLowerCase().slice(0, 3);
 }
 
 /**
  * Get current EST time as minutes from midnight.
  * Used for checking if current time falls within a schedule window.
+ * @param now - Optional Date to use instead of current time (e.g., from PortalClock)
  */
-export function getCurrentESTTimeMinutes(): number {
+export function getCurrentESTTimeMinutes(now?: Date): number {
   const estParts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(now || new Date());
   
   const hour = parseInt(estParts.find(p => p.type === 'hour')?.value || '0', 10);
   const minute = parseInt(estParts.find(p => p.type === 'minute')?.value || '0', 10);
@@ -161,14 +163,15 @@ export function getCurrentESTTimeMinutes(): number {
 
 /**
  * Get today's date in EST as 'YYYY-MM-DD'.
+ * @param now - Optional Date to use instead of current time (e.g., from PortalClock)
  */
-export function getTodayEST(): string {
+export function getTodayEST(now?: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(now || new Date());
 }
 
 /**
