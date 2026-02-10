@@ -1,7 +1,8 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User } from 'lucide-react';
+import { Shield, User, LayoutDashboard } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
+import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -29,6 +30,15 @@ export function UpdatedUserGuideContent() {
         description="Personal info, locked work configuration fields, compensation, and how values feed automations"
       >
         <UpdatedMyBioSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="dashboard"
+        icon={LayoutDashboard}
+        title="Agent Dashboard"
+        description="Status buttons, profile events timeline, shift schedule, weekly summary, violations, and day selector"
+      >
+        <UpdatedDashboardSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
