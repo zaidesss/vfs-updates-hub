@@ -12,6 +12,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
 import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
@@ -90,6 +100,7 @@ export default function TeamScorecard() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
   
   const [editedMetrics, setEditedMetrics] = useState<Record<string, EditedMetrics>>({});
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   const canSave = isAdmin || isSuperAdmin;
   const hasEdits = Object.keys(editedMetrics).length > 0;
@@ -539,7 +550,7 @@ export default function TeamScorecard() {
 
             {canSave && scorecards && scorecards.length > 0 && !isBeforeMinimumDate && (
               <Button
-                onClick={() => saveScorecardMutation.mutate()}
+                onClick={() => setShowSaveConfirm(true)}
                 disabled={saveScorecardMutation.isPending}
                 variant={weekIsSaved ? 'outline' : hasEdits ? 'outline' : 'default'}
                 className="gap-2"
@@ -1145,6 +1156,32 @@ export default function TeamScorecard() {
           </CardContent>
         </Card>
       </div>
+      <AlertDialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-100">
+                <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              </div>
+              <AlertDialogTitle>Save Scorecard?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="pt-2 text-left">
+              Please make sure that all values are 100% accurate and updated before saving. Any changes made after saving will not be reflected in the saved scorecard.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowSaveConfirm(false);
+                saveScorecardMutation.mutate();
+              }}
+            >
+              Yes, Save Scorecard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Layout>
   );
 }
