@@ -1,5 +1,5 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
@@ -8,6 +8,7 @@ import { TicketLogsSection } from './sections/updated/TicketLogsSection';
 import { TeamScorecardSection } from './sections/updated/TeamScorecardSection';
 import { AgentReportsSection } from './sections/updated/AgentReportsSection';
 import { RevalidaSection } from './sections/updated/RevalidaSection';
+import { OutageRequestsSection } from './sections/updated/OutageRequestsSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -89,6 +90,15 @@ export function UpdatedUserGuideContent() {
         description="Weekly knowledge assessments — V1 manual builder, V2 AI-powered generation, grading, and scorecard integration"
       >
         <RevalidaSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="outage-requests"
+        icon={AlertTriangle}
+        title="Outage Requests"
+        description="Request form, auto-generated requests, conflict detection, override workflow, statuses, audit log, and statistics"
+      >
+        <OutageRequestsSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
