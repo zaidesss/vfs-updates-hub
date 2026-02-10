@@ -6,7 +6,7 @@ import { StatusCard } from '@/components/team-status/StatusCard';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle } from 'lucide-react';
+import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type SortOption = 'login' | 'name';
@@ -215,8 +215,8 @@ export default function TeamStatusBoard() {
                 />
 
                 <CategorySection
-                  title="Other"
-                  icon={<Users className="h-5 w-5 text-muted-foreground" />}
+                  title="Logistics"
+                  icon={<Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
                   members={categories.other}
                   showDashboardLink={canViewDashboards}
                   sortBy={sortBy}
