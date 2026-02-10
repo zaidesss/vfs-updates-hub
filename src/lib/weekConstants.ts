@@ -1,5 +1,8 @@
 import { startOfWeek, addWeeks } from 'date-fns';
 
+/** The year the portal was created. Used as the floor for year selectors. */
+export const PORTAL_START_YEAR = 2026;
+
 /**
  * Shared anchor date for all week selectors across the portal.
  * All weeks are integer multiples of 7 days from this date,
