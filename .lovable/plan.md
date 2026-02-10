@@ -1,81 +1,80 @@
 
 
-## Step 4: Team Status Board Section
+## Fix Ticket Logs Accuracy — 3 Issues
 
-Add a new `TeamStatusSection.tsx` component inside `src/components/user-guide/sections/updated/` and register it in `UpdatedUserGuideContent.tsx`.
+### Problem Summary
+Richelle has **160 tickets** in the database for Feb 9, but the UI shows only **61**. Additionally, none of the 35 expected OT tickets are flagged as OT.
 
-### Content to cover
+Three root causes were identified:
 
-**1. Overview**
-- Real-time board showing all agents currently within their scheduled shift window (not just logged-in agents).
-- Visibility is based on EST time falling within the agent's shift or OT schedule for the current day.
-- Agents on their "Day Off" are excluded entirely.
+---
 
-**2. Who Can See It**
-- All authenticated users can view the board.
-- Admin/HR/Super Admin see a dashboard link icon on each card to jump to the agent's individual dashboard.
-- Regular users see cards without the dashboard link.
+### Issue 1: Frontend Overwrite Bug (Critical — Shows 61 instead of 160)
 
-**3. Category Groupings (with icons)**
-| Category | Icon | Color | Mapped Positions |
-|---|---|---|---|
-| Phone Support | Phone | Purple | "Phone Support" |
-| Chat Support | MessageSquare | Cyan | "Chat Support" |
-| Email Support | Mail | Orange | "Email Support" |
-| Hybrid Support | Shuffle | Pink | "Hybrid Support" |
-| Logistics | Package | Amber | Any position not in the above or below |
-| Team Leads | Shield | Indigo | "Team Lead" |
-| Technical Support | Shield | Teal | "Technical Support" |
+**Root Cause:** The RPC `get_ticket_dashboard_data` groups by `(agent_name, agent_email)`. When the same agent has tickets with different `agent_email` values (NULL vs actual email), it returns multiple rows for the same date. The frontend aggregation code overwrites instead of summing:
 
-**4. Layout**
-- Desktop: Two-column layout -- support agents on left (wider), Team Leads and Tech Support on right (narrower) with Live Activity Feed below them.
-- Mobile: Single column, all stacked.
+```text
+Row 1: richelle / NULL       → 97 email, 2 chat
+Row 2: richelle / laraine@   → 61 email, 0 chat
+Frontend keeps only Row 2    → Shows 61
+```
 
-**5. Status Card Details**
-Each card displays:
-- Agent full name
-- Status badge (color-coded): Active (green), Break (amber), Coaching (blue), Offline (gray), On OT (emerald), Restarting (yellow), Bio Break (purple)
-- If agent has an approved outage/leave, the status badge shows the outage reason (e.g., "Medical Leave") in sky-blue, plus an "On Leave" outline badge
-- Position badge (color matches category)
-- Shift Schedule (with OT schedule appended if present)
-- Break Schedule
-- Dashboard link icon (Admin/HR/Super Admin only)
+**Fix:** Update the RPC to group by `agent_name` only (not `agent_email`), using `MAX(agent_email)` to pick the non-null email. This eliminates duplicate rows at the database level.
 
-**6. Sorting Options**
-- "By Login" (default): sorts by most recent status change timestamp
-- "By Name": alphabetical by full name
+---
 
-**7. Schedule Logic (step-by-step)**
-1. System reads current EST day of week
-2. Checks each agent's day_off array -- if today is listed, agent is skipped
-3. Checks agent's schedule for today (e.g., mon_schedule) -- if null, "Day Off", or "Off", agent is skipped
-4. Checks if current EST time falls within the agent's regular shift range OR OT schedule range
-5. Only agents passing all checks appear on the board
+### Issue 2: Webhook Email Lookup Inconsistency (99 tickets with NULL email)
 
-**8. Outage/Leave Handling**
-- If an agent has an approved leave request covering today and the current time, the card shows the outage reason instead of their login status
-- The agent still appears on the board (they are scheduled) but is marked with the leave badge
+**Root Cause:** The `zendesk-ticket-webhook` edge function looks up `agent_directory.agent_tag` to find the agent's email. For 99 of 160 tickets, this lookup returned NULL — possibly due to a transient issue or the directory entry being unavailable at the time.
 
-**9. Live Activity Feed**
-- Located in the right column under Team Leads/Tech Support
-- Shows the most recent 15 status changes from today only
-- Fixed 400px scrollable container
+**Fix (two parts):**
+- **Backfill:** Run a one-time SQL update to fill in missing `agent_email` values using the current directory data.
+- **Webhook resilience:** No code change needed — the lookup logic is correct (`.ilike('agent_tag', ...)`). The backfill resolves the historical gap.
 
-**10. Header Stats**
-- "X scheduled now (Y online)" -- X = total agents within schedule window, Y = agents not LOGGED_OUT and not on approved outage
+---
 
-**11. Image Placeholders**
-- Full board view with multiple categories populated
-- Single status card close-up showing all badge types
-- Sort toggle buttons
-- Outage/leave card example
-- Live Activity Feed section
+### Issue 3: OT Tickets Not Flagged (0 OT instead of 35)
+
+**Root Cause:** The webhook's OT detection depends on finding `agent_email` first (to look up the profile and status). When `agent_email` is NULL (Issue 2), the OT check is skipped entirely, defaulting to `is_ot=false`. Even for the 61 tickets with a valid email, the agent may not have had `ON_OT` status active at ticket receipt time.
+
+**Fix:** This is partially resolved by fixing Issue 2 (ensuring email is always found). However, for accurate OT flagging, the webhook should also be able to look up the profile directly by `agent_tag` without requiring the email intermediary step. Additionally, a backfill query can correct historical OT flags based on status log timestamps.
+
+---
+
+### Implementation Steps
+
+**Step 1 — Fix the RPC (database migration)**
+Update `get_ticket_dashboard_data` to group by `agent_name` only, using `MAX(agent_email) FILTER (WHERE agent_email IS NOT NULL)` to collapse duplicate rows.
+
+**Step 2 — Backfill missing agent_email values**
+Run an UPDATE on `ticket_logs` joining `agent_directory` to fill NULL `agent_email` where `agent_tag` matches.
+
+**Step 3 — Improve webhook OT detection**
+Update `zendesk-ticket-webhook` to look up the agent profile directly via `agent_tag` (through `agent_directory` -> `agent_profiles`) instead of requiring `agent_email` as an intermediary. This makes both the email assignment and OT check more resilient.
+
+**Step 4 — Backfill OT flags**
+Provide a query to retroactively mark tickets as `is_ot=true` based on the agent's status log timestamps for Feb 9 (requires knowing when OT status was active).
+
+---
 
 ### Technical Details
 
-**New file:** `src/components/user-guide/sections/updated/TeamStatusSection.tsx`
+**RPC Change (Step 1):**
+```sql
+-- In the ticket_counts CTE, change grouping:
+GROUP BY tl.agent_name, (tl.timestamp AT TIME ZONE 'America/New_York')::date
+-- Use MAX(tl.agent_email) FILTER (WHERE tl.agent_email IS NOT NULL) as agent_email
+```
 
-**Modified file:** `src/components/user-guide/UpdatedUserGuideContent.tsx` -- add the new accordion entry with `Users` icon and title "Team Status Board"
+**Backfill Query (Step 2):**
+```sql
+UPDATE ticket_logs tl
+SET agent_email = ad.email
+FROM agent_directory ad
+WHERE LOWER(tl.agent_name) = LOWER(ad.agent_tag)
+  AND tl.agent_email IS NULL;
+```
 
-Uses existing `GuideImagePlaceholder`, `QuickTable`, `StepItem`, `InfoBlock` components from `GuideComponents.tsx`.
+**Webhook Improvement (Step 3):**
+Look up profile_status via agent_directory -> agent_profiles join chain using agent_tag directly, removing the email dependency for OT detection.
 
