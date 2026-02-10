@@ -20,9 +20,10 @@ interface BatchCardV2Props {
   attempt: RevalidaV2Attempt | null;
   userEmail: string;
   onAttemptStarted: (attempt: RevalidaV2Attempt) => void;
+  onViewResults?: () => void;
 }
 
-export function BatchCardV2({ batch, attempt, userEmail, onAttemptStarted }: BatchCardV2Props) {
+export function BatchCardV2({ batch, attempt, userEmail, onAttemptStarted, onViewResults }: BatchCardV2Props) {
   const navigate = useNavigate();
   const [timeRemaining, setTimeRemaining] = useState(getTimeRemaining(batch.end_at));
   const [isStarting, setIsStarting] = useState(false);
@@ -77,6 +78,11 @@ export function BatchCardV2({ batch, attempt, userEmail, onAttemptStarted }: Bat
     return null;
   };
 
+  // Determine if agent can view detailed results
+  const canViewResults = attempt && 
+    (attempt.status === 'submitted' || attempt.status === 'graded') &&
+    (expired || !batch.is_active);
+
   // Show result if attempt is submitted or graded
   if (attempt && (attempt.status === 'submitted' || attempt.status === 'graded')) {
     return (
@@ -93,7 +99,12 @@ export function BatchCardV2({ batch, attempt, userEmail, onAttemptStarted }: Bat
           </div>
         </CardHeader>
         <CardContent>
-          <AttemptResultV2 attempt={attempt} totalPoints={batch.total_points} />
+          <AttemptResultV2 
+            attempt={attempt} 
+            totalPoints={batch.total_points}
+            canViewResults={!!canViewResults}
+            onViewResults={onViewResults}
+          />
         </CardContent>
       </Card>
     );

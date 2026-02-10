@@ -29,6 +29,7 @@ import { GenerationStatus } from '@/components/revalida-v2/GenerationStatus';
 import { TestInterface } from '@/components/revalida-v2/TestInterface';
 import { SituationalGrading } from '@/components/revalida-v2/SituationalGrading';
 import { BatchCardV2 } from '@/components/revalida-v2/BatchCardV2';
+import { SubmissionDetailV2 } from '@/components/revalida-v2/SubmissionDetailV2';
 import { AlertCircle, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,6 +39,7 @@ export default function RevalidaV2() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const [showMyResults, setShowMyResults] = useState(false);
   
   // Get active tab from URL params, default to 'manage'
   const activeTab = searchParams.get('tab') || 'manage';
@@ -351,7 +353,29 @@ export default function RevalidaV2() {
             attempt={attempt || null}
             userEmail={user?.email || ''}
             onAttemptStarted={handleAttemptStarted}
+            onViewResults={() => setShowMyResults(true)}
           />
+
+          {/* Post-expiry results view */}
+          {showMyResults && attempt && questions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Your Submission Details</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setShowMyResults(false)}>
+                    Close
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SubmissionDetailV2
+                  attempt={attempt}
+                  questions={questions}
+                  answers={answers}
+                />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </Layout>
     );
