@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,20 +15,16 @@ interface TicketPayload {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    // Validate Bearer token against both ZD1 and ZD2 secrets
     const authHeader = req.headers.get('Authorization')
     const secretZD2 = Deno.env.get('ZENDESK_WEBHOOK_SECRET')
     const secretZD1 = Deno.env.get('ZENDESK_WEBHOOK_SECRET_ZD1')
     
     const receivedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-    
-    // Accept if token matches either secret
     const isValidToken = receivedToken && (receivedToken === secretZD2 || receivedToken === secretZD1)
     
     if (!isValidToken) {
@@ -39,11 +35,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Parse payload
     const payload: TicketPayload = await req.json()
     console.log('Received ticket webhook:', JSON.stringify(payload))
 
-    // Validate required fields
     if (!payload.zd_instance || !payload.ticket_id || !payload.status || !payload.timestamp || !payload.ticket_type || !payload.agent_name) {
       console.error('Missing required fields in payload')
       return new Response(
@@ -52,12 +46,11 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Initialize Supabase client with service role for insert
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Try to match agent_name with agent_directory.agent_tag (case-insensitive)
+    // Look up agent via agent_directory using agent_tag (single query for email)
     const { data: agentData } = await supabase
       .from('agent_directory')
       .select('email')
@@ -66,31 +59,29 @@ Deno.serve(async (req) => {
 
     const agentEmail = agentData?.email || null
 
-    // Check if agent is currently on OT to set is_ot flag
+    // Check OT status via agent_profiles -> profile_status using agent_tag directly
+    // This works even if agent_email lookup failed above
     let isOt = false
-    if (agentEmail) {
-      // Get agent's profile_id and check their current status
-      const { data: profileData } = await supabase
-        .from('agent_profiles')
-        .select('id')
-        .ilike('email', agentEmail)
+    const { data: profileData } = await supabase
+      .from('agent_profiles')
+      .select('id')
+      .ilike('agent_tag', payload.agent_name)
+      .maybeSingle()
+
+    if (profileData?.id) {
+      const { data: statusData } = await supabase
+        .from('profile_status')
+        .select('current_status')
+        .eq('profile_id', profileData.id)
         .maybeSingle()
-      
-      if (profileData?.id) {
-        const { data: statusData } = await supabase
-          .from('profile_status')
-          .select('current_status')
-          .eq('profile_id', profileData.id)
-          .maybeSingle()
-        
-        if (statusData?.current_status === 'ON_OT') {
-          isOt = true
-          console.log(`Agent ${payload.agent_name} is ON_OT, marking ticket as OT`)
-        }
+
+      if (statusData?.current_status === 'ON_OT') {
+        isOt = true
+        console.log(`Agent ${payload.agent_name} is ON_OT, marking ticket as OT`)
       }
     }
 
-    // Normalize ticket_type (Zendesk sends things like "Mail", "Chat", "Phone")
+    // Normalize ticket_type
     let normalizedType = 'Email'
     const ticketTypeLower = payload.ticket_type.toLowerCase()
     if (ticketTypeLower.includes('chat') || ticketTypeLower.includes('messaging')) {
@@ -101,7 +92,6 @@ Deno.serve(async (req) => {
       normalizedType = 'Email'
     }
 
-    // Insert ticket log with is_ot flag
     const { data, error } = await supabase
       .from('ticket_logs')
       .insert({
