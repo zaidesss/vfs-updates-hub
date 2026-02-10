@@ -1,35 +1,102 @@
 
 
-# Fix QA Score Filtering in Scorecard RPC
+# Revalida V1 and V2: Fix Continue Test + Post-Expiry Results View
 
-## Problem
+## Summary
 
-The `get_weekly_scorecard_data` RPC filters QA evaluations by `audit_date` instead of `work_week_start`. This causes evaluations to appear in the wrong week on the scorecard.
+Two changes for both Revalida V1 and V2:
+1. **Continue Test Fix** -- Allow agents to resume an in-progress test without losing data or hitting errors. Answers are only saved upon final submission (no auto-save).
+2. **Post-Expiry Results View** -- After the batch expires or is deactivated, agents can see their detailed submission (their answers, correct answers, points earned, and grading) similar to the admin Submission Detail view.
 
-**Example:** Jessie Argao has 5 QA evaluations all tagged to work week Feb 2-8 (`work_week_start = 2026-02-02`). However, one of them has `audit_date = 2026-02-10`. When viewing the Feb 9-15 scorecard, the RPC matches that record because `2026-02-10` falls within `Feb 9-15`, incorrectly showing a 100% QA score.
+---
 
-## Fix
+## Part 1: Fix "Continue Test" (V1)
 
-Update the `qa_scores` CTE in the RPC to filter by `work_week_start` instead of `audit_date`.
+**Problem:** V1's "Continue Test" button calls `handleStartTest()` which calls `startAttempt()`, which tries to INSERT a new record and fails with "You have already taken this test" (unique constraint violation).
 
-**Current (line 97):**
-```sql
-WHERE qe.audit_date >= p_week_start AND qe.audit_date <= p_week_end
-```
+**Fix:** Change the V1 "Continue Test" button to simply show the TestForm with the existing attempt, instead of calling `startAttempt()`.
 
-**New:**
-```sql
-WHERE qe.work_week_start >= p_week_start AND qe.work_week_start <= p_week_end
-```
+### Changes:
+- **`src/components/revalida/BatchCard.tsx`** -- Add a separate `onContinueTest` callback prop instead of reusing `onStartTest`.
+- **`src/pages/Revalida.tsx`** -- Add a `handleContinueTest` function that sets `showTestForm = true` using the existing `myAttempt` (no API call needed). Pass it to BatchCard.
 
-This ensures QA scores only appear in the week they were intentionally assigned to, regardless of when the audit was physically conducted.
+---
 
-## Additional Considerations
+## Part 2: Fix "Continue Test" (V2)
 
-1. **QA Evaluations list page** -- Does the QA Evaluations page (`/qa-evaluations`) also filter by `audit_date`? If so, the same mismatch could appear there. The `fetchQAEvaluations` API function already filters by `work_week_start`, so this is fine.
+**Current state:** V2's Continue Test already works -- `BatchCardV2.handleContinueTest()` navigates to `/take` route, and `startAttempt()` in the API returns the existing attempt if one exists. No changes needed here.
 
-2. **Saved scorecards** -- Any previously saved scorecards for Feb 9-15 that captured the incorrect QA value would retain that stale data. These would need to be re-saved after the fix to reflect the corrected score.
+---
 
-## Implementation
+## Part 3: Post-Expiry Results View (V1)
 
-A single SQL migration to update the RPC function, replacing `audit_date` with `work_week_start` in the `qa_scores` CTE.
+**Current behavior:** After submission, agents only see the `AttemptResult` component showing a percentage score. No detailed view of their answers.
+
+**New behavior:** Once the batch has expired (deadline passed) or is deactivated, and the agent has a submitted/graded attempt, show a "View My Results" button that opens a detailed view of their answers with correct answers shown.
+
+### Changes:
+- **`src/components/revalida/AttemptResult.tsx`** -- Add a "View My Results" button (visible only when batch is expired/deactivated). The button calls an `onViewResults` callback.
+- **`src/pages/Revalida.tsx`** -- Handle the `onViewResults` callback: fetch the batch questions and answers, then open the existing `SubmissionDetailDialog` but with answers and correct answers visible (pass `isAdmin={false}` but with a new `showCorrectAnswers` prop).
+- **`src/components/revalida/SubmissionDetailDialog.tsx`** -- Add a `showCorrectAnswers` boolean prop. When true (regardless of `isAdmin`), show correct answers and correctness indicators. Currently these are gated behind `isAdmin`.
+
+---
+
+## Part 4: Post-Expiry Results View (V2)
+
+**Current behavior:** After submission, agents see the `AttemptResultV2` component showing percentage or "Pending AI Review". No detailed answer view.
+
+**New behavior:** Once the batch has expired or is deactivated, show a "View My Results" button in `AttemptResultV2` or `BatchCardV2` that navigates to a results detail view.
+
+### Changes:
+- **`src/components/revalida-v2/AttemptResultV2.tsx`** -- Add a "View My Results" button (visible only when batch is expired/deactivated). Calls an `onViewResults` callback.
+- **`src/pages/RevalidaV2.tsx`** -- In the agent batch detail view, when the batch is expired and attempt is submitted/graded, show a results view that displays each question, the agent's answer, the correct answer (for MCQ/T-F), points earned, and for situational questions: AI score/justification.
+- Create **`src/components/revalida-v2/SubmissionDetailV2.tsx`** -- A new component (similar to V1's `SubmissionDetailDialog` but inline, not a dialog) that renders the agent's submission details with correct answers visible.
+
+---
+
+## Technical Details
+
+### V1 Changes (4 files)
+
+1. **`src/components/revalida/BatchCard.tsx`**
+   - Add `onContinueTest` prop
+   - Wire the Continue Test button to `onContinueTest` instead of `onStartTest`
+
+2. **`src/pages/Revalida.tsx`**
+   - Add `handleContinueTest` function that just sets `showTestForm = true`
+   - Pass `onContinueTest` to BatchCard
+   - Pass batch expiry/deactivation info and `onViewResults` handler to AttemptResult
+   - Load answers and questions for the agent's own submission detail view
+   - Pass `showCorrectAnswers={true}` to SubmissionDetailDialog when agent views post-expiry
+
+3. **`src/components/revalida/AttemptResult.tsx`**
+   - Accept `onViewResults` callback and `canViewResults` boolean props
+   - Show "View My Results" button when `canViewResults` is true
+
+4. **`src/components/revalida/SubmissionDetailDialog.tsx`**
+   - Add `showCorrectAnswers` prop (defaults to `isAdmin`)
+   - Use `showCorrectAnswers` instead of `isAdmin` to gate correct answer display and points
+
+### V2 Changes (4 files)
+
+1. **`src/components/revalida-v2/BatchCardV2.tsx`**
+   - Pass `batchExpired` and `onViewResults` to AttemptResultV2
+
+2. **`src/components/revalida-v2/AttemptResultV2.tsx`**
+   - Accept `onViewResults` callback and `canViewResults` boolean props
+   - Show "View My Results" button when `canViewResults` is true
+
+3. **`src/components/revalida-v2/SubmissionDetailV2.tsx`** (new file)
+   - Renders question list with agent's answer, correct answer, points earned
+   - For situational: shows AI score, justification, and any admin override
+   - Styled similarly to V1's SubmissionDetailDialog content
+
+4. **`src/pages/RevalidaV2.tsx`**
+   - Add a results section in the agent batch detail view
+   - When batch is expired and agent clicks "View My Results", show SubmissionDetailV2 inline
+
+### Implementation Order
+Step 1: V1 Continue Test fix (BatchCard + Revalida.tsx)
+Step 2: V1 Post-Expiry Results (AttemptResult + SubmissionDetailDialog + Revalida.tsx)
+Step 3: V2 Post-Expiry Results (AttemptResultV2 + SubmissionDetailV2 + BatchCardV2 + RevalidaV2.tsx)
+
