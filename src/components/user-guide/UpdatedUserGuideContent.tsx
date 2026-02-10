@@ -1,9 +1,10 @@
 import { MenuAccordion } from './MenuAccordion';
-import { Shield, User, LayoutDashboard, Users } from 'lucide-react';
+import { Shield, User, LayoutDashboard, Users, BarChart3 } from 'lucide-react';
 import { UpdatedRolesSection } from './sections/updated/RolesSection';
 import { UpdatedMyBioSection } from './sections/updated/MyBioSection';
 import { UpdatedDashboardSection } from './sections/updated/DashboardSection';
 import { TeamStatusSection } from './sections/updated/TeamStatusSection';
+import { TicketLogsSection } from './sections/updated/TicketLogsSection';
 
 export function UpdatedUserGuideContent() {
   return (
@@ -49,6 +50,15 @@ export function UpdatedUserGuideContent() {
         description="Real-time schedule-based visibility, category groupings, status cards, sorting, and Live Activity Feed"
       >
         <TeamStatusSection />
+      </MenuAccordion>
+
+      <MenuAccordion
+        id="ticket-logs"
+        icon={BarChart3}
+        title="Ticket Logs"
+        description="Zendesk ticket tracking, average gap analysis, OT productivity, and dashboard UI"
+      >
+        <TicketLogsSection />
       </MenuAccordion>
 
       {/* Future sections will be added here one at a time */}
