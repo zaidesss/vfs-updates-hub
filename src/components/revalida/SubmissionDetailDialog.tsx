@@ -14,6 +14,7 @@ interface SubmissionDetailDialogProps {
   questions: RevalidaQuestion[];
   answers: RevalidaAnswer[];
   isAdmin: boolean;
+  showCorrectAnswers?: boolean;
 }
 
 export function SubmissionDetailDialog({
@@ -24,7 +25,9 @@ export function SubmissionDetailDialog({
   questions,
   answers,
   isAdmin,
+  showCorrectAnswers: showCorrectAnswersProp,
 }: SubmissionDetailDialogProps) {
+  const showCorrectAnswers = showCorrectAnswersProp ?? isAdmin;
   if (!attempt || !batch) return null;
 
   // Build maps for lookup
@@ -145,15 +148,15 @@ export function SubmissionDetailDialog({
                         <p className="text-sm">{question.prompt}</p>
                       </div>
                       
-                      {/* Admin-only correctness indicator */}
-                      {isAdmin && answer && !isSituational && (
+                      {/* Admin/post-expiry: correctness indicator */}
+                      {showCorrectAnswers && answer && !isSituational && (
                         isCorrect ? (
                           <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
                         ) : (
                           <XCircle className="h-5 w-5 text-red-500 shrink-0" />
                         )
                       )}
-                      {isAdmin && answer && isSituational && (
+                      {showCorrectAnswers && answer && isSituational && (
                         answer.points_awarded !== null ? (
                           <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
                         ) : (
@@ -170,8 +173,8 @@ export function SubmissionDetailDialog({
                       </div>
                     </div>
 
-                    {/* Admin-only: Points and Correct Answer for MCQ/TF */}
-                    {isAdmin && (
+                    {/* Points and Correct Answer display */}
+                    {showCorrectAnswers && (
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-4">
                           <span className={`font-medium ${pointsAwarded === maxPoints ? 'text-green-600' : pointsAwarded > 0 ? 'text-yellow-600' : 'text-red-500'}`}>
