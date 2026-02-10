@@ -1,66 +1,43 @@
 
 
-# Add Multiple Attachments to Outage Requests
+# Fix Week Selector: Progressive Rolling Window
 
-## Overview
+## Problem
 
-Currently outage requests support only a single file attachment (stored as `attachment_url` text column). This plan upgrades it to support up to 3 file attachments per request, with a simple multi-file input (no popover), and migrates existing single attachments to the new format.
+The week selector anchor is set to February 3, 2025 (nearly a year ago), causing it to always show 10 weeks of old history. The user wants weeks to build up progressively from a recent starting point.
 
-## Approach
+## Solution
 
-Store multiple attachment URLs as a JSON array string in the existing `attachment_url` column. This avoids creating a new table or column, and keeps the migration simple.
+Update the `ANCHOR_DATE` in `DashboardWeekSelector.tsx` to last week (February 2, 2026 -- Monday of last week). This way:
 
-- Old value: `"https://...single-file.pdf"`
-- New value: `'["https://...file1.pdf","https://...file2.png"]'`
+- **Right now (Feb 10, 2026)**: Shows 2 weeks (02/02 - 02/08 and 02/09 - 02/15)
+- **Next week**: Shows 3 weeks
+- **Keeps growing** until it hits the 10-week cap, then the oldest week drops off
 
-## Step-by-Step Changes
+## Change
 
-### Step 1: Database Migration
+### File: `src/components/dashboard/DashboardWeekSelector.tsx`
 
-Migrate existing single-URL values in `attachment_url` to JSON array format:
+**Line 20**: Change the anchor date:
 
-```sql
-UPDATE leave_requests 
-SET attachment_url = '["' || attachment_url || '"]'
-WHERE attachment_url IS NOT NULL 
-  AND attachment_url != '' 
-  AND attachment_url NOT LIKE '[%';
+```
+// Before
+const ANCHOR_DATE = new Date('2025-02-03T05:00:00.000Z');
+
+// After
+const ANCHOR_DATE = new Date('2026-02-02T05:00:00.000Z');
 ```
 
-### Step 2: Update `leaveRequestApi.ts`
+This is Monday, February 2, 2026 at midnight EST (05:00 UTC), which is the start of last week.
 
-- Add a helper to parse `attachment_url` (handle both old string and new JSON array formats)
-- Update `uploadAttachment` to return a URL (no change needed -- it already returns a single URL per call)
-- Update create/update functions to serialize the array back to JSON string
+## Result
 
-### Step 3: Update `LeaveRequest.tsx` Form
+| Week | What the selector shows |
+|------|------------------------|
+| Current (Feb 10) | 02/02 - 02/08, 02/09 - 02/15 |
+| Feb 17 | 02/02 - 02/08, 02/09 - 02/15, 02/16 - 02/22 |
+| ... | Grows by 1 each week |
+| After 10 weeks | Oldest week drops off, always 10 max |
 
-- Replace single `attachment_url` string state with an array (e.g., `attachmentUrls: string[]`)
-- Change `handleFileUpload` to append new URLs to the array (up to 3 max)
-- Replace the single file display with a list showing all attachments, each with a remove button
-- Add "3 files max" hint text
-- Serialize array to JSON string when saving to `formData.attachment_url`
-
-### Step 4: Update Request List Display
-
-- Where `req.attachment_url` is displayed in the table (line ~1181), parse the JSON array and show multiple attachment links (e.g., "Attachment 1", "Attachment 2")
-
-### Step 5: Update Audit Log
-
-- Update `LeaveAuditLog.tsx` to handle the new JSON array format when displaying attachment changes
-
-### Step 6: Update Notification Edge Functions
-
-- Update `send-leave-request-notification` and `send-leave-decision-notification` to handle multiple attachment URLs if they reference `attachmentUrl`
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| Migration SQL | Convert existing single URLs to JSON array format |
-| `src/lib/leaveRequestApi.ts` | Add parse/serialize helpers for attachment URLs |
-| `src/pages/LeaveRequest.tsx` | Multi-file upload UI (max 3), display list of attachments |
-| `src/components/leave/LeaveAuditLog.tsx` | Parse JSON array for attachment display |
-| `supabase/functions/send-leave-request-notification/index.ts` | Handle array format |
-| `supabase/functions/send-leave-decision-notification/index.ts` | Handle array format |
+Only 1 line changes in 1 file.
 
