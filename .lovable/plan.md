@@ -1,80 +1,69 @@
 
 
-## Fix Ticket Logs Accuracy — 3 Issues
+## Fix Duplicate Webhook Entries + Prevent Future Duplicates
 
-### Problem Summary
-Richelle has **160 tickets** in the database for Feb 9, but the UI shows only **61**. Additionally, none of the 35 expected OT tickets are flagged as OT.
+### Summary
+The webhook currently has no deduplication logic, allowing Zendesk to fire multiple events for the same ticket within seconds, inflating counts. There are **52 duplicate entries** across the entire `ticket_logs` table, and we need to both clean them up and prevent future ones.
 
-Three root causes were identified:
-
----
-
-### Issue 1: Frontend Overwrite Bug (Critical — Shows 61 instead of 160)
-
-**Root Cause:** The RPC `get_ticket_dashboard_data` groups by `(agent_name, agent_email)`. When the same agent has tickets with different `agent_email` values (NULL vs actual email), it returns multiple rows for the same date. The frontend aggregation code overwrites instead of summing:
-
-```text
-Row 1: richelle / NULL       → 97 email, 2 chat
-Row 2: richelle / laraine@   → 61 email, 0 chat
-Frontend keeps only Row 2    → Shows 61
-```
-
-**Fix:** Update the RPC to group by `agent_name` only (not `agent_email`), using `MAX(agent_email)` to pick the non-null email. This eliminates duplicate rows at the database level.
+### Deduplication Rule
+**Same `ticket_id` + `agent_name` + `zd_instance` with timestamps within 120 seconds = duplicate webhook fire.** Keep only the earliest entry.
 
 ---
 
-### Issue 2: Webhook Email Lookup Inconsistency (99 tickets with NULL email)
+### Step 1 — Clean up existing duplicates (data change)
 
-**Root Cause:** The `zendesk-ticket-webhook` edge function looks up `agent_directory.agent_tag` to find the agent's email. For 99 of 160 tickets, this lookup returned NULL — possibly due to a transient issue or the directory entry being unavailable at the time.
+Run a DELETE query that removes duplicate rows (keeping the earliest entry per group):
 
-**Fix (two parts):**
-- **Backfill:** Run a one-time SQL update to fill in missing `agent_email` values using the current directory data.
-- **Webhook resilience:** No code change needed — the lookup logic is correct (`.ilike('agent_tag', ...)`). The backfill resolves the historical gap.
-
----
-
-### Issue 3: OT Tickets Not Flagged (0 OT instead of 35)
-
-**Root Cause:** The webhook's OT detection depends on finding `agent_email` first (to look up the profile and status). When `agent_email` is NULL (Issue 2), the OT check is skipped entirely, defaulting to `is_ot=false`. Even for the 61 tickets with a valid email, the agent may not have had `ON_OT` status active at ticket receipt time.
-
-**Fix:** This is partially resolved by fixing Issue 2 (ensuring email is always found). However, for accurate OT flagging, the webhook should also be able to look up the profile directly by `agent_tag` without requiring the email intermediary step. Additionally, a backfill query can correct historical OT flags based on status log timestamps.
-
----
-
-### Implementation Steps
-
-**Step 1 — Fix the RPC (database migration)**
-Update `get_ticket_dashboard_data` to group by `agent_name` only, using `MAX(agent_email) FILTER (WHERE agent_email IS NOT NULL)` to collapse duplicate rows.
-
-**Step 2 — Backfill missing agent_email values**
-Run an UPDATE on `ticket_logs` joining `agent_directory` to fill NULL `agent_email` where `agent_tag` matches.
-
-**Step 3 — Improve webhook OT detection**
-Update `zendesk-ticket-webhook` to look up the agent profile directly via `agent_tag` (through `agent_directory` -> `agent_profiles`) instead of requiring `agent_email` as an intermediary. This makes both the email assignment and OT check more resilient.
-
-**Step 4 — Backfill OT flags**
-Provide a query to retroactively mark tickets as `is_ot=true` based on the agent's status log timestamps for Feb 9 (requires knowing when OT status was active).
-
----
-
-### Technical Details
-
-**RPC Change (Step 1):**
 ```sql
--- In the ticket_counts CTE, change grouping:
-GROUP BY tl.agent_name, (tl.timestamp AT TIME ZONE 'America/New_York')::date
--- Use MAX(tl.agent_email) FILTER (WHERE tl.agent_email IS NOT NULL) as agent_email
+DELETE FROM ticket_logs
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id,
+      ROW_NUMBER() OVER (
+        PARTITION BY ticket_id, agent_name, zd_instance,
+          -- Group entries within 120-second windows
+          FLOOR(EXTRACT(EPOCH FROM timestamp) / 120)
+        ORDER BY timestamp ASC
+      ) as rn
+    FROM ticket_logs
+  ) ranked
+  WHERE rn > 1
+);
 ```
 
-**Backfill Query (Step 2):**
-```sql
-UPDATE ticket_logs tl
-SET agent_email = ad.email
-FROM agent_directory ad
-WHERE LOWER(tl.agent_name) = LOWER(ad.agent_tag)
-  AND tl.agent_email IS NULL;
+This removes ~52 duplicate rows while keeping the first occurrence of each.
+
+---
+
+### Step 2 — Add deduplication check to the webhook
+
+Update `zendesk-ticket-webhook/index.ts` to check for an existing entry with the same `ticket_id` + `agent_name` + `zd_instance` within the last 120 seconds before inserting. If a match is found, skip the insert and return a success response indicating it was a duplicate.
+
+```typescript
+// Before inserting, check for recent duplicate
+const twoMinAgo = new Date(new Date(payload.timestamp).getTime() - 120000).toISOString();
+const { data: existing } = await supabase
+  .from('ticket_logs')
+  .select('id')
+  .eq('ticket_id', payload.ticket_id)
+  .eq('agent_name', payload.agent_name)
+  .eq('zd_instance', payload.zd_instance)
+  .gte('timestamp', twoMinAgo)
+  .limit(1);
+
+if (existing && existing.length > 0) {
+  console.log(`Duplicate webhook detected for ticket ${payload.ticket_id}, skipping`);
+  return new Response(
+    JSON.stringify({ success: true, duplicate: true }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 ```
 
-**Webhook Improvement (Step 3):**
-Look up profile_status via agent_directory -> agent_profiles join chain using agent_tag directly, removing the email dependency for OT detection.
+---
+
+### What This Fixes
+- Removes 52 inflated entries from historical data
+- Prevents future duplicate webhook fires from Zendesk from creating extra rows
+- Legitimate re-works of the same ticket (more than 2 minutes apart) will still be logged normally
 
