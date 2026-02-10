@@ -1,43 +1,53 @@
 
 
-# Fix Week Selector: Rolling 10-Week Window from Current Week
+# Fix Outage Requests Tab Filters
 
-## Problem
+## Problems Found
 
-The current week selector logic calculates weeks from the anchor date but the rolling window isn't working correctly, causing some users to see only 1-2 weeks.
+1. **"All Requests" is the first/default tab** -- page loads showing everything including approved/declined requests
+2. **Only "Override Requests" tab actually filters** -- "Pending" and "For Review" tabs show the same data as "All Requests" (no filtering applied)
+3. **Tab order** -- "All Requests" should be last, not first
 
-## Solution
+## Changes
 
-Keep the 10-week rolling window, but simplify the logic: always show the **last 9 weeks + the current week** (10 total). As each new week arrives, the oldest week drops off and the new one appears.
+### File: `src/pages/LeaveRequest.tsx`
 
-**Example (current week = Week 11):**
-Week 2, Week 3, Week 4, Week 5, Week 6, Week 7, Week 8, Week 9, Week 10, Week 11
+**1. Change default tab from `'all'` to `'pending'`**
 
-**Next week (Week 12):**
-Week 3, Week 4, Week 5, Week 6, Week 7, Week 8, Week 9, Week 10, Week 11, Week 12
+Line 106: Change `useState('all')` to `useState('pending')` so the page loads showing only pending requests.
 
-If fewer than 10 weeks have passed since launch, show all available weeks (e.g., in Week 3 you'd see Weeks 1-3).
+**2. Fix the filtering logic**
 
-## Technical Details
-
-**File:** `src/components/dashboard/DashboardWeekSelector.tsx`
-
-The fix is in the `weekOptions` memo (lines 40-60). Replace the current calculation with:
+Lines 678-680: The current filter only handles `override`. Update to also filter for `pending` and `for_review`:
 
 ```typescript
-const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
-const weeksElapsed = differenceInWeeks(currentWeekStart, ANCHOR_DATE);
-
-// Show up to 10 weeks: current week + up to 9 past weeks
-const totalWeeks = Math.min(weeksElapsed + 1, 10);
-const startOffset = Math.max(0, weeksElapsed + 1 - totalWeeks);
+const filteredRequests = 
+  activeTab === 'override' ? requests.filter(r => r.status === 'pending_override')
+  : activeTab === 'pending' ? requests.filter(r => r.status === 'pending')
+  : activeTab === 'for_review' ? requests.filter(r => r.status === 'for_review')
+  : requests; // 'all' shows everything
 ```
 
-This is the same rolling window concept but ensures the math correctly anchors from the current week backward, so every user always sees the correct 10 (or fewer) weeks regardless of timezone edge cases.
+**3. Reorder tabs (admin view)**
 
-## Files Changed
+Move "All Requests" to the end:
+
+- Pending | For Review | Override Requests | All Requests
+
+**4. Reorder tabs (regular user view)**
+
+Move "All Requests" to the end:
+
+- Pending | All Requests
+
+## Result
+
+- Page loads on "Pending" tab showing only pending requests
+- "For Review" tab shows only for_review requests
+- "Override Requests" tab continues to work as before
+- "All Requests" is now the last tab for viewing complete history
 
 | File | Change |
 |------|--------|
-| `src/components/dashboard/DashboardWeekSelector.tsx` | Fix rolling 10-week window calculation |
+| `src/pages/LeaveRequest.tsx` | Fix default tab, add filtering for pending/for_review, reorder tabs |
 
