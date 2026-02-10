@@ -103,7 +103,7 @@ export default function LeaveRequest() {
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [selectedRequestForAudit, setSelectedRequestForAudit] = useState<string | null>(null);
   const [auditAgentName, setAuditAgentName] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('pending');
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   
@@ -675,8 +675,10 @@ export default function LeaveRequest() {
   const overrideCount = requests.filter(r => (r.status as string) === 'pending_override').length;
 
   // Filter requests based on active tab
-  const filteredRequests = activeTab === 'override' 
-    ? requests.filter(r => (r.status as string) === 'pending_override')
+  const filteredRequests = 
+    activeTab === 'override' ? requests.filter(r => (r.status as string) === 'pending_override')
+    : activeTab === 'pending' ? requests.filter(r => (r.status as string) === 'pending')
+    : activeTab === 'for_review' ? requests.filter(r => (r.status as string) === 'for_review')
     : requests;
 
   return (
@@ -1060,7 +1062,6 @@ export default function LeaveRequest() {
             {isAdmin && (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
                 <TabsList data-tour="request-tabs">
-                  <TabsTrigger value="all">All Requests</TabsTrigger>
                   <TabsTrigger value="pending">Pending</TabsTrigger>
                   <TabsTrigger value="for_review">For Review</TabsTrigger>
                   <TabsTrigger value="override" className="relative">
@@ -1071,6 +1072,7 @@ export default function LeaveRequest() {
                       </Badge>
                     )}
                   </TabsTrigger>
+                  <TabsTrigger value="all">All Requests</TabsTrigger>
                 </TabsList>
               </Tabs>
             )}
@@ -1078,8 +1080,8 @@ export default function LeaveRequest() {
             {!isAdmin && (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
                 <TabsList data-tour="request-tabs">
-                  <TabsTrigger value="all">All Requests</TabsTrigger>
                   <TabsTrigger value="pending">Pending</TabsTrigger>
+                  <TabsTrigger value="all">All Requests</TabsTrigger>
                 </TabsList>
               </Tabs>
             )}
