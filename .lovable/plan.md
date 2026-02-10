@@ -1,57 +1,81 @@
 
 
-# Updated User Guide — New Help Center Tab (Step-by-Step Build)
+## Step 4: Team Status Board Section
 
-## Overview
+Add a new `TeamStatusSection.tsx` component inside `src/components/user-guide/sections/updated/` and register it in `UpdatedUserGuideContent.tsx`.
 
-Create a new "Updated User Guide" tab in the Help Center with extremely detailed, step-by-step documentation for each portal feature. Each section will include image placeholders where you can upload screenshots later. We will build this **one section at a time** so you can review each before moving on.
+### Content to cover
 
-## Storage Setup (for guide images)
+**1. Overview**
+- Real-time board showing all agents currently within their scheduled shift window (not just logged-in agents).
+- Visibility is based on EST time falling within the agent's shift or OT schedule for the current day.
+- Agents on their "Day Off" are excluded entirely.
 
-Create a new public storage bucket called `guide-images` so you can upload screenshots for the guide. Images will be referenced by URL in the guide components.
+**2. Who Can See It**
+- All authenticated users can view the board.
+- Admin/HR/Super Admin see a dashboard link icon on each card to jump to the agent's individual dashboard.
+- Regular users see cards without the dashboard link.
 
-## New Tab Setup
+**3. Category Groupings (with icons)**
+| Category | Icon | Color | Mapped Positions |
+|---|---|---|---|
+| Phone Support | Phone | Purple | "Phone Support" |
+| Chat Support | MessageSquare | Cyan | "Chat Support" |
+| Email Support | Mail | Orange | "Email Support" |
+| Hybrid Support | Shuffle | Pink | "Hybrid Support" |
+| Logistics | Package | Amber | Any position not in the above or below |
+| Team Leads | Shield | Indigo | "Team Lead" |
+| Technical Support | Shield | Teal | "Technical Support" |
 
-Add a new tab titled **"Updated User Guide"** to the Help Center page (between "User Guide" and "Admin Guide"), with its own icon and content component.
+**4. Layout**
+- Desktop: Two-column layout -- support agents on left (wider), Team Leads and Tech Support on right (narrower) with Live Activity Feed below them.
+- Mobile: Single column, all stacked.
 
-## Build Order (one at a time)
+**5. Status Card Details**
+Each card displays:
+- Agent full name
+- Status badge (color-coded): Active (green), Break (amber), Coaching (blue), Offline (gray), On OT (emerald), Restarting (yellow), Bio Break (purple)
+- If agent has an approved outage/leave, the status badge shows the outage reason (e.g., "Medical Leave") in sky-blue, plus an "On Leave" outline badge
+- Position badge (color matches category)
+- Shift Schedule (with OT schedule appended if present)
+- Break Schedule
+- Dashboard link icon (Admin/HR/Super Admin only)
 
-We will build each section in this order, pausing after each for your review:
+**6. Sorting Options**
+- "By Login" (default): sorts by most recent status change timestamp
+- "By Name": alphabetical by full name
 
-1. **Step 1: Tab structure + Roles section** (detailed role definitions, feature access matrix with checkmarks, restrictions, limitations, escalation rules)
-2. **Step 2: My Bio (Profile)** section (locked fields for users, which values feed automations like quotas/schedules/views, admin-only fields, change request flow)
-3. **Step 3: Dashboard** section (all status buttons: Login/Logout, Break, Coaching, Device Restart, Bio Break, OT; profile events timeline; weekly summary violations like Late Login, Early Out, No Logout, Break Overuse)
-4. **Step 4: Team Status Board** section (real-time status categories, support type groupings, what each card shows)
-5. **Step 5: Ticket Logs** section (ZD1 vs ZD2 instances, daily ticket counts, gap analysis, quota comparison)
-6. **Step 6: Agent Reports** section (automated incident types, severity levels, status flow, escalation process)
-7. **Step 7: Scorecard** section (weekly metrics, components, how scores are calculated, week selector behavior)
-8. **Step 8: Revalida** section (batches, question types, time limits, grading flow, attempt results)
+**7. Schedule Logic (step-by-step)**
+1. System reads current EST day of week
+2. Checks each agent's day_off array -- if today is listed, agent is skipped
+3. Checks agent's schedule for today (e.g., mon_schedule) -- if null, "Day Off", or "Off", agent is skipped
+4. Checks if current EST time falls within the agent's regular shift range OR OT schedule range
+5. Only agents passing all checks appear on the board
 
-## Technical Details
+**8. Outage/Leave Handling**
+- If an agent has an approved leave request covering today and the current time, the card shows the outage reason instead of their login status
+- The agent still appears on the board (they are scheduled) but is marked with the leave badge
 
-### Database Migration
-- Create a `guide-images` storage bucket (public) with RLS policies allowing authenticated users to read and admins to upload.
+**9. Live Activity Feed**
+- Located in the right column under Team Leads/Tech Support
+- Shows the most recent 15 status changes from today only
+- Fixed 400px scrollable container
 
-### New Files
-- `src/components/user-guide/UpdatedUserGuideContent.tsx` — Main wrapper with accordion sections
-- `src/components/user-guide/sections/updated/*.tsx` — Individual section files (one per step)
-- `src/components/user-guide/GuideImagePlaceholder.tsx` — Reusable placeholder component showing where a screenshot should go, with a description of the expected image
+**10. Header Stats**
+- "X scheduled now (Y online)" -- X = total agents within schedule window, Y = agents not LOGGED_OUT and not on approved outage
 
-### Modified Files
-- `src/pages/HelpCenter.tsx` — Add the new "Updated User Guide" tab
+**11. Image Placeholders**
+- Full board view with multiple categories populated
+- Single status card close-up showing all badge types
+- Sort toggle buttons
+- Outage/leave card example
+- Live Activity Feed section
 
-### GuideImagePlaceholder Component
-A styled placeholder box that shows:
-- A camera/image icon
-- A description of what screenshot goes there (e.g., "Screenshot: Login page with email and password fields")
-- Later, when you upload images to the `guide-images` bucket, these can be swapped to actual `<img>` tags
+### Technical Details
 
-### Section Content Style
-Each section will follow this pattern:
-- Section title with icon
-- Brief description of what the feature does
-- Step-by-step numbered instructions (extremely specific)
-- Tables for reference data (role access, field descriptions)
-- Callout boxes for warnings, tips, and important notes
-- Image placeholders at key steps
+**New file:** `src/components/user-guide/sections/updated/TeamStatusSection.tsx`
+
+**Modified file:** `src/components/user-guide/UpdatedUserGuideContent.tsx` -- add the new accordion entry with `Users` icon and title "Team Status Board"
+
+Uses existing `GuideImagePlaceholder`, `QuickTable`, `StepItem`, `InfoBlock` components from `GuideComponents.tsx`.
 
