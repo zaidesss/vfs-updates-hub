@@ -517,35 +517,83 @@ export type Database = {
         }
         Relationships: []
       }
+      coverage_override_logs: {
+        Row: {
+          agent_id: string
+          agent_name: string
+          break_schedule: string | null
+          changed_by: string
+          created_at: string
+          date: string
+          id: string
+          new_value: string | null
+          override_type: string
+          previous_value: string | null
+        }
+        Insert: {
+          agent_id: string
+          agent_name: string
+          break_schedule?: string | null
+          changed_by: string
+          created_at?: string
+          date: string
+          id?: string
+          new_value?: string | null
+          override_type: string
+          previous_value?: string | null
+        }
+        Update: {
+          agent_id?: string
+          agent_name?: string
+          break_schedule?: string | null
+          changed_by?: string
+          created_at?: string
+          date?: string
+          id?: string
+          new_value?: string | null
+          override_type?: string
+          previous_value?: string | null
+        }
+        Relationships: []
+      }
       coverage_overrides: {
         Row: {
           agent_id: string
+          break_schedule: string | null
           created_at: string
           created_by: string | null
           date: string
           id: string
           override_end: string
           override_start: string
+          override_type: string
+          previous_value: string | null
           reason: string
         }
         Insert: {
           agent_id: string
+          break_schedule?: string | null
           created_at?: string
           created_by?: string | null
           date: string
           id?: string
           override_end: string
           override_start: string
+          override_type?: string
+          previous_value?: string | null
           reason?: string
         }
         Update: {
           agent_id?: string
+          break_schedule?: string | null
           created_at?: string
           created_by?: string | null
           date?: string
           id?: string
           override_end?: string
           override_start?: string
+          override_type?: string
+          previous_value?: string | null
           reason?: string
         }
         Relationships: [
