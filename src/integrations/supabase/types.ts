@@ -2826,6 +2826,28 @@ export type Database = {
               zendesk_instance: string
             }[]
           }
+      get_effective_schedule: {
+        Args: { p_agent_id: string; p_target_date: string }
+        Returns: {
+          effective_ot_schedule: string
+          effective_schedule: string
+          is_day_off: boolean
+          is_override: boolean
+          override_reason: string
+        }[]
+      }
+      get_effective_schedules_for_week: {
+        Args: { p_agent_id: string; p_week_start: string }
+        Returns: {
+          day_date: string
+          day_name: string
+          effective_ot_schedule: string
+          effective_schedule: string
+          is_day_off: boolean
+          is_override: boolean
+          override_reason: string
+        }[]
+      }
       get_super_admin_count: { Args: never; Returns: number }
       get_ticket_dashboard_data: {
         Args: {
