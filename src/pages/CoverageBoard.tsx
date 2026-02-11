@@ -90,7 +90,8 @@ export default function CoverageBoard() {
   const handleApplyOverride = useCallback((override: PendingOverride) => {
     setPendingOverrides(prev => {
       const next = new Map(prev);
-      next.set(`${override.agent_id}:${override.date}`, override);
+      const typeKey = override.block_type || 'override';
+      next.set(`${override.agent_id}:${override.date}:${typeKey}`, override);
       return next;
     });
   }, []);
@@ -101,26 +102,29 @@ export default function CoverageBoard() {
     const startLabel = decimalToTimeLabel(newStartHour);
     // If end > 24, wrap to next-day time label
     const endLabel = newEndHour > 24 ? decimalToTimeLabel(newEndHour - 24) : decimalToTimeLabel(newEndHour);
+    const validType = (blockType === 'regular' || blockType === 'ot' || blockType === 'dayoff') ? blockType : 'override';
     handleApplyOverride({
       agent_id: agent.id,
       date: dateStr,
       override_start: startLabel,
       override_end: endLabel,
       reason: 'drag adjustment',
-      block_type: (blockType === 'regular' || blockType === 'ot') ? blockType : 'override',
+      block_type: validType as PendingOverride['block_type'],
     });
   }, [weekStart, handleApplyOverride]);
 
   const handleRemoveOverride = useCallback((agentId: string, dateStr: string) => {
-    const key = `${agentId}:${dateStr}`;
-    const existingInDb = overrideByKey.get(key);
+    const dbKey = `${agentId}:${dateStr}`;
+    const existingInDb = overrideByKey.get(dbKey);
     setPendingOverrides(prev => {
       const next = new Map(prev);
+      // Remove all block-type keys for this agent+date
+      for (const k of Array.from(next.keys())) {
+        if (k.startsWith(dbKey + ':')) next.delete(k);
+      }
       if (existingInDb) {
         // Mark for deletion on save
-        next.set(key, { agent_id: agentId, date: dateStr, override_start: '', override_end: '', reason: '', _delete: true });
-      } else {
-        next.delete(key);
+        next.set(`${dbKey}:override`, { agent_id: agentId, date: dateStr, override_start: '', override_end: '', reason: '', _delete: true });
       }
       return next;
     });
@@ -166,9 +170,9 @@ export default function CoverageBoard() {
   const totalPending = pendingCount + deleteCount;
 
   // Get current editor context
-  const editorKey = editorAgent && editorDate ? `${editorAgent.id}:${format(editorDate, 'yyyy-MM-dd')}` : '';
-  const editorExistingOverride = editorKey ? overrideByKey.get(editorKey) || null : null;
-  const editorPendingOverride = editorKey ? pendingOverrides.get(editorKey) || null : null;
+  const editorBaseKey = editorAgent && editorDate ? `${editorAgent.id}:${format(editorDate, 'yyyy-MM-dd')}` : '';
+  const editorExistingOverride = editorBaseKey ? overrideByKey.get(editorBaseKey) || null : null;
+  const editorPendingOverride = editorBaseKey ? pendingOverrides.get(`${editorBaseKey}:override`) || null : null;
 
   return (
     <Layout>

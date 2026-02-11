@@ -104,7 +104,7 @@ export function ShiftBlock({
   timelineWidth = 0,
   onBlockAdjust,
 }: ShiftBlockProps) {
-  const isInteractive = editMode && type !== 'dayoff' && type !== 'empty' && onBlockAdjust && timelineWidth > 0;
+  const isInteractive = editMode && type !== 'empty' && onBlockAdjust && timelineWidth > 0;
 
   // Drag/resize state
   const [dragState, setDragState] = useState<{
@@ -122,31 +122,26 @@ export function ShiftBlock({
 
   // Effective start/end during drag
   const effectiveStart = dragState
-    ? type === 'dayoff' || type === 'empty'
-      ? startHour
-      : (() => {
-          const { mode, origStart, origEnd, deltaHours } = dragState;
-          // Allow cross-day: max end is 48 (except Sunday dayOffset=6 stays at 24)
-          const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
-          if (mode === 'drag') return Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
-          if (mode === 'resize-left') return Math.max(0, Math.min(origEnd - MIN_DURATION, snapToHalfHour(origStart + deltaHours)));
-          return origStart;
-        })()
+    ? (() => {
+        const { mode, origStart, origEnd, deltaHours } = dragState;
+        const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
+        if (mode === 'drag') return Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
+        if (mode === 'resize-left') return Math.max(0, Math.min(origEnd - MIN_DURATION, snapToHalfHour(origStart + deltaHours)));
+        return origStart;
+      })()
     : startHour;
 
   const effectiveEnd = dragState
-    ? type === 'dayoff' || type === 'empty'
-      ? endHour
-      : (() => {
-          const { mode, origStart, origEnd, deltaHours } = dragState;
-          const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
-          if (mode === 'drag') {
-            const newStart = Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
-            return newStart + (origEnd - origStart);
-          }
-          if (mode === 'resize-right') return Math.max(origStart + MIN_DURATION, Math.min(maxEnd, snapToHalfHour(origEnd + deltaHours)));
-          return origEnd;
-        })()
+    ? (() => {
+        const { mode, origStart, origEnd, deltaHours } = dragState;
+        const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
+        if (mode === 'drag') {
+          const newStart = Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
+          return newStart + (origEnd - origStart);
+        }
+        if (mode === 'resize-right') return Math.max(origStart + MIN_DURATION, Math.min(maxEnd, snapToHalfHour(origEnd + deltaHours)));
+        return origEnd;
+      })()
     : endHour;
 
   const left = toPercent(dayOffset, effectiveStart);

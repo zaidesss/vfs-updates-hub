@@ -284,55 +284,63 @@ function AgentRow({
 
     for (let dayOff = 0; dayOff < DAYS_IN_WEEK; dayOff++) {
       const dateStr = format(addDays(weekStart, dayOff), 'yyyy-MM-dd');
-      const key = `${agent.id}:${dateStr}`;
-      const dbOverride = overrideMap.get(key);
-      const pending = pendingOverrides?.get(key);
+      const baseKey = `${agent.id}:${dateStr}`;
+      const dbOverride = overrideMap.get(baseKey);
+      // Look up per-block-type pending overrides
+      const pendingRegular = pendingOverrides?.get(`${baseKey}:regular`);
+      const pendingOt = pendingOverrides?.get(`${baseKey}:ot`);
+      const pendingDayoff = pendingOverrides?.get(`${baseKey}:dayoff`);
+      const pendingOverride = pendingOverrides?.get(`${baseKey}:override`);
 
       // Find leave for this agent on this date
       const agentLeaves = leaveMap.get(agent.email.toLowerCase()) || [];
       const leave = agentLeaves.find(l => dateStr >= l.start_date && dateStr <= l.end_date);
 
-      // Check if pending has a block_type (drag adjustment on specific block)
-      if (pending && !pending._delete && pending.block_type && (pending.block_type === 'regular' || pending.block_type === 'ot')) {
-        // Selective merge: get base blocks WITHOUT override, then patch the specific block type
+      const hasTypedPending = (pendingRegular && !pendingRegular._delete) || (pendingOt && !pendingOt._delete) || (pendingDayoff && !pendingDayoff._delete);
+
+      if (hasTypedPending) {
+        // Selective merge: get base blocks, then patch each block type independently
         const baseBlocks = getEffectiveBlocks(agent, dayOff, dbOverride, leave, showEffective);
 
         for (const b of baseBlocks) {
-          if (b.type === pending.block_type) {
-            // Replace this block with the pending adjustment
-            const startDec = parseTimeToDecimalLocal(pending.override_start);
-            const endDec = parseTimeToDecimalLocal(pending.override_end);
+          const typedPending = b.type === 'regular' ? pendingRegular
+            : b.type === 'ot' ? pendingOt
+            : b.type === 'dayoff' ? pendingDayoff
+            : null;
+
+          if (typedPending && !typedPending._delete) {
+            const startDec = parseTimeToDecimalLocal(typedPending.override_start);
+            const endDec = parseTimeToDecimalLocal(typedPending.override_end);
             if (startDec !== null && endDec !== null) {
               blocks.push({
                 ...b,
                 startHour: startDec,
                 endHour: endDec <= startDec ? 24 + endDec : endDec,
-                startLabel: pending.override_start,
-                endLabel: pending.override_end,
+                startLabel: typedPending.override_start,
+                endLabel: typedPending.override_end,
               });
             } else {
               blocks.push(b);
             }
           } else {
-            // Keep other blocks untouched
             blocks.push(b);
           }
         }
       } else {
-        // Full replacement behavior (manual dialog override or no pending)
+        // Full replacement behavior (manual dialog override or no typed pending)
         let override = dbOverride;
-        if (pending && !pending._delete) {
+        if (pendingOverride && !pendingOverride._delete) {
           override = {
             id: dbOverride?.id ?? '',
             agent_id: agent.id,
             date: dateStr,
-            override_start: pending.override_start,
-            override_end: pending.override_end,
-            reason: pending.reason || dbOverride?.reason || '',
+            override_start: pendingOverride.override_start,
+            override_end: pendingOverride.override_end,
+            reason: pendingOverride.reason || dbOverride?.reason || '',
             created_at: dbOverride?.created_at ?? '',
             created_by: dbOverride?.created_by ?? null,
           } as CoverageOverride;
-        } else if (pending?._delete) {
+        } else if (pendingOverride?._delete) {
           override = undefined;
         }
         const dayBlocks = getEffectiveBlocks(agent, dayOff, override, leave, showEffective);
@@ -420,8 +428,12 @@ function AgentRow({
         {editMode && onCellClick && (
           Array.from({ length: DAYS_IN_WEEK }).map((_, dayIdx) => {
             const dayDate = addDays(weekStart, dayIdx);
-            const key = `${agent.id}:${format(dayDate, 'yyyy-MM-dd')}`;
-            const hasPending = pendingOverrides?.has(key) && !pendingOverrides.get(key)?._delete;
+            const dateStrForDay = format(dayDate, 'yyyy-MM-dd');
+            const dayBaseKey = `${agent.id}:${dateStrForDay}`;
+            const hasPending = ['regular', 'ot', 'dayoff', 'override'].some(t => {
+              const p = pendingOverrides?.get(`${dayBaseKey}:${t}`);
+              return p && !p._delete;
+            });
             return (
               <div
                 key={dayIdx}
