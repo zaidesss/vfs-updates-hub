@@ -1,68 +1,74 @@
 
 
-## Fix: False EARLY_OUT for Overnight Shifts Due to Previous Day's Logout Bleed
+## Fix All False EARLY_OUT Reports + Dashboard UI
 
-### Problem
-The `generate-agent-reports` edge function's event query window for overnight shifts captures logout events from the **previous day's** shift. For Jaeran's Feb 10 report, the 1:05 AM logout (from his Feb 9 shift) was incorrectly treated as Feb 10's logout, causing a false EARLY_OUT flag.
+This plan addresses 3 bugs across 2 files, plus cleanup of 3 false reports.
 
-### Root Cause
-The event window starts at midnight EST (5:00 AM UTC), which includes early-morning logouts belonging to the previous day's overnight shift. The EARLY_OUT check picks the last logout in the window but doesn't verify it's paired with a same-day login.
+### Bugs to Fix
 
-### Related Issues to Address
-1. **False EARLY_OUT** (primary issue) -- logout from previous shift attributed to current day
-2. **False LATE_LOGIN** -- needs verification: Jaeran's LOGIN at 5:37 PM (scheduledStart 4:00 PM) shows 97 min late, which may be legitimate, but the login pairing logic should also be reviewed
-3. **Duplicate NO_LOGOUT reports** -- two NO_LOGOUT reports exist for Jaeran (one from the 5 AM cron, one from stale session detection at 2:59 PM). Should deduplicate
-4. **Stale data cleanup** -- the 4 false/duplicate incident reports for Jaeran should be cleaned up
+**Bug 1: Dashboard UI logout bleed (primary visual issue)**
+In `src/lib/agentDashboardApi.ts` (~line 1681-1696), the logout search finds any LOGOUT on `dateStr` without checking if it belongs to the current session. For overnight workers, a 1:05 AM logout from the previous shift gets attributed to the current day.
 
-### Fix Strategy
-Update the EARLY_OUT detection in `generate-agent-reports/index.ts` to **pair logouts with their corresponding logins** for overnight shifts:
+**Fix:** After finding a same-day logout, verify it occurred AFTER the same-day login. If the logout is before the login (or no login exists), discard it as previous-session bleed. Apply the same check to the next-day logout search for overnight shifts.
 
-- For overnight shifts, only consider logout events that occur **after** the last login event in the window
-- If a logout happens before any login in the window, it belongs to the previous day's shift and should be excluded from EARLY_OUT evaluation
-- Add the same pairing logic to ensure NO_LOGOUT detection accounts for the stale session auto-logout timing gap
+**Bug 2: OT_LOGOUT treated as regular LOGOUT (edge function)**
+In `generate-agent-reports/index.ts` (line 355), logout events are filtered by `event_type === 'LOGOUT'` only. An `OT_LOGOUT` event is not a regular shift logout and should be excluded from EARLY_OUT checks.
 
-### Technical Changes
+**Fix:** Keep the filter as `event_type === 'LOGOUT'` (already correct -- OT_LOGOUT won't match). However, need to verify the Biah Mae case: if an OT_LOGOUT was somehow stored as a regular LOGOUT, or if the issue is the same logout bleed from a previous session. Will add explicit exclusion of `OT_LOGOUT` and `SYSTEM_AUTO_LOGOUT` from the logout event filter as a safeguard.
 
-**File: `supabase/functions/generate-agent-reports/index.ts`**
+**Bug 3: Dashboard UI Early Out check missing overnight logic**
+In `src/lib/agentDashboardApi.ts` (line 1723), `isEarlyOut = logoutTimeMinutes < scheduleParsed.endMinutes` doesn't account for overnight shifts where endMinutes < startMinutes (e.g., shift ends at 2:00 AM = 120 min, but a 10 PM logout = 1320 min would not trigger). This is fine for standard overnight cases, but needs session pairing to avoid false positives from bleed logouts.
 
-In the EARLY_OUT check section (~line 533):
-
-```text
-Current (buggy):
-  Uses logoutEvents[logoutEvents.length - 1] without checking
-  if the logout is actually from the current day's session.
-
-Fixed:
-  For overnight shifts, filter logoutEvents to only those occurring
-  AFTER the last LOGIN event. If no qualifying logout exists,
-  skip EARLY_OUT check entirely.
-```
-
-Pseudocode:
-```text
-if (isOvernightShift && loginEvents.length > 0) {
-  const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
-  // Only consider logouts that happened after the last login (same session)
-  const sessionLogouts = logoutEvents.filter(e =>
-    new Date(e.created_at).getTime() > lastLoginTime
-  );
-  if (sessionLogouts.length === 0) {
-    // No logout in current session -- skip EARLY_OUT
-    skip;
-  }
-  // Use last session logout for EARLY_OUT check
-  lastLogout = sessionLogouts[sessionLogouts.length - 1];
-}
-```
-
-**Data cleanup**: Delete the 4 false incident reports for Jaeran (Feb 10):
-- EARLY_OUT (actualLogout: 65)
-- LATE_LOGIN (may be valid -- verify with user)
-- Two NO_LOGOUT reports (one is a duplicate)
+### Data Cleanup
+Delete these 3 false EARLY_OUT reports:
+- `214766b2-...` -- Meryl Jean, Feb 9
+- `2189ee6d-...` -- Biah Mae, Feb 11
+- `3670dd55-...` -- Stephen Martinez, Feb 11
 
 ### Step-by-step Implementation
-1. Fix the EARLY_OUT login-pairing logic in the edge function
-2. Review and apply same pairing logic to NO_LOGOUT duplicate prevention
-3. Deploy the updated edge function
-4. Clean up Jaeran's false reports (after confirming which ones to remove)
+
+**Step 1**: Fix `src/lib/agentDashboardApi.ts` -- add session pairing to logout search
+- Same-day logout must be AFTER same-day login
+- Next-day overnight logout must also be AFTER the login
+
+**Step 2**: Fix `supabase/functions/generate-agent-reports/index.ts` -- add explicit exclusion of non-standard logout types (OT_LOGOUT, SYSTEM_AUTO_LOGOUT) from the EARLY_OUT logout filter
+
+**Step 3**: Deploy edge function
+
+**Step 4**: Delete the 3 false EARLY_OUT reports from the database
+
+### Technical Details
+
+**File: `src/lib/agentDashboardApi.ts`** (lines 1681-1696)
+```
+// Current: finds any LOGOUT on dateStr
+logoutForDay = statusEvents.find(event => 
+  eventDate === dateStr && event.event_type === 'LOGOUT'
+);
+
+// Fixed: verify logout is after login (session pairing)
+let candidateLogout = statusEvents.find(event => 
+  eventDate === dateStr && event.event_type === 'LOGOUT'
+);
+// Discard if it belongs to previous day's session
+if (candidateLogout && loginForDay) {
+  if (new Date(candidateLogout.created_at) < new Date(loginForDay.created_at)) {
+    candidateLogout = undefined; // Previous session bleed
+  }
+}
+logoutForDay = candidateLogout;
+```
+
+**File: `supabase/functions/generate-agent-reports/index.ts`** (line 355)
+```
+// Current
+const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
+
+// Fixed: explicitly exclude OT and system auto-logouts
+const logoutEvents = profileEvents.filter(e => 
+  e.event_type === 'LOGOUT' && 
+  e.event_type !== 'OT_LOGOUT' && 
+  e.event_type !== 'SYSTEM_AUTO_LOGOUT'
+);
+```
 
