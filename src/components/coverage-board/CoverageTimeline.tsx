@@ -56,6 +56,9 @@ interface CoverageTimelineProps {
   overrides: CoverageOverride[];
   leaves: LeaveForDate[];
   showEffective: boolean;
+  editMode?: boolean;
+  pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
+  onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
 }
 
 export function CoverageTimeline({
@@ -64,6 +67,9 @@ export function CoverageTimeline({
   overrides,
   leaves,
   showEffective,
+  editMode = false,
+  pendingOverrides,
+  onCellClick,
 }: CoverageTimelineProps) {
   const { now } = usePortalClock();
 
@@ -205,6 +211,9 @@ export function CoverageTimeline({
                     leaveMap={leaveMap}
                     showEffective={showEffective}
                     currentTimePct={currentTimePct}
+                    editMode={editMode}
+                    pendingOverrides={pendingOverrides}
+                    onCellClick={onCellClick}
                   />
                 ))}
               </div>
@@ -226,6 +235,9 @@ function AgentRow({
   leaveMap,
   showEffective,
   currentTimePct,
+  editMode = false,
+  pendingOverrides,
+  onCellClick,
 }: {
   agent: AgentScheduleRow;
   weekStart: Date;
@@ -233,6 +245,9 @@ function AgentRow({
   leaveMap: Map<string, LeaveForDate[]>;
   showEffective: boolean;
   currentTimePct: number;
+  editMode?: boolean;
+  pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
+  onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
 }) {
   const displayName = getDisplayName(agent);
   const dailyHrs = computeDailyHours(agent);
@@ -312,6 +327,26 @@ function AgentRow({
             outageReason={block.outageReason}
           />
         ))}
+
+        {/* Edit mode: day click targets */}
+        {editMode && onCellClick && (
+          Array.from({ length: DAYS_IN_WEEK }).map((_, dayIdx) => {
+            const dayDate = addDays(weekStart, dayIdx);
+            const key = `${agent.id}:${format(dayDate, 'yyyy-MM-dd')}`;
+            const hasPending = pendingOverrides?.has(key) && !pendingOverrides.get(key)?._delete;
+            return (
+              <div
+                key={dayIdx}
+                className={`absolute top-0 bottom-0 z-10 cursor-pointer transition-colors hover:bg-white/10 ${hasPending ? 'ring-2 ring-inset ring-dashed ring-amber-400/70' : ''}`}
+                style={{
+                  left: `${(dayIdx * HOURS_PER_DAY / TOTAL_HOUR_COLS) * 100}%`,
+                  width: `${(HOURS_PER_DAY / TOTAL_HOUR_COLS) * 100}%`,
+                }}
+                onClick={() => onCellClick(agent, dayIdx, dayDate)}
+              />
+            );
+          })
+        )}
 
         {/* Current time indicator */}
         {currentTimePct >= 0 && (
