@@ -16,6 +16,8 @@ interface ShiftBlockProps {
   supportType?: string;
   isOverridden?: boolean;
   outageReason?: string;
+  hasConflict?: boolean;
+  conflictDay?: string;
   editMode?: boolean;
   timelineWidth?: number;
   onBlockAdjust?: (newStartHour: number, newEndHour: number) => void;
@@ -96,6 +98,8 @@ export function ShiftBlock({
   supportType,
   isOverridden,
   outageReason,
+  hasConflict,
+  conflictDay,
   editMode = false,
   timelineWidth = 0,
   onBlockAdjust,
@@ -122,7 +126,9 @@ export function ShiftBlock({
       ? startHour
       : (() => {
           const { mode, origStart, origEnd, deltaHours } = dragState;
-          if (mode === 'drag') return Math.max(0, Math.min(HOURS_PER_DAY - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
+          // Allow cross-day: max end is 48 (except Sunday dayOffset=6 stays at 24)
+          const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
+          if (mode === 'drag') return Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
           if (mode === 'resize-left') return Math.max(0, Math.min(origEnd - MIN_DURATION, snapToHalfHour(origStart + deltaHours)));
           return origStart;
         })()
@@ -133,11 +139,12 @@ export function ShiftBlock({
       ? endHour
       : (() => {
           const { mode, origStart, origEnd, deltaHours } = dragState;
+          const maxEnd = dayOffset >= 6 ? HOURS_PER_DAY : HOURS_PER_DAY * 2;
           if (mode === 'drag') {
-            const newStart = Math.max(0, Math.min(HOURS_PER_DAY - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
+            const newStart = Math.max(0, Math.min(maxEnd - (origEnd - origStart), snapToHalfHour(origStart + deltaHours)));
             return newStart + (origEnd - origStart);
           }
-          if (mode === 'resize-right') return Math.max(origStart + MIN_DURATION, Math.min(HOURS_PER_DAY, snapToHalfHour(origEnd + deltaHours)));
+          if (mode === 'resize-right') return Math.max(origStart + MIN_DURATION, Math.min(maxEnd, snapToHalfHour(origEnd + deltaHours)));
           return origEnd;
         })()
     : endHour;
@@ -237,7 +244,8 @@ export function ShiftBlock({
               : TYPE_STYLES[type],
             isInteractive && !isDragging && 'cursor-grab z-[6]',
             isDragging && 'cursor-grabbing z-30 opacity-80',
-            hasVisualChange && 'ring-2 ring-inset ring-dashed ring-amber-400/70'
+            hasVisualChange && 'ring-2 ring-inset ring-dashed ring-amber-400/70',
+            hasConflict && 'ring-2 ring-red-500 animate-pulse'
           )}
           style={{
             left: `${left}%`,
@@ -261,6 +269,7 @@ export function ShiftBlock({
         {supportType && <p className="text-muted-foreground">{supportType}</p>}
         {isOverridden && <p className="text-amber-400 font-medium">⚡ Overridden</p>}
         {outageReason && <p className="text-red-400">{outageReason}</p>}
+        {hasConflict && <p className="text-red-400 font-medium">⚠️ Conflicts with Day Off on {conflictDay}</p>}
         {hasVisualChange && <p className="text-amber-400 font-medium">📐 Unsaved adjustment</p>}
       </TooltipContent>
     </Tooltip>

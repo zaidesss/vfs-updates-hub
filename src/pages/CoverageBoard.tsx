@@ -96,16 +96,18 @@ export default function CoverageBoard() {
   }, []);
 
   // Handle block drag/resize adjustments from the timeline
-  const handleBlockAdjust = useCallback((agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => {
+  const handleBlockAdjust = useCallback((agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number, blockType: string) => {
     const dateStr = format(addDays(weekStart, dayOffset), 'yyyy-MM-dd');
     const startLabel = decimalToTimeLabel(newStartHour);
-    const endLabel = decimalToTimeLabel(newEndHour);
+    // If end > 24, wrap to next-day time label
+    const endLabel = newEndHour > 24 ? decimalToTimeLabel(newEndHour - 24) : decimalToTimeLabel(newEndHour);
     handleApplyOverride({
       agent_id: agent.id,
       date: dateStr,
       override_start: startLabel,
       override_end: endLabel,
       reason: 'drag adjustment',
+      block_type: (blockType === 'regular' || blockType === 'ot') ? blockType : 'override',
     });
   }, [weekStart, handleApplyOverride]);
 

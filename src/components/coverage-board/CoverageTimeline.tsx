@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel } from './ShiftBlock';
+import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel, parseTimeToDecimal as parseTimeToDecimalLocal } from './ShiftBlock';
 import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import {
   HOURS_PER_DAY,
@@ -59,7 +59,7 @@ interface CoverageTimelineProps {
   editMode?: boolean;
   pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
   onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
-  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => void;
+  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number, blockType: string) => void;
 }
 
 export function CoverageTimeline({
@@ -267,7 +267,7 @@ function AgentRow({
   editMode?: boolean;
   pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
   onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
-  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => void;
+  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number, blockType: string) => void;
   timelineWidth?: number;
 }) {
   const displayName = getDisplayName(agent);
@@ -276,38 +276,82 @@ function AgentRow({
 
   // Collect all blocks for all 7 days
   const allBlocks = useMemo(() => {
-    const blocks: Array<{ dayOffset: number; startHour: number; endHour: number; type: string; startLabel: string; endLabel: string; isOverridden?: boolean; outageReason?: string }> = [];
+    const blocks: Array<{ dayOffset: number; startHour: number; endHour: number; type: string; startLabel: string; endLabel: string; isOverridden?: boolean; outageReason?: string; hasConflict?: boolean; conflictDay?: string }> = [];
+
+    // Pre-compute which days are day-off for conflict detection
+    const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const OFFSET_TO_JS_DAY = [1, 2, 3, 4, 5, 6, 0];
 
     for (let dayOff = 0; dayOff < DAYS_IN_WEEK; dayOff++) {
       const dateStr = format(addDays(weekStart, dayOff), 'yyyy-MM-dd');
       const key = `${agent.id}:${dateStr}`;
-      let override = overrideMap.get(key);
-
-      // Merge pending overrides for immediate visual feedback
+      const dbOverride = overrideMap.get(key);
       const pending = pendingOverrides?.get(key);
-      if (pending && !pending._delete) {
-        override = {
-          id: override?.id ?? '',
-          agent_id: agent.id,
-          date: dateStr,
-          override_start: pending.override_start,
-          override_end: pending.override_end,
-          reason: pending.reason || override?.reason || '',
-          created_at: override?.created_at ?? '',
-          created_by: override?.created_by ?? null,
-        } as CoverageOverride;
-      } else if (pending?._delete) {
-        override = undefined;
-      }
 
       // Find leave for this agent on this date
       const agentLeaves = leaveMap.get(agent.email.toLowerCase()) || [];
-      const leave = agentLeaves.find(l => {
-        return dateStr >= l.start_date && dateStr <= l.end_date;
-      });
+      const leave = agentLeaves.find(l => dateStr >= l.start_date && dateStr <= l.end_date);
 
-      const dayBlocks = getEffectiveBlocks(agent, dayOff, override, leave, showEffective);
-      blocks.push(...dayBlocks);
+      // Check if pending has a block_type (drag adjustment on specific block)
+      if (pending && !pending._delete && pending.block_type && (pending.block_type === 'regular' || pending.block_type === 'ot')) {
+        // Selective merge: get base blocks WITHOUT override, then patch the specific block type
+        const baseBlocks = getEffectiveBlocks(agent, dayOff, dbOverride, leave, showEffective);
+
+        for (const b of baseBlocks) {
+          if (b.type === pending.block_type) {
+            // Replace this block with the pending adjustment
+            const startDec = parseTimeToDecimalLocal(pending.override_start);
+            const endDec = parseTimeToDecimalLocal(pending.override_end);
+            if (startDec !== null && endDec !== null) {
+              blocks.push({
+                ...b,
+                startHour: startDec,
+                endHour: endDec <= startDec ? 24 + endDec : endDec,
+                startLabel: pending.override_start,
+                endLabel: pending.override_end,
+              });
+            } else {
+              blocks.push(b);
+            }
+          } else {
+            // Keep other blocks untouched
+            blocks.push(b);
+          }
+        }
+      } else {
+        // Full replacement behavior (manual dialog override or no pending)
+        let override = dbOverride;
+        if (pending && !pending._delete) {
+          override = {
+            id: dbOverride?.id ?? '',
+            agent_id: agent.id,
+            date: dateStr,
+            override_start: pending.override_start,
+            override_end: pending.override_end,
+            reason: pending.reason || dbOverride?.reason || '',
+            created_at: dbOverride?.created_at ?? '',
+            created_by: dbOverride?.created_by ?? null,
+          } as CoverageOverride;
+        } else if (pending?._delete) {
+          override = undefined;
+        }
+        const dayBlocks = getEffectiveBlocks(agent, dayOff, override, leave, showEffective);
+        blocks.push(...dayBlocks);
+      }
+    }
+
+    // Day-off conflict detection: if a block's endHour > 24, check if next day is a day off
+    for (const block of blocks) {
+      if (block.endHour > 24 && block.dayOffset < 6) {
+        const nextDayOffset = block.dayOffset + 1;
+        const nextJsDay = OFFSET_TO_JS_DAY[nextDayOffset];
+        const nextDayName = DAY_NAMES_FULL[nextJsDay];
+        const nextIsDayOff = agent.day_off?.some(d => d.toLowerCase().substring(0, 3) === nextDayName.toLowerCase().substring(0, 3));
+        if (nextIsDayOff) {
+          block.hasConflict = true;
+          block.conflictDay = nextDayName;
+        }
+      }
     }
 
     return blocks;
@@ -364,9 +408,11 @@ function AgentRow({
             supportType={agent.position || undefined}
             isOverridden={block.isOverridden}
             outageReason={block.outageReason}
+            hasConflict={block.hasConflict}
+            conflictDay={block.conflictDay}
             editMode={editMode}
             timelineWidth={timelineWidth}
-            onBlockAdjust={onBlockAdjust ? (newStart, newEnd) => onBlockAdjust(agent, block.dayOffset, newStart, newEnd) : undefined}
+            onBlockAdjust={onBlockAdjust ? (newStart, newEnd) => onBlockAdjust(agent, block.dayOffset, newStart, newEnd, block.type) : undefined}
           />
         ))}
 
