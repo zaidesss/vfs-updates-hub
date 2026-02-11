@@ -1,104 +1,68 @@
 
 
-## Integrate Coverage Board Overrides with All Automations
+## Fix: False EARLY_OUT for Overnight Shifts Due to Previous Day's Logout Bleed
 
-### Overview
-Create a centralized `get_effective_schedule` database function that all systems use to determine an agent's actual schedule for any given date. Coverage overrides take precedence over the permanent agent_profiles schedule, but only for the specific dates they cover.
+### Problem
+The `generate-agent-reports` edge function's event query window for overnight shifts captures logout events from the **previous day's** shift. For Jaeran's Feb 10 report, the 1:05 AM logout (from his Feb 9 shift) was incorrectly treated as Feb 10's logout, causing a false EARLY_OUT flag.
 
----
+### Root Cause
+The event window starts at midnight EST (5:00 AM UTC), which includes early-morning logouts belonging to the previous day's overnight shift. The EARLY_OUT check picks the last logout in the window but doesn't verify it's paired with a same-day login.
 
-### Architecture
+### Related Issues to Address
+1. **False EARLY_OUT** (primary issue) -- logout from previous shift attributed to current day
+2. **False LATE_LOGIN** -- needs verification: Jaeran's LOGIN at 5:37 PM (scheduledStart 4:00 PM) shows 97 min late, which may be legitimate, but the login pairing logic should also be reviewed
+3. **Duplicate NO_LOGOUT reports** -- two NO_LOGOUT reports exist for Jaeran (one from the 5 AM cron, one from stale session detection at 2:59 PM). Should deduplicate
+4. **Stale data cleanup** -- the 4 false/duplicate incident reports for Jaeran should be cleaned up
 
-The new RPC `get_effective_schedule(agent_id, target_date)` will:
-1. Check `coverage_overrides` for the agent+date
-2. If found, return the override start/end times
-3. If not found, fall back to the agent's base schedule from `agent_profiles` for that day of week
+### Fix Strategy
+Update the EARLY_OUT detection in `generate-agent-reports/index.ts` to **pair logouts with their corresponding logins** for overnight shifts:
 
-All downstream systems will call this RPC (or its inline equivalent) instead of reading schedules directly from `agent_profiles` / `agent_directory`.
+- For overnight shifts, only consider logout events that occur **after** the last login event in the window
+- If a logout happens before any login in the window, it belongs to the previous day's shift and should be excluded from EARLY_OUT evaluation
+- Add the same pairing logic to ensure NO_LOGOUT detection accounts for the stale session auto-logout timing gap
 
----
+### Technical Changes
 
-### Step-by-Step Implementation
+**File: `supabase/functions/generate-agent-reports/index.ts`**
 
-#### Step 1: Create the `get_effective_schedule` RPC
-**Database migration** -- a new PostgreSQL function:
-- Input: `p_agent_id UUID, p_target_date DATE`
-- Output: `effective_schedule TEXT, effective_ot_schedule TEXT, is_day_off BOOLEAN, is_override BOOLEAN, override_reason TEXT`
-- Logic:
-  1. Look up `coverage_overrides` where `agent_id = p_agent_id AND date = p_target_date`
-  2. If override exists, return `override_start - override_end` as `effective_schedule`, set `is_override = true`
-  3. If no override, get the day-of-week from `p_target_date`, read the corresponding `{day}_schedule` and `{day}_ot_schedule` from `agent_profiles`, check `day_off` array
-  4. Return the result
+In the EARLY_OUT check section (~line 533):
 
-Also create a batch variant `get_effective_schedules_for_week(p_agent_id, p_week_start)` that returns 7 rows (Mon-Sun) in one call, for efficiency.
+```text
+Current (buggy):
+  Uses logoutEvents[logoutEvents.length - 1] without checking
+  if the logout is actually from the current day's session.
 
-#### Step 2: Update `get_agent_dashboard_data` RPC
-- Add a CTE that joins `coverage_overrides` for the current week
-- For each day's schedule column in the output, use `COALESCE(override_schedule, base_schedule)` logic
-- This means the Dashboard's Shift Schedule table will automatically show the overridden schedule
+Fixed:
+  For overnight shifts, filter logoutEvents to only those occurring
+  AFTER the last LOGIN event. If no qualifying logout exists,
+  skip EARLY_OUT check entirely.
+```
 
-#### Step 3: Update `get_weekly_scorecard_data` RPC
-- Add a CTE that joins `coverage_overrides` for the scorecard week range
-- The reliability calculation (scheduled days) should account for overrides that change a day off to a working day or vice versa
-- Expected hours calculation should use effective schedule durations
+Pseudocode:
+```text
+if (isOvernightShift && loginEvents.length > 0) {
+  const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
+  // Only consider logouts that happened after the last login (same session)
+  const sessionLogouts = logoutEvents.filter(e =>
+    new Date(e.created_at).getTime() > lastLoginTime
+  );
+  if (sessionLogouts.length === 0) {
+    // No logout in current session -- skip EARLY_OUT
+    skip;
+  }
+  // Use last session logout for EARLY_OUT check
+  lastLogout = sessionLogouts[sessionLogouts.length - 1];
+}
+```
 
-#### Step 4: Update `generate-agent-reports` edge function
-- Before processing each agent, query `coverage_overrides` for the target date
-- If an override exists for the agent+date, use that schedule instead of `agent_directory`
-- This prevents false LATE_LOGIN, EARLY_OUT, TIME_NOT_MET, and NO_LOGOUT flags when shifts are adjusted
+**Data cleanup**: Delete the 4 false incident reports for Jaeran (Feb 10):
+- EARLY_OUT (actualLogout: 65)
+- LATE_LOGIN (may be valid -- verify with user)
+- Two NO_LOGOUT reports (one is a duplicate)
 
-#### Step 5: Update `teamStatusApi.ts` (Team Status Board)
-- After fetching profiles, also fetch `coverage_overrides` for today's date
-- For each agent, check if an override exists; if so, use the override times for the `isWithinScheduleWindow` check
-- This ensures agents appear on Team Status Board based on their actual (overridden) shift
-
-#### Step 6: Update `agentDashboardApi.ts` (real-time compliance)
-- `checkAndAlertLateLogin`: Before comparing login time to schedule, check `coverage_overrides` for today
-- `checkAndAlertEarlyOut`: Same -- use override end time if exists
-- `calculateBioAllowanceForProfile`: Use effective schedule duration (override or base) for bio time calculation
-- Stale session detection: Use effective schedule for overnight shift validation
-
-#### Step 7: Update `ShiftScheduleTable.tsx` (Dashboard UI)
-- `fetchDashboardProfile` should also fetch overrides for the selected week
-- Pass overrides to `ShiftScheduleTable` so the "Schedule" column shows the effective schedule per day
-- Visually mark overridden days (e.g., small indicator icon or different text color)
-
-#### Step 8: Coverage Board outage labels
-- In `CoverageTimeline.tsx`, when rendering outage blocks, use the `outage_reason` from `leave_requests` as the block label instead of generic "Outage"
-- Show the actual time range from the outage request (`start_time - end_time`)
-- Multiple outages on the same day render as separate blocks with their own reason labels
-
----
-
-### What Changes Where (Summary)
-
-| System | Current Source | New Source |
-|--------|---------------|-----------|
-| Dashboard Shift Schedule | agent_profiles | agent_profiles + coverage_overrides |
-| Agent Reports (edge fn) | agent_directory | agent_directory + coverage_overrides |
-| Team Status Board | agent_profiles_team_status | agent_profiles + coverage_overrides |
-| Late Login/Early Out alerts | agent_directory | agent_directory + coverage_overrides |
-| Bio allowance calc | agent_directory | agent_directory + coverage_overrides |
-| Scorecard (reliability/hours) | agent_profiles | agent_profiles + coverage_overrides |
-| Coverage Board outage labels | generic "Outage" | leave_requests.outage_reason |
-
----
-
-### Important Constraints
-- Agent Profiles remain the permanent source of truth -- overrides are date-specific and ephemeral
-- Overrides only affect the specific date they're created for
-- Next week automatically reverts to agent_profiles schedule (no override = base schedule)
-- The `coverage_overrides` table already has a unique constraint on `(agent_id, date)`, so one override per agent per date
-
----
-
-### Implementation Order
-We will do this one step at a time:
-1. Create `get_effective_schedule` RPC (foundation)
-2. Update Agent Reports edge function (highest impact -- stops false flags)
-3. Update Team Status Board
-4. Update Dashboard (Shift Schedule table + compliance checks)
-5. Update Scorecard RPC
-6. Add outage reason labels to Coverage Board
-7. Test end-to-end
+### Step-by-step Implementation
+1. Fix the EARLY_OUT login-pairing logic in the edge function
+2. Review and apply same pairing logic to NO_LOGOUT duplicate prevention
+3. Deploy the updated edge function
+4. Clean up Jaeran's false reports (after confirming which ones to remove)
 
