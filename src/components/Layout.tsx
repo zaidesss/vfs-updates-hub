@@ -142,6 +142,7 @@ export function Layout({ children }: LayoutProps) {
     }
     // Team Status Board - available to all users
     peopleItems.push({ href: '/team-status', label: 'Team Status', icon: Activity });
+    peopleItems.push({ href: '/people/coverage-board', label: 'Coverage Board', icon: CalendarDays });
     
     if (peopleItems.length > 0) {
       groups.push({

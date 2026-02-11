@@ -44,6 +44,7 @@ import AgentReports from "./pages/AgentReports";
 import TeamScorecard from "./pages/TeamScorecard";
 import Revalida from "./pages/Revalida";
 import RevalidaV2 from "./pages/RevalidaV2";
+import CoverageBoard from "./pages/CoverageBoard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -336,6 +337,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <RevalidaV2 />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/people/coverage-board"
+        element={
+          <ProtectedRoute>
+            <CoverageBoard />
           </ProtectedRoute>
         }
       />
