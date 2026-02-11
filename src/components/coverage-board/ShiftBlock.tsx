@@ -17,8 +17,17 @@ interface ShiftBlockProps {
   outageReason?: string;
 }
 
+export const POSITION_COLORS: Record<string, string> = {
+  'Hybrid Support': 'bg-blue-500/80 border-blue-600',
+  'Email Support': 'bg-emerald-500/80 border-emerald-600',
+  'Phone Support': 'bg-orange-500/80 border-orange-600',
+  'Chat Support': 'bg-cyan-500/80 border-cyan-600',
+  'Logistics': 'bg-indigo-500/80 border-indigo-600',
+};
+const POSITION_FALLBACK = 'bg-slate-500/80 border-slate-600';
+
 const TYPE_STYLES: Record<ShiftBlockType, string> = {
-  regular: 'bg-blue-500/80 border-blue-600',
+  regular: '', // resolved dynamically via supportType
   ot: 'bg-violet-500/80 border-violet-600',
   dayoff: 'bg-muted/40 border-dashed border-muted-foreground/30',
   outage: 'bg-red-500/30 border-red-500 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(239,68,68,0.15)_4px,rgba(239,68,68,0.15)_8px)]',
@@ -87,7 +96,9 @@ export function ShiftBlock({
         <div
           className={cn(
             'absolute top-1 bottom-1 rounded border text-[10px] text-white font-medium flex items-center justify-center overflow-hidden cursor-default select-none transition-opacity hover:opacity-90',
-            TYPE_STYLES[type]
+            type === 'regular'
+              ? (POSITION_COLORS[supportType || ''] || POSITION_FALLBACK)
+              : TYPE_STYLES[type]
           )}
           style={{
             left: `${left}%`,
