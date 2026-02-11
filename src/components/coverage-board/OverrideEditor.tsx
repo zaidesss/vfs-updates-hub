@@ -22,6 +22,7 @@ export interface PendingOverride {
   override_start: string;
   override_end: string;
   reason: string;
+  block_type?: 'regular' | 'ot' | 'override'; // which block was adjusted
   _delete?: boolean; // flag to mark for deletion on save
 }
 
