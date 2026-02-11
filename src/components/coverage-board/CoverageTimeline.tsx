@@ -280,7 +280,25 @@ function AgentRow({
 
     for (let dayOff = 0; dayOff < DAYS_IN_WEEK; dayOff++) {
       const dateStr = format(addDays(weekStart, dayOff), 'yyyy-MM-dd');
-      const override = overrideMap.get(`${agent.id}:${dateStr}`);
+      const key = `${agent.id}:${dateStr}`;
+      let override = overrideMap.get(key);
+
+      // Merge pending overrides for immediate visual feedback
+      const pending = pendingOverrides?.get(key);
+      if (pending && !pending._delete) {
+        override = {
+          id: override?.id ?? '',
+          agent_id: agent.id,
+          date: dateStr,
+          override_start: pending.override_start,
+          override_end: pending.override_end,
+          reason: pending.reason || override?.reason || '',
+          created_at: override?.created_at ?? '',
+          created_by: override?.created_by ?? null,
+        } as CoverageOverride;
+      } else if (pending?._delete) {
+        override = undefined;
+      }
 
       // Find leave for this agent on this date
       const agentLeaves = leaveMap.get(agent.email.toLowerCase()) || [];
@@ -293,7 +311,7 @@ function AgentRow({
     }
 
     return blocks;
-  }, [agent, weekStart, overrideMap, leaveMap, showEffective]);
+  }, [agent, weekStart, overrideMap, leaveMap, showEffective, pendingOverrides]);
 
   return (
     <div
