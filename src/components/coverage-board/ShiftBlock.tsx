@@ -35,7 +35,7 @@ const POSITION_FALLBACK = 'bg-slate-500/80 border-slate-600';
 const TYPE_STYLES: Record<ShiftBlockType, string> = {
   regular: '',
   ot: 'bg-violet-500/80 border-violet-600',
-  dayoff: 'bg-zinc-500/50 border-zinc-500/60',
+  dayoff: 'bg-zinc-400/70 border-zinc-400',
   outage: 'bg-red-500/30 border-red-500 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(239,68,68,0.15)_4px,rgba(239,68,68,0.15)_8px)]',
   override: 'bg-amber-500/70 border-amber-600',
   empty: 'bg-zinc-700/70 border-zinc-600/50',
@@ -234,7 +234,7 @@ export function ShiftBlock({
           ref={blockRef}
           className={cn(
             'absolute border text-[10px] text-white font-medium flex items-center justify-center overflow-hidden select-none transition-opacity hover:opacity-90',
-            type === 'dayoff' || type === 'empty' ? 'top-0 bottom-0' : 'top-1 bottom-1 rounded',
+            type === 'empty' ? 'top-0 bottom-0' : 'top-1 bottom-1 rounded',
             type === 'regular'
               ? (POSITION_COLORS[supportType || ''] || POSITION_FALLBACK)
               : TYPE_STYLES[type],
