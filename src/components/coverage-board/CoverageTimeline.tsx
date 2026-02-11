@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { ShiftBlock } from './ShiftBlock';
+import { ShiftBlock, POSITION_COLORS } from './ShiftBlock';
 import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import {
   HOURS_PER_DAY,
@@ -95,7 +95,33 @@ export function CoverageTimeline({
   const todayStr = format(now, 'yyyy-MM-dd');
 
   return (
-    <div className="overflow-x-auto border border-border rounded-lg bg-card">
+    <div>
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-3 mb-2 text-xs text-muted-foreground">
+        {Object.entries(POSITION_COLORS).map(([label, cls]) => (
+          <span key={label} className="inline-flex items-center gap-1">
+            <span className={`inline-block w-3 h-3 rounded-sm border ${cls}`} />
+            {label}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm border bg-violet-500/80 border-violet-600" />
+          OT
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm border bg-amber-500/70 border-amber-600" />
+          Override
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm border bg-red-500/30 border-red-500" />
+          Outage
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm border border-dashed bg-muted/40 border-muted-foreground/30" />
+          Day Off
+        </span>
+      </div>
+      <div className="overflow-x-auto border border-border rounded-lg bg-card">
       {/* ─── Header Row 1: Day labels ─── */}
       <div
         className="grid min-w-[5000px]"
@@ -145,7 +171,7 @@ export function CoverageTimeline({
               key={`${dayIdx}-${hr}`}
               className={`text-center text-[9px] text-muted-foreground py-1 border-b border-border ${hr === 0 ? 'border-l border-l-border' : 'border-l border-l-border/20'}`}
             >
-              {hr % 3 === 0 ? lbl : ''}
+              {lbl}
             </div>
           ))
         )}
@@ -176,6 +202,7 @@ export function CoverageTimeline({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
