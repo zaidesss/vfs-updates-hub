@@ -7,6 +7,7 @@ import { CoverageTimeline } from '@/components/coverage-board/CoverageTimeline';
 import { CoverageFilters, EMPTY_FILTERS, applyFilters, type CoverageFilterState } from '@/components/coverage-board/CoverageFilters';
 import { OverrideEditor, type PendingOverride } from '@/components/coverage-board/OverrideEditor';
 import { SaveConfirmationDialog } from '@/components/coverage-board/SaveConfirmationDialog';
+import { CoverageActivityLog } from '@/components/coverage-board/CoverageActivityLog';
 import { decimalToTimeLabel } from '@/components/coverage-board/ShiftBlock';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useAuth } from '@/context/AuthContext';
@@ -318,6 +319,9 @@ export default function CoverageBoard() {
             onBlockAdjust={handleBlockAdjust}
           />
         )}
+
+        {/* Activity Log */}
+        <CoverageActivityLog weekStart={startStr} weekEnd={endStr} />
       </div>
 
       {/* Override Editor Dialog */}
