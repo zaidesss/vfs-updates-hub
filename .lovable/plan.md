@@ -1,42 +1,69 @@
 
 
-## Fix: Day Off Labels and Empty Shift Styling
+## Edit Mode for Team Coverage Board
 
-### Problems Identified
+### Overview
+Add an "Edit Mode" toggle that lets admins click on agent shift blocks to modify schedules for specific days. Changes are saved to the `coverage_overrides` table (already exists) and do NOT modify agent profiles. Overrides are day-specific and sync with the Effective view.
 
-1. **Day Off blocks never render**: The `isDayOff()` function compares full day names from `DAY_NAMES_FULL` (e.g., `"Saturday"`) against the database values which are abbreviated (e.g., `"Sat"`). Since `"saturday" !== "sat"`, the check always fails, so Day Off blocks are never created.
+### How It Works
 
-2. **Empty/Day Off blocks don't fill the row visually**: The `ShiftBlock` component uses `top-1 bottom-1` (4px margins), making day-spanning blocks look like floating bars instead of solid row backgrounds. For "empty" and "dayoff" types, they should fill the full row height (`top-0 bottom-0`) to create the dark background effect seen in the reference image.
+1. Admin clicks an **"Edit" button** in the header toolbar -- this enters Edit Mode
+2. In Edit Mode, clicking any agent's timeline row for a specific day opens a **popover/dialog** to set override start/end times
+3. Changes are staged locally with a visual indicator (pending badge count)
+4. Admin clicks **"Save Changes"** to upsert all pending overrides to `coverage_overrides` table
+5. A **"Cancel"** button discards all pending changes and exits Edit Mode
+6. Existing overrides can be removed (reverts to base schedule)
 
-3. **No background fill for unscheduled hours**: Looking at the reference image, every agent row should have a dark gray background across the entire timeline, with shift blocks rendered on top. Currently, only hours with explicit blocks get colored -- the rest is transparent, showing the grid lines underneath.
+### UI Changes
 
-### Solution
-
-#### File 1: `src/lib/coverageBoardApi.ts`
-- Fix `isDayOff()` to handle abbreviated day names by comparing the first 3 characters of both strings (e.g., `"sat" === "sat"` from `"Saturday".substring(0,3)`).
-
-#### File 2: `src/components/coverage-board/ShiftBlock.tsx`
-- For `dayoff` and `empty` block types, remove the vertical margin (`top-0 bottom-0` instead of `top-1 bottom-1`) so they fill the entire row height as a background.
-- Keep the rounded border and margin for all other block types (regular, ot, override, outage).
-
-#### File 3: `src/components/coverage-board/CoverageTimeline.tsx`
-- Add a dark gray background (`bg-zinc-800/50`) to the timeline cell div for every agent row, so unscheduled hours always appear dark rather than transparent. Shift blocks render on top of this base.
+| Area | Change |
+|------|--------|
+| **Header toolbar** | Add "Edit" button (pencil icon) for admins only, visible next to the week selector |
+| **Edit Mode header** | Replace "Edit" with "Save Changes" (green) + "Cancel" (ghost) buttons + pending count badge |
+| **Timeline rows (Edit Mode)** | Day cells become clickable; hovering shows a subtle highlight per-day column |
+| **Override dialog** | Small popover with start time, end time, optional reason, and a "Remove Override" option if one exists |
+| **Visual feedback** | Pending (unsaved) overrides show with a dashed amber border to distinguish from saved overrides |
 
 ### Technical Details
 
-**isDayOff fix:**
-```
-return agent.day_off.some(d => d.toLowerCase().substring(0, 3) === dayName.toLowerCase().substring(0, 3));
+#### File 1: `src/pages/CoverageBoard.tsx`
+- Add `editMode` state (boolean) and `pendingOverrides` state (Map of `agentId:date` to override data)
+- Add Edit/Save/Cancel buttons in the header (only for admin/superadmin/HR users via `useAuth`)
+- On "Save Changes": loop through `pendingOverrides`, call `upsertOverride` for each, then invalidate queries and exit edit mode
+- Pass `editMode`, `pendingOverrides`, and `onCellClick` handler down to `CoverageTimeline`
+
+#### File 2: `src/components/coverage-board/CoverageTimeline.tsx`
+- Accept new props: `editMode`, `pendingOverrides`, `onCellClick`
+- In `AgentRow`, when `editMode` is true, render 7 invisible day-column click targets over the timeline
+- Clicking a day target calls `onCellClick(agent, dayOffset, dateStr)`
+- Pending overrides render with dashed amber border style
+
+#### File 3: `src/components/coverage-board/OverrideEditor.tsx` (NEW)
+- A `Dialog` component that opens when a day cell is clicked in Edit Mode
+- Shows agent name, selected date, current base schedule (read-only)
+- Input fields for override start time and end time (format: `HH:MM AM/PM`)
+- Optional reason text input
+- "Apply" button adds to pending overrides (local state, not saved yet)
+- "Remove Override" button if an existing override is present for that agent+date
+- Time validation: ensures start and end parse correctly
+
+#### File 4: `src/lib/coverageBoardApi.ts`
+- No changes needed -- `upsertOverride` and `deleteOverride` functions already exist and handle the DB operations
+
+### Access Control
+- Only users with `isAdmin`, `isSuperAdmin`, or `isHR` roles can see and use the Edit button
+- The `coverage_overrides` table already has its own RLS policies
+
+### Data Flow
+
+```text
+Click "Edit" --> Edit Mode ON --> Click day cell --> Override Editor dialog
+  --> Set times --> "Apply" --> Added to pendingOverrides (local)
+  --> Click "Save Changes" --> upsertOverride() for each pending --> refetch queries --> Edit Mode OFF
 ```
 
-**ShiftBlock styling logic:**
-```
-const isBackground = type === 'dayoff' || type === 'empty';
-// Use 'top-0 bottom-0' for background types, 'top-1 bottom-1' for shift types
-```
-
-**Timeline row background:**
-```
-className="relative border-b border-border bg-zinc-800/50"
-```
+### Step-by-Step Implementation Order
+1. Create `OverrideEditor.tsx` dialog component
+2. Update `CoverageTimeline.tsx` with edit mode click targets
+3. Update `CoverageBoard.tsx` with edit mode state, toolbar buttons, and save logic
 
