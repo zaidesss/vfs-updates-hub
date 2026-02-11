@@ -517,6 +517,54 @@ export type Database = {
         }
         Relationships: []
       }
+      coverage_overrides: {
+        Row: {
+          agent_id: string
+          created_at: string
+          created_by: string | null
+          date: string
+          id: string
+          override_end: string
+          override_start: string
+          reason: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          created_by?: string | null
+          date: string
+          id?: string
+          override_end: string
+          override_start: string
+          reason?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          id?: string
+          override_end?: string
+          override_start?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coverage_overrides_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_overrides_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles_team_status"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deleted_users: {
         Row: {
           deleted_at: string
