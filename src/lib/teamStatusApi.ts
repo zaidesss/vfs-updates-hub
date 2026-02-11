@@ -167,7 +167,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const prevOtScheduleColumn = DAY_OT_SCHEDULE_MAP[prevDayKey];
 
     // Fetch all active agent profiles with schedules (parallel queries)
-    const [profilesResult, statusesResult, outagesResult] = await Promise.all([
+    const [profilesResult, statusesResult, outagesResult, overridesResult] = await Promise.all([
       // Fetch all active profiles with per-day schedules
       supabase
         .from('agent_profiles_team_status')
@@ -195,6 +195,12 @@ export async function fetchScheduledTeamMembers(): Promise<{
         .eq('status', 'approved')
         .lte('start_date', todayStr)
         .gte('end_date', todayStr),
+
+      // Fetch coverage overrides for today
+      supabase
+        .from('coverage_overrides')
+        .select('agent_id, override_start, override_end, reason')
+        .eq('date', todayStr),
     ]);
 
     if (profilesResult.error) {
@@ -205,6 +211,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const profiles = profilesResult.data || [];
     const statuses = statusesResult.data || [];
     const outages = outagesResult.data || [];
+    const overrides = overridesResult.data || [];
 
     // Create lookup maps
     const statusMap = new Map<string, { current_status: string; status_since: string }>();
@@ -226,6 +233,9 @@ export async function fetchScheduledTeamMembers(): Promise<{
       }
     });
 
+    const overrideMap = new Map<string, { override_start: string; override_end: string }>();
+    overrides.forEach(o => overrideMap.set(o.agent_id, o));
+
     // Process each profile for schedule-based visibility
     const allMembers: TeamMemberStatus[] = [];
     let onlineCount = 0;
@@ -233,64 +243,70 @@ export async function fetchScheduledTeamMembers(): Promise<{
     profiles.forEach(profile => {
       const email = (profile.email || '').toLowerCase();
       
-      // Get today's schedules using dynamic property access
-      const todaySchedule = (profile as any)[scheduleColumn] as string | null;
-      const todayOtSchedule = (profile as any)[otScheduleColumn] as string | null;
+      // Check for coverage override first (highest priority)
+      const override = overrideMap.get(profile.id);
       
-      // Get previous day's schedules for overnight carryover
-      const prevSchedule = (profile as any)[prevScheduleColumn] as string | null;
-      const prevOtSchedule = (profile as any)[prevOtScheduleColumn] as string | null;
-      
-      const dayOffArray = profile.day_off || [];
-      const isTodayDayOff = dayOffArray.includes(dayOffDisplay);
-      
-      // Determine active schedule: today first, then previous day overnight carryover
       let activeSchedule: string | null = null;
       let activeOtSchedule: string | null = null;
-      let isFromPrevDay = false;
       
-      // Step 1: Check today's schedule (only if not day off and has a valid schedule)
-      if (!isTodayDayOff && todaySchedule && todaySchedule.toLowerCase() !== 'day off' && todaySchedule.toLowerCase() !== 'off') {
-        const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
+      if (override) {
+        // Coverage override exists for today — use it as the effective schedule
+        const overrideSchedule = `${override.override_start} - ${override.override_end}`;
+        const isScheduled = isWithinScheduleWindow(overrideSchedule, null, currentTimeMinutes);
         if (isScheduled) {
-          activeSchedule = todaySchedule;
-          activeOtSchedule = todayOtSchedule;
+          activeSchedule = overrideSchedule;
+          activeOtSchedule = null;
         }
-      }
-      
-      // Step 2: If today didn't match, check previous day's overnight schedule
-      if (!activeSchedule) {
-        // Check previous day's regular schedule for overnight carryover
-        const prevRange = parseScheduleRange(prevSchedule);
-        if (prevRange && prevRange.end < prevRange.start) {
-          // It's an overnight shift — check if we're in the post-midnight portion
-          if (currentTimeMinutes <= prevRange.end) {
-            activeSchedule = prevSchedule;
-            activeOtSchedule = prevOtSchedule;
-            isFromPrevDay = true;
+      } else {
+        // No override — fall back to base profile schedule
+        const todaySchedule = (profile as any)[scheduleColumn] as string | null;
+        const todayOtSchedule = (profile as any)[otScheduleColumn] as string | null;
+        const prevSchedule = (profile as any)[prevScheduleColumn] as string | null;
+        const prevOtSchedule = (profile as any)[prevOtScheduleColumn] as string | null;
+        
+        const dayOffArray = profile.day_off || [];
+        const isTodayDayOff = dayOffArray.includes(dayOffDisplay);
+        
+        let isFromPrevDay = false;
+        
+        // Step 1: Check today's schedule (only if not day off and has a valid schedule)
+        if (!isTodayDayOff && todaySchedule && todaySchedule.toLowerCase() !== 'day off' && todaySchedule.toLowerCase() !== 'off') {
+          const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
+          if (isScheduled) {
+            activeSchedule = todaySchedule;
+            activeOtSchedule = todayOtSchedule;
           }
         }
         
-        // Also check previous day's OT schedule for overnight carryover
+        // Step 2: If today didn't match, check previous day's overnight schedule
         if (!activeSchedule) {
-          const prevOtRange = parseScheduleRange(prevOtSchedule);
-          if (prevOtRange && prevOtRange.end < prevOtRange.start) {
-            if (currentTimeMinutes <= prevOtRange.end) {
-              activeSchedule = prevSchedule || 'Overnight';
+          const prevRange = parseScheduleRange(prevSchedule);
+          if (prevRange && prevRange.end < prevRange.start) {
+            if (currentTimeMinutes <= prevRange.end) {
+              activeSchedule = prevSchedule;
               activeOtSchedule = prevOtSchedule;
               isFromPrevDay = true;
             }
           }
-        }
-        
-        // Check if previous day's regular shift + OT extends overnight
-        // e.g., shift 10PM-4:30AM, OT 4:30AM-5:30AM — at 5AM, regular shift ended but OT is still active
-        if (!activeSchedule && prevRange && prevRange.end < prevRange.start) {
-          const prevOtRange = parseScheduleRange(prevOtSchedule);
-          if (prevOtRange && currentTimeMinutes <= prevOtRange.end) {
-            activeSchedule = prevSchedule;
-            activeOtSchedule = prevOtSchedule;
-            isFromPrevDay = true;
+          
+          if (!activeSchedule) {
+            const prevOtRange = parseScheduleRange(prevOtSchedule);
+            if (prevOtRange && prevOtRange.end < prevOtRange.start) {
+              if (currentTimeMinutes <= prevOtRange.end) {
+                activeSchedule = prevSchedule || 'Overnight';
+                activeOtSchedule = prevOtSchedule;
+                isFromPrevDay = true;
+              }
+            }
+          }
+          
+          if (!activeSchedule && prevRange && prevRange.end < prevRange.start) {
+            const prevOtRange = parseScheduleRange(prevOtSchedule);
+            if (prevOtRange && currentTimeMinutes <= prevOtRange.end) {
+              activeSchedule = prevSchedule;
+              activeOtSchedule = prevOtSchedule;
+              isFromPrevDay = true;
+            }
           }
         }
       }
