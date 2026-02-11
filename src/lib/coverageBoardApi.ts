@@ -128,25 +128,70 @@ export async function fetchLeavesForDate(date: string): Promise<LeaveForDate[]> 
   return data || [];
 }
 
-// Group agents by ZD instance + position
-export type AgentGroup = {
-  label: string;
+// Group agents by fixed category hierarchy
+export type AgentSubGroup = {
+  subLabel: string;
   agents: AgentScheduleRow[];
 };
 
+export type AgentGroup = {
+  label: string;
+  subGroups: AgentSubGroup[];
+};
+
+const POSITION_ORDER = ['Hybrid Support', 'Phone Support', 'Chat Support', 'Email Support'];
+const STANDALONE_POSITIONS = ['Logistics', 'Team Lead', 'Technical Support'];
+
+function getPositionSortKey(position: string | null): number {
+  const idx = POSITION_ORDER.indexOf(position || '');
+  return idx === -1 ? POSITION_ORDER.length : idx;
+}
+
 export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
-  const groupMap = new Map<string, AgentScheduleRow[]>();
+  const zd1Subs = new Map<string, AgentScheduleRow[]>();
+  const zd2Subs = new Map<string, AgentScheduleRow[]>();
+  const logistics: AgentScheduleRow[] = [];
+  const teamLeads: AgentScheduleRow[] = [];
+  const techSupport: AgentScheduleRow[] = [];
+  const other: AgentScheduleRow[] = [];
 
   for (const agent of agents) {
-    const zd = agent.zendesk_instance || 'Unknown';
     const pos = agent.position || 'Unknown';
-    const key = `${zd} - ${pos}`;
-    if (!groupMap.has(key)) groupMap.set(key, []);
-    groupMap.get(key)!.push(agent);
+
+    if (pos === 'Logistics') {
+      logistics.push(agent);
+    } else if (pos === 'Team Lead') {
+      teamLeads.push(agent);
+    } else if (pos === 'Technical Support') {
+      techSupport.push(agent);
+    } else if (agent.zendesk_instance === 'ZD1') {
+      if (!zd1Subs.has(pos)) zd1Subs.set(pos, []);
+      zd1Subs.get(pos)!.push(agent);
+    } else if (agent.zendesk_instance === 'ZD2') {
+      if (!zd2Subs.has(pos)) zd2Subs.set(pos, []);
+      zd2Subs.get(pos)!.push(agent);
+    } else {
+      other.push(agent);
+    }
   }
 
-  // Sort groups alphabetically
-  return Array.from(groupMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([label, agents]) => ({ label, agents }));
+  const buildSubGroups = (map: Map<string, AgentScheduleRow[]>): AgentSubGroup[] =>
+    Array.from(map.entries())
+      .sort(([a], [b]) => getPositionSortKey(a) - getPositionSortKey(b))
+      .map(([subLabel, agents]) => ({ subLabel, agents }));
+
+  const groups: AgentGroup[] = [];
+
+  const zd1SubGroups = buildSubGroups(zd1Subs);
+  if (zd1SubGroups.length > 0) groups.push({ label: 'ZD1', subGroups: zd1SubGroups });
+
+  const zd2SubGroups = buildSubGroups(zd2Subs);
+  if (zd2SubGroups.length > 0) groups.push({ label: 'ZD2', subGroups: zd2SubGroups });
+
+  if (logistics.length > 0) groups.push({ label: 'Logistics', subGroups: [{ subLabel: 'Logistics Team', agents: logistics }] });
+  if (teamLeads.length > 0) groups.push({ label: 'Team Lead', subGroups: [{ subLabel: 'Team Leads', agents: teamLeads }] });
+  if (techSupport.length > 0) groups.push({ label: 'Technical Support', subGroups: [{ subLabel: 'Technical Team', agents: techSupport }] });
+  if (other.length > 0) groups.push({ label: 'Other', subGroups: [{ subLabel: 'Uncategorized', agents: other }] });
+
+  return groups;
 }

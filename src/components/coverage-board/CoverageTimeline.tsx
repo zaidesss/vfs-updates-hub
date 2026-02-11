@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { GroupHeader } from './GroupHeader';
+import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import { ShiftBlock, parseScheduleRange } from './ShiftBlock';
 import type { AgentGroup, AgentScheduleRow, CoverageOverride, LeaveForDate } from '@/lib/coverageBoardApi';
 import { getScheduleForDay, isDayOff } from '@/lib/coverageBoardApi';
@@ -199,22 +199,30 @@ export function CoverageTimeline({
         </div>
 
         {/* Agent rows grouped */}
-        {groups.map(group => (
-          <div key={group.label} className="contents">
-            <GroupHeader label={group.label} agentCount={group.agents.length} />
-            {group.agents.map(agent => (
-              <AgentRow
-                key={agent.id}
-                agent={agent}
-                dayIndex={selectedDayIndex}
-                dayName={selectedDayName}
-                override={overrideMap.get(agent.id)}
-                leave={leaveMap.get(agent.email.toLowerCase())}
-                showEffective={showEffective}
-              />
-            ))}
-          </div>
-        ))}
+        {groups.map(group => {
+          const totalCount = group.subGroups.reduce((sum, sg) => sum + sg.agents.length, 0);
+          return (
+            <div key={group.label} className="contents">
+              <MainGroupHeader label={group.label} totalCount={totalCount} />
+              {group.subGroups.map(sub => (
+                <div key={sub.subLabel} className="contents">
+                  <SubGroupHeader subLabel={sub.subLabel} agentCount={sub.agents.length} />
+                  {sub.agents.map(agent => (
+                    <AgentRow
+                      key={agent.id}
+                      agent={agent}
+                      dayIndex={selectedDayIndex}
+                      dayName={selectedDayName}
+                      override={overrideMap.get(agent.id)}
+                      leave={leaveMap.get(agent.email.toLowerCase())}
+                      showEffective={showEffective}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
 
         {/* Current time indicator - spans the timeline column */}
         <div className="sticky left-0" />
