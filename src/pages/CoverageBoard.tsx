@@ -131,53 +131,125 @@ export default function CoverageBoard() {
     });
   }, [overrideByKey]);
 
-  const handleSave = async () => {
-    if (pendingOverrides.size === 0) return;
-    setSaving(true);
-    try {
-      for (const [key, pending] of pendingOverrides) {
-        if (pending._delete) {
-          const existing = overrideByKey.get(key);
-          if (existing) await deleteOverride(existing.id);
-        } else {
-          const overrideType = pending.block_type || 'override';
-          await upsertOverride({
-            agent_id: pending.agent_id,
-            date: pending.date,
-            override_start: pending.override_start,
-            override_end: pending.override_end,
-            reason: pending.reason,
-            created_by: user?.email || '',
-            override_type: overrideType,
-            break_schedule: undefined,
-            previous_value: undefined,
-          });
-          
-          // Insert log entry
-          const agent = agents.find(a => a.id === pending.agent_id);
-          if (agent) {
-            await insertOverrideLog({
-              agent_id: pending.agent_id,
-              agent_name: agent.full_name || agent.agent_name || agent.email,
-              date: pending.date,
-              override_type: overrideType,
-              previous_value: null,
-              new_value: `${pending.override_start} - ${pending.override_end}`,
-              changed_by: user?.email || '',
-            });
-          }
-        }
-      }
-      toast.success(`${pendingOverrides.size} override(s) saved`);
-      queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
-      setPendingOverrides(new Map());
-      setEditMode(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save overrides');
-    } finally {
-      setSaving(false);
-    }
-  };
+   const handleSave = async () => {
+     if (pendingOverrides.size === 0) return;
+     setSaving(true);
+     try {
+       // Helper function to parse time label to decimal hours
+       const parseTimeToDecimal = (timeLabel: string): number | null => {
+         if (!timeLabel) return null;
+         const match = timeLabel.match(/^(\d+):(\d+)(?:\s*(AM|PM))?$/i);
+         if (!match) return null;
+         let hour = parseInt(match[1]);
+         const min = parseInt(match[2]) || 0;
+         const period = match[3]?.toUpperCase();
+         if (period === 'PM' && hour !== 12) hour += 12;
+         if (period === 'AM' && hour === 12) hour = 0;
+         return hour + min / 60;
+       };
+
+       // First pass: save all pending overrides
+       for (const [key, pending] of pendingOverrides) {
+         if (pending._delete) {
+           const existing = overrideByKey.get(key);
+           if (existing) await deleteOverride(existing.id);
+         } else {
+           const overrideType = pending.block_type || 'override';
+           await upsertOverride({
+             agent_id: pending.agent_id,
+             date: pending.date,
+             override_start: pending.override_start,
+             override_end: pending.override_end,
+             reason: pending.reason,
+             created_by: user?.email || '',
+             override_type: overrideType,
+             break_schedule: undefined,
+             previous_value: undefined,
+           });
+           
+           // Insert log entry
+           const agent = agents.find(a => a.id === pending.agent_id);
+           if (agent) {
+             await insertOverrideLog({
+               agent_id: pending.agent_id,
+               agent_name: agent.full_name || agent.agent_name || agent.email,
+               date: pending.date,
+               override_type: overrideType,
+               previous_value: null,
+               new_value: `${pending.override_start} - ${pending.override_end}`,
+               changed_by: user?.email || '',
+             });
+           }
+         }
+       }
+
+       // Second pass: detect and resolve overnight shift conflicts
+       for (const [key, pending] of pendingOverrides) {
+         if (pending._delete || !pending.block_type || !['ot', 'regular'].includes(pending.block_type)) continue;
+         
+         const endDecimal = parseTimeToDecimal(pending.override_end);
+         if (endDecimal === null) continue;
+
+         // Check if this block extends past midnight (overnight shift)
+         const startDecimal = parseTimeToDecimal(pending.override_start);
+         if (startDecimal !== null && endDecimal > 24) {
+           // This is an overnight shift
+           const agent = agents.find(a => a.id === pending.agent_id);
+           if (!agent) continue;
+
+           // Check if next day is a day off
+           const currentDate = new Date(pending.date);
+           const nextDate = addDays(currentDate, 1);
+           const nextDateStr = format(nextDate, 'yyyy-MM-dd');
+           
+           // Determine if next day is a day off
+           const nextJsDay = nextDate.getDay();
+           const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+           const nextDayName = DAY_NAMES[nextJsDay];
+           const isNextDayOff = agent.day_off?.some(d => d.toLowerCase().substring(0, 3) === nextDayName.substring(0, 3));
+
+           if (isNextDayOff) {
+             // Automatically create a day-off override shortened to when the overnight shift ends
+             const shortendedEndTime = decimalToTimeLabel(endDecimal - 24);
+             
+             await upsertOverride({
+               agent_id: pending.agent_id,
+               date: nextDateStr,
+               override_start: '0:00',
+               override_end: shortendedEndTime,
+               reason: `Auto-adjusted: overnight shift from ${format(currentDate, 'MMM d')} ends at ${shortendedEndTime}`,
+               created_by: user?.email || '',
+               override_type: 'dayoff',
+               break_schedule: undefined,
+               previous_value: 'full day off',
+             });
+
+             // Log the automatic adjustment
+             await insertOverrideLog({
+               agent_id: pending.agent_id,
+               agent_name: agent.full_name || agent.agent_name || agent.email,
+               date: nextDateStr,
+               override_type: 'dayoff',
+               previous_value: 'full day off',
+               new_value: `0:00 - ${shortendedEndTime}`,
+               changed_by: user?.email || 'system',
+             });
+
+             toast.info(`Auto-adjusted: ${agent.agent_name || agent.email}'s day off on ${format(nextDate, 'MMM d')} shortened due to overnight shift.`);
+           }
+         }
+       }
+
+       toast.success(`${pendingOverrides.size} override(s) saved`);
+       queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
+       setPendingOverrides(new Map());
+       setEditMode(false);
+     } catch (err: any) {
+       toast.error(err.message || 'Failed to save overrides');
+     } finally {
+       setSaving(false);
+     }
+   };
 
   const handleCancel = () => {
     setPendingOverrides(new Map());
