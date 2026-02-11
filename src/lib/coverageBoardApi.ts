@@ -46,6 +46,9 @@ export interface CoverageOverride {
   reason: string;
   created_by: string | null;
   created_at: string;
+  override_type: string;
+  break_schedule: string | null;
+  previous_value: string | null;
 }
 
 export interface LeaveForDate {
@@ -334,6 +337,9 @@ export async function upsertOverride(override: {
   override_end: string;
   reason?: string;
   created_by: string;
+  override_type?: string;
+  break_schedule?: string;
+  previous_value?: string;
 }): Promise<CoverageOverride> {
   const { data, error } = await supabase
     .from('coverage_overrides')
@@ -345,14 +351,43 @@ export async function upsertOverride(override: {
         override_end: override.override_end,
         reason: override.reason || 'manual',
         created_by: override.created_by,
+        override_type: override.override_type || 'override',
+        break_schedule: override.break_schedule || null,
+        previous_value: override.previous_value || null,
       },
-      { onConflict: 'agent_id,date' }
+      { onConflict: 'agent_id,date,override_type' }
     )
     .select()
     .single();
 
   if (error) throw error;
   return data;
+}
+
+export async function insertOverrideLog(log: {
+  agent_id: string;
+  agent_name: string;
+  date: string;
+  override_type: string;
+  previous_value: string | null;
+  new_value: string | null;
+  break_schedule?: string | null;
+  changed_by: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('coverage_override_logs')
+    .insert({
+      agent_id: log.agent_id,
+      agent_name: log.agent_name,
+      date: log.date,
+      override_type: log.override_type,
+      previous_value: log.previous_value,
+      new_value: log.new_value,
+      break_schedule: log.break_schedule || null,
+      changed_by: log.changed_by,
+    });
+
+  if (error) throw error;
 }
 
 export async function deleteOverride(id: string): Promise<void> {

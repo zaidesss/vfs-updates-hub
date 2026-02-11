@@ -20,6 +20,7 @@ import {
   groupAgents,
   upsertOverride,
   deleteOverride,
+  insertOverrideLog,
   type AgentScheduleRow,
   type CoverageOverride,
 } from '@/lib/coverageBoardApi';
@@ -139,6 +140,7 @@ export default function CoverageBoard() {
           const existing = overrideByKey.get(key);
           if (existing) await deleteOverride(existing.id);
         } else {
+          const overrideType = pending.block_type || 'override';
           await upsertOverride({
             agent_id: pending.agent_id,
             date: pending.date,
@@ -146,7 +148,24 @@ export default function CoverageBoard() {
             override_end: pending.override_end,
             reason: pending.reason,
             created_by: user?.email || '',
+            override_type: overrideType,
+            break_schedule: undefined,
+            previous_value: undefined,
           });
+          
+          // Insert log entry
+          const agent = agents.find(a => a.id === pending.agent_id);
+          if (agent) {
+            await insertOverrideLog({
+              agent_id: pending.agent_id,
+              agent_name: agent.full_name || agent.agent_name || agent.email,
+              date: pending.date,
+              override_type: overrideType,
+              previous_value: null,
+              new_value: `${pending.override_start} - ${pending.override_end}`,
+              changed_by: user?.email || '',
+            });
+          }
         }
       }
       toast.success(`${pendingOverrides.size} override(s) saved`);
