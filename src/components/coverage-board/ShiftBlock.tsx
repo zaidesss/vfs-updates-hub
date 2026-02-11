@@ -2,7 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { TOTAL_HOUR_COLS, HOURS_PER_DAY } from '@/lib/coverageBoardApi';
 
-export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override';
+export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override' | 'empty';
 
 interface ShiftBlockProps {
   dayOffset: number;   // 0=Mon .. 6=Sun
@@ -29,9 +29,10 @@ const POSITION_FALLBACK = 'bg-slate-500/80 border-slate-600';
 const TYPE_STYLES: Record<ShiftBlockType, string> = {
   regular: '', // resolved dynamically via supportType
   ot: 'bg-violet-500/80 border-violet-600',
-  dayoff: 'bg-muted/40 border-dashed border-muted-foreground/30',
+  dayoff: 'bg-zinc-500/50 border-zinc-500/60',
   outage: 'bg-red-500/30 border-red-500 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(239,68,68,0.15)_4px,rgba(239,68,68,0.15)_8px)]',
   override: 'bg-amber-500/70 border-amber-600',
+  empty: 'bg-zinc-700/70 border-zinc-600/50',
 };
 
 /**
@@ -108,7 +109,7 @@ export function ShiftBlock({
         >
           {width > 0.8 && (
             <span className="truncate px-0.5">
-              {type === 'dayoff' ? 'OFF' : type === 'outage' ? 'OUT' : `${startLabel}-${endLabel}`}
+              {type === 'dayoff' ? 'Day Off' : type === 'empty' ? '' : type === 'outage' ? 'OUT' : `${startLabel}-${endLabel}`}
             </span>
           )}
         </div>

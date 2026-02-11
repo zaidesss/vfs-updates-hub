@@ -117,8 +117,12 @@ export function CoverageTimeline({
           Outage
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-sm border border-dashed bg-muted/40 border-muted-foreground/30" />
+          <span className="inline-block w-3 h-3 rounded-sm border bg-zinc-500/50 border-zinc-500/60" />
           Day Off
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm border bg-zinc-700/70 border-zinc-600/50" />
+          No Schedule
         </span>
         {isCurrentWeek && (
           <span className="inline-flex items-center gap-1">
