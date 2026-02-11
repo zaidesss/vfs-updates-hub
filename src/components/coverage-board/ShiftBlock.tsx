@@ -48,9 +48,10 @@ export function snapToHalfHour(hours: number): number {
 }
 
 export function decimalToTimeLabel(hours: number): string {
-  const clamped = Math.max(0, Math.min(24, hours));
-  const h = Math.floor(clamped);
-  const m = Math.round((clamped - h) * 60);
+  const clamped = Math.max(0, hours);
+  const wrapped = clamped % 24;
+  const h = Math.floor(wrapped);
+  const m = Math.round((wrapped - h) * 60);
   const period = h >= 12 ? 'PM' : 'AM';
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${h12}:${m.toString().padStart(2, '0')} ${period}`;
@@ -223,8 +224,8 @@ export function ShiftBlock({
   const isDragging = !!dragState;
   const hasVisualChange = isDragging && (effectiveStart !== startHour || effectiveEnd !== endHour);
 
-  const currentStartLabel = isDragging ? decimalToTimeLabel(effectiveStart) : startLabel;
-  const currentEndLabel = isDragging ? decimalToTimeLabel(effectiveEnd) : endLabel;
+  const currentStartLabel = isDragging ? decimalToTimeLabel(effectiveStart) : (type === 'dayoff' ? decimalToTimeLabel(startHour) : startLabel);
+  const currentEndLabel = isDragging ? decimalToTimeLabel(effectiveEnd) : (type === 'dayoff' ? decimalToTimeLabel(endHour) : endLabel);
 
   return (
     <Tooltip>
@@ -253,7 +254,7 @@ export function ShiftBlock({
         >
           {width > 0.8 && (
             <span className="truncate px-0.5">
-              {type === 'dayoff' ? 'Day Off' : type === 'empty' ? '' : type === 'outage' ? 'OUT' : `${currentStartLabel}-${currentEndLabel}`}
+              {type === 'dayoff' ? (isDragging ? `Day Off ${currentStartLabel}-${currentEndLabel}` : 'Day Off') : type === 'empty' ? '' : type === 'outage' ? 'OUT' : `${currentStartLabel}-${currentEndLabel}`}
             </span>
           )}
         </div>
