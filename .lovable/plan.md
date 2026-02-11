@@ -1,64 +1,86 @@
 
 
-## Coverage Board Improvements (4 Items)
+## Coverage Board Enhancements (3 Items)
 
-### 1. Agent Name Showing Email
+We will implement these **one step at a time**, verifying after each.
 
-**Root cause**: The `getDisplayName()` function currently prioritizes `agent_name` over `full_name`. Two agents have `agent_name = null` but all agents have `full_name` populated. The fallback chain `agent_name || full_name || email` works, but some agents may appear inconsistent if their `agent_name` differs from expectations.
+---
 
-**Fix**: Change the priority to `full_name || agent_name || email` so the always-populated `full_name` is preferred.
+### Step 1: Fix Current Time Indicator to Use Portal Clock (EST)
+
+**Current issue**: The red line already uses `usePortalClock()` which returns EST time. It works correctly. However, the line color (red) clashes with the red "Outage" legend. We will change it to a distinct color (e.g., a dashed yellow/gold line with a small "NOW" label at top) so it is clearly a time marker and not an outage indicator.
 
 | File | Change |
 |------|--------|
-| `src/lib/coverageBoardApi.ts` | Update `getDisplayName()` to return `agent.full_name \|\| agent.agent_name \|\| agent.email` |
+| `src/components/coverage-board/CoverageTimeline.tsx` | Change the current-time indicator from solid red to a dashed yellow/gold line with a small "NOW" label |
 
 ---
 
-### 2. Overnight Shift Rendering
+### Step 2: Render Overnight Shifts as a Single Continuous Block
 
-**Current state**: The `splitOvernight()` function in `coverageBoardApi.ts` already handles overnight shifts correctly:
-- Splits into two segments: `[startHour, 24)` on current day and `[0, endHour)` on next day
-- Already guards against rendering beyond Sunday (`dayOffset < 6`)
+**Current issue**: The `splitOvernight()` function in `coverageBoardApi.ts` splits overnight shifts (e.g., 10:00 PM - 4:30 AM) into two separate blocks: one ending at midnight and one starting at midnight the next day. The user wants a single continuous block spanning across the day boundary.
 
-This is already implemented correctly. No changes needed unless you're seeing specific agents whose overnight blocks are broken -- let me know and I'll investigate further.
-
----
-
-### 3. Edit Mode for Drag/Crop Scheduling (Future Feature)
-
-This is a larger feature that adds interactive schedule editing. The plan:
-
-- Add an **Edit** button to the Coverage Board header (only visible to admins)
-- When clicked, enters "edit mode" where shift blocks become draggable/resizable
-- A **Save Changes** button appears to commit changes via `upsertOverride()`
-- A **Cancel** button exits edit mode without saving
-
-**Note**: This is a significant feature. I recommend implementing the other 3 items first, then tackling this as a separate step. Should I include it now or defer?
-
----
-
-### 4. Sticky Scrollbar + Sticky Time Headers
-
-**Current issue**: The horizontal scrollbar is at the bottom of a very tall container, requiring users to scroll all the way down to scroll horizontally. The day/hour headers also scroll out of view.
-
-**Fix**: 
-- Add `data-table-scroll` class to the scroll container (matches MasterDirectory pattern)
-- Set a fixed height with `overflow: auto` so the scrollbar is always visible
-- Make the two header rows (`sticky top-0`) so they stay visible when scrolling vertically
+**Fix**: Instead of splitting, compute a single block using an `endHour` greater than 24 (e.g., 22:00-28.5 means 10 PM to 4:30 AM next day). The `ShiftBlock` component already positions by percentage, so an `endHour` of 28.5 on Monday would render correctly into Tuesday's timeline space. The guard for Sunday overflow will clamp the end to hour 24 on Sunday (dayOffset 6).
 
 | File | Change |
 |------|--------|
-| `src/components/coverage-board/CoverageTimeline.tsx` | Add `data-table-scroll` class, set `height: calc(100vh - 220px)` and `overflow: auto`, make header rows use `sticky top-0 z-30` |
+| `src/lib/coverageBoardApi.ts` | Update `splitOvernight()` to return a single block with `endHour = 24 + originalEnd` instead of splitting into two. Clamp to 24 on Sunday. |
+| `src/components/coverage-board/ShiftBlock.tsx` | Update `toPercent()` to handle `endHour > 24` by computing across day boundaries. No other changes needed since it already uses percentage positioning. |
+
+---
+
+### Step 3: Add Filter Bar (ZD Instance, Position, Agent Names, Day Off)
+
+**Current issue**: No filtering -- all agents are shown. The user wants stackable filters.
+
+**Design**: Add a filter row below the header with:
+1. **ZD Instance** -- single-select dropdown: All, ZD1, ZD2
+2. **Position** -- multi-select: Hybrid Support, Phone Support, Chat Support, Email Support, Logistics, Team Lead, Technical Support
+3. **Agent Names** -- multi-select searchable combobox of all agent names
+4. **Day Off** -- multi-select: Monday through Sunday (filter agents whose day off includes the selected days)
+
+Filters stack (AND logic): selecting ZD1 + Hybrid Support shows only ZD1 Hybrid agents.
+
+Filtering will happen at the page level (`CoverageBoard.tsx`) before passing agents to `groupAgents()`.
+
+| File | Change |
+|------|--------|
+| `src/components/coverage-board/CoverageFilters.tsx` | Expand with ZD Instance, Position, Agent Names, Day Off filter controls |
+| `src/pages/CoverageBoard.tsx` | Add filter state, apply filters to agents before grouping |
 
 ---
 
 ### Implementation Order
 
-We'll do these **one step at a time**:
+1. **Step 1**: Fix current time indicator styling
+2. **Step 2**: Merge overnight blocks into single continuous blocks
+3. **Step 3**: Add filter bar
 
-1. **Step 1**: Fix agent name display (swap `full_name` priority)
-2. **Step 2**: Sticky scrollbar + sticky headers
-3. **Step 3**: Defer edit mode to a separate follow-up
+After each step, I will ask you to verify before proceeding.
 
-After each step, I'll ask you to verify before proceeding.
+---
+
+### Technical Details
+
+**Overnight block math (Step 2)**:
+
+```text
+Example: 10:00 PM - 4:30 AM on Monday (dayOffset=0)
+  Before: Block 1: day=0, start=22, end=24  |  Block 2: day=1, start=0, end=4.5
+  After:  Single block: day=0, start=22, end=28.5
+  Position: left = (0*24+22)/168*100 = 13.1%
+            width = (28.5-22)/168*100 = 3.87%
+```
+
+The `toPercent` function change: `(dayOffset * 24 + hour) / 168 * 100` already works since we pass the full duration width as `endHour - startHour` regardless of day crossing.
+
+**Filter state shape (Step 3)**:
+```typescript
+interface CoverageFilterState {
+  zdInstance: string | null;        // null = all
+  positions: string[];              // empty = all
+  agentNames: string[];             // empty = all
+  daysOff: string[];                // empty = all
+}
+```
 
