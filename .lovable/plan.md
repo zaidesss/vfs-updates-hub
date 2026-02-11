@@ -1,69 +1,58 @@
 
 
-## Edit Mode for Team Coverage Board
+## Draggable and Croppable Shift Blocks
 
 ### Overview
-Add an "Edit Mode" toggle that lets admins click on agent shift blocks to modify schedules for specific days. Changes are saved to the `coverage_overrides` table (already exists) and do NOT modify agent profiles. Overrides are day-specific and sync with the Effective view.
+In Edit Mode, shift blocks (regular, OT, and override) become interactive -- you can **drag** them left/right to move the entire shift, or **crop** (resize) them from the left or right edge to adjust start/end times. All changes snap to 30-minute increments and are staged as pending overrides (saved with the Save button).
 
 ### How It Works
 
-1. Admin clicks an **"Edit" button** in the header toolbar -- this enters Edit Mode
-2. In Edit Mode, clicking any agent's timeline row for a specific day opens a **popover/dialog** to set override start/end times
-3. Changes are staged locally with a visual indicator (pending badge count)
-4. Admin clicks **"Save Changes"** to upsert all pending overrides to `coverage_overrides` table
-5. A **"Cancel"** button discards all pending changes and exits Edit Mode
-6. Existing overrides can be removed (reverts to base schedule)
+1. Enter Edit Mode (existing feature)
+2. **Drag**: Click and hold the middle of a shift block, drag left/right to slide the entire shift
+3. **Crop**: Hover near the left or right edge of a block -- a resize cursor appears. Drag the edge to extend or shorten the shift
+4. Changes snap to the nearest 30 minutes
+5. The block updates visually in real-time, with an amber dashed border indicating unsaved changes
+6. Click "Save Changes" to persist all adjustments as overrides
 
-### UI Changes
+### Technical Changes
 
-| Area | Change |
-|------|--------|
-| **Header toolbar** | Add "Edit" button (pencil icon) for admins only, visible next to the week selector |
-| **Edit Mode header** | Replace "Edit" with "Save Changes" (green) + "Cancel" (ghost) buttons + pending count badge |
-| **Timeline rows (Edit Mode)** | Day cells become clickable; hovering shows a subtle highlight per-day column |
-| **Override dialog** | Small popover with start time, end time, optional reason, and a "Remove Override" option if one exists |
-| **Visual feedback** | Pending (unsaved) overrides show with a dashed amber border to distinguish from saved overrides |
-
-### Technical Details
-
-#### File 1: `src/pages/CoverageBoard.tsx`
-- Add `editMode` state (boolean) and `pendingOverrides` state (Map of `agentId:date` to override data)
-- Add Edit/Save/Cancel buttons in the header (only for admin/superadmin/HR users via `useAuth`)
-- On "Save Changes": loop through `pendingOverrides`, call `upsertOverride` for each, then invalidate queries and exit edit mode
-- Pass `editMode`, `pendingOverrides`, and `onCellClick` handler down to `CoverageTimeline`
+#### File 1: `src/components/coverage-board/ShiftBlock.tsx`
+- Add `editMode`, `onDragEnd`, and `onResizeEnd` callback props
+- In Edit Mode, attach `onMouseDown` handlers:
+  - **Edge detection**: If mouse is within 6px of the left/right border, enter **resize mode** (set cursor to `col-resize`)
+  - **Otherwise**: Enter **drag mode** (set cursor to `grabbing`)
+- Track drag state via `useState`: `isDragging`, `isResizing`, `resizeSide` ("left" | "right"), `deltaHours`
+- On `mousemove` (attached to `document` during drag): compute pixel delta, convert to hours using the timeline container width, snap to 0.5hr increments, update a local visual offset
+- On `mouseup`: call `onDragEnd(newStartHour, newEndHour)` or `onResizeEnd(newStartHour, newEndHour)`, which stages the change as a pending override
+- Skip drag/resize for `dayoff` and `empty` block types
 
 #### File 2: `src/components/coverage-board/CoverageTimeline.tsx`
-- Accept new props: `editMode`, `pendingOverrides`, `onCellClick`
-- In `AgentRow`, when `editMode` is true, render 7 invisible day-column click targets over the timeline
-- Clicking a day target calls `onCellClick(agent, dayOffset, dateStr)`
-- Pending overrides render with dashed amber border style
+- Pass `editMode` and a new `onBlockAdjust` callback to each `ShiftBlock`
+- `onBlockAdjust(agent, dayOffset, newStartHour, newEndHour)` converts the decimal hours back to time strings (e.g., `9:30 AM`) and adds a `PendingOverride` entry to the parent's `pendingOverrides` map
+- Add a `ref` to the timeline container div to measure its pixel width for accurate hour-to-pixel conversion
+- Pass `timelineRef` to ShiftBlock so it can calculate snapping accurately
 
-#### File 3: `src/components/coverage-board/OverrideEditor.tsx` (NEW)
-- A `Dialog` component that opens when a day cell is clicked in Edit Mode
-- Shows agent name, selected date, current base schedule (read-only)
-- Input fields for override start time and end time (format: `HH:MM AM/PM`)
-- Optional reason text input
-- "Apply" button adds to pending overrides (local state, not saved yet)
-- "Remove Override" button if an existing override is present for that agent+date
-- Time validation: ensures start and end parse correctly
+#### File 3: Helper utility (inside `ShiftBlock.tsx` or a small util)
+- `snapToHalfHour(hours: number): number` -- rounds to nearest 0.5
+- `decimalToTimeLabel(hours: number): string` -- converts e.g. 14.5 to "2:30 PM"
+- Clamp logic: block cannot extend before hour 0 or after hour 24 within its day
 
-#### File 4: `src/lib/coverageBoardApi.ts`
-- No changes needed -- `upsertOverride` and `deleteOverride` functions already exist and handle the DB operations
+### Visual Feedback
+- **Drag cursor**: `grab` on hover in Edit Mode, `grabbing` while dragging
+- **Resize cursor**: `col-resize` when hovering within 6px of block edges
+- **Pending indicator**: Adjusted blocks get the existing amber dashed ring style
+- **Tooltip update**: During drag/resize, the tooltip updates to show the new time range in real-time
 
-### Access Control
-- Only users with `isAdmin`, `isSuperAdmin`, or `isHR` roles can see and use the Edit button
-- The `coverage_overrides` table already has its own RLS policies
+### Edge Cases Handled
+- Blocks cannot be dragged across day boundaries (clamped to 0-24 within day)
+- Minimum block width of 30 minutes enforced during resize
+- Overnight shifts that span into the next day: only the visible portion within each day is adjustable
+- `dayoff` and `empty` blocks are not interactive (cannot be dragged/resized)
+- Clicking without dragging (no movement) still opens the Override Editor dialog as before
 
-### Data Flow
-
-```text
-Click "Edit" --> Edit Mode ON --> Click day cell --> Override Editor dialog
-  --> Set times --> "Apply" --> Added to pendingOverrides (local)
-  --> Click "Save Changes" --> upsertOverride() for each pending --> refetch queries --> Edit Mode OFF
-```
-
-### Step-by-Step Implementation Order
-1. Create `OverrideEditor.tsx` dialog component
-2. Update `CoverageTimeline.tsx` with edit mode click targets
-3. Update `CoverageBoard.tsx` with edit mode state, toolbar buttons, and save logic
+### Implementation Order
+1. Add snap/clamp utility functions and decimal-to-label converter
+2. Update `ShiftBlock` with drag and resize mouse handlers
+3. Update `CoverageTimeline` to wire `onBlockAdjust` callback and pass timeline ref
+4. Test interactions and verify pending overrides integrate with existing Save flow
 
