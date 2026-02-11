@@ -1,70 +1,122 @@
 
 
-## Slack Threading for Status Event Notifications
+## Fix Coverage Board Override Logic + Activity Log + Save Confirmation
 
-### Overview
-Instead of posting every status event as a separate top-level message (cluttering channels), the first event for each agent per day per channel becomes the parent message, and all subsequent events reply as threaded replies under it.
-
-### How It Works
-
-```text
-Current (messy):
-  @channel Stephen Martinez started a break at 1:30 PM EST
-  @channel Biah Mae Divinagracia started bio break at 1:29 PM EST
-  @channel Stephen Martinez ended their break at 2:00 PM EST
-
-After (threaded):
-  @channel Stephen Martinez started a break at 1:30 PM EST
-    └─ ended their break at 2:00 PM EST          (thread reply)
-  @channel Biah Mae Divinagracia started bio break at 1:29 PM EST
-    └─ ended bio break at 1:34 PM EST            (thread reply)
-```
+### Problem Summary
+1. **Override data loss**: The current `coverage_overrides` table has a unique constraint on `(agent_id, date)`, so only ONE override can exist per agent per date. When you adjust both the regular schedule and OT for the same day, only the last one saved survives.
+2. **Day off not adjusting**: When Friday OT extends to 4:00 AM Saturday, the Saturday Day Off should shrink to start at 4:00 AM instead of disappearing entirely.
+3. **No save confirmation**: Changes save silently without showing a summary of what changed.
+4. **No activity log**: No visibility into who changed what and when.
 
 ---
 
-### Step 1: Create a `slack_threads` Table
+### Step 1 -- Database Schema Changes
 
-A new database table to store the Slack `thread_ts` (thread timestamp) for each agent's first message per channel per day.
+**A. Modify `coverage_overrides` table:**
+- Add `override_type TEXT NOT NULL DEFAULT 'override'` column (values: `regular`, `ot`, `dayoff`, `override`)
+- Add `break_schedule TEXT` column (nullable, for per-day break overrides)
+- Add `previous_value TEXT` column (stores the "from" value for audit purposes)
+- Drop the existing unique index on `(agent_id, date)` and replace with `(agent_id, date, override_type)`
+- Update the `upsert` onConflict key accordingly
+
+**B. Create `coverage_override_logs` table:**
 
 | Column | Type | Purpose |
 |---|---|---|
 | id | uuid (PK) | Primary key |
-| agent_email | text | Agent identifier |
-| channel | text | Slack channel name |
-| thread_ts | text | Slack message timestamp (used as thread parent) |
-| date | date | The EST date this thread belongs to |
-| created_at | timestamptz | Record creation time |
+| agent_id | uuid | Agent reference |
+| agent_name | text | Display name (denormalized for easy display) |
+| date | date | The date affected |
+| override_type | text | Which block type was changed |
+| previous_value | text | "From" schedule string |
+| new_value | text | "To" schedule string |
+| break_schedule | text | Break override if provided |
+| changed_by | text | Email of the editor |
+| created_at | timestamptz | When the change was made |
 
-Unique constraint on `(agent_email, channel, date)` to ensure one thread parent per agent per channel per day.
-
-RLS: Service role only (edge function uses service role key).
-
----
-
-### Step 2: Update `send-profile-status-notification` Edge Function
-
-The updated logic:
-
-1. Receive event as before (agentName, agentEmail, eventType, timestamp)
-2. Determine the channel and format the message
-3. Calculate today's date in EST
-4. Query `slack_threads` for an existing thread for this agent + channel + today
-5. **If no thread exists:** Post as a new top-level message, save the returned `ts` as the thread parent in `slack_threads`
-6. **If thread exists:** Post as a reply using `thread_ts` parameter, with a shorter message (no agent name prefix needed since it's in context)
+RLS: Service role + authenticated read access (for displaying the log).
 
 ---
 
-### Technical Details
+### Step 2 -- Fix Override Save Logic
 
-**Slack API threading:** The `chat.postMessage` API accepts an optional `thread_ts` parameter. When provided, the message is posted as a reply in that thread.
+**Update `coverageBoardApi.ts`:**
+- `upsertOverride()` now includes `override_type` and `break_schedule` fields
+- `onConflict` changes from `'agent_id,date'` to `'agent_id,date,override_type'`
+- Add function to insert into `coverage_override_logs`
 
-**Thread reply format:** Replies will be shorter since the parent already identifies the agent:
-- Parent: `@channel Stephen Martinez started a break at 1:30 PM EST`
-- Reply: `ended their break at 2:00 PM EST`
+**Update `CoverageBoard.tsx` save handler:**
+- When saving pending overrides, each entry already has a `block_type` -- pass it as `override_type`
+- After successful save, insert corresponding log entries
 
-**Daily reset:** The `date` column ensures threads reset each day. Old records can be cleaned up periodically but are harmless if left.
+---
 
-**Login/Logout channel (`a_cyrus_li-lo`):** LOGIN becomes the thread parent, LOGOUT replies under it.
+### Step 3 -- Fix Day Off Shortening Logic
 
-**Status channel (`a_cyrus_cs-all`):** First break/bio/coaching event becomes the thread parent, subsequent events reply.
+**Update `getEffectiveBlocks()` in `coverageBoardApi.ts`:**
+- When a previous day's block (regular or OT) extends past midnight into a day-off day, the day-off block should start at the overflow end time instead of hour 0
+- For example: Friday OT 8:30 PM - 4:00 AM means Saturday day off renders as 4:00 AM - 24:00 (end of day) instead of 0:00 - 24:00
+- This requires checking the previous day's blocks for overnight spillover
+
+**Update `CoverageTimeline.tsx`:**
+- After computing all blocks, post-process: if a day-off block exists on day N and day N-1 has a block with `endHour > 24`, adjust the day-off block's `startHour` to `(endHour - 24)`
+
+---
+
+### Step 4 -- Save Confirmation Dialog
+
+**Create new component `SaveConfirmationDialog.tsx`:**
+- A dialog that opens when the user clicks "Save Changes"
+- Shows a table/list of all pending changes:
+  - Agent name
+  - Date
+  - Block type (Regular / OT / Day Off)
+  - From (previous schedule)
+  - To (new schedule)
+- Each row has an optional "Break Schedule" input field for per-day break override
+- Two buttons: "Cancel" and "Confirm Save"
+- Only on "Confirm Save" does the actual database write happen
+
+---
+
+### Step 5 -- Activity Log Component
+
+**Create new component `CoverageActivityLog.tsx`:**
+- Displayed below the timeline on the Coverage Board page
+- Queries `coverage_override_logs` for the selected week
+- Shows a compact table:
+  - Date | Agent | Type | From | To | Break | Changed By | When
+- Only loads data for the currently selected week
+- Auto-refreshes after saves
+
+---
+
+### Step 6 -- Update `get_effective_schedule` RPC
+
+The database RPC needs to handle multiple override types per date:
+- Query all `coverage_overrides` for the agent+date
+- If a `regular` type override exists, use it as `effective_schedule`
+- If an `ot` type override exists, use it as `effective_ot_schedule`
+- If a `dayoff` type override exists, adjust the day-off rendering
+- Fall back to `override` type for backward compatibility (existing single-type overrides)
+
+---
+
+### Step 7 -- Remove Override Color Change
+
+- Overridden blocks keep their original block-type color (regular stays position-colored, OT stays violet, day off stays zinc)
+- The "Overridden" label text on the block and the tooltip indicator remain as the visual cue
+- Remove the amber override color application when `isOverridden` is true
+
+---
+
+### Implementation Order
+We will implement these step by step:
+1. Database migration (add columns, new table, update constraints)
+2. Fix the API layer (upsert with override_type, log insertion)
+3. Fix day-off shortening logic
+4. Build Save Confirmation Dialog
+5. Build Activity Log component
+6. Update the `get_effective_schedule` RPC
+7. Remove override color change
 
