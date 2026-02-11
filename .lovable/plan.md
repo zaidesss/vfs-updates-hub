@@ -1,43 +1,37 @@
 
 
-## Fix: Shift Blocks Not Draggable Due to Overlay Z-Index Conflict
+## Fix: Pending Drag/Resize Changes Not Visually Reflected
 
 ### Root Cause
-In `CoverageTimeline.tsx`, the **day click targets** (invisible overlay divs) are rendered with `z-10` and cover the entire day column. The **ShiftBlocks** have no explicit z-index, so they sit below these overlays. Every click intended for a shift block is intercepted by the overlay, which opens the Override Schedule dialog instead.
+When you drag or resize a block, `handleBlockAdjust` correctly adds the change to `pendingOverrides` in `CoverageBoard.tsx`. However, the `allBlocks` computation in `AgentRow` (inside `CoverageTimeline.tsx`) only reads from `overrideMap` (DB-saved overrides). It never checks `pendingOverrides`, so the block snaps back to its original position after releasing the mouse.
 
 ### Solution
-Adjust the z-index layering so ShiftBlocks in edit mode sit **above** the day click targets, while empty timeline areas still open the Override dialog.
+Modify the `allBlocks` computation in `AgentRow` to merge `pendingOverrides` into the override lookup before computing blocks. If a pending override exists for a given agent+date, it should be treated as an effective override for rendering purposes.
 
-### File: `src/components/coverage-board/CoverageTimeline.tsx`
+### Technical Changes
 
-1. **Lower the day click target z-index** from `z-10` to `z-[5]` -- these should be the bottom interactive layer
-2. **Add `z-[6]` to ShiftBlocks** when in edit mode -- so they float above the click targets and receive mouse events directly
-3. **Add `e.stopPropagation()`** in ShiftBlock's `onMouseDown` handler (already present in the code) to prevent the click from bubbling to the day overlay
+**File: `src/components/coverage-board/CoverageTimeline.tsx`**
 
-### File: `src/components/coverage-board/ShiftBlock.tsx`
+In the `allBlocks` useMemo inside `AgentRow`:
 
-4. **Add an `onClick` handler with `e.stopPropagation()`** to prevent click events (after a non-drag interaction) from bubbling up to the day overlay and opening the dialog
-5. **Ensure the block has a higher z-index** when `editMode` is true and the block type is interactive (not dayoff/empty)
+1. For each day, after looking up the DB override, also check `pendingOverrides` for a matching `agentId:dateStr` key
+2. If a pending override exists (and is not marked `_delete`), construct a synthetic `CoverageOverride` object from its `override_start` and `override_end` values and use that instead of the DB override
+3. If a pending override is marked `_delete`, treat it as if no override exists (pass `undefined` to `getEffectiveBlocks`)
+4. Add `pendingOverrides` to the `useMemo` dependency array
 
-### Result
-- Clicking **on a shift block** in Edit Mode: drag/resize works as intended
-- Clicking **on empty timeline space** in Edit Mode: Override Schedule dialog opens (existing behavior)
-- Non-edit mode: no change in behavior
-
-### Technical Details
-
-**CoverageTimeline.tsx -- day click targets:**
+The key change in pseudocode:
 ```
-// Change z-10 to z-[5]
-className="absolute top-0 bottom-0 z-[5] cursor-pointer ..."
+for each day:
+  let override = overrideMap.get(key)  // existing DB override
+  const pending = pendingOverrides?.get(key)
+  if (pending && !pending._delete) {
+    // Use pending as the override for rendering
+    override = { override_start: pending.override_start, override_end: pending.override_end, ... }
+  } else if (pending?._delete) {
+    override = undefined  // Remove override visually
+  }
+  getEffectiveBlocks(agent, dayOff, override, leave, showEffective)
 ```
 
-**ShiftBlock.tsx -- interactive blocks in edit mode:**
-```
-// Add z-[6] when interactive, and onClick stopPropagation
-className={cn(
-  ...,
-  isInteractive && 'z-[6]',
-)}
-onClick={(e) => { if (isInteractive) e.stopPropagation(); }}
-```
+This ensures drag/resize changes are immediately visible on the timeline without touching the database. Only the "Save Changes" button persists them.
+
