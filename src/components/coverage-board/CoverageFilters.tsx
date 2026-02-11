@@ -47,7 +47,7 @@ const POSITION_OPTIONS = [
   'Technical Support',
 ];
 
-const DAY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ── Filter application logic ────────────────────────────────────────────────
 
