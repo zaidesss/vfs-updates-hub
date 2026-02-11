@@ -59,7 +59,7 @@ export interface LeaveForDate {
 
 // ── ShiftBlock types for rendering ──────────────────────────────────────────
 
-export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override';
+export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override' | 'empty';
 
 export interface RenderableBlock {
   dayOffset: number; // 0=Mon .. 6=Sun
@@ -261,14 +261,14 @@ export function getEffectiveBlocks(
     }
   }
 
-  // Always return at least a dayoff block
+  // If no blocks at all (no schedule, not a day off), show as empty
   if (blocks.length === 0) {
     blocks.push({
       dayOffset,
       startHour: 0,
       endHour: 24,
-      type: 'dayoff',
-      startLabel: 'Day Off',
+      type: 'empty',
+      startLabel: '',
       endLabel: '',
     });
   }
