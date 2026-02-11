@@ -220,6 +220,15 @@ Deno.serve(async (req) => {
     const directoryMap = new Map<string, AgentDirectory>();
     directories?.forEach(d => directoryMap.set(d.email.toLowerCase(), d));
 
+    // Fetch coverage overrides for the target date
+    const { data: overrides } = await supabase
+      .from('coverage_overrides')
+      .select('agent_id, override_start, override_end, reason')
+      .eq('date', targetDateStr);
+
+    const overrideMap = new Map<string, { override_start: string; override_end: string; reason: string }>();
+    overrides?.forEach(o => overrideMap.set(o.agent_id, o));
+
     // Fetch all events for the target date using EST boundaries
     // EST = UTC-5, so midnight EST = 5:00 AM UTC
     // Start of EST day: targetDate at 5:00 AM UTC
@@ -314,13 +323,22 @@ Deno.serve(async (req) => {
       const agentName = profile.full_name || directory?.agent_name || profile.email;
       const profileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
 
-      // Skip if day off
-      if (directory && isDayOff(directory, dayName)) {
-        continue;
-      }
+      // Check for coverage override first
+      const override = overrideMap.get(profile.id);
+      let schedule: string | null = null;
 
-      // Get schedule for the day
-      const schedule = directory ? getScheduleForDay(directory, dayOfWeek) : null;
+      if (override) {
+        // Override exists — use it as the effective schedule
+        schedule = `${override.override_start} - ${override.override_end}`;
+        console.log(`Using coverage override for ${agentName}: ${schedule} (reason: ${override.reason})`);
+      } else {
+        // No override — fall back to agent_directory
+        // Skip if day off
+        if (directory && isDayOff(directory, dayName)) {
+          continue;
+        }
+        schedule = directory ? getScheduleForDay(directory, dayOfWeek) : null;
+      }
       
       // Skip if blank/null schedule (treat as implicit day off)
       if (!schedule || schedule.trim() === '') {
