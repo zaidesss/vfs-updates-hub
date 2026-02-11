@@ -1,6 +1,7 @@
 import { MenuAccordion } from './MenuAccordion';
 import { Shield, User, LayoutDashboard, Users, BarChart3, Trophy, FileWarning, FileText, AlertTriangle, PieChart, BookOpen, Library } from 'lucide-react';
 import { MyBioAdminSection } from './sections/updated-admin/MyBioAdminSection';
+import { DashboardAdminSection } from './sections/updated-admin/DashboardAdminSection';
 
 export function UpdatedAdminGuideContent() {
   return (
@@ -37,7 +38,7 @@ export function UpdatedAdminGuideContent() {
         title="Agent Dashboard (Admin)"
         description="Monitoring agent dashboards, violation alerts, and compliance incident triggers"
       >
-        <p className="text-sm text-muted-foreground italic">Coming soon — dashboard admin monitoring instructions.</p>
+        <DashboardAdminSection />
       </MenuAccordion>
 
       <MenuAccordion
