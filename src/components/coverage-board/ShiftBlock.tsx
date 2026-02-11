@@ -1,11 +1,13 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { TOTAL_HOUR_COLS, HOURS_PER_DAY } from '@/lib/coverageBoardApi';
 
 export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override';
 
 interface ShiftBlockProps {
-  startHour: number; // decimal hours e.g. 9.5 = 9:30 AM
-  endHour: number;
+  dayOffset: number;   // 0=Mon .. 6=Sun
+  startHour: number;   // decimal hours e.g. 9.5 = 9:30
+  endHour: number;     // decimal hours (always > startHour after overnight split)
   type: ShiftBlockType;
   agentName: string;
   startLabel: string;
@@ -23,45 +25,47 @@ const TYPE_STYLES: Record<ShiftBlockType, string> = {
   override: 'bg-amber-500/70 border-amber-600',
 };
 
-// Convert decimal hour to percentage position in the 24-hour grid
-function hourToPercent(hour: number): number {
-  return (hour / 24) * 100;
+/**
+ * Position a block inside the 168-hour (7-day) timeline cell.
+ * left% = ((dayOffset * 24 + hour) / 168) * 100
+ */
+function toPercent(dayOffset: number, hour: number): number {
+  return ((dayOffset * HOURS_PER_DAY + hour) / TOTAL_HOUR_COLS) * 100;
 }
 
 export function parseTimeToDecimal(timeStr: string): number | null {
   if (!timeStr || timeStr.toLowerCase() === 'day off') return null;
-  
-  // Handle formats like "9:00 AM", "5:30 PM", "09:00", "17:30"
+
   const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
   if (!match) return null;
-  
+
   let hours = parseInt(match[1], 10);
   const minutes = parseInt(match[2], 10);
   const period = match[3]?.toUpperCase();
-  
+
   if (period) {
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
   }
-  
+
   return hours + minutes / 60;
 }
 
 export function parseScheduleRange(schedule: string): { start: number; end: number } | null {
   if (!schedule || schedule.toLowerCase() === 'day off') return null;
-  
-  // Handle "9:00 AM - 5:30 PM" or "09:00 - 17:30"
+
   const parts = schedule.split(/\s*[-–]\s*/);
   if (parts.length !== 2) return null;
-  
+
   const start = parseTimeToDecimal(parts[0].trim());
   const end = parseTimeToDecimal(parts[1].trim());
-  
+
   if (start === null || end === null) return null;
   return { start, end };
 }
 
 export function ShiftBlock({
+  dayOffset,
   startHour,
   endHour,
   type,
@@ -72,8 +76,8 @@ export function ShiftBlock({
   isOverridden,
   outageReason,
 }: ShiftBlockProps) {
-  const left = hourToPercent(startHour);
-  const width = hourToPercent(endHour - startHour);
+  const left = toPercent(dayOffset, startHour);
+  const width = toPercent(0, endHour - startHour); // duration as % of 168
 
   if (width <= 0) return null;
 
@@ -91,9 +95,9 @@ export function ShiftBlock({
             minWidth: '2px',
           }}
         >
-          {width > 4 && (
-            <span className="truncate px-1">
-              {type === 'dayoff' ? 'OFF' : type === 'outage' ? 'OUT' : `${startLabel} - ${endLabel}`}
+          {width > 0.8 && (
+            <span className="truncate px-0.5">
+              {type === 'dayoff' ? 'OFF' : type === 'outage' ? 'OUT' : `${startLabel}-${endLabel}`}
             </span>
           )}
         </div>

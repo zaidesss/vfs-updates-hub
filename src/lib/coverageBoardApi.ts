@@ -1,4 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
+import { parseScheduleRange } from "@/components/coverage-board/ShiftBlock";
+
+// ── Grid Constants ──────────────────────────────────────────────────────────
+export const STICKY_COLS = 3;
+export const HOURS_PER_DAY = 24;
+export const DAYS_IN_WEEK = 7;
+export const TOTAL_HOUR_COLS = HOURS_PER_DAY * DAYS_IN_WEEK; // 168
+export const TOTAL_GRID_COLS = STICKY_COLS + TOTAL_HOUR_COLS; // 171
+export const TIMELINE_START_COL = STICKY_COLS + 1; // 4 (1-indexed for CSS grid)
+
+// ── Types ───────────────────────────────────────────────────────────────────
 
 export interface AgentScheduleRow {
   id: string;
@@ -42,9 +53,31 @@ export interface LeaveForDate {
   start_time: string;
   end_time: string;
   outage_reason: string;
+  start_date: string;
+  end_date: string;
 }
 
+// ── ShiftBlock types for rendering ──────────────────────────────────────────
+
+export type ShiftBlockType = 'regular' | 'ot' | 'dayoff' | 'outage' | 'override';
+
+export interface RenderableBlock {
+  dayOffset: number; // 0=Mon .. 6=Sun
+  startHour: number; // decimal
+  endHour: number;   // decimal (always > startHour, no wrapping)
+  type: ShiftBlockType;
+  startLabel: string;
+  endLabel: string;
+  isOverridden?: boolean;
+  outageReason?: string;
+}
+
+// ── Day helpers ─────────────────────────────────────────────────────────────
+
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Our week offset: 0=Mon..6=Sun → JS day index
+const OFFSET_TO_JS_DAY = [1, 2, 3, 4, 5, 6, 0];
 
 export function getScheduleForDay(agent: AgentScheduleRow, dayIndex: number): { schedule: string | null; otSchedule: string | null } {
   const day = DAY_KEYS[dayIndex];
@@ -58,12 +91,226 @@ export function isDayOff(agent: AgentScheduleRow, dayName: string): boolean {
   return agent.day_off.some(d => d.toLowerCase() === dayName.toLowerCase());
 }
 
+// ── Display helpers ─────────────────────────────────────────────────────────
+
+export function getDisplayName(agent: AgentScheduleRow): string {
+  return agent.agent_name || agent.full_name || agent.email;
+}
+
+/**
+ * Format days off as abbreviated string: "WED-THU", "SUN", or "--"
+ */
+export function formatDaysOff(agent: AgentScheduleRow): string {
+  if (!agent.day_off || agent.day_off.length === 0) return '--';
+  const abbrs = agent.day_off.map(d => d.substring(0, 3).toUpperCase());
+  return abbrs.join('-');
+}
+
+/**
+ * Compute daily hours label like "9x5".
+ * Calculates duration for each working day, finds mode, returns "{hours}x{workingDays}".
+ */
+export function computeDailyHours(agent: AgentScheduleRow): string {
+  const durations: number[] = [];
+  for (let offset = 0; offset < 7; offset++) {
+    const jsDayIndex = OFFSET_TO_JS_DAY[offset];
+    const dayName = DAY_NAMES_FULL[jsDayIndex];
+    if (isDayOff(agent, dayName)) continue;
+
+    const { schedule } = getScheduleForDay(agent, jsDayIndex);
+    if (!schedule || schedule.toLowerCase() === 'day off') continue;
+
+    const range = parseScheduleRange(schedule);
+    if (!range) continue;
+
+    let dur = range.end - range.start;
+    if (dur <= 0) dur += 24; // overnight
+    durations.push(Math.round(dur));
+  }
+
+  if (durations.length === 0) return '--';
+
+  // Find mode
+  const freq = new Map<number, number>();
+  for (const d of durations) freq.set(d, (freq.get(d) || 0) + 1);
+  let modeHours = durations[0];
+  let maxCount = 0;
+  for (const [h, c] of freq) {
+    if (c > maxCount) { modeHours = h; maxCount = c; }
+  }
+
+  return `${modeHours}x${durations.length}`;
+}
+
+// ── Effective blocks with precedence ────────────────────────────────────────
+
+/**
+ * Returns all renderable blocks for a given agent on a given day offset.
+ *
+ * Precedence:
+ *   1. Manual override (coverage_overrides) → replaces base schedule
+ *   2. Leave/outage → overlay on top of base schedule
+ *   3. Base schedule (regular + OT)
+ *
+ * Always returns at least one block (dayoff block if nothing else).
+ */
+export function getEffectiveBlocks(
+  agent: AgentScheduleRow,
+  dayOffset: number, // 0=Mon..6=Sun
+  override?: CoverageOverride,
+  leave?: LeaveForDate,
+  showEffective: boolean = true,
+): RenderableBlock[] {
+  const jsDayIndex = OFFSET_TO_JS_DAY[dayOffset];
+  const dayName = DAY_NAMES_FULL[jsDayIndex];
+  const agentIsDayOff = isDayOff(agent, dayName);
+  const blocks: RenderableBlock[] = [];
+
+  // ── 1. Manual override ──
+  if (showEffective && override) {
+    const overrideSchedule = `${override.override_start} - ${override.override_end}`;
+    const range = parseScheduleRange(overrideSchedule);
+    if (range) {
+      const segments = splitOvernight(range.start, range.end, dayOffset);
+      for (const seg of segments) {
+        blocks.push({
+          ...seg,
+          type: 'override',
+          startLabel: override.override_start,
+          endLabel: override.override_end,
+          isOverridden: true,
+        });
+      }
+    }
+
+    // If there's an outage on top of override, add it
+    if (leave) {
+      const leaveRange = parseScheduleRange(`${leave.start_time} - ${leave.end_time}`);
+      if (leaveRange) {
+        blocks.push({
+          dayOffset,
+          startHour: leaveRange.start,
+          endHour: leaveRange.end,
+          type: 'outage',
+          startLabel: leave.start_time,
+          endLabel: leave.end_time,
+          outageReason: leave.outage_reason,
+        });
+      }
+    }
+
+    return blocks;
+  }
+
+  // ── 2. Base schedule ──
+  const { schedule, otSchedule } = getScheduleForDay(agent, jsDayIndex);
+
+  if (agentIsDayOff) {
+    blocks.push({
+      dayOffset,
+      startHour: 0,
+      endHour: 24,
+      type: 'dayoff',
+      startLabel: 'Day Off',
+      endLabel: '',
+    });
+  } else if (schedule && schedule.toLowerCase() !== 'day off') {
+    const range = parseScheduleRange(schedule);
+    if (range) {
+      const segments = splitOvernight(range.start, range.end, dayOffset);
+      for (const seg of segments) {
+        blocks.push({
+          ...seg,
+          type: 'regular',
+          startLabel: schedule.split(/\s*[-–]\s*/)[0] || '',
+          endLabel: schedule.split(/\s*[-–]\s*/)[1] || '',
+        });
+      }
+    }
+  }
+
+  // OT
+  if (otSchedule && otSchedule.toLowerCase() !== 'day off') {
+    const otRange = parseScheduleRange(otSchedule);
+    if (otRange) {
+      const segments = splitOvernight(otRange.start, otRange.end, dayOffset);
+      for (const seg of segments) {
+        blocks.push({
+          ...seg,
+          type: 'ot',
+          startLabel: otSchedule.split(/\s*[-–]\s*/)[0] || '',
+          endLabel: otSchedule.split(/\s*[-–]\s*/)[1] || '',
+        });
+      }
+    }
+  }
+
+  // ── 3. Leave overlay ──
+  if (showEffective && leave) {
+    const leaveRange = parseScheduleRange(`${leave.start_time} - ${leave.end_time}`);
+    if (leaveRange) {
+      blocks.push({
+        dayOffset,
+        startHour: leaveRange.start,
+        endHour: leaveRange.end,
+        type: 'outage',
+        startLabel: leave.start_time,
+        endLabel: leave.end_time,
+        outageReason: leave.outage_reason,
+      });
+    }
+  }
+
+  // Always return at least a dayoff block
+  if (blocks.length === 0) {
+    blocks.push({
+      dayOffset,
+      startHour: 0,
+      endHour: 24,
+      type: 'dayoff',
+      startLabel: 'Day Off',
+      endLabel: '',
+    });
+  }
+
+  return blocks;
+}
+
+/**
+ * Split an overnight shift into two segments. Does not render beyond Sunday (dayOffset 6).
+ */
+function splitOvernight(startHour: number, endHour: number, dayOffset: number): Array<{ dayOffset: number; startHour: number; endHour: number }> {
+  if (endHour > startHour) {
+    return [{ dayOffset, startHour, endHour }];
+  }
+  // Overnight: startHour > endHour
+  const segments: Array<{ dayOffset: number; startHour: number; endHour: number }> = [];
+  segments.push({ dayOffset, startHour, endHour: 24 });
+  if (dayOffset < 6) {
+    segments.push({ dayOffset: dayOffset + 1, startHour: 0, endHour });
+  }
+  return segments;
+}
+
+// ── Data fetching ───────────────────────────────────────────────────────────
+
 export async function fetchAgentSchedules(): Promise<AgentScheduleRow[]> {
   const { data, error } = await supabase
     .from('agent_profiles')
     .select('id, email, agent_name, full_name, position, zendesk_instance, support_type, employment_status, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
     .neq('employment_status', 'Terminated')
     .order('full_name');
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchOverridesForWeek(startDate: string, endDate: string): Promise<CoverageOverride[]> {
+  const { data, error } = await supabase
+    .from('coverage_overrides')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate);
 
   if (error) throw error;
   return data || [];
@@ -116,10 +363,22 @@ export async function deleteOverride(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function fetchLeavesForWeek(startDate: string, endDate: string): Promise<LeaveForDate[]> {
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select('agent_email, start_time, end_time, outage_reason, start_date, end_date')
+    .eq('status', 'approved')
+    .lte('start_date', endDate)
+    .gte('end_date', startDate);
+
+  if (error) throw error;
+  return data || [];
+}
+
 export async function fetchLeavesForDate(date: string): Promise<LeaveForDate[]> {
   const { data, error } = await supabase
     .from('leave_requests')
-    .select('agent_email, start_time, end_time, outage_reason')
+    .select('agent_email, start_time, end_time, outage_reason, start_date, end_date')
     .eq('status', 'approved')
     .lte('start_date', date)
     .gte('end_date', date);
@@ -128,7 +387,8 @@ export async function fetchLeavesForDate(date: string): Promise<LeaveForDate[]> 
   return data || [];
 }
 
-// Group agents by fixed category hierarchy
+// ── Grouping ────────────────────────────────────────────────────────────────
+
 export type AgentSubGroup = {
   subLabel: string;
   agents: AgentScheduleRow[];
@@ -140,7 +400,6 @@ export type AgentGroup = {
 };
 
 const POSITION_ORDER = ['Hybrid Support', 'Phone Support', 'Chat Support', 'Email Support'];
-const STANDALONE_POSITIONS = ['Logistics', 'Team Lead', 'Technical Support'];
 
 function getPositionSortKey(position: string | null): number {
   const idx = POSITION_ORDER.indexOf(position || '');
@@ -157,14 +416,10 @@ export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
 
   for (const agent of agents) {
     const pos = agent.position || 'Unknown';
-
-    if (pos === 'Logistics') {
-      logistics.push(agent);
-    } else if (pos === 'Team Lead') {
-      teamLeads.push(agent);
-    } else if (pos === 'Technical Support') {
-      techSupport.push(agent);
-    } else if (agent.zendesk_instance === 'ZD1') {
+    if (pos === 'Logistics') logistics.push(agent);
+    else if (pos === 'Team Lead') teamLeads.push(agent);
+    else if (pos === 'Technical Support') techSupport.push(agent);
+    else if (agent.zendesk_instance === 'ZD1') {
       if (!zd1Subs.has(pos)) zd1Subs.set(pos, []);
       zd1Subs.get(pos)!.push(agent);
     } else if (agent.zendesk_instance === 'ZD2') {
