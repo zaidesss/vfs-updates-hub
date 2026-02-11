@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
+import { getTodayEST } from '@/lib/timezoneUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
@@ -210,8 +211,7 @@ export default function AgentDashboard() {
       setAllEvents(fetchedAllEvents);
 
       // Check for today's attendance and auto-generate Late Login outage if needed
-      const today = new Date();
-      const todayStr = format(today, 'yyyy-MM-dd');
+      const todayStr = getTodayEST();
       const todayAttendance = weekAttendance.find(
         (d) => format(d.date, 'yyyy-MM-dd') === todayStr
       );
