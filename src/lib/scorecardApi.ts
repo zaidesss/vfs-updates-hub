@@ -171,12 +171,61 @@ export async function fetchEligibleAgents(supportType: string): Promise<AgentPro
   return (data || []) as AgentProfile[];
 }
 
-// Calculate scheduled working days for a week (excluding day_off)
-export function getScheduledDays(profile: AgentProfile, weekStart: Date, weekEnd: Date): number {
+// Coverage override type for schedule adjustments
+interface CoverageOverride {
+  agent_id: string;
+  date: string;
+  override_start: string;
+  override_end: string;
+}
+
+// Fetch coverage overrides for a date range
+async function fetchCoverageOverridesForWeek(
+  weekStart: string,
+  weekEnd: string
+): Promise<CoverageOverride[]> {
+  const { data, error } = await supabase
+    .from('coverage_overrides')
+    .select('agent_id, date, override_start, override_end')
+    .gte('date', weekStart)
+    .lte('date', weekEnd);
+
+  if (error) {
+    console.error('Error fetching coverage overrides:', error);
+    return [];
+  }
+  return data || [];
+}
+
+// Build a lookup map: agent_id -> Set of override dates
+function buildOverrideDateMap(overrides: CoverageOverride[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const o of overrides) {
+    if (!map.has(o.agent_id)) map.set(o.agent_id, new Set());
+    map.get(o.agent_id)!.add(o.date);
+  }
+  return map;
+}
+
+// Calculate scheduled working days for a week (excluding day_off, respecting overrides)
+export function getScheduledDays(
+  profile: AgentProfile,
+  weekStart: Date,
+  weekEnd: Date,
+  overrideDates?: Set<string>
+): number {
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
   let scheduledDays = 0;
 
   for (const day of days) {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    
+    // If there's a coverage override for this day, it counts as scheduled
+    if (overrideDates?.has(dayStr)) {
+      scheduledDays++;
+      continue;
+    }
+    
     const dayName = DAY_NAMES[day.getDay()];
     if (!profile.day_off?.includes(dayName)) {
       // Also check if the day has a schedule set
@@ -465,13 +514,14 @@ export async function fetchWeeklyScorecardRPC(
       ? SUPPORT_TYPES.map(type => fetchScorecardConfig(type).then(config => ({ type, config })))
       : [fetchScorecardConfig(supportType).then(config => ({ type: supportType, config }))];
 
-    const [rpcResult, configResults] = await Promise.all([
+    const [rpcResult, configResults, overrides] = await Promise.all([
       supabase.rpc('get_weekly_scorecard_data', {
         p_week_start: weekStartStr,
         p_week_end: weekEndStr,
         p_support_type: supportType,
       }),
       Promise.all(configPromises),
+      fetchCoverageOverridesForWeek(weekStartStr, weekEndStr),
     ]);
 
     if (rpcResult.error) {
@@ -484,13 +534,15 @@ export async function fetchWeeklyScorecardRPC(
     const rpcData = (rpcResult.data || []) as unknown as ScorecardRPCResult[];
     const configMap = new Map(configResults.map(r => [r.type, r.config]));
     const config = supportType === 'all' ? [] : (configResults[0]?.config || []);
+    const overrideDateMap = buildOverrideDateMap(overrides);
 
     // Transform RPC results to AgentScorecard format
     const scorecards: AgentScorecard[] = rpcData.map(row => {
       const agentSupportType = row.agent_position || supportType;
       
-      // Calculate scheduled days from day_off + schedules
-      const scheduledDays = calculateScheduledDaysFromRPC(row, weekStart, weekEnd);
+      // Calculate scheduled days from day_off + schedules + overrides
+      const agentOverrideDates = overrideDateMap.get(row.profile_id);
+      const scheduledDays = calculateScheduledDaysFromRPC(row, weekStart, weekEnd, agentOverrideDates);
       
       // New reliability calculation: 100% - (unplanned_outage_days × 1%)
       // Planned Leave = no deduction, all other outage reasons = 1% deduction per day
@@ -643,15 +695,23 @@ export async function fetchWeeklyScorecardRPC(
 function calculateScheduledDaysFromRPC(
   row: ScorecardRPCResult,
   weekStart: Date,
-  weekEnd: Date
+  weekEnd: Date,
+  overrideDates?: Set<string>
 ): number {
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
   let scheduledDays = 0;
 
   for (const day of days) {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    
+    // If there's a coverage override for this day, it counts as scheduled
+    if (overrideDates?.has(dayStr)) {
+      scheduledDays++;
+      continue;
+    }
+    
     const dayName = DAY_NAMES[day.getDay()];
     if (!row.day_off?.includes(dayName)) {
-      // Check if the day has a schedule set
       const scheduleMap: Record<string, string | null> = {
         'Sun': row.sun_schedule,
         'Mon': row.mon_schedule,
@@ -665,7 +725,6 @@ function calculateScheduledDaysFromRPC(
       if (schedule && schedule !== 'Day Off' && schedule !== '') {
         scheduledDays++;
       } else if (!schedule) {
-        // If no schedule field, count as scheduled if not in day_off
         scheduledDays++;
       }
     }
@@ -695,7 +754,7 @@ export async function fetchWeeklyScorecard(
     : [fetchSavedScorecard(weekStartStr, weekEndStr, supportType)];
 
   // Fetch all required data in parallel
-  const [agentsResult, configResults, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResults, revalidaBatchesResult] = await Promise.all([
+  const [agentsResult, configResults, ticketLogsResult, qaResult, eventsResult, leaveResult, zendeskMetricsResult, savedResults, revalidaBatchesResult, coverageOverrides] = await Promise.all([
     fetchEligibleAgents(supportType),
     Promise.all(configPromises),
     supabase
@@ -727,7 +786,9 @@ export async function fetchWeeklyScorecard(
       .from('revalida_batches')
       .select('id')
       .gte('start_at', weekStartStr)
-      .lte('start_at', weekEndStr + 'T23:59:59')
+      .lte('start_at', weekEndStr + 'T23:59:59'),
+    // Fetch coverage overrides for the week
+    fetchCoverageOverridesForWeek(weekStartStr, weekEndStr),
   ]);
 
   const agents = agentsResult;
@@ -763,6 +824,7 @@ export async function fetchWeeklyScorecard(
   // Create lookup maps
   const zendeskMap = new Map(zendeskMetrics.map(m => [m.agent_email.toLowerCase(), m]));
   const savedMap = new Map(savedScorecards.map(s => [s.agent_email.toLowerCase(), s]));
+  const overrideDateMap = buildOverrideDateMap(coverageOverrides);
 
   // Build scorecard for each agent
   const scorecards: AgentScorecard[] = [];
@@ -798,8 +860,9 @@ export async function fetchWeeklyScorecard(
       continue;
     }
 
-    // Calculate live values
-    const scheduledDays = getScheduledDays(agent, weekStart, weekEnd);
+    // Calculate live values (with coverage override awareness)
+    const agentOverrideDates = overrideDateMap.get(agent.id);
+    const scheduledDays = getScheduledDays(agent, weekStart, weekEnd, agentOverrideDates);
     const approvedLeaveDays = countApprovedLeaveDays(leaveRequests, agent.email, weekStart, weekEnd);
     const { plannedLeaveDays, unplannedOutageDays } = countOutageDaysByType(leaveRequests, agent.email, weekStart, weekEnd);
     const adjustedScheduledDays = Math.max(0, scheduledDays - approvedLeaveDays);
