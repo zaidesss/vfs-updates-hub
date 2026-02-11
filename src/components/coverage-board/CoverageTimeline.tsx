@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { ShiftBlock, POSITION_COLORS } from './ShiftBlock';
+import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel } from './ShiftBlock';
 import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import {
   HOURS_PER_DAY,
@@ -59,6 +59,7 @@ interface CoverageTimelineProps {
   editMode?: boolean;
   pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
   onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
+  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => void;
 }
 
 export function CoverageTimeline({
@@ -70,8 +71,22 @@ export function CoverageTimeline({
   editMode = false,
   pendingOverrides,
   onCellClick,
+  onBlockAdjust,
 }: CoverageTimelineProps) {
   const { now } = usePortalClock();
+
+  // Measure timeline cell width for drag calculations
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [timelineWidth, setTimelineWidth] = useState(0);
+
+  useEffect(() => {
+    if (!timelineRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) setTimelineWidth(entry.contentRect.width);
+    });
+    ro.observe(timelineRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Build lookup maps keyed by "agentId:dateStr" and "email:dateStr"
   const overrideMap = useMemo(() => {
@@ -137,7 +152,7 @@ export function CoverageTimeline({
           </span>
         )}
       </div>
-      <div className="overflow-auto border border-border rounded-lg bg-card" data-table-scroll style={{ height: 'calc(100vh - 220px)' }}>
+      <div ref={timelineRef} className="overflow-auto border border-border rounded-lg bg-card" data-table-scroll style={{ height: 'calc(100vh - 220px)' }}>
       {/* ─── Header Row 1: Day labels ─── */}
       <div
         className="grid min-w-[5000px] sticky top-0 z-30 bg-muted"
@@ -214,6 +229,8 @@ export function CoverageTimeline({
                     editMode={editMode}
                     pendingOverrides={pendingOverrides}
                     onCellClick={onCellClick}
+                    onBlockAdjust={onBlockAdjust}
+                    timelineWidth={timelineWidth}
                   />
                 ))}
               </div>
@@ -238,6 +255,8 @@ function AgentRow({
   editMode = false,
   pendingOverrides,
   onCellClick,
+  onBlockAdjust,
+  timelineWidth = 0,
 }: {
   agent: AgentScheduleRow;
   weekStart: Date;
@@ -248,6 +267,8 @@ function AgentRow({
   editMode?: boolean;
   pendingOverrides?: Map<string, import('./OverrideEditor').PendingOverride>;
   onCellClick?: (agent: AgentScheduleRow, dayOffset: number, date: Date) => void;
+  onBlockAdjust?: (agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => void;
+  timelineWidth?: number;
 }) {
   const displayName = getDisplayName(agent);
   const dailyHrs = computeDailyHours(agent);
@@ -325,6 +346,9 @@ function AgentRow({
             supportType={agent.position || undefined}
             isOverridden={block.isOverridden}
             outageReason={block.outageReason}
+            editMode={editMode}
+            timelineWidth={timelineWidth}
+            onBlockAdjust={onBlockAdjust ? (newStart, newEnd) => onBlockAdjust(agent, block.dayOffset, newStart, newEnd) : undefined}
           />
         ))}
 
