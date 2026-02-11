@@ -121,10 +121,10 @@ export function CoverageTimeline({
           Day Off
         </span>
       </div>
-      <div className="overflow-x-auto border border-border rounded-lg bg-card">
+      <div className="overflow-auto border border-border rounded-lg bg-card" data-table-scroll style={{ height: 'calc(100vh - 220px)' }}>
       {/* ─── Header Row 1: Day labels ─── */}
       <div
-        className="grid min-w-[5000px]"
+        className="grid min-w-[5000px] sticky top-0 z-30 bg-muted"
         style={{ gridTemplateColumns: `${COL_DAILY_W}px ${COL_OFF_W}px ${COL_NAME_W}px repeat(${TOTAL_HOUR_COLS}, minmax(28px, 1fr))` }}
       >
         {/* 3 blank sticky headers */}
@@ -151,7 +151,7 @@ export function CoverageTimeline({
 
       {/* ─── Header Row 2: Column labels + hour labels ─── */}
       <div
-        className="grid min-w-[5000px]"
+        className="grid min-w-[5000px] sticky top-[30px] z-30 bg-muted"
         style={{ gridTemplateColumns: `${COL_DAILY_W}px ${COL_OFF_W}px ${COL_NAME_W}px repeat(${TOTAL_HOUR_COLS}, minmax(28px, 1fr))` }}
       >
         <div className={`${HEADER_STICKY} px-1 py-1 text-[10px] font-semibold text-muted-foreground flex items-center justify-center`} style={{ left: 0, width: COL_DAILY_W }}>
