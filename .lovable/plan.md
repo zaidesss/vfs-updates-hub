@@ -1,74 +1,72 @@
 
 
-## Fix All False EARLY_OUT Reports + Dashboard UI
+## Fix Timezone Bug in Late Login Auto-Generation + Data Cleanup
 
-This plan addresses 3 bugs across 2 files, plus cleanup of 3 false reports.
+### Summary
+Three issues to address:
+1. **Timezone bug** causing auto-generated Late Login outages to use the wrong date
+2. **Data correction** for Stephen's wrongly-dated leave request (and Ellen's)
+3. **False report cleanup** for Stephen's Feb 11 EARLY_OUT and LATE_LOGIN
 
-### Bugs to Fix
+---
 
-**Bug 1: Dashboard UI logout bleed (primary visual issue)**
-In `src/lib/agentDashboardApi.ts` (~line 1681-1696), the logout search finds any LOGOUT on `dateStr` without checking if it belongs to the current session. For overnight workers, a 1:05 AM logout from the previous shift gets attributed to the current day.
+### Issue 1: Timezone Bug in Auto-Generated Late Login Date
 
-**Fix:** After finding a same-day logout, verify it occurred AFTER the same-day login. If the logout is before the login (or no login exists), discard it as previous-session bleed. Apply the same check to the next-day logout search for overnight shifts.
+**File:** `src/pages/AgentDashboard.tsx` (lines 213-214)
 
-**Bug 2: OT_LOGOUT treated as regular LOGOUT (edge function)**
-In `generate-agent-reports/index.ts` (line 355), logout events are filtered by `event_type === 'LOGOUT'` only. An `OT_LOGOUT` event is not a regular shift logout and should be excluded from EARLY_OUT checks.
+**Problem:** The code uses `new Date()` which returns browser local time. For agents in UTC+8 (Philippines), a 5:07 PM EST login on Monday Feb 9 becomes 6:07 AM Feb 10 local time. The `format(today, 'yyyy-MM-dd')` then produces `'2026-02-10'` instead of `'2026-02-09'`, creating the outage request on the wrong date.
 
-**Fix:** Keep the filter as `event_type === 'LOGOUT'` (already correct -- OT_LOGOUT won't match). However, need to verify the Biah Mae case: if an OT_LOGOUT was somehow stored as a regular LOGOUT, or if the issue is the same logout bleed from a previous session. Will add explicit exclusion of `OT_LOGOUT` and `SYSTEM_AUTO_LOGOUT` from the logout event filter as a safeguard.
+**Fix:** Replace `new Date()` with `getTodayEST()` from `timezoneUtils.ts` so the date is always in EST regardless of browser timezone. Also update the attendance matching to use the EST date string.
 
-**Bug 3: Dashboard UI Early Out check missing overnight logic**
-In `src/lib/agentDashboardApi.ts` (line 1723), `isEarlyOut = logoutTimeMinutes < scheduleParsed.endMinutes` doesn't account for overnight shifts where endMinutes < startMinutes (e.g., shift ends at 2:00 AM = 120 min, but a 10 PM logout = 1320 min would not trigger). This is fine for standard overnight cases, but needs session pairing to avoid false positives from bleed logouts.
+```text
+Current (buggy):
+  const today = new Date();
+  const todayStr = format(today, 'yyyy-MM-dd');
 
-### Data Cleanup
-Delete these 3 false EARLY_OUT reports:
-- `214766b2-...` -- Meryl Jean, Feb 9
-- `2189ee6d-...` -- Biah Mae, Feb 11
-- `3670dd55-...` -- Stephen Martinez, Feb 11
-
-### Step-by-step Implementation
-
-**Step 1**: Fix `src/lib/agentDashboardApi.ts` -- add session pairing to logout search
-- Same-day logout must be AFTER same-day login
-- Next-day overnight logout must also be AFTER the login
-
-**Step 2**: Fix `supabase/functions/generate-agent-reports/index.ts` -- add explicit exclusion of non-standard logout types (OT_LOGOUT, SYSTEM_AUTO_LOGOUT) from the EARLY_OUT logout filter
-
-**Step 3**: Deploy edge function
-
-**Step 4**: Delete the 3 false EARLY_OUT reports from the database
-
-### Technical Details
-
-**File: `src/lib/agentDashboardApi.ts`** (lines 1681-1696)
-```
-// Current: finds any LOGOUT on dateStr
-logoutForDay = statusEvents.find(event => 
-  eventDate === dateStr && event.event_type === 'LOGOUT'
-);
-
-// Fixed: verify logout is after login (session pairing)
-let candidateLogout = statusEvents.find(event => 
-  eventDate === dateStr && event.event_type === 'LOGOUT'
-);
-// Discard if it belongs to previous day's session
-if (candidateLogout && loginForDay) {
-  if (new Date(candidateLogout.created_at) < new Date(loginForDay.created_at)) {
-    candidateLogout = undefined; // Previous session bleed
-  }
-}
-logoutForDay = candidateLogout;
+Fixed:
+  const todayStr = getTodayEST();
 ```
 
-**File: `supabase/functions/generate-agent-reports/index.ts`** (line 355)
-```
-// Current
-const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
+---
 
-// Fixed: explicitly exclude OT and system auto-logouts
-const logoutEvents = profileEvents.filter(e => 
-  e.event_type === 'LOGOUT' && 
-  e.event_type !== 'OT_LOGOUT' && 
-  e.event_type !== 'SYSTEM_AUTO_LOGOUT'
-);
-```
+### Issue 2: Data Correction -- Wrong-Date Leave Requests
+
+Two auto-generated Late Login outages were created with `start_date = '2026-02-10'` but should be `'2026-02-09'`:
+
+| ID | Agent | Current Date | Correct Date | Status |
+|---|---|---|---|---|
+| `22d659ce-...` | Stephen Martinez | 2026-02-10 | 2026-02-09 | approved |
+| `de93be93-...` | Ellen Eugenio | 2026-02-10 | 2026-02-09 | for_review |
+
+Ellen also has a canceled duplicate (`fc62ca57-...`) with the same wrong date -- this can be left as-is since it's already canceled.
+
+**Action:** Update `start_date` and `end_date` to `'2026-02-09'` for both records.
+
+---
+
+### Issue 3: False Report Cleanup
+
+Delete Stephen's two false Feb 11 reports (generated mid-shift due to accidental logout/re-login):
+
+| ID | Type | Date |
+|---|---|---|
+| `3670dd55-...` | EARLY_OUT | 2026-02-11 |
+| `e34771f8-...` | LATE_LOGIN | 2026-02-11 |
+
+Plus the previously identified false reports from the earlier plan:
+
+| ID | Agent | Type | Date |
+|---|---|---|---|
+| `214766b2-f3dd-41e2-af0b-45e2ea9b4c4e` | Meryl Jean | EARLY_OUT | Feb 9 |
+| `2189ee6d-5e10-4ebb-aea5-cee4c11b4dd9` | Biah Mae | EARLY_OUT | Feb 11 |
+
+---
+
+### Step-by-Step Implementation
+
+**Step 1:** Fix `src/pages/AgentDashboard.tsx` -- replace `new Date()` with `getTodayEST()` for the late login auto-generation date logic (lines 213-214).
+
+**Step 2:** Correct Stephen's and Ellen's leave request dates in the database (update start_date/end_date from Feb 10 to Feb 9).
+
+**Step 3:** Delete the 4 false agent reports (Stephen's 2 + Meryl Jean's 1 + Biah Mae's 1).
 
