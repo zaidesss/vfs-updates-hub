@@ -1678,21 +1678,37 @@ export function calculateAttendanceForWeek(
 
     // 5. Find logout event for this date (with overnight shift awareness)
     const isOvernightShift = scheduleParsed && scheduleParsed.endMinutes < scheduleParsed.startMinutes;
-    let logoutForDay = statusEvents.find((event) => {
+    // Find candidate logout on same day, then verify session pairing
+    let candidateLogout = statusEvents.find((event) => {
       const eventDate = getESTDateFromTimestamp(event.created_at);
       return eventDate === dateStr && event.event_type === 'LOGOUT';
     });
+    // Discard if logout belongs to previous day's session (bleed)
+    if (candidateLogout && loginForDay) {
+      if (new Date(candidateLogout.created_at) < new Date(loginForDay.created_at)) {
+        candidateLogout = undefined; // Previous session bleed
+      }
+    }
+    // If no login for today, a same-day logout is from a previous session
+    if (candidateLogout && !loginForDay) {
+      candidateLogout = undefined;
+    }
+    let logoutForDay = candidateLogout;
 
     // For overnight shifts, also search for LOGOUT on the next calendar day
-    if (!logoutForDay && isOvernightShift) {
+    if (!logoutForDay && isOvernightShift && loginForDay) {
       const [y, m, d] = dateStr.split('-').map(Number);
       const nextDate = new Date(y, m - 1, d);
       nextDate.setDate(nextDate.getDate() + 1);
       const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-      logoutForDay = statusEvents.find((event) => {
+      const nextDayCandidate = statusEvents.find((event) => {
         const eventDate = getESTDateFromTimestamp(event.created_at);
         return eventDate === nextDateStr && event.event_type === 'LOGOUT';
       });
+      // Verify next-day logout is after the login (same session)
+      if (nextDayCandidate && new Date(nextDayCandidate.created_at) > new Date(loginForDay.created_at)) {
+        logoutForDay = nextDayCandidate;
+      }
     }
 
     // Calculate OT for this day

@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
       // Updated: Only trigger if 3+ hours past scheduled shift end AND still not logged out
       // ========================
       const loginEvents = profileEvents.filter(e => e.event_type === 'LOGIN');
-      const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
+      const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT' && e.event_type !== 'OT_LOGOUT' && e.event_type !== 'SYSTEM_AUTO_LOGOUT');
 
       // For overnight shifts, separate "previous session" logouts from "current session" logouts
       // A logout that occurs BEFORE the first login belongs to the previous day's shift
