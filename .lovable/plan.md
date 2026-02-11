@@ -1,72 +1,70 @@
 
 
-## Fix Timezone Bug in Late Login Auto-Generation + Data Cleanup
+## Slack Threading for Status Event Notifications
 
-### Summary
-Three issues to address:
-1. **Timezone bug** causing auto-generated Late Login outages to use the wrong date
-2. **Data correction** for Stephen's wrongly-dated leave request (and Ellen's)
-3. **False report cleanup** for Stephen's Feb 11 EARLY_OUT and LATE_LOGIN
+### Overview
+Instead of posting every status event as a separate top-level message (cluttering channels), the first event for each agent per day per channel becomes the parent message, and all subsequent events reply as threaded replies under it.
 
----
-
-### Issue 1: Timezone Bug in Auto-Generated Late Login Date
-
-**File:** `src/pages/AgentDashboard.tsx` (lines 213-214)
-
-**Problem:** The code uses `new Date()` which returns browser local time. For agents in UTC+8 (Philippines), a 5:07 PM EST login on Monday Feb 9 becomes 6:07 AM Feb 10 local time. The `format(today, 'yyyy-MM-dd')` then produces `'2026-02-10'` instead of `'2026-02-09'`, creating the outage request on the wrong date.
-
-**Fix:** Replace `new Date()` with `getTodayEST()` from `timezoneUtils.ts` so the date is always in EST regardless of browser timezone. Also update the attendance matching to use the EST date string.
+### How It Works
 
 ```text
-Current (buggy):
-  const today = new Date();
-  const todayStr = format(today, 'yyyy-MM-dd');
+Current (messy):
+  @channel Stephen Martinez started a break at 1:30 PM EST
+  @channel Biah Mae Divinagracia started bio break at 1:29 PM EST
+  @channel Stephen Martinez ended their break at 2:00 PM EST
 
-Fixed:
-  const todayStr = getTodayEST();
+After (threaded):
+  @channel Stephen Martinez started a break at 1:30 PM EST
+    └─ ended their break at 2:00 PM EST          (thread reply)
+  @channel Biah Mae Divinagracia started bio break at 1:29 PM EST
+    └─ ended bio break at 1:34 PM EST            (thread reply)
 ```
 
 ---
 
-### Issue 2: Data Correction -- Wrong-Date Leave Requests
+### Step 1: Create a `slack_threads` Table
 
-Two auto-generated Late Login outages were created with `start_date = '2026-02-10'` but should be `'2026-02-09'`:
+A new database table to store the Slack `thread_ts` (thread timestamp) for each agent's first message per channel per day.
 
-| ID | Agent | Current Date | Correct Date | Status |
-|---|---|---|---|---|
-| `22d659ce-...` | Stephen Martinez | 2026-02-10 | 2026-02-09 | approved |
-| `de93be93-...` | Ellen Eugenio | 2026-02-10 | 2026-02-09 | for_review |
-
-Ellen also has a canceled duplicate (`fc62ca57-...`) with the same wrong date -- this can be left as-is since it's already canceled.
-
-**Action:** Update `start_date` and `end_date` to `'2026-02-09'` for both records.
-
----
-
-### Issue 3: False Report Cleanup
-
-Delete Stephen's two false Feb 11 reports (generated mid-shift due to accidental logout/re-login):
-
-| ID | Type | Date |
+| Column | Type | Purpose |
 |---|---|---|
-| `3670dd55-...` | EARLY_OUT | 2026-02-11 |
-| `e34771f8-...` | LATE_LOGIN | 2026-02-11 |
+| id | uuid (PK) | Primary key |
+| agent_email | text | Agent identifier |
+| channel | text | Slack channel name |
+| thread_ts | text | Slack message timestamp (used as thread parent) |
+| date | date | The EST date this thread belongs to |
+| created_at | timestamptz | Record creation time |
 
-Plus the previously identified false reports from the earlier plan:
+Unique constraint on `(agent_email, channel, date)` to ensure one thread parent per agent per channel per day.
 
-| ID | Agent | Type | Date |
-|---|---|---|---|
-| `214766b2-f3dd-41e2-af0b-45e2ea9b4c4e` | Meryl Jean | EARLY_OUT | Feb 9 |
-| `2189ee6d-5e10-4ebb-aea5-cee4c11b4dd9` | Biah Mae | EARLY_OUT | Feb 11 |
+RLS: Service role only (edge function uses service role key).
 
 ---
 
-### Step-by-Step Implementation
+### Step 2: Update `send-profile-status-notification` Edge Function
 
-**Step 1:** Fix `src/pages/AgentDashboard.tsx` -- replace `new Date()` with `getTodayEST()` for the late login auto-generation date logic (lines 213-214).
+The updated logic:
 
-**Step 2:** Correct Stephen's and Ellen's leave request dates in the database (update start_date/end_date from Feb 10 to Feb 9).
+1. Receive event as before (agentName, agentEmail, eventType, timestamp)
+2. Determine the channel and format the message
+3. Calculate today's date in EST
+4. Query `slack_threads` for an existing thread for this agent + channel + today
+5. **If no thread exists:** Post as a new top-level message, save the returned `ts` as the thread parent in `slack_threads`
+6. **If thread exists:** Post as a reply using `thread_ts` parameter, with a shorter message (no agent name prefix needed since it's in context)
 
-**Step 3:** Delete the 4 false agent reports (Stephen's 2 + Meryl Jean's 1 + Biah Mae's 1).
+---
+
+### Technical Details
+
+**Slack API threading:** The `chat.postMessage` API accepts an optional `thread_ts` parameter. When provided, the message is posted as a reply in that thread.
+
+**Thread reply format:** Replies will be shorter since the parent already identifies the agent:
+- Parent: `@channel Stephen Martinez started a break at 1:30 PM EST`
+- Reply: `ended their break at 2:00 PM EST`
+
+**Daily reset:** The `date` column ensures threads reset each day. Old records can be cleaned up periodically but are harmless if left.
+
+**Login/Logout channel (`a_cyrus_li-lo`):** LOGIN becomes the thread parent, LOGOUT replies under it.
+
+**Status channel (`a_cyrus_cs-all`):** First break/bio/coaching event becomes the thread parent, subsequent events reply.
 
