@@ -1,43 +1,58 @@
 
 
-## Fix: Dashboard Shift Schedule - Overnight Logout Detection
+## Updated Admin Guide - New Help Center Tab
 
-### Problem
-Jaeran's Monday shift is **4:00 PM - 2:00 AM**. He logged out at **1:05 AM EST on Tuesday (Feb 10)**. The Shift Schedule table shows "No Logout" for Monday because it only searches for logout events with an EST date matching Monday (Feb 9). The logout's EST date is Feb 10, so it's missed.
+### What We're Building
+A new **"Updated Admin Guide"** tab in the Help Center (visible only to Admin/HR/Super Admin), mirroring the structure of the Updated User Guide but with admin-specific instructions for each section.
 
-### Root Cause
-**File:** `src/lib/agentDashboardApi.ts`, around line 1638
+### New Files to Create
 
-```typescript
-const logoutForDay = statusEvents.find((event) => {
-  const eventDate = getESTDateFromTimestamp(event.created_at);
-  return eventDate === dateStr && event.event_type === 'LOGOUT';
-});
-```
+1. **`src/components/user-guide/UpdatedAdminGuideContent.tsx`** - Main wrapper with all 12 accordion sections
+2. **12 admin section files** in `src/components/user-guide/sections/updated-admin/`:
+   - `RolesAdminSection.tsx` - Admin perspective on role assignments, how to change roles
+   - `MyBioAdminSection.tsx` - Profile editing instructions (your main callouts below)
+   - `DashboardAdminSection.tsx` - Monitoring agent dashboards, interpreting violations
+   - `TeamStatusAdminSection.tsx` - Admin view of the board, overnight visibility
+   - `TicketLogsAdminSection.tsx` - Admin analytics, gap analysis interpretation
+   - `TeamScorecardAdminSection.tsx` - Save/freeze workflow, metric overrides, refresh
+   - `AgentReportsAdminSection.tsx` - EOD/EOW analytics, escalation workflow
+   - `RevalidaAdminSection.tsx` - Batch management, V2 AI generation, grading
+   - `OutageRequestsAdminSection.tsx` - Review workflow, override, automated triggers
+   - `OutageStatsAdminSection.tsx` - Analytics interpretation, repeat offender thresholds
+   - `UpdatesAdminSection.tsx` - Create/edit updates, compliance dashboard
+   - `KnowledgeBaseAdminSection.tsx` - Article management, playbook creation
 
-This only matches logout events with the exact same EST date as the day being processed. For overnight shifts, the logout occurs on the next calendar day.
+3. **Modify `src/pages/HelpCenter.tsx`** - Add the new tab (conditionally visible for admins)
 
-### The Fix
-**File:** `src/lib/agentDashboardApi.ts`
+### Key Admin Content Highlights
 
-**Change 1 -- Extend logout search for overnight shifts**
+**My Bio (Admin) section will specifically cover:**
+- **Upwork Contract ID**: Where to find it (Upwork contract URL, the numeric ID at the end), why it's needed (enables Upwork hour tracking on dashboard)
+- **Zendesk User ID**: How to find it (Zendesk Admin > Users > click agent > ID in URL bar), why it's needed (enables AHT/FRT metrics on Scorecard)
+- **Quota guidance**: Email quota should always have a value for all Support Types since it's used for Work Tracker categorization on Dashboard. Other quotas (Chat, Phone) only needed if the agent actually handles those channels
+- **Break schedule**: Emphasize that breaks must cover the full shift duration — they are auto-deducted from Total Hours for every working day (including weekends if not Day Off)
+- **OT toggle**: When enabled, OT schedule fields appear; OT productivity is auto-calculated separately using `quota_ot_email`; OT tickets are flagged automatically by the webhook
+- **Schedule auto-fill**: Mon fills Tue-Fri, Sat fills Sun
+- **OT schedule validation**: OT start must be at or after regular shift end time
 
-After checking the schedule, detect if it's an overnight shift (`endMinutes < startMinutes`). If so, also search for LOGOUT events on the **next EST date** (dateStr + 1 day). This way, Monday's row will find the logout event from early Tuesday morning.
+**Other sections will include admin-specific workflows like:**
+- Dashboard: How to read violation alerts, what triggers compliance incidents
+- Scorecard: Save/freeze workflow, manual metric overrides, refresh cache
+- Agent Reports: Escalation to outage requests, validation vs dismissal
+- Revalida: Batch creation, AI generation, grading queue
+- etc.
 
-**Change 2 -- Fix early-out comparison for overnight shifts**
+### Implementation Approach
+Since this is a large content effort, we'll build it **one section at a time**:
+1. Start with the tab wrapper + My Bio Admin section (your priority content)
+2. Then add each remaining section one by one
 
-The current early-out check (`logoutTimeMinutes < scheduleParsed.endMinutes`) needs overnight awareness. For overnight shifts where end is 120 min (2:00 AM), a logout at 65 min (1:05 AM) correctly evaluates as early. However, we need to ensure we're comparing minutes-from-midnight correctly when the logout is found on the next day.
+### Technical Details
 
-**Change 3 -- Fix noLogout for overnight shifts**
+**HelpCenter.tsx changes:**
+- Import `UpdatedAdminGuideContent`
+- Add a new `TabsTrigger` with value `"updated-admin"` (icon: `ShieldCheck`), conditionally rendered for `showAdminGuide`
+- Add corresponding `TabsContent`
 
-Currently `noLogout = isPast && !logoutForDay`. With the extended search from Change 1, this will naturally resolve -- if a next-day logout is found, `logoutForDay` will no longer be null.
-
-### Scope
-- Only `src/lib/agentDashboardApi.ts` needs changes
-- The logout search logic in the `buildWeekAttendance` / day-processing function (around lines 1632-1672)
-- No database changes needed
-
-### Related Considerations
-- **Hours worked calculation** (line 1656-1661): Currently uses login-to-logout duration. If the logout is found on the next day, this calculation will still work correctly since it uses raw timestamps, not date strings.
-- **The agent report "No Logout" from the edge function**: This was fixed in the previous step (overnight-aware report generator). This fix is specifically for the **dashboard UI display**.
+**Section pattern:** Each admin section follows the same `GuideSection` / `CalloutBox` / `QuickTable` pattern used in the existing Updated User Guide sections.
 
