@@ -353,19 +353,31 @@ Deno.serve(async (req) => {
       // ========================
       const loginEvents = profileEvents.filter(e => e.event_type === 'LOGIN');
       const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT');
+
+      // For overnight shifts, separate "previous session" logouts from "current session" logouts
+      // A logout that occurs BEFORE the first login belongs to the previous day's shift
+      let currentSessionLogouts = logoutEvents;
+      if (parsedSchedule && parsedSchedule.endMinutes < parsedSchedule.startMinutes && loginEvents.length > 0) {
+        const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
+        currentSessionLogouts = logoutEvents.filter(e =>
+          new Date(e.created_at).getTime() > lastLoginTime
+        );
+      }
       
-      if (loginEvents.length > 0 && logoutEvents.length === 0 && parsedSchedule) {
+      if (loginEvents.length > 0 && currentSessionLogouts.length === 0 && parsedSchedule) {
         // Check if this is an overnight shift (end time < start time, e.g., 4PM-2AM)
         const isOvernightShift = parsedSchedule.endMinutes < parsedSchedule.startMinutes;
         
         let skipNoLogout = false;
         if (isOvernightShift) {
           // For overnight shifts, check if there's a logout event in the extended window
-          // that falls after midnight EST (i.e., in the next calendar day's early hours)
-          // These events are in allEvents because we extended endOfDayEST to 09:59:59Z
+          // that falls after midnight EST AND after the last login (same session)
           const allProfileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
-          const postMidnightLogouts = allProfileEvents.filter(e => {
+          const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
+          const postMidnightSessionLogouts = allProfileEvents.filter(e => {
             if (e.event_type !== 'LOGOUT') return false;
+            // Must be after the last login to belong to current session
+            if (new Date(e.created_at).getTime() <= lastLoginTime) return false;
             const eventDate = new Date(e.created_at);
             const eventHourEST = parseInt(new Intl.DateTimeFormat('en-US', {
               timeZone: 'America/New_York',
@@ -375,9 +387,9 @@ Deno.serve(async (req) => {
             // Post-midnight means hour 0-4 (12:00 AM - 4:59 AM EST)
             return eventHourEST < 5;
           });
-          if (postMidnightLogouts.length > 0) {
+          if (postMidnightSessionLogouts.length > 0) {
             skipNoLogout = true;
-            console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift with post-midnight logout found`);
+            console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift with post-midnight session logout found`);
           }
         }
         
@@ -531,56 +543,66 @@ Deno.serve(async (req) => {
       // Check for EARLY_OUT with dynamic severity
       // ========================
       if (logoutEvents.length > 0 && parsedSchedule) {
-        const lastLogout = logoutEvents[logoutEvents.length - 1];
-        const logoutTime = new Date(lastLogout.created_at);
-        const logoutHour = parseInt(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          hour: '2-digit',
-          hour12: false,
-        }).format(logoutTime));
-        const logoutMinute = parseInt(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          minute: '2-digit',
-        }).format(logoutTime));
-        const logoutMinutes = logoutHour * 60 + logoutMinute;
-
         const isOvernightShift = parsedSchedule.endMinutes < parsedSchedule.startMinutes;
-        
-        let isEarlyOut = false;
-        if (isOvernightShift) {
-          // For overnight shifts: only flag EARLY_OUT if logout is after midnight
-          // (logoutMinutes < startMinutes means it's in the early morning hours)
-          // AND the logout is before the scheduled end
-          if (logoutMinutes < parsedSchedule.startMinutes && logoutMinutes < parsedSchedule.endMinutes) {
-            isEarlyOut = true;
-          }
-          // If logout is before midnight (during first half of shift), that's an abnormal
-          // situation handled differently -- not a simple EARLY_OUT comparison
-        } else {
-          // Normal daytime shift: straightforward comparison
-          if (logoutMinutes < parsedSchedule.endMinutes) {
-            isEarlyOut = true;
+
+        // For overnight shifts, filter logouts to only those AFTER the last login
+        // to prevent previous day's logout bleed (e.g., 1 AM logout from yesterday's
+        // overnight shift being attributed to today's shift)
+        let effectiveLogoutEvents = logoutEvents;
+        if (isOvernightShift && loginEvents.length > 0) {
+          const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
+          effectiveLogoutEvents = logoutEvents.filter(e =>
+            new Date(e.created_at).getTime() > lastLoginTime
+          );
+          if (effectiveLogoutEvents.length === 0) {
+            console.log(`Skipping EARLY_OUT for ${agentName} - logout(s) found but all precede the last login (previous day's session bleed)`);
           }
         }
 
-        if (isEarlyOut) {
-          const reportKey = `${profile.email.toLowerCase()}_EARLY_OUT`;
-          if (!existingReportSet.has(reportKey)) {
-            const earlyByMinutes = parsedSchedule.endMinutes - logoutMinutes;
-            reportsToCreate.push({
-              agent_email: profile.email.toLowerCase(),
-              agent_name: agentName,
-              profile_id: profile.id,
-              incident_date: targetDateStr,
-              incident_type: 'EARLY_OUT',
-              severity: calculateTimeSeverity(earlyByMinutes),
-              details: {
-                scheduledEnd: parsedSchedule.endMinutes,
-                actualLogout: logoutMinutes,
-                earlyByMinutes,
-              },
-              status: 'open',
-            });
+        if (effectiveLogoutEvents.length > 0) {
+          const lastLogout = effectiveLogoutEvents[effectiveLogoutEvents.length - 1];
+          const logoutTime = new Date(lastLogout.created_at);
+          const logoutHour = parseInt(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            hour: '2-digit',
+            hour12: false,
+          }).format(logoutTime));
+          const logoutMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            minute: '2-digit',
+          }).format(logoutTime));
+          const logoutMinutes = logoutHour * 60 + logoutMinute;
+
+          let isEarlyOut = false;
+          if (isOvernightShift) {
+            if (logoutMinutes < parsedSchedule.startMinutes && logoutMinutes < parsedSchedule.endMinutes) {
+              isEarlyOut = true;
+            }
+          } else {
+            if (logoutMinutes < parsedSchedule.endMinutes) {
+              isEarlyOut = true;
+            }
+          }
+
+          if (isEarlyOut) {
+            const reportKey = `${profile.email.toLowerCase()}_EARLY_OUT`;
+            if (!existingReportSet.has(reportKey)) {
+              const earlyByMinutes = parsedSchedule.endMinutes - logoutMinutes;
+              reportsToCreate.push({
+                agent_email: profile.email.toLowerCase(),
+                agent_name: agentName,
+                profile_id: profile.id,
+                incident_date: targetDateStr,
+                incident_type: 'EARLY_OUT',
+                severity: calculateTimeSeverity(earlyByMinutes),
+                details: {
+                  scheduledEnd: parsedSchedule.endMinutes,
+                  actualLogout: logoutMinutes,
+                  earlyByMinutes,
+                },
+                status: 'open',
+              });
+            }
           }
         }
       }
