@@ -39,6 +39,7 @@ import {
   fetchUpworkTimeForDay,
   autoGenerateLateLoginRequest,
   parseScheduleRange,
+  fetchCoverageOverridesForAgent,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -46,6 +47,7 @@ import {
   type ProfileEvent,
   type ApprovedLeave,
   type TicketCountByType,
+  type CoverageOverrideForWeek,
 } from '@/lib/agentDashboardApi';
 
 /**
@@ -178,24 +180,30 @@ export default function AgentDashboard() {
         bioExceededNotifiedRef.current = false;
       }
 
-      // Fetch login events, all events (for breaks), and approved leaves in parallel for selected week
-      const [loginEventsResult, allEventsResult, leavesResult] = await Promise.all([
+      // Fetch login events, all events, approved leaves, and coverage overrides in parallel
+      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+      
+      const [loginEventsResult, allEventsResult, leavesResult, overridesResult] = await Promise.all([
         getWeekLoginEvents(profileId, weekStart, weekEnd),
         getWeekAllEvents(profileId, weekStart, weekEnd),
         getApprovedLeavesForWeek(profileResult.data.email, weekStart, weekEnd),
+        fetchCoverageOverridesForAgent(profileId, weekStartStr, weekEndStr),
       ]);
 
       const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
       const fetchedAllEvents: ProfileEvent[] = allEventsResult.data || [];
       const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
+      const coverageOverrides: CoverageOverrideForWeek[] = overridesResult.data || [];
 
-      // Calculate attendance for each day of the selected week (with break tracking)
+      // Calculate attendance for each day of the selected week (with break tracking + overrides)
       const weekAttendance = calculateAttendanceForWeek(
         profileResult.data,
         loginEvents,
         approvedLeaves,
         weekStart,
-        fetchedAllEvents  // Pass all events for break calculation
+        fetchedAllEvents,
+        coverageOverrides
       );
 
       setAttendance(weekAttendance);
