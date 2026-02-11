@@ -96,7 +96,8 @@ export function ShiftBlock({
       <TooltipTrigger asChild>
         <div
           className={cn(
-            'absolute top-1 bottom-1 rounded border text-[10px] text-white font-medium flex items-center justify-center overflow-hidden cursor-default select-none transition-opacity hover:opacity-90',
+            'absolute border text-[10px] text-white font-medium flex items-center justify-center overflow-hidden cursor-default select-none transition-opacity hover:opacity-90',
+            type === 'dayoff' || type === 'empty' ? 'top-0 bottom-0' : 'top-1 bottom-1 rounded',
             type === 'regular'
               ? (POSITION_COLORS[supportType || ''] || POSITION_FALLBACK)
               : TYPE_STYLES[type]

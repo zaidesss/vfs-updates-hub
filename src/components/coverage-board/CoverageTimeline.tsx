@@ -290,7 +290,7 @@ function AgentRow({
 
       {/* Timeline cell */}
       <div
-        className="relative border-b border-border"
+        className="relative border-b border-border bg-zinc-800/50"
         style={{
           minHeight: 32,
           backgroundImage: TIMELINE_BG,
