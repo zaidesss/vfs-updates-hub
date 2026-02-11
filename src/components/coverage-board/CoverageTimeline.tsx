@@ -361,7 +361,7 @@ function AgentRow({
             return (
               <div
                 key={dayIdx}
-                className={`absolute top-0 bottom-0 z-10 cursor-pointer transition-colors hover:bg-white/10 ${hasPending ? 'ring-2 ring-inset ring-dashed ring-amber-400/70' : ''}`}
+                className={`absolute top-0 bottom-0 z-[5] cursor-pointer transition-colors hover:bg-white/10 ${hasPending ? 'ring-2 ring-inset ring-dashed ring-amber-400/70' : ''}`}
                 style={{
                   left: `${(dayIdx * HOURS_PER_DAY / TOTAL_HOUR_COLS) * 100}%`,
                   width: `${(HOURS_PER_DAY / TOTAL_HOUR_COLS) * 100}%`,

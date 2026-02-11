@@ -235,7 +235,7 @@ export function ShiftBlock({
             type === 'regular'
               ? (POSITION_COLORS[supportType || ''] || POSITION_FALLBACK)
               : TYPE_STYLES[type],
-            isInteractive && !isDragging && 'cursor-grab',
+            isInteractive && !isDragging && 'cursor-grab z-[6]',
             isDragging && 'cursor-grabbing z-30 opacity-80',
             hasVisualChange && 'ring-2 ring-inset ring-dashed ring-amber-400/70'
           )}
@@ -246,6 +246,7 @@ export function ShiftBlock({
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMoveLocal}
+          onClick={(e) => { if (isInteractive) e.stopPropagation(); }}
         >
           {width > 0.8 && (
             <span className="truncate px-0.5">
