@@ -277,19 +277,20 @@ export function getEffectiveBlocks(
 }
 
 /**
- * Split an overnight shift into two segments. Does not render beyond Sunday (dayOffset 6).
+ * For overnight shifts (endHour <= startHour), return a single continuous block
+ * with endHour > 24 so it renders across the day boundary.
+ * Clamps to hour 24 on Sunday (dayOffset 6) since there's no next day to extend into.
  */
 function splitOvernight(startHour: number, endHour: number, dayOffset: number): Array<{ dayOffset: number; startHour: number; endHour: number }> {
   if (endHour > startHour) {
     return [{ dayOffset, startHour, endHour }];
   }
-  // Overnight: startHour > endHour
-  const segments: Array<{ dayOffset: number; startHour: number; endHour: number }> = [];
-  segments.push({ dayOffset, startHour, endHour: 24 });
-  if (dayOffset < 6) {
-    segments.push({ dayOffset: dayOffset + 1, startHour: 0, endHour });
+  // Overnight: render as single continuous block extending past 24
+  if (dayOffset >= 6) {
+    // Sunday: clamp to end of day since no next day in the grid
+    return [{ dayOffset, startHour, endHour: 24 }];
   }
-  return segments;
+  return [{ dayOffset, startHour, endHour: 24 + endHour }];
 }
 
 // ── Data fetching ───────────────────────────────────────────────────────────
