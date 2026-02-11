@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelector';
 import { CoverageTimeline } from '@/components/coverage-board/CoverageTimeline';
-import { CoverageFilters } from '@/components/coverage-board/CoverageFilters';
+import { CoverageFilters, EMPTY_FILTERS, applyFilters, type CoverageFilterState } from '@/components/coverage-board/CoverageFilters';
 import { usePortalClock } from '@/context/PortalClockContext';
 import {
   fetchAgentSchedules,
@@ -17,7 +17,7 @@ export default function CoverageBoard() {
   const { now } = usePortalClock();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(now, { weekStartsOn: 1 }));
   const [showEffective, setShowEffective] = useState(true);
-
+  const [filters, setFilters] = useState<CoverageFilterState>(EMPTY_FILTERS);
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
   const startStr = format(weekStart, 'yyyy-MM-dd');
   const endStr = format(weekEnd, 'yyyy-MM-dd');
@@ -43,7 +43,8 @@ export default function CoverageBoard() {
     enabled: showEffective,
   });
 
-  const groups = useMemo(() => groupAgents(agents), [agents]);
+  const filteredAgents = useMemo(() => applyFilters(agents, filters), [agents, filters]);
+  const groups = useMemo(() => groupAgents(filteredAgents), [filteredAgents]);
 
   return (
     <Layout>
@@ -57,7 +58,7 @@ export default function CoverageBoard() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <CoverageFilters showEffective={showEffective} onToggleView={setShowEffective} />
+            <CoverageFilters showEffective={showEffective} onToggleView={setShowEffective} filters={filters} onFiltersChange={setFilters} agents={agents} />
             <DashboardWeekSelector selectedDate={weekStart} onDateChange={setWeekStart} />
           </div>
         </div>
