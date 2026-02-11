@@ -120,6 +120,12 @@ export function CoverageTimeline({
           <span className="inline-block w-3 h-3 rounded-sm border border-dashed bg-muted/40 border-muted-foreground/30" />
           Day Off
         </span>
+        {isCurrentWeek && (
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-0.5 border-t-2 border-dashed border-yellow-500" />
+            Now (EST)
+          </span>
+        )}
       </div>
       <div className="overflow-auto border border-border rounded-lg bg-card" data-table-scroll style={{ height: 'calc(100vh - 220px)' }}>
       {/* ─── Header Row 1: Day labels ─── */}
@@ -306,7 +312,7 @@ function AgentRow({
         {/* Current time indicator */}
         {currentTimePct >= 0 && (
           <div
-            className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none"
+            className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-yellow-500 z-20 pointer-events-none"
             style={{ left: `${currentTimePct}%` }}
           />
         )}
