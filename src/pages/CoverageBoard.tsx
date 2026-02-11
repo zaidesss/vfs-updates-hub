@@ -6,6 +6,7 @@ import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelec
 import { CoverageTimeline } from '@/components/coverage-board/CoverageTimeline';
 import { CoverageFilters, EMPTY_FILTERS, applyFilters, type CoverageFilterState } from '@/components/coverage-board/CoverageFilters';
 import { OverrideEditor, type PendingOverride } from '@/components/coverage-board/OverrideEditor';
+import { SaveConfirmationDialog } from '@/components/coverage-board/SaveConfirmationDialog';
 import { decimalToTimeLabel } from '@/components/coverage-board/ShiftBlock';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useAuth } from '@/context/AuthContext';
@@ -42,6 +43,7 @@ export default function CoverageBoard() {
   const [editMode, setEditMode] = useState(false);
   const [pendingOverrides, setPendingOverrides] = useState<Map<string, PendingOverride>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
   // Override editor dialog state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -291,7 +293,7 @@ export default function CoverageBoard() {
                 <Button variant="ghost" size="sm" onClick={handleCancel}>
                   <X className="h-3.5 w-3.5 mr-1" /> Cancel
                 </Button>
-                <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving || totalPending === 0}>
+                <Button size="sm" className="gap-1.5" onClick={() => setConfirmDialogOpen(true)} disabled={saving || totalPending === 0}>
                   <Save className="h-3.5 w-3.5" /> Save Changes
                   {totalPending > 0 && <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">{totalPending}</Badge>}
                 </Button>
@@ -329,6 +331,18 @@ export default function CoverageBoard() {
         pendingOverride={editorPendingOverride}
         onApply={handleApplyOverride}
         onRemove={handleRemoveOverride}
+      />
+
+      {/* Save Confirmation Dialog */}
+      <SaveConfirmationDialog
+        open={confirmDialogOpen}
+        pendingOverrides={pendingOverrides}
+        agents={agents}
+        onCancel={() => setConfirmDialogOpen(false)}
+        onConfirm={async () => {
+          setConfirmDialogOpen(false);
+          await handleSave();
+        }}
       />
     </Layout>
   );
