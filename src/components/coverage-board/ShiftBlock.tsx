@@ -37,7 +37,7 @@ const TYPE_STYLES: Record<ShiftBlockType, string> = {
   ot: 'bg-violet-500/80 border-violet-600',
   dayoff: 'bg-zinc-400/70 border-zinc-400',
   outage: 'bg-red-500/30 border-red-500 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(239,68,68,0.15)_4px,rgba(239,68,68,0.15)_8px)]',
-  override: 'bg-amber-500/70 border-amber-600',
+  override: '',
   empty: 'bg-zinc-700/70 border-zinc-600/50',
 };
 
