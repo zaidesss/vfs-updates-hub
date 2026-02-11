@@ -200,14 +200,15 @@ export function CoverageTimeline({
 
         {/* Agent rows grouped */}
         {groups.map(group => {
-          const totalCount = group.subGroups.reduce((sum, sg) => sum + sg.agents.length, 0);
+          const subGroups = group.subGroups || [];
+          const totalCount = subGroups.reduce((sum, sg) => sum + (sg.agents?.length || 0), 0);
           return (
             <div key={group.label} className="contents">
               <MainGroupHeader label={group.label} totalCount={totalCount} />
-              {group.subGroups.map(sub => (
+              {subGroups.map(sub => (
                 <div key={sub.subLabel} className="contents">
-                  <SubGroupHeader subLabel={sub.subLabel} agentCount={sub.agents.length} />
-                  {sub.agents.map(agent => (
+                  <SubGroupHeader subLabel={sub.subLabel} agentCount={sub.agents?.length || 0} />
+                  {(sub.agents || []).map(agent => (
                     <AgentRow
                       key={agent.id}
                       agent={agent}
