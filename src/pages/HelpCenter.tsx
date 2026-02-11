@@ -4,12 +4,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Printer, Download, User, Shield, FileText, Sparkles, HelpCircle, BookOpen } from 'lucide-react';
+import { Printer, Download, User, Shield, ShieldCheck, FileText, Sparkles, HelpCircle, BookOpen } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 import { UserGuideContent } from '@/components/user-guide/UserGuideContent';
 import { AdminGuideContent } from '@/components/user-guide/AdminGuideContent';
 import { UpdatedUserGuideContent } from '@/components/user-guide/UpdatedUserGuideContent';
+import { UpdatedAdminGuideContent } from '@/components/user-guide/UpdatedAdminGuideContent';
 import { QuickSheetsTab } from '@/components/help-center/QuickSheetsTab';
 import { WhatsNewTab } from '@/components/help-center/WhatsNewTab';
 
@@ -100,6 +101,15 @@ export default function HelpCenter() {
                     Admin Guide
                   </TabsTrigger>
                 )}
+                {showAdminGuide && (
+                  <TabsTrigger 
+                    value="updated-admin" 
+                    className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Updated Admin Guide
+                  </TabsTrigger>
+                )}
                 <TabsTrigger 
                   value="quick-sheets" 
                   className="flex items-center gap-2 px-4 py-2.5 data-[state=active]:bg-background"
@@ -134,6 +144,14 @@ export default function HelpCenter() {
                 <TabsContent value="admin" className="mt-0">
                   <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
                     <AdminGuideContent />
+                  </div>
+                </TabsContent>
+              )}
+
+              {showAdminGuide && (
+                <TabsContent value="updated-admin" className="mt-0">
+                  <div className="bg-card rounded-lg border p-6 md:p-8 shadow-sm">
+                    <UpdatedAdminGuideContent />
                   </div>
                 </TabsContent>
               )}
