@@ -88,7 +88,7 @@ export function getScheduleForDay(agent: AgentScheduleRow, dayIndex: number): { 
 
 export function isDayOff(agent: AgentScheduleRow, dayName: string): boolean {
   if (!agent.day_off) return false;
-  return agent.day_off.some(d => d.toLowerCase() === dayName.toLowerCase());
+  return agent.day_off.some(d => d.toLowerCase().substring(0, 3) === dayName.toLowerCase().substring(0, 3));
 }
 
 // ── Display helpers ─────────────────────────────────────────────────────────
