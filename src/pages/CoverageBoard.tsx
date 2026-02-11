@@ -6,6 +6,7 @@ import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelec
 import { CoverageTimeline } from '@/components/coverage-board/CoverageTimeline';
 import { CoverageFilters, EMPTY_FILTERS, applyFilters, type CoverageFilterState } from '@/components/coverage-board/CoverageFilters';
 import { OverrideEditor, type PendingOverride } from '@/components/coverage-board/OverrideEditor';
+import { decimalToTimeLabel } from '@/components/coverage-board/ShiftBlock';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -93,6 +94,20 @@ export default function CoverageBoard() {
       return next;
     });
   }, []);
+
+  // Handle block drag/resize adjustments from the timeline
+  const handleBlockAdjust = useCallback((agent: AgentScheduleRow, dayOffset: number, newStartHour: number, newEndHour: number) => {
+    const dateStr = format(addDays(weekStart, dayOffset), 'yyyy-MM-dd');
+    const startLabel = decimalToTimeLabel(newStartHour);
+    const endLabel = decimalToTimeLabel(newEndHour);
+    handleApplyOverride({
+      agent_id: agent.id,
+      date: dateStr,
+      override_start: startLabel,
+      override_end: endLabel,
+      reason: 'drag adjustment',
+    });
+  }, [weekStart, handleApplyOverride]);
 
   const handleRemoveOverride = useCallback((agentId: string, dateStr: string) => {
     const key = `${agentId}:${dateStr}`;
@@ -201,6 +216,7 @@ export default function CoverageBoard() {
             editMode={editMode}
             pendingOverrides={pendingOverrides}
             onCellClick={handleCellClick}
+            onBlockAdjust={handleBlockAdjust}
           />
         )}
       </div>
