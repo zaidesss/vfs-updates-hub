@@ -94,7 +94,7 @@ export function isDayOff(agent: AgentScheduleRow, dayName: string): boolean {
 // ── Display helpers ─────────────────────────────────────────────────────────
 
 export function getDisplayName(agent: AgentScheduleRow): string {
-  return agent.agent_name || agent.full_name || agent.email;
+  return agent.full_name || agent.agent_name || agent.email;
 }
 
 /**
