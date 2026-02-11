@@ -1484,12 +1484,40 @@ function getTimeInESTMinutes(date: Date): number {
   return hour * 60 + minute;
 }
 
+export interface CoverageOverrideForWeek {
+  agent_id: string;
+  date: string;
+  override_start: string;
+  override_end: string;
+}
+
+export async function fetchCoverageOverridesForAgent(
+  profileId: string,
+  weekStartStr: string,
+  weekEndStr: string
+): Promise<{ data: CoverageOverrideForWeek[]; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('coverage_overrides')
+      .select('agent_id, date, override_start, override_end')
+      .eq('agent_id', profileId)
+      .gte('date', weekStartStr)
+      .lte('date', weekEndStr);
+
+    if (error) return { data: [], error: error.message };
+    return { data: data || [], error: null };
+  } catch (err: any) {
+    return { data: [], error: err.message };
+  }
+}
+
 export function calculateAttendanceForWeek(
   profile: DashboardProfile,
   statusEvents: ProfileEvent[],
   approvedLeaves: ApprovedLeave[],
   weekStart: Date,
-  allEvents?: ProfileEvent[]  // Optional: all events including breaks for break tracking
+  allEvents?: ProfileEvent[],
+  coverageOverrides?: CoverageOverrideForWeek[]
 ): DayAttendance[] {
   const DAYS = [
     { key: 'mon', short: 'Mon', offset: 0 },
@@ -1506,6 +1534,10 @@ export function calculateAttendanceForWeek(
   const today = parseDateStringLocal(todayEST);
   today.setHours(0, 0, 0, 0);
 
+  // Build override lookup: date -> override
+  const overrideMap = new Map<string, CoverageOverrideForWeek>();
+  coverageOverrides?.forEach(o => overrideMap.set(o.date, o));
+
   // Parse allowed break minutes from profile
   const allowedBreakMinutes = parseBreakScheduleMinutes(profile.break_schedule);
   // Grace period: allowed + 5 minutes (or proportional: allowed/6 rounded up)
@@ -1521,11 +1553,15 @@ export function calculateAttendanceForWeek(
     const isPast = isBefore(date, today);
     const isToday = isEqual(date, today);
 
+    // Check for coverage override for this day
+    const override = overrideMap.get(dateStr);
+
     // Helper to calculate OT attendance for this day
     const calculateOTForDay = () => {
-      // Get OT schedule for this specific day
+      // If there's a coverage override, OT schedule from override is not applicable
+      // (overrides replace the entire shift for that day)
       const otScheduleKey = `${day.key}_ot_schedule` as keyof DashboardProfile;
-      const otSchedule = profile[otScheduleKey] as string | null;
+      const otSchedule = override ? undefined : (profile[otScheduleKey] as string | null);
       
       if (!allEvents) return { otSchedule: otSchedule || undefined };
       
@@ -1585,8 +1621,9 @@ export function calculateAttendanceForWeek(
       return { otSchedule, otLoginTime, otLogoutTime, otStatus, otHoursWorkedMinutes };
     };
 
-    // 1. Check if it's a day off - but still check for OT
-    if (dayOffArray.includes(day.short)) {
+    // If there's a coverage override, skip the day_off check — agent is scheduled to work
+    // 1. Check if it's a day off (only when no override)
+    if (!override && dayOffArray.includes(day.short)) {
       const otData = calculateOTForDay();
       return { 
         date, 
@@ -1615,15 +1652,20 @@ export function calculateAttendanceForWeek(
       };
     }
 
-    // 3. Get schedule for this day
-    const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
-    let scheduleTime = profile[scheduleKey] as string | null;
-    
-    // Fallback to weekday/weekend schedule
-    if (!scheduleTime) {
-      scheduleTime = ['sat', 'sun'].includes(day.key)
-        ? profile.weekend_schedule
-        : profile.weekday_schedule;
+    // 3. Get schedule for this day (override takes priority)
+    let scheduleTime: string | null = null;
+    if (override) {
+      scheduleTime = `${override.override_start} - ${override.override_end}`;
+    } else {
+      const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
+      scheduleTime = profile[scheduleKey] as string | null;
+      
+      // Fallback to weekday/weekend schedule
+      if (!scheduleTime) {
+        scheduleTime = ['sat', 'sun'].includes(day.key)
+          ? profile.weekend_schedule
+          : profile.weekday_schedule;
+      }
     }
 
     const scheduleParsed = scheduleTime ? parseScheduleRange(scheduleTime) : null;
