@@ -30,6 +30,18 @@ const EVENT_LABELS: Record<string, string> = {
 const LOGIN_LOGOUT_CHANNEL = 'a_cyrus_li-lo';
 const OTHER_STATUS_CHANNEL = 'a_cyrus_cs-all';
 
+/**
+ * Get today's date in EST as 'YYYY-MM-DD'.
+ */
+function getTodayEST(eventTime: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(eventTime);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -45,6 +57,10 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: StatusNotificationRequest = await req.json();
     const { agentName, agentEmail, eventType, timestamp } = body;
@@ -69,26 +85,44 @@ Deno.serve(async (req) => {
     const label = EVENT_LABELS[eventType] || eventType.toLowerCase().replace(/_/g, ' ');
 
     // Determine channel based on event type
-    const channel = (eventType === 'LOGIN' || eventType === 'LOGOUT')
-      ? LOGIN_LOGOUT_CHANNEL
-      : OTHER_STATUS_CHANNEL;
-
-    // Build message - add @channel for non-login/logout events (only a_cyrus_cs-all channel)
     const isLoginLogout = eventType === 'LOGIN' || eventType === 'LOGOUT';
-    const channelMention = isLoginLogout ? '' : '<!channel> ';
-    const message = `${channelMention}${agentName} ${label} at ${formattedTime} EST`;
+    const channel = isLoginLogout ? LOGIN_LOGOUT_CHANNEL : OTHER_STATUS_CHANNEL;
 
-    // Post to Slack using Bot Token
+    // Calculate today's EST date for thread grouping
+    const todayEST = getTodayEST(eventTime);
+
+    // Check for existing thread for this agent + channel + today
+    const { data: existingThread } = await supabase
+      .from('slack_threads')
+      .select('thread_ts')
+      .eq('agent_email', agentEmail.toLowerCase())
+      .eq('channel', channel)
+      .eq('date', todayEST)
+      .maybeSingle();
+
+    let message: string;
+    const slackPayload: Record<string, unknown> = { channel };
+
+    if (existingThread?.thread_ts) {
+      // Reply in existing thread — shorter message (no agent name, no @channel)
+      message = `${label} at ${formattedTime} EST`;
+      slackPayload.text = message;
+      slackPayload.thread_ts = existingThread.thread_ts;
+    } else {
+      // New top-level message
+      const channelMention = isLoginLogout ? '' : '<!channel> ';
+      message = `${channelMention}${agentName} ${label} at ${formattedTime} EST`;
+      slackPayload.text = message;
+    }
+
+    // Post to Slack
     const slackResponse = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${slackBotToken}`,
       },
-      body: JSON.stringify({
-        channel,
-        text: message,
-      }),
+      body: JSON.stringify(slackPayload),
     });
 
     const slackResult = await slackResponse.json();
@@ -101,10 +135,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Posted to ${channel}: ${message}`);
+    // If this was a new top-level message, save the thread_ts for future replies
+    if (!existingThread?.thread_ts && slackResult.ts) {
+      const { error: insertError } = await supabase
+        .from('slack_threads')
+        .insert({
+          agent_email: agentEmail.toLowerCase(),
+          channel,
+          thread_ts: slackResult.ts,
+          date: todayEST,
+        });
+
+      if (insertError) {
+        console.error('Failed to save thread_ts:', insertError);
+        // Non-fatal — the message was already sent
+      }
+    }
+
+    const isReply = !!existingThread?.thread_ts;
+    console.log(`Posted ${isReply ? 'reply' : 'new thread'} to ${channel}: ${message}`);
 
     return new Response(
-      JSON.stringify({ success: true, channel, message }),
+      JSON.stringify({ success: true, channel, message, isReply }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {

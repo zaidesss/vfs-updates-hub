@@ -2199,6 +2199,33 @@ export type Database = {
         }
         Relationships: []
       }
+      slack_threads: {
+        Row: {
+          agent_email: string
+          channel: string
+          created_at: string
+          date: string
+          id: string
+          thread_ts: string
+        }
+        Insert: {
+          agent_email: string
+          channel: string
+          created_at?: string
+          date: string
+          id?: string
+          thread_ts: string
+        }
+        Update: {
+          agent_email?: string
+          channel?: string
+          created_at?: string
+          date?: string
+          id?: string
+          thread_ts?: string
+        }
+        Relationships: []
+      }
       ticket_assignment_locks: {
         Row: {
           expires_at: string
