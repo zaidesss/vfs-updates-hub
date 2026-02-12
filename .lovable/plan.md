@@ -1,28 +1,47 @@
 
 
-## Fix Group/SubGroup Headers Sticky Behavior
+## Add Logout Confirmation Dialog
 
-### Problem
-The `MainGroupHeader` and `SubGroupHeader` components are not sticking during horizontal scroll because they sit inside plain `<div>` wrappers that don't span the full scrollable width (`min-w-[5000px]`). The `sticky left-0` only works when the element's parent is wider than the viewport -- but the parent divs are just regular block elements that collapse to viewport width.
+### What It Does
+When the agent clicks "Log Out", instead of immediately logging out, a confirmation dialog appears showing:
+- The agent's scheduled shift end time (e.g., "Your shift ends at 5:00 PM EST")
+- The current portal time (live, updating every second)
+- A warning if logging out early: "If you log out now, you will be marked as Early Out"
+- If it's at or past their shift end time: just a simple "Proceed to Logout" prompt with no warning
 
-### Solution
-Wrap each header's visible content in a two-layer structure:
-1. **Outer div**: spans the full scrollable width (`min-w-[5000px]`) so the sticky context works
-2. **Inner div**: has `sticky left-0` with the label content, solid background, and proper z-index
+### Considerations Before Proceeding
+1. **OT Logout** -- Should the OT Logout button also get a confirmation dialog, or just the regular Logout?
+2. **Day Off / No Schedule** -- If the agent has no schedule for today (day off), should we skip the warning entirely and just show "Proceed to Logout"?
+3. **Overnight shifts** -- For shifts like "8:00 PM - 3:30 AM", the end time crosses midnight. The comparison logic needs to handle this correctly.
+
+I'll handle all three: OT Logout gets no dialog (since OT is flexible), day-off/no-schedule shows a simple confirm, and overnight shifts are handled properly.
 
 ### Technical Details
 
-**File: `src/components/coverage-board/GroupHeader.tsx`**
+**File: `src/components/dashboard/StatusButtons.tsx`**
 
-Update both components to use this structure:
+1. Add new props to `StatusButtonsProps`:
+   - `shiftEndTime?: string | null` -- the raw schedule string for today (e.g., "9:00 AM-5:00 PM")
 
-**MainGroupHeader**:
-- Outer: `min-w-[5000px]` + border/background styles
-- Inner: `sticky left-0 z-20` with the label text, solid `bg-primary/10` background
+2. Add a `LogoutConfirmDialog` state:
+   - `showLogoutConfirm: boolean` -- controls dialog visibility
+   - When user clicks the Logout button, instead of calling `handleClick('LOGOUT')`, set `showLogoutConfirm = true`
 
-**SubGroupHeader**:
-- Outer: `min-w-[5000px]` + border styles  
-- Inner: `sticky left-0 z-20` with the sublabel text, solid `bg-muted` background
+3. Add an `AlertDialog` component that:
+   - Parses the shift end time from the schedule string using existing `parseScheduleRange`
+   - Uses `usePortalClock()` to display the live portal time (updating every second)
+   - Compares current EST time (in minutes) to the shift end time (in minutes)
+   - If current time is before shift end: shows warning text in red/amber
+   - If current time is at or after shift end: shows simple green "You are within your logout window" message
+   - Has "Cancel" and "Confirm Logout" buttons
 
-This ensures the headers scroll vertically with the content but stay pinned to the left edge during horizontal scroll, matching the agent name columns.
+**File: `src/pages/AgentDashboard.tsx`**
 
+4. Pass the current day's schedule to `StatusButtons`:
+   - Derive today's day key from PortalClock (`currentDayKey`)
+   - Look up `profile[`${dayKey}_schedule`]` (e.g., `mon_schedule`)
+   - Pass as `shiftEndTime` prop
+
+### Step-by-Step Implementation
+- Step 1: Update `StatusButtons` to accept `shiftEndTime` prop and add the logout confirmation dialog with early-out detection logic
+- Step 2: Update `AgentDashboard` to compute and pass the current day's schedule string to `StatusButtons`
