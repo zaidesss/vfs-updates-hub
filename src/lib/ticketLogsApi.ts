@@ -315,18 +315,19 @@ export function formatGapTime(seconds: number | null): string {
   return `${hours}h ${remainingMinutes}m`;
 }
 
-// Get unique agent names from ticket logs
+// Get unique agent names from agent_profiles (agent_tag is what maps to ticket_logs.agent_name)
 export async function fetchUniqueAgents(): Promise<string[]> {
   const { data, error } = await supabase
-    .from('ticket_logs')
-    .select('agent_name')
-    .order('agent_name');
+    .from('agent_profiles')
+    .select('agent_tag')
+    .not('agent_tag', 'is', null)
+    .order('agent_tag');
 
   if (error) {
     console.error('Error fetching agents:', error);
     return [];
   }
 
-  const unique = [...new Set((data || []).map(d => d.agent_name))];
+  const unique = [...new Set((data || []).map(d => d.agent_tag).filter(Boolean))] as string[];
   return unique;
 }

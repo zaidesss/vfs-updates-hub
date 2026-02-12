@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Search, Filter, X } from 'lucide-react';
+import { Search, Filter, X, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { fetchTicketLogs, fetchUniqueAgents, TicketLog, getESTDayBoundariesUTC } from '@/lib/ticketLogsApi';
+import { exportToCSV } from '@/lib/exportUtils';
 
 const ZD_INSTANCES = [
   { value: 'all', label: 'All Instances' },
@@ -30,13 +31,24 @@ const ZD_INSTANCES = [
   { value: 'customerserviceadvocateshelp', label: 'ZD2 - Customer Service Advocates Help' },
 ];
 
+// Get today's date in EST as YYYY-MM-DD
+function getTodayEST(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 export function TicketSearch() {
+  const todayEST = getTodayEST();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedZdInstance, setSelectedZdInstance] = useState<string>('all');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>(todayEST);
+  const [endDate, setEndDate] = useState<string>(todayEST);
   const [agents, setAgents] = useState<string[]>([]);
   const [logs, setLogs] = useState<TicketLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,7 +62,6 @@ export function TicketSearch() {
     setIsLoading(true);
     setHasSearched(true);
     try {
-      // Convert date picker values to EST day boundaries for accurate filtering
       const startBoundary = startDate ? getESTDayBoundariesUTC(startDate) : null;
       const endBoundary = endDate ? getESTDayBoundariesUTC(endDate) : null;
       
@@ -75,18 +86,37 @@ export function TicketSearch() {
     setSelectedAgent('all');
     setSelectedType('all');
     setSelectedZdInstance('all');
-    setStartDate('');
-    setEndDate('');
+    setStartDate(todayEST);
+    setEndDate(todayEST);
     setLogs([]);
     setHasSearched(false);
   };
 
+  const handleExport = () => {
+    if (logs.length === 0) return;
+    const columns = [
+      { key: 'ticket_id', header: 'Ticket ID' },
+      { key: 'agent_name', header: 'Agent' },
+      { key: 'status', header: 'Status' },
+      { key: 'ticket_type', header: 'Type' },
+      { key: 'timestamp', header: 'Timestamp' },
+      { key: 'zd_instance', header: 'ZD Instance' },
+    ];
+    const exportData = logs.map(log => ({
+      ...log,
+      timestamp: format(new Date(log.timestamp), 'MMM d, yyyy h:mm a'),
+      zd_instance: log.zd_instance === 'customerserviceadvocates' ? 'ZD1' : 'ZD2',
+    }));
+    const filename = `ticket-logs-${startDate || 'all'}-to-${endDate || 'all'}`;
+    exportToCSV(exportData, columns, filename);
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     const lower = status.toLowerCase();
-    if (lower === 'solved' || lower === 'closed') return 'default';
-    if (lower === 'pending') return 'secondary';
-    if (lower === 'open' || lower === 'new') return 'destructive';
-    return 'outline';
+    if (lower === 'solved' || lower === 'closed') return 'default' as const;
+    if (lower === 'pending') return 'secondary' as const;
+    if (lower === 'open' || lower === 'new') return 'destructive' as const;
+    return 'outline' as const;
   };
 
   const getTypeBadgeClass = (type: string) => {
@@ -95,11 +125,6 @@ export function TicketSearch() {
     if (lower === 'chat') return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300';
     if (lower === 'call') return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300';
     return '';
-  };
-
-  const getInstanceLabel = (value: string) => {
-    const instance = ZD_INSTANCES.find(i => i.value === value);
-    return instance?.label || value;
   };
 
   return (
@@ -200,6 +225,12 @@ export function TicketSearch() {
               <h3 className="text-sm font-medium">
                 Results ({logs.length} tickets)
               </h3>
+              {logs.length > 0 && (
+                <Button variant="outline" size="sm" onClick={handleExport}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Export CSV
+                </Button>
+              )}
             </div>
 
             {logs.length === 0 ? (
