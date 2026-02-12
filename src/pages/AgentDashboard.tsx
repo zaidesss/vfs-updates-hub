@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { usePortalClock } from '@/context/PortalClockContext';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -85,6 +86,7 @@ function calculateBioAllowanceFromSchedule(profile: DashboardProfile): number {
 export default function AgentDashboard() {
   const { profileId } = useParams<{ profileId: string }>();
   const { user, isAdmin, isHR } = useAuth();
+  const { currentDayKey } = usePortalClock();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -617,6 +619,7 @@ export default function AgentDashboard() {
                 onRestartExceeded={handleRestartExceeded}
                 onBioExceeded={handleBioExceeded}
                 otEnabled={profile.ot_enabled}
+                shiftSchedule={profile[`${currentDayKey}_schedule` as keyof DashboardProfile] as string | null}
               />
             </CardContent>
           </Card>
