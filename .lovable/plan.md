@@ -1,29 +1,28 @@
 
 
-## Make Group/SubGroup Headers Sticky on Horizontal Scroll
+## Fix Group/SubGroup Headers Sticky Behavior
 
 ### Problem
-When scrolling horizontally through the Coverage Board timeline, the group headers (e.g., "ZD1", "ZD2") and subgroup headers (e.g., "Hybrid Support", "Chat Support") scroll out of view. The agent name columns are already sticky, but these category labels are not.
+The `MainGroupHeader` and `SubGroupHeader` components are not sticking during horizontal scroll because they sit inside plain `<div>` wrappers that don't span the full scrollable width (`min-w-[5000px]`). The `sticky left-0` only works when the element's parent is wider than the viewport -- but the parent divs are just regular block elements that collapse to viewport width.
 
 ### Solution
-Update the `MainGroupHeader` and `SubGroupHeader` components in `GroupHeader.tsx` to remain visible when scrolling horizontally, matching the sticky behavior of the agent metadata columns.
-
-Currently these headers use `col-span-full sticky left-0` which only pins them left but they get clipped or scroll with the content depending on the overflow container. We need to ensure they behave consistently as sticky elements within the scrollable timeline container.
+Wrap each header's visible content in a two-layer structure:
+1. **Outer div**: spans the full scrollable width (`min-w-[5000px]`) so the sticky context works
+2. **Inner div**: has `sticky left-0` with the label content, solid background, and proper z-index
 
 ### Technical Details
 
 **File: `src/components/coverage-board/GroupHeader.tsx`**
 
-Both `MainGroupHeader` and `SubGroupHeader` already have `sticky left-0` classes, which should pin them to the left during horizontal scroll. However, they may need:
+Update both components to use this structure:
 
-1. A higher `z-index` to ensure they layer above timeline content (currently `z-10`, may need adjustment to stay above agent row sticky cells which are also `z-10`).
-2. Explicit `min-width` or `width` styling to prevent them from collapsing when the grid scrolls.
-3. Verify they render inside the scrollable `div` (they do -- they're inside the `overflow-auto` container in `CoverageTimeline.tsx`).
+**MainGroupHeader**:
+- Outer: `min-w-[5000px]` + border/background styles
+- Inner: `sticky left-0 z-20` with the label text, solid `bg-primary/10` background
 
-The fix will:
-- Increase z-index on group headers to `z-20` so they layer above agent row sticky cells
-- Add a solid background to prevent content bleeding through during scroll
-- Ensure both headers have proper `position: sticky` and `left: 0` behavior within the grid's horizontal scroll
+**SubGroupHeader**:
+- Outer: `min-w-[5000px]` + border styles  
+- Inner: `sticky left-0 z-20` with the sublabel text, solid `bg-muted` background
 
-This is a small CSS-only change to `GroupHeader.tsx` -- no logic changes needed.
+This ensures the headers scroll vertically with the content but stay pinned to the left edge during horizontal scroll, matching the agent name columns.
 
