@@ -620,6 +620,7 @@ export default function AgentDashboard() {
                 onBioExceeded={handleBioExceeded}
                 otEnabled={profile.ot_enabled}
                 shiftSchedule={profile[`${currentDayKey}_schedule` as keyof DashboardProfile] as string | null}
+                breakSchedule={profile.break_schedule}
               />
             </CardContent>
           </Card>

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw, User, Clock } from 'lucide-react';
 import type { ProfileStatus, EventType } from '@/lib/agentDashboardApi';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
+import { BreakConfirmDialog } from './BreakConfirmDialog';
 
 interface StatusButtonsProps {
   currentStatus: ProfileStatus;
@@ -16,6 +17,7 @@ interface StatusButtonsProps {
   onBioExceeded?: () => void;
   otEnabled?: boolean;
   shiftSchedule?: string | null;
+  breakSchedule?: string | null;
 }
 
 const DEVICE_RESTART_LIMIT_SECONDS = 5 * 60; // 5 minutes
@@ -38,8 +40,10 @@ export function StatusButtons({
   onBioExceeded,
   otEnabled = false,
   shiftSchedule = null,
+  breakSchedule = null,
 }: StatusButtonsProps) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showBreakConfirm, setShowBreakConfirm] = useState(false);
   const [loadingEvent, setLoadingEvent] = useState<EventType | null>(null);
   
   // Device Restart timer state
@@ -184,7 +188,13 @@ export function StatusButtons({
       <Button
         variant="outline"
         disabled={!breakEnabled || isLoading}
-        onClick={() => handleClick(breakEvent)}
+        onClick={() => {
+          if (!isOnBreak) {
+            setShowBreakConfirm(true);
+          } else {
+            handleClick(breakEvent);
+          }
+        }}
         className={cn(
           'min-w-[100px] sm:min-w-[110px]',
           !breakEnabled && 'opacity-50',
@@ -330,6 +340,16 @@ export function StatusButtons({
           handleClick('LOGOUT');
         }}
         shiftSchedule={shiftSchedule}
+      />
+      {/* Break Confirmation Dialog */}
+      <BreakConfirmDialog
+        open={showBreakConfirm}
+        onOpenChange={setShowBreakConfirm}
+        onConfirm={() => {
+          setShowBreakConfirm(false);
+          handleClick('BREAK_IN');
+        }}
+        breakSchedule={breakSchedule}
       />
     </div>
   );
