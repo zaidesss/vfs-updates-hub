@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw, User, Clock } from 'lucide-react';
 import type { ProfileStatus, EventType } from '@/lib/agentDashboardApi';
+import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 
 interface StatusButtonsProps {
   currentStatus: ProfileStatus;
@@ -14,6 +15,7 @@ interface StatusButtonsProps {
   onRestartExceeded?: () => void;
   onBioExceeded?: () => void;
   otEnabled?: boolean;
+  shiftSchedule?: string | null;
 }
 
 const DEVICE_RESTART_LIMIT_SECONDS = 5 * 60; // 5 minutes
@@ -35,7 +37,9 @@ export function StatusButtons({
   onRestartExceeded,
   onBioExceeded,
   otEnabled = false,
+  shiftSchedule = null,
 }: StatusButtonsProps) {
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loadingEvent, setLoadingEvent] = useState<EventType | null>(null);
   
   // Device Restart timer state
@@ -152,7 +156,14 @@ export function StatusButtons({
       <Button
         variant={isLoggedOut ? 'default' : isLoggedIn ? 'destructive' : 'secondary'}
         disabled={!loginLogoutEnabled || isLoading}
-        onClick={() => handleClick(loginLogoutEvent)}
+        onClick={() => {
+          if (!isLoggedOut) {
+            // Logout: show confirmation dialog
+            setShowLogoutConfirm(true);
+          } else {
+            handleClick(loginLogoutEvent);
+          }
+        }}
         className={cn(
           'min-w-[100px] sm:min-w-[110px]',
           !loginLogoutEnabled && 'opacity-50'
@@ -310,6 +321,16 @@ export function StatusButtons({
           <span className="sm:hidden">{isOnOT ? 'End OT' : 'OT'}</span>
         </Button>
       )}
+      {/* Logout Confirmation Dialog */}
+      <LogoutConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleClick('LOGOUT');
+        }}
+        shiftSchedule={shiftSchedule}
+      />
     </div>
   );
 }
