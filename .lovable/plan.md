@@ -1,47 +1,82 @@
 
-
-## Add Logout Confirmation Dialog
+## Add Break Confirmation Dialog with Correct Allowance Logic
 
 ### What It Does
-When the agent clicks "Log Out", instead of immediately logging out, a confirmation dialog appears showing:
-- The agent's scheduled shift end time (e.g., "Your shift ends at 5:00 PM EST")
-- The current portal time (live, updating every second)
-- A warning if logging out early: "If you log out now, you will be marked as Early Out"
-- If it's at or past their shift end time: just a simple "Proceed to Logout" prompt with no warning
+When the agent clicks "Break In", a confirmation dialog appears showing:
+- **Break schedule window** (e.g., "Your break is scheduled from 12:00 PM - 12:30 PM EST")
+- **Live portal time** (updating every second)
+- **Status indicator and calculated return time**:
+  - **Green**: Current time is within the break-in window (schedule start to schedule start + 10 mins)
+  - **Amber warning**: Current time is outside the allowed break-in window (before start or after start + 10 mins)
+  - **Gray**: No break schedule configured
 
-### Considerations Before Proceeding
-1. **OT Logout** -- Should the OT Logout button also get a confirmation dialog, or just the regular Logout?
-2. **Day Off / No Schedule** -- If the agent has no schedule for today (day off), should we skip the warning entirely and just show "Proceed to Logout"?
-3. **Overnight shifts** -- For shifts like "8:00 PM - 3:30 AM", the end time crosses midnight. The comparison logic needs to handle this correctly.
+### Allowance Rules (Correctly Understood)
+1. **Break-In Window (10 mins after start)**: Agent can break IN anytime from the scheduled break start up to 10 minutes after the start. For example:
+   - Schedule: 12:00 PM - 12:30 PM (30-minute break)
+   - Break-in window: 12:00 PM - 12:10 PM
+   - If they break in at 12:05 PM, their break-out time will be 12:35 PM (12:05 PM + 30 mins)
+   - If they break in at 12:10 PM, their break-out time will be 12:40 PM (12:10 PM + 30 mins)
 
-I'll handle all three: OT Logout gets no dialog (since OT is flexible), day-off/no-schedule shows a simple confirm, and overnight shifts are handled properly.
+2. **Break-Out Grace (5 mins total grace)**: The agent can stay on break up to 5 minutes PAST their calculated break-out time before being flagged as OVERBREAK. For example:
+   - Break in at 12:10 PM → calculated break-out: 12:40 PM
+   - Grace window: 12:40 PM - 12:45 PM (5 minutes)
+   - If they break out at 12:45 PM or earlier: no flag
+   - If they break out at 12:46 PM or later: OVERBREAK incident
 
-### Technical Details
+3. **Break Out button**: Remains immediate (no dialog), agents should end break ASAP when they return
 
-**File: `src/components/dashboard/StatusButtons.tsx`**
+### Files Changed
 
-1. Add new props to `StatusButtonsProps`:
-   - `shiftEndTime?: string | null` -- the raw schedule string for today (e.g., "9:00 AM-5:00 PM")
+**New file: `src/components/dashboard/BreakConfirmDialog.tsx`**
+- AlertDialog following the same pattern as `LogoutConfirmDialog`
+- Uses `usePortalClock()` for live time updating every second
+- Uses `parseScheduleRange` from `agentDashboardApi` to extract break schedule start/end times
+- Displays:
+  - Break schedule times (e.g., "12:00 PM - 12:30 PM")
+  - Current live portal time (e.g., "12:07 PM EST")
+  - Calculated break-out time = current time + (schedule end - schedule start)
+    - Example: 12:07 PM + 30 mins = 12:37 PM
+  - Grace window note: "You have a 5-minute grace period to return by [grace time]"
+  - Status message:
+    - Green: "You are within your break-in window" (if current time >= start AND current time <= start + 10 mins)
+    - Amber: "You are outside your scheduled break-in window" (if current time < start OR current time > start + 10 mins)
+    - Gray: "No break schedule found" (if no break_schedule configured)
+- Cancel and "Confirm Break In" buttons
 
-2. Add a `LogoutConfirmDialog` state:
-   - `showLogoutConfirm: boolean` -- controls dialog visibility
-   - When user clicks the Logout button, instead of calling `handleClick('LOGOUT')`, set `showLogoutConfirm = true`
+**Modified: `src/components/dashboard/StatusButtons.tsx`**
+- Add `breakSchedule` prop (raw break schedule string, e.g., "12:00 PM-12:30 PM")
+- Add `showBreakConfirm` state
+- Intercept the "Break In" click to show the dialog instead of immediately triggering `handleClick('BREAK_IN')`
+- The "Break Out" button remains immediate with no dialog
 
-3. Add an `AlertDialog` component that:
-   - Parses the shift end time from the schedule string using existing `parseScheduleRange`
-   - Uses `usePortalClock()` to display the live portal time (updating every second)
-   - Compares current EST time (in minutes) to the shift end time (in minutes)
-   - If current time is before shift end: shows warning text in red/amber
-   - If current time is at or after shift end: shows simple green "You are within your logout window" message
-   - Has "Cancel" and "Confirm Logout" buttons
+**Modified: `src/pages/AgentDashboard.tsx`**
+- Import `usePortalClock` hook
+- Derive current day key from `usePortalClock()` hook (e.g., `currentDayKey`)
+- Look up the break_schedule from profile: `profile.break_schedule`
+- Pass `break_schedule` to `StatusButtons` as the new `breakSchedule` prop
 
-**File: `src/pages/AgentDashboard.tsx`**
+### Technical Implementation Details
 
-4. Pass the current day's schedule to `StatusButtons`:
-   - Derive today's day key from PortalClock (`currentDayKey`)
-   - Look up `profile[`${dayKey}_schedule`]` (e.g., `mon_schedule`)
-   - Pass as `shiftEndTime` prop
+**Break-in window calculation:**
+```
+scheduleStart = parsed start time (in minutes from midnight EST)
+breakInAllowance = 10 minutes
+isWithinBreakInWindow = currentTime >= scheduleStart AND currentTime <= (scheduleStart + breakInAllowance)
+```
+
+**Calculated break-out time:**
+```
+breakDuration = (scheduleEnd - scheduleStart) minutes
+calculatedBreakOut = currentTime + breakDuration
+graceEndTime = calculatedBreakOut + 5 minutes
+```
+
+**Status colors:**
+- Green (within window): `border-green-500 text-green-600`
+- Amber (outside window): `border-amber-500 text-amber-600`
+- Gray (no schedule): `border-gray-300 text-gray-400`
 
 ### Step-by-Step Implementation
-- Step 1: Update `StatusButtons` to accept `shiftEndTime` prop and add the logout confirmation dialog with early-out detection logic
-- Step 2: Update `AgentDashboard` to compute and pass the current day's schedule string to `StatusButtons`
+1. **Step 1**: Create `BreakConfirmDialog.tsx` with break schedule display, calculated return time, and within-window detection logic
+2. **Step 2**: Update `StatusButtons.tsx` to accept `breakSchedule` prop and show the dialog on "Break In" click
+3. **Step 3**: Update `AgentDashboard.tsx` to pass `profile.break_schedule` to `StatusButtons`
