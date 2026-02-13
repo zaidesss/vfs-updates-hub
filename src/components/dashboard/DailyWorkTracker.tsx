@@ -28,6 +28,7 @@ interface DailyWorkTrackerProps {
   upworkSyncedAt?: string | null;  // When data was last synced from Upwork
   hasUpworkContract?: boolean;
   // OT tracking
+  otEnabled?: boolean;
   isOnOT?: boolean;
   // Day selector props
   weekStart: Date;
@@ -113,6 +114,7 @@ export function DailyWorkTracker({
   upworkError,
   upworkSyncedAt,
   hasUpworkContract,
+  otEnabled,
   isOnOT,
   weekStart,
   selectedDay,
@@ -120,8 +122,8 @@ export function DailyWorkTracker({
 }: DailyWorkTrackerProps) {
   const { showEmail, showChat, showCall } = getVisibleTicketTypes(position, quotaChat, quotaPhone);
   
-  // Show OT Email bar if agent is currently on OT or has OT tickets today
-  const showOtEmail = isOnOT || (ticketCounts.otEmail > 0);
+  // Show OT Email bar if OT is enabled in profile, currently on OT, or has OT tickets today
+  const showOtEmail = otEnabled || isOnOT || (ticketCounts.otEmail > 0);
 
   // Calculate variance between portal and Upwork hours (only if both are available)
   const hasUpworkData = upworkHours !== null && upworkHours !== undefined;

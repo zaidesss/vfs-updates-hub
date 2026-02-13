@@ -648,6 +648,7 @@ export type Database = {
           ot_logout_time: string | null
           ot_schedule: string | null
           ot_status: string | null
+          ot_ticket_count: number | null
           profile_id: string
           schedule_end: string | null
           schedule_start: string | null
@@ -675,6 +676,7 @@ export type Database = {
           ot_logout_time?: string | null
           ot_schedule?: string | null
           ot_status?: string | null
+          ot_ticket_count?: number | null
           profile_id: string
           schedule_end?: string | null
           schedule_start?: string | null
@@ -702,6 +704,7 @@ export type Database = {
           ot_logout_time?: string | null
           ot_schedule?: string | null
           ot_status?: string | null
+          ot_ticket_count?: number | null
           profile_id?: string
           schedule_end?: string | null
           schedule_start?: string | null
