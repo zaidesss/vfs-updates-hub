@@ -45,6 +45,7 @@ import TeamScorecard from "./pages/TeamScorecard";
 import Revalida from "./pages/Revalida";
 import RevalidaV2 from "./pages/RevalidaV2";
 import CoverageBoard from "./pages/CoverageBoard";
+import ZendeskInsights from "./pages/ZendeskInsights";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -345,6 +346,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CoverageBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team-performance/zendesk-insights"
+        element={
+          <ProtectedRoute>
+            <ZendeskInsights />
           </ProtectedRoute>
         }
       />
