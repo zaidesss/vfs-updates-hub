@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DatePicker } from '@/components/ui/date-picker';
 import { getNextMondayEST, upsertScheduleAssignment } from '@/lib/scheduleResolver';
+import { ScheduleChangeConfirmDialog } from '@/components/profile/ScheduleChangeConfirmDialog';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -98,6 +99,8 @@ export default function AgentProfilePage() {
   });
   
   const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>(emptyRateHistory);
+  const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
+  const [originalProfile, setOriginalProfile] = useState<AgentProfile | null>(null);
   const [changeRequestDialog, setChangeRequestDialog] = useState<{
     isOpen: boolean;
     fieldName: string;
@@ -116,6 +119,7 @@ export default function AgentProfilePage() {
     const result = await fetchMyProfile();
     
     if (result.data) {
+      setOriginalProfile(result.data);
       const positionDefaults = getPositionDefaults(result.data.position);
       setProfile({
         email: result.data.email,
@@ -270,6 +274,22 @@ export default function AgentProfilePage() {
     });
   };
 
+  // Schedule fields to detect changes
+  const SCHEDULE_FIELDS = [
+    'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule', 'sun_schedule',
+    'mon_ot_schedule', 'tue_ot_schedule', 'wed_ot_schedule', 'thu_ot_schedule', 'fri_ot_schedule', 'sat_ot_schedule', 'sun_ot_schedule',
+    'break_schedule', 'day_off', 'ot_enabled', 'quota_email', 'quota_chat', 'quota_phone',
+  ];
+
+  const hasScheduleChanges = (): boolean => {
+    if (!originalProfile) return false;
+    return SCHEDULE_FIELDS.some(field => {
+      const oldVal = originalProfile[field as keyof AgentProfile];
+      const newVal = profile[field as keyof AgentProfileInput];
+      return JSON.stringify(oldVal) !== JSON.stringify(newVal);
+    });
+  };
+
   const handleSave = async () => {
     if (!user?.email) return;
     
@@ -329,6 +349,18 @@ export default function AgentProfilePage() {
         return;
       }
     }
+
+    // If schedule fields changed, show confirmation dialog first
+    if (hasScheduleChanges()) {
+      setShowScheduleConfirm(true);
+      return;
+    }
+
+    await executeSave();
+  };
+
+  const executeSave = async () => {
+    if (!user?.email) return;
     
     setIsSaving(true);
     
@@ -889,6 +921,16 @@ export default function AgentProfilePage() {
         fieldName={changeRequestDialog.fieldName}
         fieldLabel={changeRequestDialog.fieldLabel}
         currentValue={changeRequestDialog.currentValue}
+      />
+
+      <ScheduleChangeConfirmDialog
+        open={showScheduleConfirm}
+        onOpenChange={setShowScheduleConfirm}
+        onConfirm={() => {
+          setShowScheduleConfirm(false);
+          executeSave();
+        }}
+        effectiveDate={new Date(getNextMondayEST() + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
       />
     </Layout>
   );
