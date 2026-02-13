@@ -677,7 +677,11 @@ export default function AgentDashboard() {
           quotaEmail={profile.quota_email}
           quotaChat={profile.quota_chat}
           quotaPhone={profile.quota_phone}
-          quotaOtEmail={profile.quota_ot_email}
+          quotaOtEmail={
+            dataSource === 'snapshot'
+              ? (attendance.find(a => a.dayKey === format(selectedDay, 'yyyy-MM-dd'))?.effectiveQuotaOtEmail ?? profile.quota_ot_email)
+              : profile.quota_ot_email
+          }
           ticketCounts={ticketCounts}
           avgGapSeconds={avgGapSeconds}
           onRefresh={handleRefreshTracker}
