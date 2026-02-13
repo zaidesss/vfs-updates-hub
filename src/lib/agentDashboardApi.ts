@@ -287,7 +287,7 @@ export async function fetchAgentDashboardRPC(profileId: string, referenceDate?: 
   }
 }
 
-export async function fetchDashboardProfile(profileId: string): Promise<{ data: DashboardProfile | null; error: string | null }> {
+export async function fetchDashboardProfile(profileId: string, targetDate?: Date | string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
     // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
@@ -304,14 +304,19 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       return { data: null, error: 'Profile not found' };
     }
 
-    // 2. Fetch operational data from agent_directory using email
+    // 2. Fetch operational data from agent_directory using email (for non-schedule fields)
     const { data: directory } = await supabase
       .from('agent_directory')
-      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, break_schedule, quota, weekday_schedule, weekend_schedule, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
+      .select('agent_name, zendesk_instance, support_account, support_type, ticket_assignment_view_id, quota, weekday_schedule, weekend_schedule, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
       .eq('email', profile.email)
       .maybeSingle();
 
-    // 3. Merge and return - use agent_profiles fields as source of truth
+    // 3. Use scheduleResolver to get effective-dated schedules
+    const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+    const dateToResolve = targetDate ? (typeof targetDate === 'string' ? new Date(targetDate) : targetDate) : new Date();
+    const effectiveSchedule = await getEffectiveScheduleForDate(profileId, dateToResolve);
+
+    // 4. Merge and return - use agent_profiles fields as source of truth, effective schedules for day-specific data
     const dashboardProfile: DashboardProfile = {
       id: profile.id,
       email: profile.email,
@@ -321,13 +326,14 @@ export async function fetchDashboardProfile(profileId: string): Promise<{ data: 
       support_account: directory?.support_account || null,
       support_type: directory?.support_type || null,
       ticket_assignment_view_id: directory?.ticket_assignment_view_id || null,
-      break_schedule: directory?.break_schedule || null,
+      break_schedule: effectiveSchedule.breakSchedule || null,
       quota: directory?.quota || null,
       weekday_schedule: directory?.weekday_schedule || null,
       weekend_schedule: directory?.weekend_schedule || null,
-      day_off: directory?.day_off || [],
+      day_off: effectiveSchedule.isDayOff ? ['all'] : [],
       upwork_contract_id: profile.upwork_contract_id || null,
       ot_enabled: profile.ot_enabled || false,
+      // For week-view display, still pull from directory (these are fallbacks for UI display)
       mon_schedule: directory?.mon_schedule || null,
       tue_schedule: directory?.tue_schedule || null,
       wed_schedule: directory?.wed_schedule || null,
@@ -486,54 +492,39 @@ export async function updateProfileStatus(
         // Status is from a previous day - check if this is a normal overnight logout
         let isStale = true;
         
-        // Fetch agent's directory to get schedule for the status_since day
-        const { data: agentProfileForSchedule } = await supabase
-          .from('agent_profiles')
-          .select('email')
-          .eq('id', profileId)
-          .single();
-        
-        if (agentProfileForSchedule) {
-          const { data: directoryEntry } = await supabase
-            .from('agent_directory')
-            .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
-            .eq('email', agentProfileForSchedule.email)
-            .maybeSingle();
-          
-          if (directoryEntry) {
-            // Get the schedule for the day the agent logged in (status_since day)
-            const statusDayOfWeek = statusDate.getDay(); // Note: uses UTC day, but close enough for schedule lookup
-            const dayScheduleKeys = ['sun_schedule', 'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule'] as const;
-            const scheduleForStatusDay = directoryEntry[dayScheduleKeys[statusDayOfWeek]] as string | null;
-            
-            const parsed = parseScheduleRangeMinutes(scheduleForStatusDay);
-            
-            if (!parsed) {
-              // No schedule (blank/null/day off) - process as normal logout, no incident
-              isStale = false;
-            } else if (parsed.start > parsed.end) {
-              // Midnight-crossing schedule (e.g., 8:00 PM - 3:30 AM)
-              // Check if we're still within the shift window + 30 min buffer
-              const currentMinutes = getCurrentESTTimeMinutes();
-              const shiftEndWithBuffer = parsed.end + 30; // 30 min grace period
-              
-              // Also check if status_since is from exactly yesterday (not 2+ days ago)
-              const statusDateObj = new Date(statusDateStr);
-              const todayDateObj = new Date(todayStr);
-              const daysDiff = Math.floor((todayDateObj.getTime() - statusDateObj.getTime()) / (1000 * 60 * 60 * 24));
-              
-              if (daysDiff === 1 && currentMinutes <= shiftEndWithBuffer) {
-                // Within overnight shift window - this is a normal logout
-                isStale = false;
-              }
-              // else: more than 1 day old OR past the buffer = stale
-            }
-            // else: normal daytime schedule from a previous day = always stale
-          } else {
-            // No directory entry found - no schedule info, process normally
-            isStale = false;
-          }
-        }
+         // Use scheduleResolver to get the schedule for the status_since day
+         const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+         const statusDate = new Date(statusDateStr);
+         const effectiveSchedule = await getEffectiveScheduleForDate(profileId, statusDate);
+         
+         if (!effectiveSchedule.schedule || effectiveSchedule.isDayOff) {
+           // No schedule (blank/null/day off) - process as normal logout, no incident
+           isStale = false;
+         } else {
+           const parsed = parseScheduleRangeMinutes(effectiveSchedule.schedule);
+           
+           if (!parsed) {
+             // Invalid schedule format - process as normal logout
+             isStale = false;
+           } else if (parsed.start > parsed.end) {
+             // Midnight-crossing schedule (e.g., 8:00 PM - 3:30 AM)
+             // Check if we're still within the shift window + 30 min buffer
+             const currentMinutes = getCurrentESTTimeMinutes();
+             const shiftEndWithBuffer = parsed.end + 30; // 30 min grace period
+             
+             // Also check if status_since is from exactly yesterday (not 2+ days ago)
+             const statusDateObj = new Date(statusDateStr);
+             const todayDateObj = new Date(todayStr);
+             const daysDiff = Math.floor((todayDateObj.getTime() - statusDateObj.getTime()) / (1000 * 60 * 60 * 24));
+             
+             if (daysDiff === 1 && currentMinutes <= shiftEndWithBuffer) {
+               // Within overnight shift window - this is a normal logout
+               isStale = false;
+             }
+             // else: more than 1 day old OR past the buffer = stale
+           }
+           // else: normal daytime schedule from a previous day = always stale
+         }
         
         if (isStale) {
           console.log(`Stale session detected on LOGOUT for profile ${profileId}. Auto-logging out from ${statusDateStr}`);
@@ -757,44 +748,16 @@ export async function updateProfileStatus(
  * Calculate bio allowance for a profile based on their schedule
  * 8+ hours shift = 4 minutes, otherwise 2 minutes
  */
-async function calculateBioAllowanceForProfile(profileId: string): Promise<number> {
+async function calculateBioAllowanceForProfile(profileId: string, targetDate?: Date | string): Promise<number> {
   try {
-    // Get the profile email
-    const { data: profile } = await supabase
-      .from('agent_profiles')
-      .select('email')
-      .eq('id', profileId)
-      .single();
+    // Use scheduleResolver to get today's effective schedule
+    const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+    const dateToResolve = targetDate ? (typeof targetDate === 'string' ? new Date(targetDate) : targetDate) : new Date();
+    const effectiveSchedule = await getEffectiveScheduleForDate(profileId, dateToResolve);
 
-    if (!profile?.email) return 2 * 60; // Default 2 minutes
+    if (!effectiveSchedule.schedule) return 2 * 60; // Default 2 minutes
 
-    // Get schedule from agent_directory
-    const { data: directory } = await supabase
-      .from('agent_directory')
-      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
-      .eq('email', profile.email)
-      .maybeSingle();
-
-    if (!directory) return 2 * 60;
-
-    // Get today's schedule
-    const dayMap: Record<number, string> = {
-      0: 'sun_schedule',
-      1: 'mon_schedule',
-      2: 'tue_schedule',
-      3: 'wed_schedule',
-      4: 'thu_schedule',
-      5: 'fri_schedule',
-      6: 'sat_schedule',
-    };
-
-    const today = new Date().getDay();
-    const scheduleKey = dayMap[today] as keyof typeof directory;
-    const schedule = directory[scheduleKey] as string | null;
-
-    if (!schedule) return 2 * 60;
-
-    const parsed = parseScheduleRange(schedule);
+    const parsed = parseScheduleRange(effectiveSchedule.schedule);
     if (!parsed) return 2 * 60;
 
     let durationMinutes = parsed.endMinutes - parsed.startMinutes;
@@ -952,31 +915,14 @@ async function checkAndAlertLateLogin(
   loginTime: Date
 ): Promise<void> {
   try {
-    // Get schedule from agent_directory
-    const { data: directory } = await supabase
-      .from('agent_directory')
-      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off')
-      .eq('email', agentEmail.toLowerCase())
-      .maybeSingle();
+    // Use scheduleResolver to get today's effective schedule
+    const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+    const effectiveSchedule = await getEffectiveScheduleForDate(profileId, loginTime);
 
-    if (!directory) return;
+    // If day off or no schedule, skip alert
+    if (effectiveSchedule.isDayOff || !effectiveSchedule.schedule) return;
 
-    // Check if today is a day off
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayName = dayNames[loginTime.getDay()];
-    if (directory.day_off?.includes(todayName)) return;
-
-    // Get today's schedule
-    const dayMap: Record<number, string> = {
-      0: 'sun_schedule', 1: 'mon_schedule', 2: 'tue_schedule', 3: 'wed_schedule',
-      4: 'thu_schedule', 5: 'fri_schedule', 6: 'sat_schedule',
-    };
-    const scheduleKey = dayMap[loginTime.getDay()] as keyof typeof directory;
-    const schedule = directory[scheduleKey] as string | null;
-
-    if (!schedule) return;
-
-    const parsed = parseScheduleRange(schedule);
+    const parsed = parseScheduleRange(effectiveSchedule.schedule);
     if (!parsed) return;
 
     // Get login time in EST minutes
@@ -1037,31 +983,14 @@ async function checkAndAlertEarlyOut(
   logoutTime: Date
 ): Promise<void> {
   try {
-    // Get schedule from agent_directory
-    const { data: directory } = await supabase
-      .from('agent_directory')
-      .select('mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off')
-      .eq('email', agentEmail.toLowerCase())
-      .maybeSingle();
+    // Use scheduleResolver to get today's effective schedule
+    const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+    const effectiveSchedule = await getEffectiveScheduleForDate(profileId, logoutTime);
 
-    if (!directory) return;
+    // If day off or no schedule, skip alert
+    if (effectiveSchedule.isDayOff || !effectiveSchedule.schedule) return;
 
-    // Check if today is a day off
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayName = dayNames[logoutTime.getDay()];
-    if (directory.day_off?.includes(todayName)) return;
-
-    // Get today's schedule
-    const dayMap: Record<number, string> = {
-      0: 'sun_schedule', 1: 'mon_schedule', 2: 'tue_schedule', 3: 'wed_schedule',
-      4: 'thu_schedule', 5: 'fri_schedule', 6: 'sat_schedule',
-    };
-    const scheduleKey = dayMap[logoutTime.getDay()] as keyof typeof directory;
-    const schedule = directory[scheduleKey] as string | null;
-
-    if (!schedule) return;
-
-    const parsed = parseScheduleRange(schedule);
+    const parsed = parseScheduleRange(effectiveSchedule.schedule);
     if (!parsed) return;
 
     // Get logout time in EST minutes
