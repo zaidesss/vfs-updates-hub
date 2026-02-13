@@ -12,6 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfWeek } from 'date-fns';
+import { getESTDateFromTimestamp } from '@/lib/timezoneUtils';
 
 export interface EffectiveSchedule {
   schedule: string | null;
@@ -50,7 +51,7 @@ export async function getEffectiveScheduleForDate(
   agentId: string,
   date: Date | string
 ): Promise<EffectiveSchedule> {
-  const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd');
+  const dateStr = typeof date === 'string' ? date : getESTDateFromTimestamp(date.toISOString());
   const cacheKey = `${agentId}:${dateStr}`;
 
   const cached = scheduleCache.get(cacheKey);
