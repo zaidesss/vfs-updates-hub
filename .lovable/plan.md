@@ -1,85 +1,67 @@
 
 
-## OT Work Tracker Visibility + OT Snapshot Enhancement
+## 5 OT-Related Improvements -- Implementation Plan
 
-### Overview
-Two changes:
-1. Show OT Email bar whenever `ot_enabled` is true in the agent profile (not just when ON_OT status or has OT tickets)
-2. Store per-day OT ticket counts in `attendance_snapshots` so historical drill-down works
-
-Plus related improvements to consider.
+We will tackle all 5 improvements step by step. Here is the full plan, and we will implement them one at a time.
 
 ---
 
-### Part 1: OT Email Bar Always Visible When OT Enabled
+### Improvement 1: OT Hours in Work Tracker for Historical Weeks
 
-**File: `src/components/dashboard/DailyWorkTracker.tsx`**
+**What it does:** When viewing snapshot data, show OT hours as a separate metric in the Work Tracker's Time Metrics row (alongside Portal Time and Upwork Time).
 
-Current logic (line 124):
-```ts
-const showOtEmail = isOnOT || (ticketCounts.otEmail > 0);
-```
-
-Change: Add a new `otEnabled` prop and update the logic:
-```ts
-const showOtEmail = otEnabled || isOnOT || (ticketCounts.otEmail > 0);
-```
-
-**File: `src/pages/AgentDashboard.tsx`**
-
-Pass `otEnabled={profile.ot_enabled}` to the `DailyWorkTracker` component (it already has access to `profile.ot_enabled`).
+**Changes:**
+- **`src/components/dashboard/DailyWorkTracker.tsx`**: Add an `otHoursWorkedMinutes` prop. When non-zero, render an "OT Time" metric in the Time Metrics grid (using a Timer icon, violet color). Increase the grid column count accordingly.
+- **`src/pages/AgentDashboard.tsx`**: Pass the selected day's `otHoursWorkedMinutes` from attendance data to the `DailyWorkTracker`.
 
 ---
 
-### Part 2: OT Ticket Count in Attendance Snapshots
+### Improvement 2: OT Schedule Display on Day Off
 
-**Database Migration:**
+**What it does:** In the Shift Schedule Table, when a day is marked "Day Off" but the agent has an OT schedule for that day, show an "OT Scheduled" badge next to the "Off" badge.
 
-Add an `ot_ticket_count` integer column to `attendance_snapshots`:
-```sql
-ALTER TABLE attendance_snapshots 
-  ADD COLUMN ot_ticket_count integer DEFAULT 0;
-```
-
-**File: `supabase/functions/compute-weekly-snapshots/index.ts`**
-
-In `computeAttendanceSnapshots`, after computing OT hours for each day, also query `ticket_logs` for that day filtered by `is_ot = true` and `agent_email`, then include the count in the snapshot row:
-```ts
-ot_ticket_count: otTicketCountForDay,
-```
-
-**File: `src/lib/agentDashboardApi.ts`**
-
-In `fetchAttendanceDualRead`, when mapping snapshot rows to `DayAttendance`, include the `ot_ticket_count` field so the dashboard can display it for historical weeks.
-
-**File: `src/pages/AgentDashboard.tsx`**
-
-When in snapshot mode, populate `ticketCounts.otEmail` from the attendance snapshot's `ot_ticket_count` for the selected day, instead of fetching from (purged) `ticket_logs`.
+**Changes:**
+- **`src/components/dashboard/ShiftScheduleTable.tsx`**: In the `getStatusBadges` function, for `day_off` status rows, check if `dayAttendance.otSchedule` exists. If so, append a violet "OT Scheduled" badge showing the OT schedule time.
 
 ---
 
-### Related Improvements to Consider
+### Improvement 3: Snapshot Badge for OT Data
 
-Here are additional improvements closely related to this OT/snapshot work that you may want to tackle:
+**What it does:** When the OT Email bar in the Work Tracker is displaying data from a snapshot (historical week), show a small "Snapshot" indicator badge next to the "OT Email" label.
 
-1. **OT Hours in Work Tracker for Historical Weeks** -- Currently when viewing snapshot data, the Work Tracker's "Portal Time" shows total hours but doesn't separately display OT hours. The `attendance_snapshots` already has `ot_hours_worked_minutes` -- should we surface this as a separate metric in the Time Metrics row?
+**Changes:**
+- **`src/components/dashboard/DailyWorkTracker.tsx`**: Add a `dataSource` prop (`'snapshot' | 'live'`). When `dataSource === 'snapshot'` and OT Email bar is visible, render a small "Snapshot" badge next to the OT Email label.
+- **`src/pages/AgentDashboard.tsx`**: Pass `dataSource` to the `DailyWorkTracker`.
 
-2. **OT Schedule Display on Day Off** -- When an agent has OT enabled on a day off, the attendance row shows "Day Off" but doesn't indicate they have an OT shift. Should we show an OT indicator badge on day-off rows when OT is scheduled?
+---
 
-3. **Snapshot Badge for OT Data** -- When viewing historical OT ticket counts from snapshots, should the OT Email bar show a small "snapshot" indicator to differentiate from live data?
+### Improvement 4: Weekly OT Summary in Performance Card
 
-4. **Weekly OT Summary in Performance Card** -- The weekly summary card shows total tickets but doesn't break out OT tickets separately. Should we add an OT subtotal line?
+**What it does:** Add an "OT Tickets" metric to the Weekly Summary card that shows the total OT tickets handled across the week, separate from the existing "OT Hours" metric.
 
-5. **OT Quota from Effective Schedule** -- Currently `quota_ot_email` comes from the base profile. Should historical weeks use the effective-dated quota (from schedule assignments) instead, for consistency with how regular quotas work?
+**Changes:**
+- **`src/components/dashboard/WeeklySummaryCard.tsx`**: Add an `otEnabled` prop. Sum `otTicketCount` across all attendance days. When `otEnabled` is true or the total is greater than 0, add an "OT Tickets" metric (using Zap icon, violet color) showing the weekly total.
+- **`src/pages/AgentDashboard.tsx`**: Pass `otEnabled={!!profile.ot_enabled}` to the `WeeklySummaryCard`.
+
+---
+
+### Improvement 5: OT Quota from Effective Schedule
+
+**What it does:** For historical weeks, use the effective-dated `quota_ot_email` from the schedule resolver (stored in snapshots) rather than the current base profile value.
+
+**Changes:**
+- **Database migration**: Add `quota_ot_email` column to `attendance_snapshots` (integer, nullable).
+- **`supabase/functions/compute-weekly-snapshots/index.ts`**: When computing each day's snapshot, include the effective `quota_ot_email` from the schedule resolver in the snapshot row.
+- **`src/lib/agentDashboardApi.ts`**: Map `quota_ot_email` from snapshot rows into the `DayAttendance` type (add a new `effectiveQuotaOtEmail` field).
+- **`src/pages/AgentDashboard.tsx`**: When in snapshot mode, use the day's `effectiveQuotaOtEmail` for the OT Email progress bar quota instead of `profile.quota_ot_email`.
 
 ---
 
 ### Execution Order
 
-1. Database migration: add `ot_ticket_count` to `attendance_snapshots`
-2. Update `DailyWorkTracker` to accept and use `otEnabled` prop
-3. Pass `otEnabled` from `AgentDashboard` to `DailyWorkTracker`
-4. Update `compute-weekly-snapshots` to capture OT ticket counts per day
-5. Update `fetchAttendanceDualRead` to map `ot_ticket_count`
-6. Update dashboard snapshot path to use `ot_ticket_count` for Work Tracker
+1. Improvement 1 -- OT Hours in Work Tracker (UI only, no migration)
+2. Improvement 2 -- OT badge on Day Off rows (UI only)
+3. Improvement 3 -- Snapshot badge on OT Email bar (UI only)
+4. Improvement 4 -- OT Tickets in Weekly Summary (UI only)
+5. Improvement 5 -- OT Quota from Effective Schedule (migration + edge function + UI)
 
