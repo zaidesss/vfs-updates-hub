@@ -75,6 +75,14 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
           Off
         </Badge>
       );
+      // Show OT Scheduled badge if there's an OT schedule on a day off
+      if (dayAttendance.otSchedule) {
+        badges.push(
+          <Badge key="ot-scheduled" variant="secondary" className="bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-700">
+            OT: {dayAttendance.otSchedule}
+          </Badge>
+        );
+      }
       break;
     case 'pending':
     default:
