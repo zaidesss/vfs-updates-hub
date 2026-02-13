@@ -76,13 +76,16 @@ const EVENT_CONFIG: Record<string, { label: string; icon: typeof LogIn; color: s
 };
 
 export function DailyEventSummary({ events, selectedDay, className }: DailyEventSummaryProps) {
-  const isTodaySelected = isToday(selectedDay);
-  const dayLabel = isTodaySelected ? "Today's" : `${format(selectedDay, 'EEEE')}'s`;
+  const safeDay = selectedDay instanceof Date && !isNaN(selectedDay.getTime()) ? selectedDay : new Date();
+  const isTodaySelected = isToday(safeDay);
+  const dayLabel = isTodaySelected ? "Today's" : `${format(safeDay, 'EEEE')}'s`;
 
   // Filter events for selected day
   const todayEvents = events.filter((event) => {
+    if (!event.created_at) return false;
     const eventDate = parseISO(event.created_at);
-    return isSameDay(eventDate, selectedDay);
+    if (isNaN(eventDate.getTime())) return false;
+    return isSameDay(eventDate, safeDay);
   });
 
   // Sort by time ascending
