@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { upsertScheduleAssignment, getNextMondayEST as resolverGetNextMondayEST, getCurrentMondayEST as resolverGetCurrentMondayEST } from '@/lib/scheduleResolver';
 
 export interface RateHistoryEntry {
   date: string;
@@ -455,7 +456,82 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     await syncProfileToDirectory(input);
   } catch (syncError) {
     console.error('Failed to sync profile to directory:', syncError);
-    // Don't fail the save for sync errors
+  }
+
+  // Auto-create schedule assignment when schedule fields change
+  try {
+    const isNewProfile = !existing;
+    const scheduleFields = [
+      'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule', 'sun_schedule',
+      'mon_ot_schedule', 'tue_ot_schedule', 'wed_ot_schedule', 'thu_ot_schedule', 'fri_ot_schedule', 'sat_ot_schedule', 'sun_ot_schedule',
+      'break_schedule', 'day_off', 'ot_enabled', 'quota_email', 'quota_chat', 'quota_phone', 'quota_ot_email'
+    ] as const;
+
+    let scheduleChanged = isNewProfile;
+    if (!isNewProfile) {
+      // Check if any schedule fields were actually modified vs existing profile
+      const { data: oldProfile } = await supabase
+        .from('agent_profiles')
+        .select('mon_schedule,tue_schedule,wed_schedule,thu_schedule,fri_schedule,sat_schedule,sun_schedule,mon_ot_schedule,tue_ot_schedule,wed_ot_schedule,thu_ot_schedule,fri_ot_schedule,sat_ot_schedule,sun_ot_schedule,break_schedule,day_off,ot_enabled,quota_email,quota_chat,quota_phone,quota_ot_email')
+        .eq('email', dbInput.email)
+        .maybeSingle();
+
+      if (oldProfile) {
+        for (const field of scheduleFields) {
+          const oldVal = oldProfile[field] ?? null;
+          const newVal = dbInput[field] ?? null;
+          if (Array.isArray(oldVal) && Array.isArray(newVal)) {
+            if (JSON.stringify([...oldVal].sort()) !== JSON.stringify([...newVal].sort())) {
+              scheduleChanged = true;
+              break;
+            }
+          } else if (String(oldVal) !== String(newVal)) {
+            scheduleChanged = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (scheduleChanged) {
+      // New profiles → current Monday (immediately effective)
+      // Existing profiles → next Monday
+      const effectiveWeekStart = isNewProfile
+        ? resolverGetCurrentMondayEST()
+        : resolverGetNextMondayEST();
+
+      await upsertScheduleAssignment({
+        agentId: result.data.id,
+        effectiveWeekStart,
+        monSchedule: dbInput.mon_schedule ?? null,
+        tueSchedule: dbInput.tue_schedule ?? null,
+        wedSchedule: dbInput.wed_schedule ?? null,
+        thuSchedule: dbInput.thu_schedule ?? null,
+        friSchedule: dbInput.fri_schedule ?? null,
+        satSchedule: dbInput.sat_schedule ?? null,
+        sunSchedule: dbInput.sun_schedule ?? null,
+        monOtSchedule: dbInput.mon_ot_schedule ?? null,
+        tueOtSchedule: dbInput.tue_ot_schedule ?? null,
+        wedOtSchedule: dbInput.wed_ot_schedule ?? null,
+        thuOtSchedule: dbInput.thu_ot_schedule ?? null,
+        friOtSchedule: dbInput.fri_ot_schedule ?? null,
+        satOtSchedule: dbInput.sat_ot_schedule ?? null,
+        sunOtSchedule: dbInput.sun_ot_schedule ?? null,
+        dayOff: dbInput.day_off ?? [],
+        breakSchedule: dbInput.break_schedule ?? null,
+        otEnabled: dbInput.ot_enabled ?? false,
+        quotaEmail: dbInput.quota_email ?? null,
+        quotaChat: dbInput.quota_chat ?? null,
+        quotaPhone: dbInput.quota_phone ?? null,
+        quotaOtEmail: dbInput.quota_ot_email ?? null,
+        source: 'agent_profile',
+        notes: isNewProfile ? 'Initial profile creation' : 'Profile schedule update',
+      });
+      console.log(`Schedule assignment created for ${isNewProfile ? 'current' : 'next'} week:`, effectiveWeekStart);
+    }
+  } catch (assignmentError) {
+    console.error('Failed to create schedule assignment:', assignmentError);
+    // Don't fail the save for assignment errors
   }
 
   return { data: transformProfile(result.data), error: null };
