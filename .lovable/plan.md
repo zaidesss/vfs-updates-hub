@@ -1,67 +1,42 @@
 
 
-## 5 OT-Related Improvements -- Implementation Plan
+## Fix: EST Date Formatting in Non-React API Functions
 
-We will tackle all 5 improvements step by step. Here is the full plan, and we will implement them one at a time.
+### What Happened
 
----
+The PortalClock migration correctly updated all **React components** to use EST-aware time. However, four spots in **non-React API/utility functions** still use `date-fns format(date, 'yyyy-MM-dd')`, which formats dates using the **browser's local timezone** (e.g., UTC+8 for Philippines-based agents). This caused Erika's 7:20 PM EST login on Feb 12 to be interpreted as Feb 13 (her day off), skipping the late-login check entirely.
 
-### Improvement 1: OT Hours in Work Tracker for Historical Weeks
+### Affected Spots
 
-**What it does:** When viewing snapshot data, show OT hours as a separate metric in the Work Tracker's Time Metrics row (alongside Portal Time and Upwork Time).
+| File | Line | Function | Impact |
+|------|------|----------|--------|
+| `scheduleResolver.ts` | 53 | `getEffectiveScheduleForDate` | Wrong date passed to the RPC -- returns wrong day's schedule |
+| `agentDashboardApi.ts` | 945 | `checkAndAlertLateLogin` | Report filed under wrong date, duplicate check queries wrong date |
+| `agentDashboardApi.ts` | 1013 | `checkAndAlertEarlyOut` | Same as above for early-out detection |
+| `agentDashboardApi.ts` | 1065 | `checkAndAlertOverbreak` | Same as above for overbreak detection |
 
-**Changes:**
-- **`src/components/dashboard/DailyWorkTracker.tsx`**: Add an `otHoursWorkedMinutes` prop. When non-zero, render an "OT Time" metric in the Time Metrics grid (using a Timer icon, violet color). Increase the grid column count accordingly.
-- **`src/pages/AgentDashboard.tsx`**: Pass the selected day's `otHoursWorkedMinutes` from attendance data to the `DailyWorkTracker`.
+### Fix (Single Step)
 
----
+Replace all 4 instances of `format(date, 'yyyy-MM-dd')` with `getESTDateFromTimestamp(date.toISOString())` from the existing `timezoneUtils.ts` utility:
 
-### Improvement 2: OT Schedule Display on Day Off
+**File 1: `src/lib/scheduleResolver.ts` (line 53)**
+- Import `getESTDateFromTimestamp` from `@/lib/timezoneUtils`
+- Change: `format(date, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(date.toISOString())`
+- This ensures all schedule lookups resolve against the EST workday
 
-**What it does:** In the Shift Schedule Table, when a day is marked "Day Off" but the agent has an OT schedule for that day, show an "OT Scheduled" badge next to the "Off" badge.
+**File 2: `src/lib/agentDashboardApi.ts` (lines 945, 1013, 1065)**
+- `getESTDateFromTimestamp` is already imported in this file
+- Line 945: `format(loginTime, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(loginTime.toISOString())`
+- Line 1013: `format(logoutTime, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(logoutTime.toISOString())`
+- Line 1065: `format(now, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(now.toISOString())`
 
-**Changes:**
-- **`src/components/dashboard/ShiftScheduleTable.tsx`**: In the `getStatusBadges` function, for `day_off` status rows, check if `dayAttendance.otSchedule` exists. If so, append a violet "OT Scheduled" badge showing the OT schedule time.
+### Risk Assessment
 
----
+- **Low risk**: `getESTDateFromTimestamp` is a well-tested utility already used throughout the portal
+- **No behavioral change** for users already in US Eastern timezone
+- **Fixes** all cross-timezone compliance detection (Late Login, Early Out, Overbreak)
 
-### Improvement 3: Snapshot Badge for OT Data
+### Backfill
 
-**What it does:** When the OT Email bar in the Work Tracker is displaying data from a snapshot (historical week), show a small "Snapshot" indicator badge next to the "OT Email" label.
-
-**Changes:**
-- **`src/components/dashboard/DailyWorkTracker.tsx`**: Add a `dataSource` prop (`'snapshot' | 'live'`). When `dataSource === 'snapshot'` and OT Email bar is visible, render a small "Snapshot" badge next to the OT Email label.
-- **`src/pages/AgentDashboard.tsx`**: Pass `dataSource` to the `DailyWorkTracker`.
-
----
-
-### Improvement 4: Weekly OT Summary in Performance Card
-
-**What it does:** Add an "OT Tickets" metric to the Weekly Summary card that shows the total OT tickets handled across the week, separate from the existing "OT Hours" metric.
-
-**Changes:**
-- **`src/components/dashboard/WeeklySummaryCard.tsx`**: Add an `otEnabled` prop. Sum `otTicketCount` across all attendance days. When `otEnabled` is true or the total is greater than 0, add an "OT Tickets" metric (using Zap icon, violet color) showing the weekly total.
-- **`src/pages/AgentDashboard.tsx`**: Pass `otEnabled={!!profile.ot_enabled}` to the `WeeklySummaryCard`.
-
----
-
-### Improvement 5: OT Quota from Effective Schedule
-
-**What it does:** For historical weeks, use the effective-dated `quota_ot_email` from the schedule resolver (stored in snapshots) rather than the current base profile value.
-
-**Changes:**
-- **Database migration**: Add `quota_ot_email` column to `attendance_snapshots` (integer, nullable).
-- **`supabase/functions/compute-weekly-snapshots/index.ts`**: When computing each day's snapshot, include the effective `quota_ot_email` from the schedule resolver in the snapshot row.
-- **`src/lib/agentDashboardApi.ts`**: Map `quota_ot_email` from snapshot rows into the `DayAttendance` type (add a new `effectiveQuotaOtEmail` field).
-- **`src/pages/AgentDashboard.tsx`**: When in snapshot mode, use the day's `effectiveQuotaOtEmail` for the OT Email progress bar quota instead of `profile.quota_ot_email`.
-
----
-
-### Execution Order
-
-1. Improvement 1 -- OT Hours in Work Tracker (UI only, no migration)
-2. Improvement 2 -- OT badge on Day Off rows (UI only)
-3. Improvement 3 -- Snapshot badge on OT Email bar (UI only)
-4. Improvement 4 -- OT Tickets in Weekly Summary (UI only)
-5. Improvement 5 -- OT Quota from Effective Schedule (migration + edge function + UI)
+After the fix is deployed, Erika's missed LATE_LOGIN report for Feb 12 will need to be manually triggered or will be caught by the next server-side batch job (if the cron fires correctly). We can address that separately.
 
