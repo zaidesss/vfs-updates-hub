@@ -2904,7 +2904,12 @@ export type Database = {
       get_effective_schedule: {
         Args: { p_agent_id: string; p_target_date: string }
         Returns: {
+          effective_break_schedule: string
           effective_ot_schedule: string
+          effective_quota_chat: number
+          effective_quota_email: number
+          effective_quota_ot_email: number
+          effective_quota_phone: number
           effective_schedule: string
           is_day_off: boolean
           is_override: boolean
@@ -2916,7 +2921,12 @@ export type Database = {
         Returns: {
           day_date: string
           day_name: string
+          effective_break_schedule: string
           effective_ot_schedule: string
+          effective_quota_chat: number
+          effective_quota_email: number
+          effective_quota_ot_email: number
+          effective_quota_phone: number
           effective_schedule: string
           is_day_off: boolean
           is_override: boolean
