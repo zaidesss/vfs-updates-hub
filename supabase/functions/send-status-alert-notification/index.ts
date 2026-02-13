@@ -127,30 +127,18 @@ Deno.serve(async (req) => {
         message = `${agentName} triggered ${label} alert at ${formattedTime} EST.`;
     }
 
-    // Get agent's profile_id for the report
+    // Get agent's profile_id for notifications
     const { data: agentProfile } = await supabase
       .from('agent_profiles')
       .select('id')
       .eq('email', agentEmail.toLowerCase())
       .single();
 
-    // 1. Create agent_report record
-    const { error: reportError } = await supabase.from('agent_reports').insert({
-      agent_email: agentEmail.toLowerCase(),
-      agent_name: agentName,
-      profile_id: agentProfile?.id || null,
-      incident_date: formattedDate,
-      incident_type: incidentType,
-      severity,
-      details,
-      status: 'open',
-    });
+    // NOTE: Report creation is handled client-side (agentDashboardApi.ts) and by the
+    // batch job (generate-agent-reports), which have full schedule context for detailed fields.
+    // This edge function only handles notifications (Slack, email, in-app).
 
-    if (reportError) {
-      console.error('Failed to create agent report:', reportError);
-    }
-
-    // 2. Fetch all admins/HR/super_admins for notifications
+    // 1. Fetch all admins/HR/super_admins for notifications
     const { data: admins } = await supabase
       .from('user_roles')
       .select('email')
