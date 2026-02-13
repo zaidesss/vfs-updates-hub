@@ -529,11 +529,70 @@ export default function AgentDashboard() {
     if (bioExceededNotifiedRef.current || !profile) return;
     bioExceededNotifiedRef.current = true;
     
+    const agentEmail = profile.email;
+    const agentName = profile.full_name || profile.agent_name || profile.email;
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
     try {
+      // Check for existing BIO_OVERUSE report today to avoid duplicates
+      const { data: existingReport } = await supabase
+        .from('agent_reports')
+        .select('id')
+        .eq('agent_email', agentEmail.toLowerCase())
+        .eq('incident_date', todayStr)
+        .eq('incident_type', 'BIO_OVERUSE')
+        .maybeSingle();
+
+      if (!existingReport) {
+        // Fetch total bio time used today from profile_events
+        const dayStart = `${todayStr}T00:00:00-05:00`;
+        const dayEnd = `${todayStr}T23:59:59-05:00`;
+        const { data: bioEvents } = await supabase
+          .from('profile_events')
+          .select('created_at, event_type')
+          .eq('profile_id', profile.id)
+          .in('event_type', ['ON_BIO', 'BIO_RETURN'])
+          .gte('created_at', dayStart)
+          .lte('created_at', dayEnd)
+          .order('created_at', { ascending: true });
+
+        let totalBioSeconds = 0;
+        if (bioEvents) {
+          for (let i = 0; i < bioEvents.length; i++) {
+            if (bioEvents[i].event_type === 'ON_BIO' && i + 1 < bioEvents.length && bioEvents[i + 1].event_type === 'BIO_RETURN') {
+              const start = new Date(bioEvents[i].created_at).getTime();
+              const end = new Date(bioEvents[i + 1].created_at).getTime();
+              totalBioSeconds += (end - start) / 1000;
+            }
+          }
+        }
+
+        const bioAllowanceSeconds = (bioAllowance ?? 4) * 60;
+        const overageSeconds = Math.max(0, totalBioSeconds - bioAllowanceSeconds);
+
+        // Create report with full details
+        await supabase.from('agent_reports').insert({
+          agent_email: agentEmail.toLowerCase(),
+          agent_name: agentName,
+          profile_id: profile.id,
+          incident_date: todayStr,
+          incident_type: 'BIO_OVERUSE',
+          severity: 'low',
+          details: {
+            totalBioSeconds: Math.round(totalBioSeconds),
+            bioAllowance: bioAllowanceSeconds,
+            overageSeconds: Math.round(overageSeconds),
+          },
+          status: 'open',
+        });
+      }
+
+      // Send notifications (Slack, email, in-app)
       await supabase.functions.invoke('send-status-alert-notification', {
         body: {
-          agentEmail: profile.email,
-          agentName: profile.full_name || profile.agent_name || profile.email,
+          agentEmail,
+          agentName,
           alertType: 'BIO_OVERUSE',
           details: { allowance: bioAllowance },
         },
