@@ -241,8 +241,8 @@ export async function fetchWeeklyScorecardDualRead(
   return fetchWeeklyScorecard(weekStart, weekEnd, supportType);
 }
 
-// Get color class based on percentage of goal
-export function getScoreColor(score: number | null, goal: number = 100): string {
+// Fetch scorecard configuration for a support type
+export async function fetchScorecardConfig(supportType: string): Promise<ScorecardConfig[]> {
   const { data, error } = await supabase
     .from('scorecard_config')
     .select('*')
@@ -949,12 +949,12 @@ export async function fetchWeeklyScorecard(
   const qaEvaluations = qaResult.data || [];
   const profileEvents = eventsResult.data || [];
   const leaveRequests = leaveResult.data || [];
-  const zendeskMetrics = zendeskMetricsResult;
+  const zendeskMetrics = zendeskMetricsResult as ZendeskAgentMetrics[];
   // Flatten saved scorecards from all support types
-  const savedScorecards = savedResults.flat();
+  const savedScorecards: SavedScorecard[] = (savedResults as SavedScorecard[][]).flat();
   
   // Fetch Revalida attempts for the week's batches
-  const weeklyBatchIds = (revalidaBatchesResult.data || []).map((b: { id: string }) => b.id);
+  const weeklyBatchIds = ((revalidaBatchesResult as { data: { id: string }[] | null }).data || []).map((b: { id: string }) => b.id);
   let revalidaMap = new Map<string, number>();
   
   if (weeklyBatchIds.length > 0) {
@@ -974,7 +974,7 @@ export async function fetchWeeklyScorecard(
   // Create lookup maps
   const zendeskMap = new Map(zendeskMetrics.map(m => [m.agent_email.toLowerCase(), m]));
   const savedMap = new Map(savedScorecards.map(s => [s.agent_email.toLowerCase(), s]));
-  const overrideDateMap = buildOverrideDateMap(coverageOverrides);
+  const overrideDateMap = buildOverrideDateMap(coverageOverrides as CoverageOverride[]);
 
   // Build scorecard for each agent
   const scorecards: AgentScorecard[] = [];

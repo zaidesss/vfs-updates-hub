@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { EditableMetricCell } from '@/components/scorecard/EditableMetricCell';
 import {
   fetchWeeklyScorecard,
+  fetchWeeklyScorecardDualRead,
   fetchScorecardConfig,
   saveScorecard,
   isWeekSaved,
@@ -218,13 +219,25 @@ export default function TeamScorecard() {
     setEditedMetrics({});
   };
 
-  // Fetch scorecard data
+  // Fetch scorecard data (dual-read: snapshots for old weeks, live for current)
   const { data: scorecards, isLoading: isLoadingScorecard } = useQuery({
     queryKey: ['scorecard', weekStartStr, supportType],
-    queryFn: () => fetchWeeklyScorecard(weekStart, weekEnd, supportType),
+    queryFn: () => fetchWeeklyScorecardDualRead(weekStart, weekEnd, supportType),
     staleTime: 5 * 60 * 1000,
     enabled: !isBeforeMinimumDate,
   });
+
+  // Detect if viewing snapshot data
+  const isSnapshotData = useMemo(() => {
+    if (!scorecards || scorecards.length === 0) return false;
+    return scorecards[0]?.dataSource === 'snapshot';
+  }, [scorecards]);
+
+  // Detect if old week has no snapshot data available
+  const isNoSnapshotAvailable = useMemo(() => {
+    if (!scorecards || isLoadingScorecard) return false;
+    return isOldWeek && scorecards.length === 0;
+  }, [scorecards, isOldWeek, isLoadingScorecard]);
 
   // Fetch config for column visibility (for specific support type)
   const { data: config, data: configData } = useQuery({
@@ -548,7 +561,7 @@ export default function TeamScorecard() {
               </Button>
             )}
 
-            {canSave && scorecards && scorecards.length > 0 && !isBeforeMinimumDate && (
+            {canSave && scorecards && scorecards.length > 0 && !isBeforeMinimumDate && !isSnapshotData && (
               <Button
                 onClick={() => setShowSaveConfirm(true)}
                 disabled={saveScorecardMutation.isPending}
@@ -826,8 +839,18 @@ export default function TeamScorecard() {
           </Alert>
         )}
 
-        {/* Old Week Warning */}
-        {!isBeforeMinimumDate && isOldWeek && !weekIsSaved && !hasSavedData && (
+        {/* No Snapshot Available Warning */}
+        {isNoSnapshotAvailable && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              No data available for this week. Historical data requires a saved snapshot, but none was found for this period.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Old Week Warning (only when live data, not snapshot) */}
+        {!isBeforeMinimumDate && isOldWeek && !weekIsSaved && !hasSavedData && !isSnapshotData && !isNoSnapshotAvailable && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
@@ -845,7 +868,13 @@ export default function TeamScorecard() {
                 <CardTitle className="text-lg flex items-center gap-2">
                   {isAllMode ? 'All Agents' : supportType} Scorecard
                   {filteredScorecards && <span className="text-muted-foreground font-normal">({filteredScorecards.length} agents)</span>}
-                  {weekIsSaved && (
+                  {isSnapshotData && (
+                    <Badge variant="outline" className="gap-1 text-primary border-primary/30 bg-primary/5">
+                      <Save className="h-3 w-3" />
+                      Snapshot
+                    </Badge>
+                  )}
+                  {weekIsSaved && !isSnapshotData && (
                     <Badge variant="secondary" className="gap-1">
                       <CheckCircle2 className="h-3 w-3" />
                       Saved
