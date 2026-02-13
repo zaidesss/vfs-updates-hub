@@ -44,6 +44,7 @@ import {
   parseScheduleRange,
   fetchCoverageOverridesForAgent,
   getDataSourceForWeek,
+  fetchAttendanceDualRead,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -190,31 +191,27 @@ export default function AgentDashboard() {
       const weekStartStr = format(weekStart, 'yyyy-MM-dd');
       const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
       
-      const [loginEventsResult, allEventsResult, leavesResult, overridesResult] = await Promise.all([
-        getWeekLoginEvents(profileId, weekStart, weekEnd),
-        getWeekAllEvents(profileId, weekStart, weekEnd),
-        getApprovedLeavesForWeek(profileResult.data.email, weekStart, weekEnd),
-        fetchCoverageOverridesForAgent(profileId, weekStartStr, weekEndStr),
-      ]);
-
-      const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
-      const fetchedAllEvents: ProfileEvent[] = allEventsResult.data || [];
-      const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
-      const coverageOverrides: CoverageOverrideForWeek[] = overridesResult.data || [];
-
-      // Calculate attendance for each day of the selected week (with break tracking + overrides)
-      const weekAttendance = calculateAttendanceForWeek(
+      // Use dual-read: snapshots for old weeks, live data for recent weeks
+      const dualReadResult = await fetchAttendanceDualRead(
         profileResult.data,
-        loginEvents,
-        approvedLeaves,
         weekStart,
-        fetchedAllEvents,
-        coverageOverrides
+        weekEnd,
+        profileId
       );
+
+      const weekAttendance = dualReadResult.data || [];
+      const source = dualReadResult.dataSource;
+
+      // For live data, also fetch all events for the Activity card
+      let fetchedAllEvents: ProfileEvent[] = [];
+      if (source === 'live') {
+        const allEventsResult = await getWeekAllEvents(profileId, weekStart, weekEnd);
+        fetchedAllEvents = allEventsResult.data || [];
+      }
 
       setAttendance(weekAttendance);
       setAllEvents(fetchedAllEvents);
-      setDataSource(getDataSourceForWeek(weekStart));
+      setDataSource(source);
 
       // Check for today's attendance and auto-generate Late Login outage if needed
       const todayStr = getTodayEST();
