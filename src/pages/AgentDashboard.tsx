@@ -325,8 +325,27 @@ export default function AgentDashboard() {
     try {
       // Fetch ticket and gap data if agent tag is available
       if (agentTag) {
-        // Fetch ticket breakdown by type for selected day
-        const ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
+        let ticketResult;
+        
+        // If viewing snapshot data, use OT count from snapshot
+        if (dataSource === 'snapshot') {
+          const dayAttendance = attendance.find(a => a.dayKey === format(selectedDay, 'yyyy-MM-dd'));
+          if (dayAttendance?.otTicketCount !== undefined) {
+            // For snapshot mode, merge snapshot's OT count with live ticket data
+            const liveTickets = await getDayTicketCountByType(agentTag, selectedDay);
+            ticketResult = {
+              data: {
+                ...liveTickets.data,
+                otEmail: dayAttendance.otTicketCount
+              }
+            };
+          } else {
+            ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
+          }
+        } else {
+          ticketResult = await getDayTicketCountByType(agentTag, selectedDay);
+        }
+        
         setTicketCounts(ticketResult.data);
         
         // Fetch avg gap for selected day
@@ -369,8 +388,27 @@ export default function AgentDashboard() {
     try {
       // Fetch ticket and gap data if agent tag is available
       if (agentTag) {
-        // Fetch ticket breakdown by type for the selected day
-        const ticketResult = await getDayTicketCountByType(agentTag, date);
+        let ticketResult;
+        
+        // If viewing snapshot data, use OT count from snapshot
+        if (dataSource === 'snapshot') {
+          const dayAttendance = attendance.find(a => a.dayKey === format(date, 'yyyy-MM-dd'));
+          if (dayAttendance?.otTicketCount !== undefined) {
+            // For snapshot mode, merge snapshot's OT count with live ticket data
+            const liveTickets = await getDayTicketCountByType(agentTag, date);
+            ticketResult = {
+              data: {
+                ...liveTickets.data,
+                otEmail: dayAttendance.otTicketCount
+              }
+            };
+          } else {
+            ticketResult = await getDayTicketCountByType(agentTag, date);
+          }
+        } else {
+          ticketResult = await getDayTicketCountByType(agentTag, date);
+        }
+        
         setTicketCounts(ticketResult.data);
         
         // Fetch avg gap for the selected day
