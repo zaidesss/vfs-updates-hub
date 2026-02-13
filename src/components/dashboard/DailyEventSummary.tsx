@@ -3,11 +3,12 @@ import { Badge } from '@/components/ui/badge';
 import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw, Droplet, Clock } from 'lucide-react';
 import type { ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatTimeInEST } from '@/lib/agentDashboardApi';
-import { format, parseISO, isToday } from 'date-fns';
+import { format, parseISO, isSameDay, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface DailyEventSummaryProps {
   events: ProfileEvent[];
+  selectedDay: Date;
   className?: string;
 }
 
@@ -74,11 +75,14 @@ const EVENT_CONFIG: Record<string, { label: string; icon: typeof LogIn; color: s
   },
 };
 
-export function DailyEventSummary({ events, className }: DailyEventSummaryProps) {
-  // Filter events for today only
+export function DailyEventSummary({ events, selectedDay, className }: DailyEventSummaryProps) {
+  const isTodaySelected = isToday(selectedDay);
+  const dayLabel = isTodaySelected ? "Today's" : `${format(selectedDay, 'EEEE')}'s`;
+
+  // Filter events for selected day
   const todayEvents = events.filter((event) => {
     const eventDate = parseISO(event.created_at);
-    return isToday(eventDate);
+    return isSameDay(eventDate, selectedDay);
   });
 
   // Sort by time ascending
@@ -91,7 +95,7 @@ export function DailyEventSummary({ events, className }: DailyEventSummaryProps)
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" />
-          Today's Activity
+          {dayLabel} Activity
           <Badge variant="secondary" className="ml-auto">
             {todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}
           </Badge>

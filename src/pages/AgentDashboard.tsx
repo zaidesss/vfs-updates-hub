@@ -609,7 +609,7 @@ export default function AgentDashboard() {
         {/* Today's Activity + Status Control - side by side on larger screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Daily Event Summary */}
-          <DailyEventSummary events={allEvents} />
+          <DailyEventSummary events={allEvents} selectedDay={selectedDay} />
 
           {/* Status Control */}
           <Card>
