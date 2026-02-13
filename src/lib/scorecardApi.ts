@@ -54,6 +54,7 @@ export interface AgentScorecard {
   plannedLeaveDays: number;
   unplannedOutageDays: number;
   isSaved?: boolean;
+  dataSource?: 'snapshot' | 'live'; // Indicator of data origin
 }
 
 export interface SavedScorecard {
@@ -139,8 +140,109 @@ interface ScorecardRPCResult {
   is_saved: boolean;
 }
 
-// Fetch scorecard configuration for a support type
-export async function fetchScorecardConfig(supportType: string): Promise<ScorecardConfig[]> {
+// Determine if a week should read from snapshots
+// Returns: 'snapshot' | 'live' | 'unavailable'
+function getDataSourceForWeek(weekStart: Date): 'snapshot' | 'live' | 'unavailable' {
+  const now = new Date();
+  const weekStartTime = weekStart.getTime();
+  const nowTime = now.getTime();
+  
+  // Weeks within 2 weeks ago to now = live data
+  const twoWeeksAgo = nowTime - (14 * 24 * 60 * 60 * 1000);
+  if (weekStartTime >= twoWeeksAgo && weekStartTime <= nowTime) {
+    return 'live';
+  }
+  
+  // Weeks older than 2 weeks = snapshot
+  if (weekStartTime < twoWeeksAgo) {
+    return 'snapshot';
+  }
+  
+  return 'unavailable';
+}
+
+// Convert snapshot to AgentScorecard format
+async function convertSnapshotToScorecard(snapshot: SavedScorecard, agent: AgentProfile): Promise<AgentScorecard> {
+  return {
+    agent,
+    productivity: snapshot.productivity,
+    productivityCount: snapshot.productivity_count || 0,
+    callAht: snapshot.call_aht_seconds,
+    chatAht: snapshot.chat_aht_seconds,
+    chatFrt: snapshot.chat_frt_seconds,
+    qa: snapshot.qa,
+    revalida: snapshot.revalida,
+    reliability: snapshot.reliability,
+    otProductivity: snapshot.ot_productivity,
+    orderEscalation: null, // Not stored in snapshots
+    finalScore: snapshot.final_score,
+    isOnLeave: snapshot.is_on_leave || false,
+    scheduledDays: snapshot.scheduled_days || 0,
+    daysPresent: snapshot.days_present || 0,
+    approvedLeaveDays: snapshot.approved_leave_days || 0,
+    plannedLeaveDays: 0, // Not stored in snapshots
+    unplannedOutageDays: 0, // Not stored in snapshots
+    isSaved: true,
+    dataSource: 'snapshot' as const,
+  };
+}
+
+// Fetch scorecard with dual-read path (snapshots for old weeks, live for current)
+export async function fetchWeeklyScorecardDualRead(
+  weekStart: Date,
+  weekEnd: Date,
+  supportType: string
+): Promise<AgentScorecard[]> {
+  const dataSource = getDataSourceForWeek(weekStart);
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+  
+  if (dataSource === 'snapshot') {
+    // Try to fetch from snapshots
+    const snapshots = await fetchSavedScorecard(weekStartStr, weekEndStr, supportType);
+    
+    if (snapshots && snapshots.length > 0) {
+      // Convert snapshots to AgentScorecard format
+      const agents = await fetchEligibleAgents(supportType);
+      const agentMap = new Map(agents.map(a => [a.email.toLowerCase(), a]));
+      
+      return Promise.all(
+        snapshots.map(snapshot => {
+          const agent = agentMap.get(snapshot.agent_email.toLowerCase()) || {
+            id: '',
+            email: snapshot.agent_email,
+            full_name: snapshot.agent_name,
+            agent_name: snapshot.agent_name,
+            position: supportType,
+            employment_status: null,
+            quota_email: null,
+            quota_chat: null,
+            quota_phone: null,
+            quota_ot_email: null,
+            day_off: null,
+            mon_schedule: null,
+            tue_schedule: null,
+            wed_schedule: null,
+            thu_schedule: null,
+            fri_schedule: null,
+            sat_schedule: null,
+            sun_schedule: null,
+          };
+          return convertSnapshotToScorecard(snapshot, agent);
+        })
+      );
+    }
+    
+    // No snapshot available - return empty array with indicator
+    return [];
+  }
+  
+  // Live data path
+  return fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+}
+
+// Get color class based on percentage of goal
+export function getScoreColor(score: number | null, goal: number = 100): string {
   const { data, error } = await supabase
     .from('scorecard_config')
     .select('*')
