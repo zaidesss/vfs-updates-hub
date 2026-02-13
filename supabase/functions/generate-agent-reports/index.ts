@@ -27,59 +27,6 @@ interface AgentProfile {
   quota_phone: number | null;
 }
 
-interface AgentDirectory {
-  email: string;
-  agent_name: string | null;
-  mon_schedule: string | null;
-  tue_schedule: string | null;
-  wed_schedule: string | null;
-  thu_schedule: string | null;
-  fri_schedule: string | null;
-  sat_schedule: string | null;
-  sun_schedule: string | null;
-  day_off: string[] | null;
-  break_schedule: string | null;
-}
-
-interface ProfileStatus {
-  profile_id: string;
-  current_status: string;
-  status_since: string | null;
-}
-
-// =======================
-// SEVERITY HELPER FUNCTIONS
-// =======================
-
-/**
- * Calculate dynamic severity for time-based violations
- * 1-5 mins = low, 6-15 mins = medium, 16+ mins = high
- */
-function calculateTimeSeverity(minutes: number): 'low' | 'medium' | 'high' {
-  if (minutes <= 5) return 'low';
-  if (minutes <= 15) return 'medium';
-  return 'high';
-}
-
-/**
- * Calculate severity for quota shortfall
- * 1-10 tickets = low, 11-19 tickets = medium, 20+ tickets = high
- */
-function calculateQuotaSeverity(ticketsShort: number): 'low' | 'medium' | 'high' {
-  if (ticketsShort <= 10) return 'low';
-  if (ticketsShort < 20) return 'medium';
-  return 'high';
-}
-
-/**
- * Calculate severity for average ticket gap (Email Support only)
- * <5 mins = null (no violation), 5-10 mins = medium, 10+ mins = high
- */
-function calculateGapSeverity(avgGapMinutes: number): 'medium' | 'high' | null {
-  if (avgGapMinutes < 5) return null;
-  if (avgGapMinutes < 10) return 'medium';
-  return 'high';
-}
 
 /**
  * Parse a 12-hour time string and return total minutes from midnight
@@ -111,30 +58,6 @@ function parseScheduleRange(scheduleTime: string): { startMinutes: number; endMi
   if (startMinutes === null || endMinutes === null) return null;
   
   return { startMinutes, endMinutes };
-}
-
-/**
- * Get the schedule for a specific day
- */
-function getScheduleForDay(directory: AgentDirectory, dayOfWeek: number): string | null {
-  const dayMap: Record<number, keyof AgentDirectory> = {
-    0: 'sun_schedule',
-    1: 'mon_schedule',
-    2: 'tue_schedule',
-    3: 'wed_schedule',
-    4: 'thu_schedule',
-    5: 'fri_schedule',
-    6: 'sat_schedule',
-  };
-  return directory[dayMap[dayOfWeek]] as string | null;
-}
-
-/**
- * Check if a day is a day off
- */
-function isDayOff(directory: AgentDirectory, dayName: string): boolean {
-  const dayOff = directory.day_off || [];
-  return dayOff.some(d => d.toLowerCase() === dayName.toLowerCase());
 }
 
 /**
@@ -211,14 +134,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Fetch all agent directories
-    const { data: directories } = await supabase
-      .from('agent_directory')
-      .select('email, agent_name, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off, break_schedule');
-
-    const directoryMap = new Map<string, AgentDirectory>();
-    directories?.forEach(d => directoryMap.set(d.email.toLowerCase(), d));
 
     // Fetch coverage overrides for the target date
     const { data: overrides } = await supabase
@@ -319,25 +234,29 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const profile of profiles as AgentProfile[]) {
-      const directory = directoryMap.get(profile.email.toLowerCase());
-      const agentName = profile.full_name || directory?.agent_name || profile.email;
+      const agentName = profile.full_name || profile.email;
       const profileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
 
-      // Check for coverage override first
-      const override = overrideMap.get(profile.id);
-      let schedule: string | null = null;
+      // Use get_effective_schedule RPC to resolve the schedule for this date
+      // Precedence: coverage_overrides > agent_schedule_assignments > agent_profiles
+      const { data: effectiveData, error: effectiveError } = await supabase.rpc('get_effective_schedule', {
+        p_agent_id: profile.id,
+        p_target_date: targetDateStr,
+      });
 
-      if (override) {
-        // Override exists — use it as the effective schedule
-        schedule = `${override.override_start} - ${override.override_end}`;
-        console.log(`Using coverage override for ${agentName}: ${schedule} (reason: ${override.reason})`);
-      } else {
-        // No override — fall back to agent_directory
-        // Skip if day off
-        if (directory && isDayOff(directory, dayName)) {
-          continue;
-        }
-        schedule = directory ? getScheduleForDay(directory, dayOfWeek) : null;
+      if (effectiveError || !effectiveData || effectiveData.length === 0) {
+        console.log(`Skipping ${agentName} - failed to resolve effective schedule`);
+        continue;
+      }
+
+      const effectiveRow = effectiveData[0];
+      const schedule = effectiveRow.effective_schedule;
+      const breakSchedule = effectiveRow.effective_break_schedule;
+      const isDayOffForDate = effectiveRow.is_day_off;
+
+      // Skip if day off
+      if (isDayOffForDate) {
+        continue;
       }
       
       // Skip if blank/null schedule (treat as implicit day off)
@@ -610,8 +529,8 @@ Deno.serve(async (req) => {
       // ========================
       // Check for OVERBREAK with dynamic severity
       // ========================
-      if (directory?.break_schedule) {
-        const breakParsed = parseScheduleRange(directory.break_schedule);
+      if (breakSchedule) {
+        const breakParsed = parseScheduleRange(breakSchedule);
         if (breakParsed) {
           let allowedBreakMinutes = breakParsed.endMinutes - breakParsed.startMinutes;
           if (allowedBreakMinutes < 0) allowedBreakMinutes += 24 * 60;
