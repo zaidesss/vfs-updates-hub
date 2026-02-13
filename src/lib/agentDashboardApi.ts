@@ -2564,7 +2564,7 @@ async function fetchAttendanceSnapshots(
     const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
 
     const { data, error } = await supabase
-      .from('attendance_snapshots')
+      .from('attendance_snapshots' as any)
       .select('*')
       .eq('profile_id', profileId)
       .gte('date', weekStartStr)

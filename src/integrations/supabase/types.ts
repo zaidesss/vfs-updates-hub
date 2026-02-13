@@ -625,6 +625,90 @@ export type Database = {
         }
         Relationships: []
       }
+      attendance_snapshots: {
+        Row: {
+          allowed_break_formatted: string | null
+          allowed_break_minutes: number | null
+          break_duration_formatted: string | null
+          break_duration_minutes: number | null
+          break_overage_minutes: number | null
+          created_at: string
+          date: string
+          hours_worked_formatted: string | null
+          hours_worked_minutes: number | null
+          id: string
+          is_early_out: boolean | null
+          is_overbreak: boolean | null
+          leave_type: string | null
+          login_time: string | null
+          logout_time: string | null
+          no_logout: boolean | null
+          ot_hours_worked_minutes: number | null
+          ot_login_time: string | null
+          ot_logout_time: string | null
+          ot_schedule: string | null
+          ot_status: string | null
+          profile_id: string
+          schedule_end: string | null
+          schedule_start: string | null
+          status: string
+        }
+        Insert: {
+          allowed_break_formatted?: string | null
+          allowed_break_minutes?: number | null
+          break_duration_formatted?: string | null
+          break_duration_minutes?: number | null
+          break_overage_minutes?: number | null
+          created_at?: string
+          date: string
+          hours_worked_formatted?: string | null
+          hours_worked_minutes?: number | null
+          id?: string
+          is_early_out?: boolean | null
+          is_overbreak?: boolean | null
+          leave_type?: string | null
+          login_time?: string | null
+          logout_time?: string | null
+          no_logout?: boolean | null
+          ot_hours_worked_minutes?: number | null
+          ot_login_time?: string | null
+          ot_logout_time?: string | null
+          ot_schedule?: string | null
+          ot_status?: string | null
+          profile_id: string
+          schedule_end?: string | null
+          schedule_start?: string | null
+          status: string
+        }
+        Update: {
+          allowed_break_formatted?: string | null
+          allowed_break_minutes?: number | null
+          break_duration_formatted?: string | null
+          break_duration_minutes?: number | null
+          break_overage_minutes?: number | null
+          created_at?: string
+          date?: string
+          hours_worked_formatted?: string | null
+          hours_worked_minutes?: number | null
+          id?: string
+          is_early_out?: boolean | null
+          is_overbreak?: boolean | null
+          leave_type?: string | null
+          login_time?: string | null
+          logout_time?: string | null
+          no_logout?: boolean | null
+          ot_hours_worked_minutes?: number | null
+          ot_login_time?: string | null
+          ot_logout_time?: string | null
+          ot_schedule?: string | null
+          ot_status?: string | null
+          profile_id?: string
+          schedule_end?: string | null
+          schedule_start?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       coverage_override_logs: {
         Row: {
           agent_id: string
@@ -796,6 +880,33 @@ export type Database = {
           id?: string
           is_active?: boolean
           value?: string
+        }
+        Relationships: []
+      }
+      event_snapshots: {
+        Row: {
+          count: number
+          created_at: string
+          event_type: string
+          id: string
+          profile_id: string
+          week_start: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          event_type: string
+          id?: string
+          profile_id: string
+          week_start: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          event_type?: string
+          id?: string
+          profile_id?: string
+          week_start?: string
         }
         Relationships: []
       }
