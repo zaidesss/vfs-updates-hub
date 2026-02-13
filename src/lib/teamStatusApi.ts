@@ -6,6 +6,7 @@ import {
   parseScheduleRange,
   isTimeInScheduleRange,
 } from './timezoneUtils';
+import { getEffectiveScheduleForDate } from './scheduleResolver';
 
 export type ProfileStatus = 
   | 'LOGGED_IN' 
@@ -68,48 +69,6 @@ function categorizeByPosition(position: string | null): SupportCategory {
   return 'other';
 }
 
-// Day key to database column mapping
-const DAY_SCHEDULE_MAP: Record<string, string> = {
-  mon: 'mon_schedule',
-  tue: 'tue_schedule',
-  wed: 'wed_schedule',
-  thu: 'thu_schedule',
-  fri: 'fri_schedule',
-  sat: 'sat_schedule',
-  sun: 'sun_schedule',
-};
-
-const DAY_OT_SCHEDULE_MAP: Record<string, string> = {
-  mon: 'mon_ot_schedule',
-  tue: 'tue_ot_schedule',
-  wed: 'wed_ot_schedule',
-  thu: 'thu_ot_schedule',
-  fri: 'fri_ot_schedule',
-  sat: 'sat_ot_schedule',
-  sun: 'sun_ot_schedule',
-};
-
-// Convert day key to display format for day_off array matching
-const DAY_OFF_MAP: Record<string, string> = {
-  mon: 'Mon',
-  tue: 'Tue',
-  wed: 'Wed',
-  thu: 'Thu',
-  fri: 'Fri',
-  sat: 'Sat',
-  sun: 'Sun',
-};
-
-// Previous day mapping for overnight schedule carryover
-const PREV_DAY_MAP: Record<string, string> = {
-  mon: 'sun',
-  tue: 'mon',
-  wed: 'tue',
-  thu: 'wed',
-  fri: 'thu',
-  sat: 'fri',
-  sun: 'sat',
-};
 
 /**
  * Check if an agent is within their scheduled visibility window.
@@ -156,19 +115,10 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const currentDayKey = getCurrentESTDayKey();
     const currentTimeMinutes = getCurrentESTTimeMinutes();
     const todayStr = getTodayEST();
-    
-    const scheduleColumn = DAY_SCHEDULE_MAP[currentDayKey];
-    const otScheduleColumn = DAY_OT_SCHEDULE_MAP[currentDayKey];
-    const dayOffDisplay = DAY_OFF_MAP[currentDayKey];
-    
-    // Previous day columns for overnight carryover
-    const prevDayKey = PREV_DAY_MAP[currentDayKey];
-    const prevScheduleColumn = DAY_SCHEDULE_MAP[prevDayKey];
-    const prevOtScheduleColumn = DAY_OT_SCHEDULE_MAP[prevDayKey];
 
-    // Fetch all active agent profiles with schedules (parallel queries)
-    const [profilesResult, statusesResult, outagesResult, overridesResult] = await Promise.all([
-      // Fetch all active profiles with per-day schedules
+    // Fetch all active agent profiles (parallel queries)
+    const [profilesResult, statusesResult, outagesResult] = await Promise.all([
+      // Fetch all active profiles
       supabase
         .from('agent_profiles_team_status')
         .select(`
@@ -176,14 +126,11 @@ export async function fetchScheduledTeamMembers(): Promise<{
           email, 
           full_name, 
           position,
-          day_off,
-          break_schedule,
-          mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule,
-          mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule
+          break_schedule
         `)
         .neq('employment_status', 'Terminated'),
       
-      // Fetch all profile statuses (including LOGGED_OUT for reference)
+      // Fetch all profile statuses
       supabase
         .from('profile_status')
         .select('profile_id, current_status, status_since'),
@@ -195,12 +142,6 @@ export async function fetchScheduledTeamMembers(): Promise<{
         .eq('status', 'approved')
         .lte('start_date', todayStr)
         .gte('end_date', todayStr),
-
-      // Fetch coverage overrides for today
-      supabase
-        .from('coverage_overrides')
-        .select('agent_id, override_start, override_end, reason')
-        .eq('date', todayStr),
     ]);
 
     if (profilesResult.error) {
@@ -211,7 +152,6 @@ export async function fetchScheduledTeamMembers(): Promise<{
     const profiles = profilesResult.data || [];
     const statuses = statusesResult.data || [];
     const outages = outagesResult.data || [];
-    const overrides = overridesResult.data || [];
 
     // Create lookup maps
     const statusMap = new Map<string, { current_status: string; status_since: string }>();
@@ -233,87 +173,29 @@ export async function fetchScheduledTeamMembers(): Promise<{
       }
     });
 
-    const overrideMap = new Map<string, { override_start: string; override_end: string }>();
-    overrides.forEach(o => overrideMap.set(o.agent_id, o));
-
     // Process each profile for schedule-based visibility
     const allMembers: TeamMemberStatus[] = [];
     let onlineCount = 0;
 
-    profiles.forEach(profile => {
+    for (const profile of profiles) {
       const email = (profile.email || '').toLowerCase();
       
-      // Check for coverage override first (highest priority)
-      const override = overrideMap.get(profile.id);
+      // Use schedule resolver to get effective schedule for today
+      const effectiveSchedule = await getEffectiveScheduleForDate(profile.id, todayStr);
       
-      let activeSchedule: string | null = null;
-      let activeOtSchedule: string | null = null;
+      // Check if scheduled within current time window
+      const schedule = effectiveSchedule.schedule;
+      const otSchedule = effectiveSchedule.otSchedule;
       
-      if (override) {
-        // Coverage override exists for today — use it as the effective schedule
-        const overrideSchedule = `${override.override_start} - ${override.override_end}`;
-        const isScheduled = isWithinScheduleWindow(overrideSchedule, null, currentTimeMinutes);
-        if (isScheduled) {
-          activeSchedule = overrideSchedule;
-          activeOtSchedule = null;
-        }
-      } else {
-        // No override — fall back to base profile schedule
-        const todaySchedule = (profile as any)[scheduleColumn] as string | null;
-        const todayOtSchedule = (profile as any)[otScheduleColumn] as string | null;
-        const prevSchedule = (profile as any)[prevScheduleColumn] as string | null;
-        const prevOtSchedule = (profile as any)[prevOtScheduleColumn] as string | null;
-        
-        const dayOffArray = profile.day_off || [];
-        const isTodayDayOff = dayOffArray.includes(dayOffDisplay);
-        
-        let isFromPrevDay = false;
-        
-        // Step 1: Check today's schedule (only if not day off and has a valid schedule)
-        if (!isTodayDayOff && todaySchedule && todaySchedule.toLowerCase() !== 'day off' && todaySchedule.toLowerCase() !== 'off') {
-          const isScheduled = isWithinScheduleWindow(todaySchedule, todayOtSchedule, currentTimeMinutes);
-          if (isScheduled) {
-            activeSchedule = todaySchedule;
-            activeOtSchedule = todayOtSchedule;
-          }
-        }
-        
-        // Step 2: If today didn't match, check previous day's overnight schedule
-        if (!activeSchedule) {
-          const prevRange = parseScheduleRange(prevSchedule);
-          if (prevRange && prevRange.end < prevRange.start) {
-            if (currentTimeMinutes <= prevRange.end) {
-              activeSchedule = prevSchedule;
-              activeOtSchedule = prevOtSchedule;
-              isFromPrevDay = true;
-            }
-          }
-          
-          if (!activeSchedule) {
-            const prevOtRange = parseScheduleRange(prevOtSchedule);
-            if (prevOtRange && prevOtRange.end < prevOtRange.start) {
-              if (currentTimeMinutes <= prevOtRange.end) {
-                activeSchedule = prevSchedule || 'Overnight';
-                activeOtSchedule = prevOtSchedule;
-                isFromPrevDay = true;
-              }
-            }
-          }
-          
-          if (!activeSchedule && prevRange && prevRange.end < prevRange.start) {
-            const prevOtRange = parseScheduleRange(prevOtSchedule);
-            if (prevOtRange && currentTimeMinutes <= prevOtRange.end) {
-              activeSchedule = prevSchedule;
-              activeOtSchedule = prevOtSchedule;
-              isFromPrevDay = true;
-            }
-          }
-        }
+      // Skip if day off
+      if (effectiveSchedule.isDayOff) {
+        continue;
       }
       
-      // Skip if no active schedule found
-      if (!activeSchedule) {
-        return;
+      // Check if within schedule window
+      const isWithinWindow = isWithinScheduleWindow(schedule, otSchedule, currentTimeMinutes);
+      if (!isWithinWindow) {
+        continue;
       }
       
       // Get status info
@@ -356,14 +238,14 @@ export async function fetchScheduledTeamMembers(): Promise<{
         position: profile.position,
         currentStatus,
         statusSince,
-        shiftSchedule: activeSchedule,
+        shiftSchedule: schedule,
         breakSchedule: profile.break_schedule,
         isScheduledNow: true,
         outageReason,
         hasApprovedOutage,
-        otSchedule: activeOtSchedule,
+        otSchedule: otSchedule,
       });
-    });
+    }
 
     // Sort by status_since (most recent first)
     allMembers.sort((a, b) => new Date(b.statusSince).getTime() - new Date(a.statusSince).getTime());

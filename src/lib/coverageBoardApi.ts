@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { parseScheduleRange } from "@/components/coverage-board/ShiftBlock";
+import { getEffectiveSchedulesForWeek } from "./scheduleResolver";
 
 // ── Grid Constants ──────────────────────────────────────────────────────────
 export const STICKY_COLS = 3;
@@ -83,6 +84,8 @@ const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
 const OFFSET_TO_JS_DAY = [1, 2, 3, 4, 5, 6, 0];
 
 export function getScheduleForDay(agent: AgentScheduleRow, dayIndex: number): { schedule: string | null; otSchedule: string | null } {
+  // Note: This function now returns base profile schedules only.
+  // For effective-dated schedules (with overrides), use getEffectiveSchedulesForWeek() via the resolver.
   const day = DAY_KEYS[dayIndex];
   const schedule = agent[`${day}_schedule` as keyof AgentScheduleRow] as string | null;
   const otSchedule = agent[`${day}_ot_schedule` as keyof AgentScheduleRow] as string | null;
@@ -90,6 +93,8 @@ export function getScheduleForDay(agent: AgentScheduleRow, dayIndex: number): { 
 }
 
 export function isDayOff(agent: AgentScheduleRow, dayName: string): boolean {
+  // Note: This checks base profile day_off only.
+  // For effective-dated day-off status (with overrides), use getEffectiveSchedulesForWeek() via the resolver.
   if (!agent.day_off) return false;
   return agent.day_off.some(d => d.toLowerCase().substring(0, 3) === dayName.toLowerCase().substring(0, 3));
 }
