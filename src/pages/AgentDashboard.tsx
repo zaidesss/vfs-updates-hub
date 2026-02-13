@@ -649,6 +649,7 @@ export default function AgentDashboard() {
           upworkError={upworkError}
           upworkSyncedAt={upworkSyncedAt}
           hasUpworkContract={!!profile.upwork_contract_id}
+          otEnabled={!!profile.ot_enabled}
           isOnOT={status === 'ON_OT'}
           weekStart={weekStart}
           selectedDay={selectedDay}
