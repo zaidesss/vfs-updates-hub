@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, eachDayOfInterval, format, isWithinInterval, parseISO } from 'date-fns';
+import { getEffectiveSchedulesForWeek } from '@/lib/scheduleResolver';
 
 // Types
 export interface ScorecardConfig {
@@ -208,39 +209,60 @@ function buildOverrideDateMap(overrides: CoverageOverride[]): Map<string, Set<st
 }
 
 // Calculate scheduled working days for a week (excluding day_off, respecting overrides)
-export function getScheduledDays(
+export async function getScheduledDays(
   profile: AgentProfile,
   weekStart: Date,
   weekEnd: Date,
   overrideDates?: Set<string>
-): number {
-  const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  let scheduledDays = 0;
-
-  for (const day of days) {
-    const dayStr = format(day, 'yyyy-MM-dd');
+): Promise<number> {
+  try {
+    // Use scheduleResolver to get effective schedules for the week
+    const effectiveSchedules = await getEffectiveSchedulesForWeek(profile.id, weekStart);
     
-    // If there's a coverage override for this day, it counts as scheduled
-    if (overrideDates?.has(dayStr)) {
-      scheduledDays++;
-      continue;
-    }
+    let scheduledDays = 0;
     
-    const dayName = DAY_NAMES[day.getDay()];
-    if (!profile.day_off?.includes(dayName)) {
-      // Also check if the day has a schedule set
-      const scheduleField = `${dayName.toLowerCase()}_schedule` as keyof AgentProfile;
-      const schedule = profile[scheduleField];
-      if (schedule && schedule !== 'Day Off' && schedule !== '') {
+    for (const daySchedule of effectiveSchedules) {
+      // If there's a coverage override for this day, it counts as scheduled
+      if (overrideDates?.has(daySchedule.dayDate)) {
         scheduledDays++;
-      } else if (!schedule) {
-        // If no schedule field, count as scheduled if not in day_off
+        continue;
+      }
+      
+      // Count as scheduled if not a day off and has a schedule
+      if (!daySchedule.isDayOff && daySchedule.schedule && daySchedule.schedule !== 'Day Off') {
         scheduledDays++;
       }
     }
-  }
+    
+    return scheduledDays;
+  } catch (error) {
+    console.error('Failed to get effective schedules, falling back to profile data:', error);
+    // Fallback to legacy logic using profile data
+    const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    let scheduledDays = 0;
 
-  return scheduledDays;
+    for (const day of days) {
+      const dayStr = format(day, 'yyyy-MM-dd');
+      
+      if (overrideDates?.has(dayStr)) {
+        scheduledDays++;
+        continue;
+      }
+      
+      const dayName = DAY_NAMES[day.getDay()];
+      if (!profile.day_off?.includes(dayName)) {
+        const scheduleField = `${dayName.toLowerCase()}_schedule` as keyof AgentProfile;
+        const schedule = profile[scheduleField];
+        if (schedule && schedule !== 'Day Off' && schedule !== '') {
+          scheduledDays++;
+        } else if (!schedule) {
+          scheduledDays++;
+        }
+      }
+    }
+
+    return scheduledDays;
+  }
 }
 
 // Count approved leave days within a week
@@ -537,12 +559,14 @@ export async function fetchWeeklyScorecardRPC(
     const overrideDateMap = buildOverrideDateMap(overrides);
 
     // Transform RPC results to AgentScorecard format
-    const scorecards: AgentScorecard[] = rpcData.map(row => {
+    const scorecards: AgentScorecard[] = [];
+    
+    for (const row of rpcData) {
       const agentSupportType = row.agent_position || supportType;
       
       // Calculate scheduled days from day_off + schedules + overrides
       const agentOverrideDates = overrideDateMap.get(row.profile_id);
-      const scheduledDays = calculateScheduledDaysFromRPC(row, weekStart, weekEnd, agentOverrideDates);
+      const scheduledDays = await calculateScheduledDaysFromRPC(row, row.profile_id, weekStart, weekEnd, agentOverrideDates);
       
       // New reliability calculation: 100% - (unplanned_outage_days × 1%)
       // Planned Leave = no deduction, all other outage reasons = 1% deduction per day
@@ -660,7 +684,7 @@ export async function fetchWeeklyScorecardRPC(
         finalScore = (finalScore / totalWeight) * 100;
       }
 
-      return {
+      scorecards.push({
         agent: agentProfile,
         productivity,
         productivityCount,
@@ -680,8 +704,8 @@ export async function fetchWeeklyScorecardRPC(
         plannedLeaveDays: row.planned_leave_days,
         unplannedOutageDays: row.unplanned_outage_days,
         isSaved: row.is_saved,
-      };
-    });
+      });
+    }
 
     return { data: scorecards, fromRPC: true };
   } catch (err) {
@@ -692,45 +716,69 @@ export async function fetchWeeklyScorecardRPC(
 }
 
 // Helper to calculate scheduled days from RPC result
-function calculateScheduledDaysFromRPC(
+async function calculateScheduledDaysFromRPC(
   row: ScorecardRPCResult,
+  agentId: string,
   weekStart: Date,
   weekEnd: Date,
   overrideDates?: Set<string>
-): number {
-  const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  let scheduledDays = 0;
-
-  for (const day of days) {
-    const dayStr = format(day, 'yyyy-MM-dd');
+): Promise<number> {
+  try {
+    // Use scheduleResolver to get effective schedules for the week
+    const effectiveSchedules = await getEffectiveSchedulesForWeek(agentId, weekStart);
     
-    // If there's a coverage override for this day, it counts as scheduled
-    if (overrideDates?.has(dayStr)) {
-      scheduledDays++;
-      continue;
-    }
+    let scheduledDays = 0;
     
-    const dayName = DAY_NAMES[day.getDay()];
-    if (!row.day_off?.includes(dayName)) {
-      const scheduleMap: Record<string, string | null> = {
-        'Sun': row.sun_schedule,
-        'Mon': row.mon_schedule,
-        'Tue': row.tue_schedule,
-        'Wed': row.wed_schedule,
-        'Thu': row.thu_schedule,
-        'Fri': row.fri_schedule,
-        'Sat': row.sat_schedule,
-      };
-      const schedule = scheduleMap[dayName];
-      if (schedule && schedule !== 'Day Off' && schedule !== '') {
+    for (const daySchedule of effectiveSchedules) {
+      // If there's a coverage override for this day, it counts as scheduled
+      if (overrideDates?.has(daySchedule.dayDate)) {
         scheduledDays++;
-      } else if (!schedule) {
+        continue;
+      }
+      
+      // Count as scheduled if not a day off and has a schedule
+      if (!daySchedule.isDayOff && daySchedule.schedule && daySchedule.schedule !== 'Day Off') {
         scheduledDays++;
       }
     }
-  }
+    
+    return scheduledDays;
+  } catch (error) {
+    console.error('Failed to get effective schedules for RPC row, falling back to row data:', error);
+    // Fallback to legacy logic using RPC row data
+    const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    let scheduledDays = 0;
 
-  return scheduledDays;
+    for (const day of days) {
+      const dayStr = format(day, 'yyyy-MM-dd');
+      
+      if (overrideDates?.has(dayStr)) {
+        scheduledDays++;
+        continue;
+      }
+      
+      const dayName = DAY_NAMES[day.getDay()];
+      if (!row.day_off?.includes(dayName)) {
+        const scheduleMap: Record<string, string | null> = {
+          'Sun': row.sun_schedule,
+          'Mon': row.mon_schedule,
+          'Tue': row.tue_schedule,
+          'Wed': row.wed_schedule,
+          'Thu': row.thu_schedule,
+          'Fri': row.fri_schedule,
+          'Sat': row.sat_schedule,
+        };
+        const schedule = scheduleMap[dayName];
+        if (schedule && schedule !== 'Day Off' && schedule !== '') {
+          scheduledDays++;
+        } else if (!schedule) {
+          scheduledDays++;
+        }
+      }
+    }
+
+    return scheduledDays;
+  }
 }
 
 // Fetch all data for weekly scorecard (legacy function)
@@ -862,7 +910,7 @@ export async function fetchWeeklyScorecard(
 
     // Calculate live values (with coverage override awareness)
     const agentOverrideDates = overrideDateMap.get(agent.id);
-    const scheduledDays = getScheduledDays(agent, weekStart, weekEnd, agentOverrideDates);
+    const scheduledDays = await getScheduledDays(agent, weekStart, weekEnd, agentOverrideDates);
     const approvedLeaveDays = countApprovedLeaveDays(leaveRequests, agent.email, weekStart, weekEnd);
     const { plannedLeaveDays, unplannedOutageDays } = countOutageDaysByType(leaveRequests, agent.email, weekStart, weekEnd);
     const adjustedScheduledDays = Math.max(0, scheduledDays - approvedLeaveDays);
