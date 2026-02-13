@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.refresh-upwork-tokens]
 verify_jwt = false
+
+[functions.compute-weekly-snapshots]
+verify_jwt = false
