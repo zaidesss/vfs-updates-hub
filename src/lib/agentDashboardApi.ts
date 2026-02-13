@@ -50,6 +50,7 @@ export interface DayAttendance {
   otStatus?: 'present_ot' | 'late_ot' | 'absent_ot' | 'pending_ot';
   otHoursWorkedMinutes?: number;  // OT hours worked in minutes
   otTicketCount?: number;         // OT tickets handled on this day (from snapshots)
+  effectiveQuotaOtEmail?: number | null; // Effective-dated OT quota from snapshot
 }
 
 /**
@@ -2606,6 +2607,7 @@ async function fetchAttendanceSnapshots(
       otStatus: snap.ot_status,
       otHoursWorkedMinutes: snap.ot_hours_worked_minutes,
       otTicketCount: snap.ot_ticket_count,
+      effectiveQuotaOtEmail: snap.quota_ot_email ?? null,
     }));
 
     return { data: attendance, error: null };

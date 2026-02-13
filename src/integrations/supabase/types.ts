@@ -650,6 +650,7 @@ export type Database = {
           ot_status: string | null
           ot_ticket_count: number | null
           profile_id: string
+          quota_ot_email: number | null
           schedule_end: string | null
           schedule_start: string | null
           status: string
@@ -678,6 +679,7 @@ export type Database = {
           ot_status?: string | null
           ot_ticket_count?: number | null
           profile_id: string
+          quota_ot_email?: number | null
           schedule_end?: string | null
           schedule_start?: string | null
           status: string
@@ -706,6 +708,7 @@ export type Database = {
           ot_status?: string | null
           ot_ticket_count?: number | null
           profile_id?: string
+          quota_ot_email?: number | null
           schedule_end?: string | null
           schedule_start?: string | null
           status?: string

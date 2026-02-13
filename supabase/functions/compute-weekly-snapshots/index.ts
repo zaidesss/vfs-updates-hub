@@ -380,6 +380,7 @@ async function computeAttendanceSnapshots(
       ot_status: otLoginEvent ? (otLogoutEvent ? "completed" : "in_progress") : null,
       ot_hours_worked_minutes: otHoursWorkedMinutes,
       ot_ticket_count: otTicketCount,
+      quota_ot_email: schedule?.effective_quota_ot_email ?? null,
     });
   }
 
