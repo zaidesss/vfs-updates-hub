@@ -942,7 +942,7 @@ async function checkAndAlertLateLogin(
 
     if (loginMinutes > lateThreshold) {
       const lateByMinutes = loginMinutes - parsed.startMinutes;
-      const todayStr = format(loginTime, 'yyyy-MM-dd');
+      const todayStr = getESTDateFromTimestamp(loginTime.toISOString());
 
       // Check if we already have a LATE_LOGIN report for today
       const { data: existingReport } = await supabase
@@ -1010,7 +1010,7 @@ async function checkAndAlertEarlyOut(
     // Early out if logged out before scheduled end time
     if (logoutMinutes < parsed.endMinutes) {
       const earlyByMinutes = parsed.endMinutes - logoutMinutes;
-      const todayStr = format(logoutTime, 'yyyy-MM-dd');
+      const todayStr = getESTDateFromTimestamp(logoutTime.toISOString());
 
       // Check if we already have an EARLY_OUT report for today
       const { data: existingReport } = await supabase
@@ -1062,7 +1062,7 @@ async function checkAndAlertOverbreak(
 ): Promise<void> {
   try {
     const now = new Date();
-    const todayStr = format(now, 'yyyy-MM-dd');
+    const todayStr = getESTDateFromTimestamp(now.toISOString());
 
     // Get break schedule from agent_directory
     const { data: directory } = await supabase
