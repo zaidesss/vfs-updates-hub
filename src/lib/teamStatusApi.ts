@@ -162,11 +162,13 @@ export async function fetchScheduledTeamMembers(): Promise<{
       });
     });
 
-    const outageMap = new Map<string, { outage_reason: string; start_time?: string; end_time?: string }>();
+    const outageMap = new Map<string, { outage_reason: string; start_date: string; end_date: string; start_time?: string; end_time?: string }>();
     outages.forEach(o => {
       if (o.agent_email) {
         outageMap.set(o.agent_email.toLowerCase(), {
           outage_reason: o.outage_reason,
+          start_date: o.start_date,
+          end_date: o.end_date,
           start_time: o.start_time,
           end_time: o.end_time,
         });
@@ -209,19 +211,39 @@ export async function fetchScheduledTeamMembers(): Promise<{
       let outageReason: string | null = null;
       
       if (outageInfo) {
-        // Check if outage covers current time
-        if (outageInfo.start_time && outageInfo.end_time) {
-          const outageStart = parseInt(outageInfo.start_time.replace(':', ''), 10) || 0;
-          const outageEnd = parseInt(outageInfo.end_time.replace(':', ''), 10) || 2400;
-          const currentHHMM = Math.floor(currentTimeMinutes / 60) * 100 + (currentTimeMinutes % 60);
-          
-          if (currentHHMM >= outageStart && currentHHMM <= outageEnd) {
-            hasApprovedOutage = true;
-            outageReason = outageInfo.outage_reason;
+        const isFirstDay = todayStr === outageInfo.start_date;
+        const isLastDay = todayStr === outageInfo.end_date;
+        const isSingleDay = outageInfo.start_date === outageInfo.end_date;
+
+        // Helper to parse "HH:MM" or "HH:MM:SS" into total minutes
+        const parseTimeToMinutes = (t?: string): number | null => {
+          if (!t) return null;
+          const parts = t.split(':');
+          return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+        };
+
+        const startMinutes = parseTimeToMinutes(outageInfo.start_time);
+        const endMinutes = parseTimeToMinutes(outageInfo.end_time);
+
+        if (isSingleDay) {
+          // Single day: check both boundaries
+          if (startMinutes != null && endMinutes != null) {
+            hasApprovedOutage = currentTimeMinutes >= startMinutes && currentTimeMinutes <= endMinutes;
+          } else {
+            hasApprovedOutage = true; // no times = full day
           }
+        } else if (isFirstDay) {
+          // First day of multi-day: from start_time onward
+          hasApprovedOutage = startMinutes != null ? currentTimeMinutes >= startMinutes : true;
+        } else if (isLastDay) {
+          // Last day of multi-day: until end_time
+          hasApprovedOutage = endMinutes != null ? currentTimeMinutes <= endMinutes : true;
         } else {
-          // Full day outage
+          // Middle day: all day
           hasApprovedOutage = true;
+        }
+
+        if (hasApprovedOutage) {
           outageReason = outageInfo.outage_reason;
         }
       }
