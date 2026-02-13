@@ -1,42 +1,38 @@
 
 
-## Fix: EST Date Formatting in Non-React API Functions
+## Fix: Missing Details in Agent Reports
 
-### What Happened
+### Problem
 
-The PortalClock migration correctly updated all **React components** to use EST-aware time. However, four spots in **non-React API/utility functions** still use `date-fns format(date, 'yyyy-MM-dd')`, which formats dates using the **browser's local timezone** (e.g., UTC+8 for Philippines-based agents). This caused Erika's 7:20 PM EST login on Feb 12 to be interpreted as Feb 13 (her day off), skipping the late-login check entirely.
+Some Agent Reports show dashes (-) instead of actual values (e.g., "Schedule Start: -", "Bio Time Used: - mins"). This is because the `send-status-alert-notification` edge function creates its own report record with whatever minimal details it receives, instead of leaving report creation to the dedicated functions that have full context.
 
-### Affected Spots
+Three sources of incomplete reports:
 
-| File | Line | Function | Impact |
-|------|------|----------|--------|
-| `scheduleResolver.ts` | 53 | `getEffectiveScheduleForDate` | Wrong date passed to the RPC -- returns wrong day's schedule |
-| `agentDashboardApi.ts` | 945 | `checkAndAlertLateLogin` | Report filed under wrong date, duplicate check queries wrong date |
-| `agentDashboardApi.ts` | 1013 | `checkAndAlertEarlyOut` | Same as above for early-out detection |
-| `agentDashboardApi.ts` | 1065 | `checkAndAlertOverbreak` | Same as above for overbreak detection |
+| Source | Incident Type | Details Sent | Missing Fields |
+|--------|--------------|-------------|----------------|
+| AgentDashboard.tsx (bio timer) | BIO_OVERUSE | `{ allowance }` | totalBioSeconds, overageSeconds |
+| checkAndAlertLateLogin | LATE_LOGIN | `{ lateByMinutes, severity }` | scheduledStart, actualLogin |
+| checkAndAlertEarlyOut | EARLY_OUT | `{ earlyByMinutes, severity }` | scheduledEnd, actualLogout |
 
-### Fix (Single Step)
+### Fix (2 Steps)
 
-Replace all 4 instances of `format(date, 'yyyy-MM-dd')` with `getESTDateFromTimestamp(date.toISOString())` from the existing `timezoneUtils.ts` utility:
+**Step 1: Remove report creation from the edge function**
 
-**File 1: `src/lib/scheduleResolver.ts` (line 53)**
-- Import `getESTDateFromTimestamp` from `@/lib/timezoneUtils`
-- Change: `format(date, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(date.toISOString())`
-- This ensures all schedule lookups resolve against the EST workday
+File: `supabase/functions/send-status-alert-notification/index.ts`
 
-**File 2: `src/lib/agentDashboardApi.ts` (lines 945, 1013, 1065)**
-- `getESTDateFromTimestamp` is already imported in this file
-- Line 945: `format(loginTime, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(loginTime.toISOString())`
-- Line 1013: `format(logoutTime, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(logoutTime.toISOString())`
-- Line 1065: `format(now, 'yyyy-MM-dd')` to `getESTDateFromTimestamp(now.toISOString())`
+Remove the `agent_reports` insert block (lines 137-151). This edge function should only handle notifications (Slack, email, in-app) -- not create reports. Report creation belongs to the client-side functions and the batch job, which have full schedule context.
 
-### Risk Assessment
+**Step 2: Add client-side report creation for BIO_OVERUSE**
 
-- **Low risk**: `getESTDateFromTimestamp` is a well-tested utility already used throughout the portal
-- **No behavioral change** for users already in US Eastern timezone
-- **Fixes** all cross-timezone compliance detection (Late Login, Early Out, Overbreak)
+File: `src/pages/AgentDashboard.tsx`
 
-### Backfill
+The `handleBioExceeded` callback (line 528) currently only calls the edge function. It needs to also create the report directly with full details (totalBioSeconds, bioAllowance, overageSeconds) before calling the notification function, matching the pattern used by `checkAndAlertLateLogin`, `checkAndAlertEarlyOut`, and `checkAndAlertOverbreak`.
 
-After the fix is deployed, Erika's missed LATE_LOGIN report for Feb 12 will need to be manually triggered or will be caught by the next server-side batch job (if the cron fires correctly). We can address that separately.
+### Additional Consideration: Unique Constraint
+
+There is currently NO unique constraint on `agent_reports` for `(agent_email, incident_date, incident_type)`. While the client-side functions check for duplicates before inserting, the batch job does too. Adding a unique constraint would be a safety net. However, this is a separate concern and can be addressed later if desired.
+
+### Backfill Existing Reports
+
+After the fix, we can run a query to update existing reports that have incomplete details by cross-referencing with profile_events data, or simply let the next batch job run fill correct data going forward.
 
