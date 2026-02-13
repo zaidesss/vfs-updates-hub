@@ -463,6 +463,114 @@ export type Database = {
           },
         ]
       }
+      agent_schedule_assignments: {
+        Row: {
+          agent_id: string
+          break_schedule: string | null
+          created_at: string
+          created_by: string | null
+          day_off: string[] | null
+          effective_week_start: string
+          fri_ot_schedule: string | null
+          fri_schedule: string | null
+          id: string
+          mon_ot_schedule: string | null
+          mon_schedule: string | null
+          notes: string | null
+          ot_enabled: boolean | null
+          quota_chat: number | null
+          quota_email: number | null
+          quota_ot_email: number | null
+          quota_phone: number | null
+          sat_ot_schedule: string | null
+          sat_schedule: string | null
+          source: string
+          sun_ot_schedule: string | null
+          sun_schedule: string | null
+          thu_ot_schedule: string | null
+          thu_schedule: string | null
+          tue_ot_schedule: string | null
+          tue_schedule: string | null
+          wed_ot_schedule: string | null
+          wed_schedule: string | null
+        }
+        Insert: {
+          agent_id: string
+          break_schedule?: string | null
+          created_at?: string
+          created_by?: string | null
+          day_off?: string[] | null
+          effective_week_start: string
+          fri_ot_schedule?: string | null
+          fri_schedule?: string | null
+          id?: string
+          mon_ot_schedule?: string | null
+          mon_schedule?: string | null
+          notes?: string | null
+          ot_enabled?: boolean | null
+          quota_chat?: number | null
+          quota_email?: number | null
+          quota_ot_email?: number | null
+          quota_phone?: number | null
+          sat_ot_schedule?: string | null
+          sat_schedule?: string | null
+          source?: string
+          sun_ot_schedule?: string | null
+          sun_schedule?: string | null
+          thu_ot_schedule?: string | null
+          thu_schedule?: string | null
+          tue_ot_schedule?: string | null
+          tue_schedule?: string | null
+          wed_ot_schedule?: string | null
+          wed_schedule?: string | null
+        }
+        Update: {
+          agent_id?: string
+          break_schedule?: string | null
+          created_at?: string
+          created_by?: string | null
+          day_off?: string[] | null
+          effective_week_start?: string
+          fri_ot_schedule?: string | null
+          fri_schedule?: string | null
+          id?: string
+          mon_ot_schedule?: string | null
+          mon_schedule?: string | null
+          notes?: string | null
+          ot_enabled?: boolean | null
+          quota_chat?: number | null
+          quota_email?: number | null
+          quota_ot_email?: number | null
+          quota_phone?: number | null
+          sat_ot_schedule?: string | null
+          sat_schedule?: string | null
+          source?: string
+          sun_ot_schedule?: string | null
+          sun_schedule?: string | null
+          thu_ot_schedule?: string | null
+          thu_schedule?: string | null
+          tue_ot_schedule?: string | null
+          tue_schedule?: string | null
+          wed_ot_schedule?: string | null
+          wed_schedule?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_schedule_assignments_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_schedule_assignments_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles_team_status"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       article_requests: {
         Row: {
           category: Database["public"]["Enums"]["update_category"] | null
