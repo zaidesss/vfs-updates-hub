@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { UpworkLimitRequestDialog } from '@/components/profile/UpworkLimitRequestDialog';
 import { cn } from '@/lib/utils';
@@ -13,12 +14,13 @@ import {
   AgentProfileInput, 
   POSITION_OPTIONS, 
   SUPPORT_TYPE_OPTIONS,
-  getPositionDefaults 
+  getPositionDefaults,
+  canEditSchedules 
 } from '@/lib/agentProfileApi';
 import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
 import { calculateProfileTotalHours } from '@/lib/profileTotalHours';
 import { useAuth } from '@/context/AuthContext';
-import { Clock, Send } from 'lucide-react';
+import { Clock, Send, AlertCircle, Lock } from 'lucide-react';
 
 const ZENDESK_INSTANCES = ['ZD1', 'ZD2'];
 const SUPPORT_ACCOUNTS = Array.from({ length: 17 }, (_, i) => String(i + 1));
@@ -233,6 +235,15 @@ export function WorkConfigurationSection({
 
   return (
     <div className="space-y-6">
+      {/* Schedule Edit Policy Banner */}
+      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+        <Lock className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+        <AlertDescription className="text-amber-900 dark:text-amber-200">
+          <strong>Schedule Editing Policy:</strong> Base schedule changes apply to the week starting <strong>{canEditSchedules().editableWeekStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</strong>. 
+          To adjust this week's schedule, use the <strong>Coverage Board</strong>. This policy protects historical performance data.
+        </AlertDescription>
+      </Alert>
+
       {/* Total Hours Display (Read-only) */}
       <div className="p-4 rounded-lg bg-muted/30 border border-border">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -242,7 +253,7 @@ export function WorkConfigurationSection({
             </div>
             <div>
               <Label className="text-sm text-muted-foreground">Total Hours (Weekly)</Label>
-              <p className="text-2xl font-semibold text-foreground">
+              <p className="text-2xl font-semibold">
                 {totalHours.overallTotalHours.toFixed(1)} <span className="text-base font-normal text-muted-foreground">hours</span>
               </p>
             </div>

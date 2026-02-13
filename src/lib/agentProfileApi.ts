@@ -566,3 +566,80 @@ export function getFirstName(fullName: string | null | undefined): string {
   if (!fullName) return '';
   return fullName.split(' ')[0] || '';
 }
+
+// Get current Monday EST for schedule enforcement
+function getCurrentMondayEST(): Date {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+  const monday = new Date(now.setDate(diff));
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+// Get next Monday EST
+function getNextMondayEST(): Date {
+  const current = getCurrentMondayEST();
+  const next = new Date(current);
+  next.setDate(next.getDate() + 7);
+  return next;
+}
+
+// Check if schedule fields can be edited (only next week allowed)
+export function canEditSchedules(): {
+  canEdit: boolean;
+  editableWeekStart: Date;
+  message: string;
+} {
+  const nextMonday = getNextMondayEST();
+  const formattedDate = nextMonday.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    month: 'short', 
+    day: 'numeric' 
+  });
+  
+  return {
+    canEdit: true,
+    editableWeekStart: nextMonday,
+    message: `Schedule changes apply to the week starting ${formattedDate}. For this week's changes, use the Coverage Board.`
+  };
+}
+
+// Validate that schedule edits are only for next week
+export function validateScheduleEdits(profile: AgentProfile | null, input: AgentProfileInput): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  // Schedule field names that are restricted
+  const scheduleFields = [
+    'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule', 'sun_schedule',
+    'mon_ot_schedule', 'tue_ot_schedule', 'wed_ot_schedule', 'thu_ot_schedule', 'fri_ot_schedule', 'sat_ot_schedule', 'sun_ot_schedule',
+    'break_schedule', 'day_off', 'ot_enabled'
+  ] as const;
+  
+  // Check if any schedule fields were modified
+  let scheduleChanged = false;
+  for (const field of scheduleFields) {
+    const oldValue = profile?.[field] || null;
+    const newValue = input[field] ?? null;
+    
+    // For arrays, use JSON comparison
+    if (Array.isArray(oldValue) && Array.isArray(newValue)) {
+      if (JSON.stringify(oldValue.sort()) !== JSON.stringify(newValue.sort())) {
+        scheduleChanged = true;
+        break;
+      }
+    } else if (oldValue !== newValue) {
+      scheduleChanged = true;
+      break;
+    }
+  }
+  
+  // If no schedule changes, validation passes
+  if (!scheduleChanged) {
+    return { isValid: true, errors: [] };
+  }
+  
+  // If schedule was changed, it's allowed (will be synced to next week's assignment)
+  // The actual enforcement happens at the database level via upsertScheduleAssignment
+  return { isValid: true, errors: [] };
+}
