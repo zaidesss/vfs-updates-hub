@@ -30,6 +30,8 @@ interface DailyWorkTrackerProps {
   // OT tracking
   otEnabled?: boolean;
   isOnOT?: boolean;
+  otHoursWorkedMinutes?: number | null;
+  dataSource?: 'snapshot' | 'live';
   // Day selector props
   weekStart: Date;
   selectedDay: Date;
@@ -116,6 +118,8 @@ export function DailyWorkTracker({
   hasUpworkContract,
   otEnabled,
   isOnOT,
+  otHoursWorkedMinutes,
+  dataSource,
   weekStart,
   selectedDay,
   onDayChange,
@@ -153,8 +157,9 @@ export function DailyWorkTracker({
   // Count how many ticket type bars we're showing (include OT Email if visible)
   const ticketBarsCount = [showEmail, showChat, showCall, showOtEmail].filter(Boolean).length;
 
-  // Determine grid columns for the bottom row (Avg Gap, Portal Time, Upwork Time)
-  const timeMetricsCount = hasUpworkContract ? 3 : 2;
+  // Determine grid columns for the bottom row (Avg Gap, Portal Time, Upwork Time, OT Time)
+  const showOtHours = (otHoursWorkedMinutes ?? 0) > 0;
+  const timeMetricsCount = (hasUpworkContract ? 3 : 2) + (showOtHours ? 1 : 0);
 
   return (
     <Card>
@@ -224,7 +229,7 @@ export function DailyWorkTracker({
             {showOtEmail && (
               <TicketProgressBar
                 icon={<Zap className="h-4 w-4" />}
-                label="OT Email"
+                label={dataSource === 'snapshot' ? "OT Email (Snapshot)" : "OT Email"}
                 count={ticketCounts.otEmail}
                 quota={quotaOtEmail}
                 colorClass="text-violet-600"
@@ -237,7 +242,8 @@ export function DailyWorkTracker({
         <div className={cn(
           "grid gap-6",
           timeMetricsCount === 2 && "grid-cols-1 md:grid-cols-2",
-          timeMetricsCount === 3 && "grid-cols-1 md:grid-cols-3"
+          timeMetricsCount === 3 && "grid-cols-1 md:grid-cols-3",
+          timeMetricsCount >= 4 && "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
         )}>
           {/* Average Gap */}
           <div className="space-y-3">
@@ -334,6 +340,24 @@ export function DailyWorkTracker({
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* OT Time - show when OT hours are available */}
+          {showOtHours && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-violet-600">
+                  <Timer className="h-4 w-4" />
+                  OT Time
+                </div>
+                <span className="text-2xl font-bold">
+                  {formatHours((otHoursWorkedMinutes ?? 0) / 60)}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                Overtime hours worked
+              </p>
             </div>
           )}
         </div>

@@ -9,7 +9,8 @@ import {
   Calendar,
   TrendingUp,
   RotateCcw,
-  Timer
+  Timer,
+  Zap
 } from 'lucide-react';
 import type { DayAttendance, ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatDurationFromMinutes } from '@/lib/agentDashboardApi';
@@ -21,6 +22,7 @@ interface WeeklySummaryCardProps {
   allEvents?: ProfileEvent[];
   weekStart: Date;
   weekEnd: Date;
+  otEnabled?: boolean;
   className?: string;
 }
 
@@ -32,7 +34,7 @@ interface SummaryMetric {
   subtext?: string;
 }
 
-export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekEnd, className }: WeeklySummaryCardProps) {
+export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekEnd, otEnabled, className }: WeeklySummaryCardProps) {
 
   // Calculate metrics
   const workingDays = attendance.filter(
@@ -136,6 +138,20 @@ export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekE
       icon: Timer,
       color: 'text-blue-600 dark:text-blue-400',
       subtext: otLoginCount > 0 ? `${otLoginCount} session${otLoginCount > 1 ? 's' : ''}` : undefined,
+    });
+  }
+
+  // Add OT Tickets if OT is enabled or there are OT tickets
+  const totalOtTickets = attendance.reduce(
+    (sum, a) => sum + (a.otTicketCount || 0),
+    0
+  );
+  if (otEnabled || totalOtTickets > 0) {
+    metrics.push({
+      label: 'OT Tickets',
+      value: totalOtTickets,
+      icon: Zap,
+      color: 'text-violet-600 dark:text-violet-400',
     });
   }
 

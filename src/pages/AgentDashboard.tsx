@@ -639,6 +639,7 @@ export default function AgentDashboard() {
           allEvents={allEvents}
           weekStart={weekStart}
           weekEnd={weekEnd}
+          otEnabled={!!profile.ot_enabled}
         />
 
         {/* Today's Activity + Status Control - side by side on larger screens */}
@@ -689,6 +690,10 @@ export default function AgentDashboard() {
           hasUpworkContract={!!profile.upwork_contract_id}
           otEnabled={!!profile.ot_enabled}
           isOnOT={status === 'ON_OT'}
+          otHoursWorkedMinutes={
+            attendance.find(a => a.dayKey === format(selectedDay, 'yyyy-MM-dd'))?.otHoursWorkedMinutes ?? null
+          }
+          dataSource={dataSource}
           weekStart={weekStart}
           selectedDay={selectedDay}
           onDayChange={handleDayChange}
