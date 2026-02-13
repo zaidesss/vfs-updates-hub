@@ -235,15 +235,6 @@ export function WorkConfigurationSection({
 
   return (
     <div className="space-y-6">
-      {/* Schedule Edit Policy Banner */}
-      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
-        <Lock className="h-4 w-4 text-amber-600 dark:text-amber-500" />
-        <AlertDescription className="text-amber-900 dark:text-amber-200">
-          <strong>Schedule Editing Policy:</strong> Base schedule changes apply to the week starting <strong>{canEditSchedules().editableWeekStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</strong>. 
-          To adjust this week's schedule, use the <strong>Coverage Board</strong>. This policy protects historical performance data.
-        </AlertDescription>
-      </Alert>
-
       {/* Total Hours Display (Read-only) */}
       <div className="p-4 rounded-lg bg-muted/30 border border-border">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -472,6 +463,17 @@ export function WorkConfigurationSection({
             )}
           </div>
         </div>
+      )}
+
+      {/* Schedule Edit Policy Banner - between Productivity and Day Off */}
+      {canEdit && (
+        <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+          <Lock className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+          <AlertDescription className="text-amber-900 dark:text-amber-200">
+            <strong>Schedule Editing Policy:</strong> Base schedule changes apply to the week starting <strong>{canEditSchedules().editableWeekStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</strong>. 
+            To adjust this week's schedule, use the <strong>Coverage Board</strong>. This policy protects historical performance data.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Day Off - moved before schedules so it can affect them */}
