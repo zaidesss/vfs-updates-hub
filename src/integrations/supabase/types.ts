@@ -2788,6 +2788,303 @@ export type Database = {
         }
         Relationships: []
       }
+      weekly_agent_metrics: {
+        Row: {
+          agent_email: string
+          agent_id: string
+          attendance_json: Json | null
+          avg_gap_seconds: number | null
+          call_count: number | null
+          chat_count: number | null
+          computed_at: string
+          created_at: string
+          email_count: number | null
+          id: string
+          is_final: boolean
+          total_break_minutes: number | null
+          total_hours_worked: number | null
+          total_tickets: number | null
+          updated_at: string
+          version: number
+          week_start: string
+        }
+        Insert: {
+          agent_email: string
+          agent_id: string
+          attendance_json?: Json | null
+          avg_gap_seconds?: number | null
+          call_count?: number | null
+          chat_count?: number | null
+          computed_at?: string
+          created_at?: string
+          email_count?: number | null
+          id?: string
+          is_final?: boolean
+          total_break_minutes?: number | null
+          total_hours_worked?: number | null
+          total_tickets?: number | null
+          updated_at?: string
+          version?: number
+          week_start: string
+        }
+        Update: {
+          agent_email?: string
+          agent_id?: string
+          attendance_json?: Json | null
+          avg_gap_seconds?: number | null
+          call_count?: number | null
+          chat_count?: number | null
+          computed_at?: string
+          created_at?: string
+          email_count?: number | null
+          id?: string
+          is_final?: boolean
+          total_break_minutes?: number | null
+          total_hours_worked?: number | null
+          total_tickets?: number | null
+          updated_at?: string
+          version?: number
+          week_start?: string
+        }
+        Relationships: []
+      }
+      weekly_incident_snapshots: {
+        Row: {
+          agent_email: string
+          agent_id: string
+          by_type: Json | null
+          computed_at: string
+          created_at: string
+          id: string
+          incident_count: number | null
+          incidents_json: Json | null
+          is_final: boolean
+          updated_at: string
+          version: number
+          week_start: string
+        }
+        Insert: {
+          agent_email: string
+          agent_id: string
+          by_type?: Json | null
+          computed_at?: string
+          created_at?: string
+          id?: string
+          incident_count?: number | null
+          incidents_json?: Json | null
+          is_final?: boolean
+          updated_at?: string
+          version?: number
+          week_start: string
+        }
+        Update: {
+          agent_email?: string
+          agent_id?: string
+          by_type?: Json | null
+          computed_at?: string
+          created_at?: string
+          id?: string
+          incident_count?: number | null
+          incidents_json?: Json | null
+          is_final?: boolean
+          updated_at?: string
+          version?: number
+          week_start?: string
+        }
+        Relationships: []
+      }
+      weekly_scorecard_snapshots: {
+        Row: {
+          agent_email: string
+          agent_id: string
+          agent_name: string | null
+          approved_leave_days: number | null
+          call_aht_seconds: number | null
+          chat_aht_seconds: number | null
+          chat_frt_seconds: number | null
+          computed_at: string
+          created_at: string
+          days_present: number | null
+          expected_hours: number | null
+          final_score: number | null
+          id: string
+          is_final: boolean
+          is_on_leave: boolean | null
+          order_escalation: number | null
+          ot_productivity: number | null
+          planned_leave_days: number | null
+          productivity: number | null
+          productivity_count: number | null
+          qa: number | null
+          reliability: number | null
+          revalida: number | null
+          schedule_json: Json | null
+          schedule_source: string | null
+          scheduled_days: number | null
+          support_type: string | null
+          unplanned_outage_days: number | null
+          updated_at: string
+          version: number
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          agent_email: string
+          agent_id: string
+          agent_name?: string | null
+          approved_leave_days?: number | null
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          computed_at?: string
+          created_at?: string
+          days_present?: number | null
+          expected_hours?: number | null
+          final_score?: number | null
+          id?: string
+          is_final?: boolean
+          is_on_leave?: boolean | null
+          order_escalation?: number | null
+          ot_productivity?: number | null
+          planned_leave_days?: number | null
+          productivity?: number | null
+          productivity_count?: number | null
+          qa?: number | null
+          reliability?: number | null
+          revalida?: number | null
+          schedule_json?: Json | null
+          schedule_source?: string | null
+          scheduled_days?: number | null
+          support_type?: string | null
+          unplanned_outage_days?: number | null
+          updated_at?: string
+          version?: number
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          agent_email?: string
+          agent_id?: string
+          agent_name?: string | null
+          approved_leave_days?: number | null
+          call_aht_seconds?: number | null
+          chat_aht_seconds?: number | null
+          chat_frt_seconds?: number | null
+          computed_at?: string
+          created_at?: string
+          days_present?: number | null
+          expected_hours?: number | null
+          final_score?: number | null
+          id?: string
+          is_final?: boolean
+          is_on_leave?: boolean | null
+          order_escalation?: number | null
+          ot_productivity?: number | null
+          planned_leave_days?: number | null
+          productivity?: number | null
+          productivity_count?: number | null
+          qa?: number | null
+          reliability?: number | null
+          revalida?: number | null
+          schedule_json?: Json | null
+          schedule_source?: string | null
+          scheduled_days?: number | null
+          support_type?: string | null
+          unplanned_outage_days?: number | null
+          updated_at?: string
+          version?: number
+          week_end?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
+      weekly_snapshot_state: {
+        Row: {
+          archive_file_path: string | null
+          created_at: string
+          error_message: string | null
+          finalized_at: string | null
+          id: string
+          last_computed_at: string | null
+          lock_key: string | null
+          raw_data_deleted_at: string | null
+          status: string
+          updated_at: string
+          week_start: string
+        }
+        Insert: {
+          archive_file_path?: string | null
+          created_at?: string
+          error_message?: string | null
+          finalized_at?: string | null
+          id?: string
+          last_computed_at?: string | null
+          lock_key?: string | null
+          raw_data_deleted_at?: string | null
+          status?: string
+          updated_at?: string
+          week_start: string
+        }
+        Update: {
+          archive_file_path?: string | null
+          created_at?: string
+          error_message?: string | null
+          finalized_at?: string | null
+          id?: string
+          last_computed_at?: string | null
+          lock_key?: string | null
+          raw_data_deleted_at?: string | null
+          status?: string
+          updated_at?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
+      weekly_ticket_summary: {
+        Row: {
+          agent_email: string
+          archive_file_path: string | null
+          computed_at: string
+          created_at: string
+          daily_breakdown: Json | null
+          id: string
+          is_final: boolean
+          total_tickets: number | null
+          updated_at: string
+          version: number
+          week_start: string
+          zd_instance: string | null
+        }
+        Insert: {
+          agent_email: string
+          archive_file_path?: string | null
+          computed_at?: string
+          created_at?: string
+          daily_breakdown?: Json | null
+          id?: string
+          is_final?: boolean
+          total_tickets?: number | null
+          updated_at?: string
+          version?: number
+          week_start: string
+          zd_instance?: string | null
+        }
+        Update: {
+          agent_email?: string
+          archive_file_path?: string | null
+          computed_at?: string
+          created_at?: string
+          daily_breakdown?: Json | null
+          id?: string
+          is_final?: boolean
+          total_tickets?: number | null
+          updated_at?: string
+          version?: number
+          week_start?: string
+          zd_instance?: string | null
+        }
+        Relationships: []
+      }
       zendesk_agent_metrics: {
         Row: {
           agent_email: string
