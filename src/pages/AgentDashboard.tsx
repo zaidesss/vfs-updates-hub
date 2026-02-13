@@ -5,6 +5,7 @@ import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
@@ -42,6 +43,7 @@ import {
   autoGenerateLateLoginRequest,
   parseScheduleRange,
   fetchCoverageOverridesForAgent,
+  getDataSourceForWeek,
   type DashboardProfile,
   type ProfileStatus,
   type EventType,
@@ -96,6 +98,7 @@ export default function AgentDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
+  const [dataSource, setDataSource] = useState<'snapshot' | 'live'>('live');
   
   // Week selector state - use EST for consistent week boundaries
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -211,6 +214,7 @@ export default function AgentDashboard() {
 
       setAttendance(weekAttendance);
       setAllEvents(fetchedAllEvents);
+      setDataSource(getDataSourceForWeek(weekStart));
 
       // Check for today's attendance and auto-generate Late Login outage if needed
       const todayStr = getTodayEST();
@@ -564,6 +568,11 @@ export default function AgentDashboard() {
               <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
                 <LayoutDashboard className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
                 <span className="truncate">Agent Dashboard</span>
+                {dataSource === 'snapshot' && (
+                  <Badge variant="secondary" className="text-xs font-normal ml-1">
+                    Snapshot
+                  </Badge>
+                )}
               </h1>
               <p className="text-muted-foreground text-sm truncate">
                 {profile.full_name || profile.agent_name || profile.email}
