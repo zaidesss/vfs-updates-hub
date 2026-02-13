@@ -2,6 +2,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
 
+/**
+ * Determine if a week should be read from snapshots (older than 2 weeks) or live tables
+ */
+export function getDataSourceForWeek(weekStart: Date): 'snapshot' | 'live' {
+  const now = new Date();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  return weekStart < twoWeeksAgo ? 'snapshot' : 'live';
+}
+
 export type ProfileStatus = 'LOGGED_OUT' | 'LOGGED_IN' | 'ON_BREAK' | 'COACHING' | 'RESTARTING' | 'ON_BIO' | 'ON_OT';
 export type EventType = 'LOGIN' | 'LOGOUT' | 'BREAK_IN' | 'BREAK_OUT' | 'COACHING_START' | 'COACHING_END' | 'DEVICE_RESTART_START' | 'DEVICE_RESTART_END' | 'BIO_START' | 'BIO_END' | 'OT_LOGIN' | 'OT_LOGOUT';
 
@@ -2534,7 +2543,122 @@ async function triggerTicketAssignment(profileId: string, agentEmail: string): P
     } else if (!data?.success) {
       console.error('Ticket assignment failed:', data?.error);
     }
-  } catch (err) {
-    console.error('Failed to trigger ticket assignment:', err);
+   } catch (err) {
+     console.error('Failed to trigger ticket assignment:', err);
+   }
+ }
+
+/**
+ * Fetch attendance snapshots for a given week (used for historical data)
+ */
+async function fetchAttendanceSnapshots(
+  profileId: string,
+  weekStart: Date,
+  weekEnd: Date
+): Promise<{
+  data: DayAttendance[] | null;
+  error: string | null;
+}> {
+  try {
+    const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+    const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('attendance_snapshots')
+      .select('*')
+      .eq('profile_id', profileId)
+      .gte('date', weekStartStr)
+      .lte('date', weekEndStr)
+      .order('date', { ascending: true });
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return { data: null, error: 'No snapshots available for this week' };
+    }
+
+    // Convert snapshot records to DayAttendance format
+    const attendance: DayAttendance[] = data.map((snap: any) => ({
+      date: parseISO(snap.date),
+      dayKey: snap.date,
+      status: snap.status as AttendanceStatus,
+      leaveType: snap.leave_type,
+      loginTime: snap.login_time,
+      logoutTime: snap.logout_time,
+      scheduleStart: snap.schedule_start,
+      scheduleEnd: snap.schedule_end,
+      isEarlyOut: snap.is_early_out,
+      noLogout: snap.no_logout,
+      hoursWorked: snap.hours_worked_formatted,
+      hoursWorkedMinutes: snap.hours_worked_minutes,
+      breakDurationMinutes: snap.break_duration_minutes,
+      breakDuration: snap.break_duration_formatted,
+      allowedBreakMinutes: snap.allowed_break_minutes,
+      allowedBreak: snap.allowed_break_formatted,
+      isOverbreak: snap.is_overbreak,
+      breakOverageMinutes: snap.break_overage_minutes,
+      otSchedule: snap.ot_schedule,
+      otLoginTime: snap.ot_login_time,
+      otLogoutTime: snap.ot_logout_time,
+      otStatus: snap.ot_status,
+      otHoursWorkedMinutes: snap.ot_hours_worked_minutes,
+    }));
+
+    return { data: attendance, error: null };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return { data: null, error: errorMessage };
   }
+}
+
+/**
+ * Dual-read wrapper: fetches attendance from snapshots for old weeks, live data for recent weeks
+ */
+export async function fetchAttendanceDualRead(
+  profile: DashboardProfile,
+  weekStart: Date,
+  weekEnd: Date,
+  profileId: string
+): Promise<{
+  data: DayAttendance[] | null;
+  error: string | null;
+  dataSource: 'snapshot' | 'live';
+}> {
+  const dataSource = getDataSourceForWeek(weekStart);
+
+  if (dataSource === 'snapshot') {
+    const snapshotResult = await fetchAttendanceSnapshots(profileId, weekStart, weekEnd);
+    if (snapshotResult.data) {
+      return { ...snapshotResult, dataSource: 'snapshot' };
+    }
+    // Fall back to live data if no snapshot exists
+  }
+
+  // Live data path
+  const loginEventsResult = await getWeekLoginEvents(profileId, weekStart, weekEnd);
+  const allEventsResult = await getWeekAllEvents(profileId, weekStart, weekEnd);
+  const leavesResult = await getApprovedLeavesForWeek(profile.email, weekStart, weekEnd);
+  const overridesResult = await fetchCoverageOverridesForAgent(
+    profileId,
+    format(weekStart, 'yyyy-MM-dd'),
+    format(weekEnd, 'yyyy-MM-dd')
+  );
+
+  const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
+  const allEvents: ProfileEvent[] = allEventsResult.data || [];
+  const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
+  const coverageOverrides: CoverageOverrideForWeek[] = overridesResult.data || [];
+
+  const attendance = calculateAttendanceForWeek(
+    profile,
+    loginEvents,
+    approvedLeaves,
+    weekStart,
+    allEvents,
+    coverageOverrides
+  );
+
+  return { data: attendance, error: null, dataSource: 'live' };
 }
