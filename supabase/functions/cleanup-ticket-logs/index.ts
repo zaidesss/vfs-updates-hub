@@ -113,14 +113,30 @@ Deno.serve(async (req) => {
       console.error('Error deleting old gap records:', gapDeleteError)
     }
 
-    console.log(`Cleanup complete. Archived and deleted ${oldLogs.length} logs`)
+    // Cleanup old profile_events (already captured in attendance_snapshots + event_snapshots)
+    const { data: deletedEvents, error: profileEventsDeleteError } = await supabase
+      .from('profile_events')
+      .delete()
+      .lt('created_at', cutoffDate.toISOString())
+      .select('id')
+
+    const profileEventsPurged = deletedEvents?.length || 0
+
+    if (profileEventsDeleteError) {
+      console.error('Error deleting old profile events:', profileEventsDeleteError)
+    } else {
+      console.log(`Purged ${profileEventsPurged} old profile_events records`)
+    }
+
+    console.log(`Cleanup complete. Archived and deleted ${oldLogs.length} ticket logs, purged ${profileEventsPurged} profile events`)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         archived: oldLogs.length, 
         archiveFile: fileName,
-        cutoffDate: cutoffDateStr
+        cutoffDate: cutoffDateStr,
+        profileEventsPurged
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
