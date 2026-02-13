@@ -20,6 +20,7 @@ import { WorkConfigurationSection } from '@/components/profile/WorkConfiguration
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DatePicker } from '@/components/ui/date-picker';
+import { getNextMondayEST, upsertScheduleAssignment } from '@/lib/scheduleResolver';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -347,9 +348,63 @@ export default function AgentProfilePage() {
     });
     
     if (result.data) {
+      // If schedule fields were changed, sync to next week's assignment
+      const scheduleFields = [
+        'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule', 'fri_schedule', 'sat_schedule', 'sun_schedule',
+        'mon_ot_schedule', 'tue_ot_schedule', 'wed_ot_schedule', 'thu_ot_schedule', 'fri_ot_schedule', 'sat_ot_schedule', 'sun_ot_schedule',
+        'break_schedule', 'day_off', 'ot_enabled', 'quota_email', 'quota_chat', 'quota_phone', 'quota_ot_email'
+      ];
+      
+      let scheduleChanged = false;
+      for (const field of scheduleFields) {
+        const oldValue = result.data[field as keyof AgentProfile];
+        const newValue = profile[field as keyof AgentProfileInput];
+        if (oldValue !== newValue) {
+          scheduleChanged = true;
+          break;
+        }
+      }
+      
+      if (scheduleChanged) {
+        try {
+          const nextMonday = getNextMondayEST();
+          await upsertScheduleAssignment({
+            agentId: result.data.id,
+            effectiveWeekStart: nextMonday,
+            monSchedule: profile.mon_schedule,
+            tueSchedule: profile.tue_schedule,
+            wedSchedule: profile.wed_schedule,
+            thuSchedule: profile.thu_schedule,
+            friSchedule: profile.fri_schedule,
+            satSchedule: profile.sat_schedule,
+            sunSchedule: profile.sun_schedule,
+            breakSchedule: profile.break_schedule,
+            monOtSchedule: profile.mon_ot_schedule,
+            tueOtSchedule: profile.tue_ot_schedule,
+            wedOtSchedule: profile.wed_ot_schedule,
+            thuOtSchedule: profile.thu_ot_schedule,
+            friOtSchedule: profile.fri_ot_schedule,
+            satOtSchedule: profile.sat_ot_schedule,
+            sunOtSchedule: profile.sun_ot_schedule,
+            dayOff: profile.day_off,
+            otEnabled: profile.ot_enabled,
+            quotaEmail: profile.quota_email,
+            quotaChat: profile.quota_chat,
+            quotaPhone: profile.quota_phone,
+            quotaOtEmail: profile.quota_ot_email,
+            createdBy: user.email.toLowerCase()
+          });
+        } catch (syncError) {
+          console.error('Failed to sync schedule to next week:', syncError);
+          // Don't fail the save, but log the issue
+        }
+      }
+      
       toast({
         title: 'Success',
-        description: 'Profile saved successfully'
+        description: scheduleChanged 
+          ? 'Profile saved. Schedule changes will apply to next week.'
+          : 'Profile saved successfully'
       });
     } else if (result.error) {
       toast({
