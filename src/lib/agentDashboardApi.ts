@@ -49,6 +49,7 @@ export interface DayAttendance {
   otLogoutTime?: string;          // Actual OT logout time
   otStatus?: 'present_ot' | 'late_ot' | 'absent_ot' | 'pending_ot';
   otHoursWorkedMinutes?: number;  // OT hours worked in minutes
+  otTicketCount?: number;         // OT tickets handled on this day (from snapshots)
 }
 
 /**
@@ -2604,6 +2605,7 @@ async function fetchAttendanceSnapshots(
       otLogoutTime: snap.ot_logout_time,
       otStatus: snap.ot_status,
       otHoursWorkedMinutes: snap.ot_hours_worked_minutes,
+      otTicketCount: snap.ot_ticket_count,
     }));
 
     return { data: attendance, error: null };

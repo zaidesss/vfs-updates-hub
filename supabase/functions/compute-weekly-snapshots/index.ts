@@ -302,6 +302,17 @@ async function computeAttendanceSnapshots(
       );
     }
 
+    // OT ticket count for this day
+    const { data: otTickets } = await supabase
+      .from("ticket_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_email", agent.email)
+      .eq("is_ot", true)
+      .gte("timestamp", dayStartUTC.toISOString())
+      .lt("timestamp", dayEndUTC.toISOString());
+
+    const otTicketCount = otTickets?.length || 0;
+
     // Parse schedule times
     const scheduleStr = schedule?.effective_schedule || "";
     const scheduleParts = scheduleStr.split(" - ");
@@ -368,6 +379,7 @@ async function computeAttendanceSnapshots(
       ot_schedule: schedule?.effective_ot_schedule || null,
       ot_status: otLoginEvent ? (otLogoutEvent ? "completed" : "in_progress") : null,
       ot_hours_worked_minutes: otHoursWorkedMinutes,
+      ot_ticket_count: otTicketCount,
     });
   }
 
