@@ -273,10 +273,11 @@ Deno.serve(async (req) => {
       const loginEvents = profileEvents.filter(e => e.event_type === 'LOGIN');
       const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT' && e.event_type !== 'OT_LOGOUT' && e.event_type !== 'SYSTEM_AUTO_LOGOUT');
 
-      // For overnight shifts, separate "previous session" logouts from "current session" logouts
-      // A logout that occurs BEFORE the first login belongs to the previous day's shift
+      // Session-pairing: filter logouts to only those AFTER the last login
+      // This prevents "logout bleed" where a previous session's logout masks a missing logout
+      // Applies to ALL shift types (not just overnight) to handle multi-session days
       let currentSessionLogouts = logoutEvents;
-      if (parsedSchedule && parsedSchedule.endMinutes < parsedSchedule.startMinutes && loginEvents.length > 0) {
+      if (loginEvents.length > 0) {
         const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
         currentSessionLogouts = logoutEvents.filter(e =>
           new Date(e.created_at).getTime() > lastLoginTime
