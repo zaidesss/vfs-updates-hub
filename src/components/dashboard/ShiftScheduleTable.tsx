@@ -12,6 +12,7 @@ import { CalendarDays, AlertTriangle, Clock, Coffee } from 'lucide-react';
 import type { DashboardProfile, DayAttendance, AttendanceStatus } from '@/lib/agentDashboardApi';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
+import type { EffectiveDaySchedule } from '@/lib/scheduleResolver';
 
 interface ShiftScheduleTableProps {
   profile: DashboardProfile;
@@ -19,6 +20,7 @@ interface ShiftScheduleTableProps {
   weekStart: Date;
   weekEnd: Date;
   weekSelector?: React.ReactNode;
+  effectiveWeekSchedules?: EffectiveDaySchedule[];
 }
 
 const DAYS = [
@@ -171,10 +173,18 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
   return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
 
-export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, weekSelector }: ShiftScheduleTableProps) {
+export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, weekSelector, effectiveWeekSchedules }: ShiftScheduleTableProps) {
   const dayOffArray = profile.day_off || [];
   
   const getScheduleForDay = (dayKey: string, dayShort: string): string => {
+    // Use effective schedule if available
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === dayShort);
+    if (effectiveDay) {
+      if (effectiveDay.isDayOff) return 'Day Off';
+      return effectiveDay.schedule || '-';
+    }
+    
+    // Fallback to profile data
     // Check if it's a day off
     if (dayOffArray.includes(dayShort)) {
       return 'Day Off';
@@ -194,6 +204,8 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
   };
 
   const isDayOff = (dayShort: string): boolean => {
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === dayShort);
+    if (effectiveDay) return effectiveDay.isDayOff;
     return dayOffArray.includes(dayShort);
   };
 

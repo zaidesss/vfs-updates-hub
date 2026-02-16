@@ -100,6 +100,7 @@ export default function AgentDashboard() {
   const [attendance, setAttendance] = useState<DayAttendance[]>([]);
   const [allEvents, setAllEvents] = useState<ProfileEvent[]>([]);
   const [dataSource, setDataSource] = useState<'snapshot' | 'live'>('live');
+  const [effectiveWeekSchedules, setEffectiveWeekSchedules] = useState<import('@/lib/scheduleResolver').EffectiveDaySchedule[]>([]);
   
   // Week selector state - use EST for consistent week boundaries
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -152,7 +153,7 @@ export default function AgentDashboard() {
       // Fetch profile (full fields) and RPC data (status/metrics) in parallel
       // This reduces 4+ queries to 2 queries
       const [profileResult, rpcResult, statusResult] = await Promise.all([
-        fetchDashboardProfile(profileId),
+        fetchDashboardProfile(profileId, weekStart),
         fetchAgentDashboardRPC(profileId, selectedDate), // Pass selected date for week calculation
         getProfileStatus(profileId), // Still need this for bio fields not in RPC
       ]);
@@ -190,6 +191,11 @@ export default function AgentDashboard() {
       // Fetch login events, all events, approved leaves, and coverage overrides in parallel
       const weekStartStr = format(weekStart, 'yyyy-MM-dd');
       const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+      
+      // Fetch effective week schedules for ShiftScheduleTable display
+      const { getEffectiveSchedulesForWeek } = await import('@/lib/scheduleResolver');
+      const weekSchedules = await getEffectiveSchedulesForWeek(profileId, weekStart);
+      setEffectiveWeekSchedules(weekSchedules);
       
       // Use dual-read: snapshots for old weeks, live data for recent weeks
       const dualReadResult = await fetchAttendanceDualRead(
@@ -684,6 +690,7 @@ export default function AgentDashboard() {
           attendance={attendance}
           weekStart={weekStart}
           weekEnd={weekEnd}
+          effectiveWeekSchedules={effectiveWeekSchedules}
           weekSelector={
             <DashboardWeekSelector 
               selectedDate={selectedDate} 

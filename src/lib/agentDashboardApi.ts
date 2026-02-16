@@ -298,7 +298,7 @@ export async function fetchAgentDashboardRPC(profileId: string, referenceDate?: 
   }
 }
 
-export async function fetchDashboardProfile(profileId: string, targetDate?: Date | string): Promise<{ data: DashboardProfile | null; error: string | null }> {
+export async function fetchDashboardProfile(profileId: string, weekStart?: Date | string): Promise<{ data: DashboardProfile | null; error: string | null }> {
   try {
     // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
@@ -322,10 +322,32 @@ export async function fetchDashboardProfile(profileId: string, targetDate?: Date
       .eq('email', profile.email)
       .maybeSingle();
 
-    // 3. Use scheduleResolver to get effective-dated schedules
-    const { getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
-    const dateToResolve = targetDate ? (typeof targetDate === 'string' ? new Date(targetDate) : targetDate) : new Date();
-    const effectiveSchedule = await getEffectiveScheduleForDate(profileId, dateToResolve);
+    // 3. Use week-based scheduleResolver to build proper day_off array
+    const { getEffectiveSchedulesForWeek, getEffectiveScheduleForDate } = await import('@/lib/scheduleResolver');
+    
+    // Build day_off array from effective week schedules
+    let dayOffArray: string[] = [];
+    let effectiveBreakSchedule: string | null = null;
+    
+    if (weekStart) {
+      const weekStartStr = typeof weekStart === 'string' 
+        ? weekStart 
+        : format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const weekSchedules = await getEffectiveSchedulesForWeek(profileId, weekStartStr);
+      dayOffArray = weekSchedules
+        .filter(d => d.isDayOff)
+        .map(d => d.dayName); // e.g., ['Sat', 'Sun']
+      
+      // Get break schedule from today's effective schedule
+      const todayStr = getTodayEST();
+      const todaySchedule = weekSchedules.find(d => d.dayDate === todayStr);
+      effectiveBreakSchedule = todaySchedule?.breakSchedule || null;
+    } else {
+      // Fallback: resolve for today only
+      const effectiveSchedule = await getEffectiveScheduleForDate(profileId, new Date());
+      dayOffArray = effectiveSchedule.isDayOff ? ['all'] : [];
+      effectiveBreakSchedule = effectiveSchedule.breakSchedule || null;
+    }
 
     // 4. Merge and return - use agent_profiles fields as source of truth, effective schedules for day-specific data
     const dashboardProfile: DashboardProfile = {
@@ -337,11 +359,11 @@ export async function fetchDashboardProfile(profileId: string, targetDate?: Date
       support_account: directory?.support_account || null,
       support_type: directory?.support_type || null,
       ticket_assignment_view_id: directory?.ticket_assignment_view_id || null,
-      break_schedule: effectiveSchedule.breakSchedule || null,
+      break_schedule: effectiveBreakSchedule,
       quota: directory?.quota || null,
       weekday_schedule: directory?.weekday_schedule || null,
       weekend_schedule: directory?.weekend_schedule || null,
-      day_off: effectiveSchedule.isDayOff ? ['all'] : [],
+      day_off: dayOffArray,
       upwork_contract_id: profile.upwork_contract_id || null,
       ot_enabled: profile.ot_enabled || false,
       // For week-view display, still pull from directory (these are fallbacks for UI display)
@@ -1457,7 +1479,8 @@ export function calculateAttendanceForWeek(
   approvedLeaves: ApprovedLeave[],
   weekStart: Date,
   allEvents?: ProfileEvent[],
-  coverageOverrides?: CoverageOverrideForWeek[]
+  coverageOverrides?: CoverageOverrideForWeek[],
+  effectiveWeekSchedules?: import('@/lib/scheduleResolver').EffectiveDaySchedule[]
 ): DayAttendance[] {
   const DAYS = [
     { key: 'mon', short: 'Mon', offset: 0 },
@@ -1566,7 +1589,11 @@ export function calculateAttendanceForWeek(
 
     // If there's a coverage override, skip the day_off check — agent is scheduled to work
     // 1. Check if it's a day off (only when no override)
-    if (!override && dayOffArray.includes(day.short)) {
+    // Use effective schedule if available, otherwise fall back to profile day_off array
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === day.short);
+    const isDayOff = effectiveDay ? effectiveDay.isDayOff : dayOffArray.includes(day.short);
+    
+    if (!override && isDayOff) {
       const otData = calculateOTForDay();
       return { 
         date, 
@@ -1595,10 +1622,12 @@ export function calculateAttendanceForWeek(
       };
     }
 
-    // 3. Get schedule for this day (override takes priority)
+    // 3. Get schedule for this day (override > effective schedule > profile fallback)
     let scheduleTime: string | null = null;
     if (override) {
       scheduleTime = `${override.override_start} - ${override.override_end}`;
+    } else if (effectiveDay?.schedule) {
+      scheduleTime = effectiveDay.schedule;
     } else {
       const scheduleKey = `${day.key}_schedule` as keyof DashboardProfile;
       scheduleTime = profile[scheduleKey] as string | null;
@@ -2644,14 +2673,19 @@ export async function fetchAttendanceDualRead(
   }
 
   // Live data path
-  const loginEventsResult = await getWeekLoginEvents(profileId, weekStart, weekEnd);
-  const allEventsResult = await getWeekAllEvents(profileId, weekStart, weekEnd);
-  const leavesResult = await getApprovedLeavesForWeek(profile.email, weekStart, weekEnd);
-  const overridesResult = await fetchCoverageOverridesForAgent(
-    profileId,
-    format(weekStart, 'yyyy-MM-dd'),
-    format(weekEnd, 'yyyy-MM-dd')
-  );
+  const { getEffectiveSchedulesForWeek } = await import('@/lib/scheduleResolver');
+  
+  const [loginEventsResult, allEventsResult, leavesResult, overridesResult, weekSchedules] = await Promise.all([
+    getWeekLoginEvents(profileId, weekStart, weekEnd),
+    getWeekAllEvents(profileId, weekStart, weekEnd),
+    getApprovedLeavesForWeek(profile.email, weekStart, weekEnd),
+    fetchCoverageOverridesForAgent(
+      profileId,
+      format(weekStart, 'yyyy-MM-dd'),
+      format(weekEnd, 'yyyy-MM-dd')
+    ),
+    getEffectiveSchedulesForWeek(profileId, weekStart),
+  ]);
 
   const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
   const allEvents: ProfileEvent[] = allEventsResult.data || [];
@@ -2664,7 +2698,8 @@ export async function fetchAttendanceDualRead(
     approvedLeaves,
     weekStart,
     allEvents,
-    coverageOverrides
+    coverageOverrides,
+    weekSchedules
   );
 
   return { data: attendance, error: null, dataSource: 'live' };
