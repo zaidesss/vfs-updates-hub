@@ -465,11 +465,11 @@ Deno.serve(async (req) => {
       if (logoutEvents.length > 0 && parsedSchedule) {
         const isOvernightShift = parsedSchedule.endMinutes < parsedSchedule.startMinutes;
 
-        // For overnight shifts, filter logouts to only those AFTER the last login
-        // to prevent previous day's logout bleed (e.g., 1 AM logout from yesterday's
-        // overnight shift being attributed to today's shift)
+        // Session-pairing: filter logouts to only those AFTER the last login
+        // Applies to ALL shift types (consistent with NO_LOGOUT fix) to prevent
+        // previous session's logout from masking an early out in the current session
         let effectiveLogoutEvents = logoutEvents;
-        if (isOvernightShift && loginEvents.length > 0) {
+        if (loginEvents.length > 0) {
           const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
           effectiveLogoutEvents = logoutEvents.filter(e =>
             new Date(e.created_at).getTime() > lastLoginTime
