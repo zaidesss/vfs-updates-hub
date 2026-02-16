@@ -23,7 +23,7 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 export function ProfileCompletionModal() {
   const { user } = useAuth();
-  const { showProfileModal, markProfileComplete } = useProfileCompletion();
+  const { showProfileModal, markProfileComplete, refreshProfileStatus, isProfileComplete } = useProfileCompletion();
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(false);
@@ -115,26 +115,56 @@ export function ProfileCompletionModal() {
     setIsSaving(true);
 
     try {
-      const { error } = await supabase
-        .from('agent_profiles')
-        .upsert({
-          email: user.email.toLowerCase(),
-          full_name: formData.full_name.trim(),
-          phone_number: formData.phone_number.trim(),
-          birthday: formData.birthday,
-          home_address: formData.home_address.trim(),
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'email',
-        });
+      const userEmail = user.email.toLowerCase();
+      const profileData = {
+        full_name: formData.full_name.trim(),
+        phone_number: formData.phone_number.trim(),
+        birthday: formData.birthday,
+        home_address: formData.home_address.trim(),
+        updated_at: new Date().toISOString(),
+      };
 
-      if (error) {
-        console.error('Error saving profile:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to save your profile. Please try again.',
-          variant: 'destructive',
-        });
+      // Check if profile row already exists
+      const { data: existing, error: selectError } = await supabase
+        .from('agent_profiles')
+        .select('id')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (selectError) {
+        console.error('[ProfileCompletion] Select error:', JSON.stringify(selectError));
+      }
+
+      let saveError: any = null;
+
+      if (existing) {
+        // UPDATE existing row
+        const { error } = await supabase
+          .from('agent_profiles')
+          .update(profileData)
+          .eq('email', userEmail);
+        saveError = error;
+      } else {
+        // INSERT new row
+        const { error } = await supabase
+          .from('agent_profiles')
+          .insert({ email: userEmail, ...profileData });
+        saveError = error;
+      }
+
+      if (saveError) {
+        console.error('[ProfileCompletion] Save error:', JSON.stringify(saveError));
+        // Re-check if profile is actually complete despite the error
+        await refreshProfileStatus();
+        // If refreshProfileStatus marked it complete, the modal will close via context
+        // If still incomplete, show error
+        if (!isProfileComplete) {
+          toast({
+            title: 'Error',
+            description: 'Failed to save your profile. Please try again.',
+            variant: 'destructive',
+          });
+        }
         return;
       }
 
@@ -145,12 +175,16 @@ export function ProfileCompletionModal() {
       
       markProfileComplete();
     } catch (err) {
-      console.error('Error saving profile:', err);
-      toast({
-        title: 'Error',
-        description: 'Something went wrong. Please try again.',
-        variant: 'destructive',
-      });
+      console.error('[ProfileCompletion] Unexpected error:', err);
+      // Re-check profile status even on unexpected errors
+      await refreshProfileStatus();
+      if (!isProfileComplete) {
+        toast({
+          title: 'Error',
+          description: 'Something went wrong. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsSaving(false);
     }
