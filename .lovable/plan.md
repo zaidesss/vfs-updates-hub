@@ -1,44 +1,76 @@
 
 
-## Fix: Database RPC Day-Off Comparison Bug
+## Fix: Profile Completion Modal Error and Stuck State
 
 ### Root Cause
 
-The `get_effective_schedule` PostgreSQL RPC has a string mismatch bug. The `day_off` arrays in both `agent_profiles` and `agent_schedule_assignments` store **short day names** like `['Sat', 'Sun']`. However, the RPC sets `v_day_name` to **full day names** like `'Saturday'`, `'Sunday'`.
+The `ProfileCompletionModal` uses a Supabase `upsert` with `onConflict: 'email'` to save the profile. When the profile row already exists (pre-created by an admin), the PostgREST upsert can fail due to RLS policy evaluation order -- the INSERT path is attempted first, and the conflict resolution with RLS can be unreliable in some configurations.
 
-The comparison on line 87/101 and 117:
+When the upsert fails:
+1. The error toast shows ("Failed to save your profile")
+2. `markProfileComplete()` is never called
+3. The modal has no close button, blocks Escape, and blocks outside clicks
+4. The user is permanently stuck
+
+### The Fix (3 changes)
+
+**Change 1: Replace `upsert` with select-then-update/insert pattern**
+
+In `ProfileCompletionModal.tsx`, replace the single `upsert` call with:
+1. First SELECT to check if the profile row exists
+2. If it exists: UPDATE the row
+3. If it doesn't exist: INSERT a new row
+
+This avoids the upsert+RLS edge case entirely.
+
+```text
+// Instead of:
+supabase.from('agent_profiles').upsert({...}, { onConflict: 'email' })
+
+// Do:
+const { data: existing } = await supabase
+  .from('agent_profiles')
+  .select('id')
+  .eq('email', userEmail)
+  .maybeSingle();
+
+if (existing) {
+  // UPDATE existing row
+  await supabase.from('agent_profiles')
+    .update({ full_name, phone_number, birthday, home_address, updated_at })
+    .eq('email', userEmail);
+} else {
+  // INSERT new row
+  await supabase.from('agent_profiles')
+    .insert({ email: userEmail, full_name, phone_number, birthday, home_address, updated_at });
+}
 ```
-v_is_day_off := (v_assignment.day_off IS NOT NULL AND v_day_name = ANY(v_assignment.day_off));
+
+**Change 2: Add error recovery -- re-check profile after failure**
+
+If the save operation fails, re-run the profile completion check. If the profile is actually complete (e.g., data was saved despite the error, or an admin filled it), dismiss the modal anyway.
+
+```text
+// In the catch/error block of handleSubmit:
+if (error) {
+  // Re-check if profile is actually complete despite the error
+  await refreshProfileStatus();
+  // If still incomplete, show the error toast
+}
 ```
-...is effectively doing `'Saturday' = ANY(ARRAY['Sat', 'Sun'])`, which is always `false`.
 
-This is why Jaeran (and every other agent) shows "Absent" instead of "Off" on their days off -- the RPC never identifies any day as a day off.
+**Change 3: Add console logging for the actual error**
 
-### The Fix
-
-A single database migration to update the `get_effective_schedule` function. Add a `v_day_short` variable that holds the short day name (`Mon`, `Tue`, etc.) and use it for the `day_off` comparison instead of `v_day_name`.
-
-Changes inside the RPC:
-1. Declare a new variable: `v_day_short TEXT;`
-2. In each CASE branch, set `v_day_short` alongside `v_day_name`:
-   - `WHEN 1 THEN v_day_name := 'Monday'; v_day_short := 'Mon'; ...`
-   - `WHEN 6 THEN v_day_name := 'Saturday'; v_day_short := 'Sat'; ...`
-   - `WHEN 0 THEN v_day_name := 'Sunday'; v_day_short := 'Sun'; ...`
-3. Change both day-off checks from:
-   - `v_day_name = ANY(v_assignment.day_off)` to `v_day_short = ANY(v_assignment.day_off)`
-   - `v_day_name = ANY(v_profile.day_off)` to `v_day_short = ANY(v_profile.day_off)`
+Log the full error object so that if this happens again, the error details are visible in console logs for debugging.
 
 ### Files to Change
 
-1. **Database migration only** -- `CREATE OR REPLACE FUNCTION get_effective_schedule(...)` with the corrected short-name comparison.
+1. `src/components/ProfileCompletionModal.tsx` -- replace upsert, add error recovery, add logging
+2. `src/context/ProfileCompletionContext.tsx` -- no changes needed (already has `refreshProfileStatus`)
 
-No frontend code changes needed. The frontend code from the previous fix is already correct -- it just needs the RPC to return the right `is_day_off` value.
+### Impact
 
-### Verification
+- Users with pre-created profiles will no longer get stuck on the modal
+- If the save fails for any reason, the system re-checks and dismisses the modal if data is actually there
+- No impact on users whose profiles don't exist yet (INSERT path still works)
 
-After the fix, running:
-```sql
-SELECT day_date, day_name, is_day_off
-FROM get_effective_schedules_for_week('1415bc8d-...', '2026-02-09')
-```
-should return `is_day_off: true` for Saturday and Sunday.
