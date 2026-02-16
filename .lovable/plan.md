@@ -1,69 +1,44 @@
 
 
-## Fix: Dashboard Day Off Array Not Populated Correctly
+## Fix: Database RPC Day-Off Comparison Bug
 
 ### Root Cause
 
-In `fetchDashboardProfile` (line 344 of `agentDashboardApi.ts`):
+The `get_effective_schedule` PostgreSQL RPC has a string mismatch bug. The `day_off` arrays in both `agent_profiles` and `agent_schedule_assignments` store **short day names** like `['Sat', 'Sun']`. However, the RPC sets `v_day_name` to **full day names** like `'Saturday'`, `'Sunday'`.
 
-```text
-day_off: effectiveSchedule.isDayOff ? ['all'] : [],
+The comparison on line 87/101 and 117:
 ```
+v_is_day_off := (v_assignment.day_off IS NOT NULL AND v_day_name = ANY(v_assignment.day_off));
+```
+...is effectively doing `'Saturday' = ANY(ARRAY['Sat', 'Sun'])`, which is always `false`.
 
-The schedule resolver (`getEffectiveScheduleForDate`) is called for a **single date** (today). It returns `isDayOff: true/false` for just that one day. The code then sets `day_off` to either `['all']` or `[]` -- completely discarding the actual day-off array (e.g., `['Sat', 'Sun']`).
-
-When the dashboard loads on a weekday (Monday), `isDayOff` is `false`, so `day_off` becomes `[]`. Then `calculateAttendanceForWeek` checks `dayOffArray.includes('Sat')` which is `false` because the array is empty. Saturday and Sunday fall through to the "no login + past day = absent" logic.
+This is why Jaeran (and every other agent) shows "Absent" instead of "Off" on their days off -- the RPC never identifies any day as a day off.
 
 ### The Fix
 
-Replace the single-date schedule resolve with the **week-based resolver** (`getEffectiveSchedulesForWeek`) so that each day in the week gets its own `isDayOff` status. There are two places to fix:
+A single database migration to update the `get_effective_schedule` function. Add a `v_day_short` variable that holds the short day name (`Mon`, `Tue`, etc.) and use it for the `day_off` comparison instead of `v_day_name`.
 
-**Fix 1: `fetchDashboardProfile` -- restore proper `day_off` array**
-
-Instead of deriving `day_off` from a single-date resolver call, fetch the week's schedules and build the array from days where `isDayOff === true`:
-
-```text
-// Current (broken):
-day_off: effectiveSchedule.isDayOff ? ['all'] : [],
-
-// Fixed: use getEffectiveSchedulesForWeek to build proper day_off array
-const weekSchedules = await getEffectiveSchedulesForWeek(profileId, weekStart);
-const dayOffArray = weekSchedules
-  .filter(d => d.isDayOff)
-  .map(d => d.dayName);  // e.g., ['Sat', 'Sun']
-
-day_off: dayOffArray,
-```
-
-This requires passing a `weekStart` parameter to `fetchDashboardProfile` (the caller in `AgentDashboard.tsx` already has this value).
-
-**Fix 2: `calculateAttendanceForWeek` -- use per-day effective schedules**
-
-Currently this function reads `profile.day_off`, `profile.mon_schedule`, etc. from the static profile/directory. It should also accept the week's effective schedules so that per-day overrides (from coverage board or schedule assignments) are respected for both day-off detection AND schedule lookups.
-
-Add an optional `effectiveWeekSchedules` parameter. When provided, use each day's resolved schedule instead of the profile fields:
-
-```text
-// For each day in the loop:
-const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === day.short);
-
-// Day off check becomes:
-if (!override && effectiveDay?.isDayOff) { ... }
-
-// Schedule lookup becomes:
-scheduleTime = effectiveDay?.schedule || null;
-```
-
-**Fix 3: `ShiftScheduleTable` -- also use effective schedules**
-
-The `ShiftScheduleTable` component also reads `profile.day_off` and `profile[day_schedule]` directly. It should receive the effective week schedules and display the resolved values instead.
+Changes inside the RPC:
+1. Declare a new variable: `v_day_short TEXT;`
+2. In each CASE branch, set `v_day_short` alongside `v_day_name`:
+   - `WHEN 1 THEN v_day_name := 'Monday'; v_day_short := 'Mon'; ...`
+   - `WHEN 6 THEN v_day_name := 'Saturday'; v_day_short := 'Sat'; ...`
+   - `WHEN 0 THEN v_day_name := 'Sunday'; v_day_short := 'Sun'; ...`
+3. Change both day-off checks from:
+   - `v_day_name = ANY(v_assignment.day_off)` to `v_day_short = ANY(v_assignment.day_off)`
+   - `v_day_name = ANY(v_profile.day_off)` to `v_day_short = ANY(v_profile.day_off)`
 
 ### Files to Change
 
-1. `src/lib/agentDashboardApi.ts` -- `fetchDashboardProfile` and `calculateAttendanceForWeek`
-2. `src/pages/AgentDashboard.tsx` -- pass `weekStart` to profile fetch, pass effective schedules to attendance calculator
-3. `src/components/dashboard/ShiftScheduleTable.tsx` -- accept and use effective week schedules
+1. **Database migration only** -- `CREATE OR REPLACE FUNCTION get_effective_schedule(...)` with the corrected short-name comparison.
 
-### Why This Matters
+No frontend code changes needed. The frontend code from the previous fix is already correct -- it just needs the RPC to return the right `is_day_off` value.
 
-Without this fix, any agent whose dashboard is loaded on a day that is NOT their day off will show ALL their days off as "Absent" for past dates. The schedule resolver was introduced but only partially integrated -- the dashboard still bypasses it for the weekly view.
+### Verification
+
+After the fix, running:
+```sql
+SELECT day_date, day_name, is_day_off
+FROM get_effective_schedules_for_week('1415bc8d-...', '2026-02-09')
+```
+should return `is_day_off: true` for Saturday and Sunday.
