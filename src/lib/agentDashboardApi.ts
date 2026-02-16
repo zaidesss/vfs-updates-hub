@@ -427,9 +427,9 @@ export async function updateProfileStatus(
     // Handle stale login detection on LOGIN attempt
     // If agent is not LOGGED_OUT but their status_since is from a previous day, auto-logout first
     if (eventType === 'LOGIN' && currentStatus !== 'LOGGED_OUT' && currentStatusData?.status_since) {
-      const statusDate = new Date(currentStatusData.status_since);
-      const todayStr = format(now, 'yyyy-MM-dd');
-      const statusDateStr = format(statusDate, 'yyyy-MM-dd');
+      
+      const todayStr = getESTDateFromTimestamp(now.toISOString());
+      const statusDateStr = getESTDateFromTimestamp(currentStatusData.status_since);
       
       if (statusDateStr !== todayStr) {
         // Stale login detected - auto-logout and create NO_LOGOUT report
@@ -1313,7 +1313,7 @@ function calculateBreakDurationForDay(
 ): number {
   // Filter events for this specific day
   const dayBreakEvents = breakEvents.filter((event) => {
-    const eventDate = format(parseISO(event.created_at), 'yyyy-MM-dd');
+    const eventDate = getESTDateFromTimestamp(event.created_at);
     return eventDate === dateStr && (event.event_type === 'BREAK_IN' || event.event_type === 'BREAK_OUT');
   });
 
@@ -1489,7 +1489,10 @@ export function calculateAttendanceForWeek(
     date.setDate(weekStart.getDate() + day.offset);
     date.setHours(0, 0, 0, 0);
 
-    const dateStr = format(date, 'yyyy-MM-dd');
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     const isPast = isBefore(date, today);
     const isToday = isEqual(date, today);
 
@@ -2140,7 +2143,7 @@ export async function getTodayGapData(agentTag: string): Promise<{
   error: string | null 
 }> {
   try {
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = getTodayEST();
 
     const { data, error } = await supabase
       .from('ticket_gap_daily')
@@ -2392,7 +2395,7 @@ async function fetchAndCacheUpworkTime(profileId: string, agentEmail: string): P
       return;
     }
 
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = getTodayEST();
     
     // Call the edge function to fetch and cache
     const { error } = await supabase.functions.invoke('fetch-upwork-time', {

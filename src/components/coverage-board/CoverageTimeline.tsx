@@ -113,7 +113,7 @@ export function CoverageTimeline({
     ? ((dayOffsetNow * HOURS_PER_DAY + now.getHours() + now.getMinutes() / 60) / TOTAL_HOUR_COLS) * 100
     : -1;
 
-  const todayStr = format(now, 'yyyy-MM-dd');
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   return (
     <div>

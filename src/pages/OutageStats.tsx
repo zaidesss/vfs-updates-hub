@@ -91,7 +91,11 @@ export default function OutageStats() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    const estStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' }).format(now);
+    return estStr.slice(0, 7);
+  });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('overview');
   const [policyOpen, setPolicyOpen] = useState(false);

@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { format, subMonths } from 'date-fns';
+import { format } from 'date-fns';
+import { getTodayEST } from '@/lib/timezoneUtils';
 import {
   type IncidentType,
   INCIDENT_TYPE_CONFIG,
@@ -34,8 +35,11 @@ export function AgentAnalyticsPanel({ agentEmail, agentName }: AgentAnalyticsPan
   useEffect(() => {
     const loadAnalytics = async () => {
       setIsLoading(true);
-      const endDate = format(new Date(), 'yyyy-MM-dd');
-      const startDate = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
+      const endDate = getTodayEST();
+      // Calculate 6 months back from EST today
+      const [y, m, d] = endDate.split('-').map(Number);
+      const sixMonthsAgo = new Date(y, m - 1 - 6, d);
+      const startDate = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}-${String(sixMonthsAgo.getDate()).padStart(2, '0')}`;
       
       const result = await getAgentAnalytics(agentEmail, startDate, endDate);
       if (result.data) {
