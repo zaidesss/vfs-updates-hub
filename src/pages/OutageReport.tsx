@@ -50,7 +50,11 @@ export default function OutageReport() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    const estStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' }).format(now);
+    return estStr.slice(0, 7);
+  });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
 
   // Generate months from Jan 2024 to Dec 2026

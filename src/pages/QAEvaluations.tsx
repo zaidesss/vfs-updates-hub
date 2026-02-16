@@ -83,11 +83,11 @@ export default function QAEvaluations() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   // New Year/Month/Week selectors - default to current month
-  const now = new Date();
-  const [selectedYear, setSelectedYear] = useState<string>(String(now.getFullYear()));
-  const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1).padStart(2, '0'));
+  const estNow = useMemo(() => new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })), []);
+  const [selectedYear, setSelectedYear] = useState<string>(String(estNow.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(estNow.getMonth() + 1).padStart(2, '0'));
   const [selectedWeek, setSelectedWeek] = useState<string>(() => {
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekStart = startOfWeek(estNow, { weekStartsOn: 1 });
     return format(weekStart, 'yyyy-MM-dd');
   });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
