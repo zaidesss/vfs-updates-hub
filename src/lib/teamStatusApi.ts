@@ -40,6 +40,7 @@ export interface TeamMemberStatus {
   outageReason: string | null;
   hasApprovedOutage: boolean;
   otSchedule: string | null;
+  outageStatus: 'approved' | 'pending' | 'for_review' | null;
 }
 
 export interface CategorizedTeamMembers {
@@ -138,8 +139,8 @@ export async function fetchScheduledTeamMembers(): Promise<{
       // Fetch approved outages covering today
       supabase
         .from('leave_requests')
-        .select('agent_email, outage_reason, start_date, end_date, start_time, end_time')
-        .eq('status', 'approved')
+        .select('agent_email, outage_reason, start_date, end_date, start_time, end_time, status')
+        .in('status', ['approved', 'pending', 'for_review'])
         .lte('start_date', todayStr)
         .gte('end_date', todayStr),
     ]);
@@ -162,7 +163,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
       });
     });
 
-    const outageMap = new Map<string, { outage_reason: string; start_date: string; end_date: string; start_time?: string; end_time?: string }>();
+    const outageMap = new Map<string, { outage_reason: string; start_date: string; end_date: string; start_time?: string; end_time?: string; status: string }>();
     outages.forEach(o => {
       if (o.agent_email) {
         outageMap.set(o.agent_email.toLowerCase(), {
@@ -171,6 +172,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
           end_date: o.end_date,
           start_time: o.start_time,
           end_time: o.end_time,
+          status: o.status,
         });
       }
     });
@@ -209,6 +211,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
       const outageInfo = outageMap.get(email);
       let hasApprovedOutage = false;
       let outageReason: string | null = null;
+      let outageStatus: 'approved' | 'pending' | 'for_review' | null = null;
       
       if (outageInfo) {
         const isFirstDay = todayStr === outageInfo.start_date;
@@ -245,11 +248,12 @@ export async function fetchScheduledTeamMembers(): Promise<{
 
         if (hasApprovedOutage) {
           outageReason = outageInfo.outage_reason;
+          outageStatus = outageInfo.status as 'approved' | 'pending' | 'for_review';
         }
       }
       
       // Count as online if logged in and not on outage
-      if (currentStatus !== 'LOGGED_OUT' && !hasApprovedOutage) {
+      if (currentStatus !== 'LOGGED_OUT' && !(hasApprovedOutage && outageStatus === 'approved')) {
         onlineCount++;
       }
       
@@ -266,6 +270,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
         outageReason,
         hasApprovedOutage,
         otSchedule: otSchedule,
+        outageStatus,
       });
     }
 
