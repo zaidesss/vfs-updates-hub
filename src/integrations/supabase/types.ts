@@ -715,6 +715,33 @@ export type Database = {
         }
         Relationships: []
       }
+      call_count_daily: {
+        Row: {
+          agent_email: string
+          agent_name: string
+          call_count: number
+          date: string
+          fetched_at: string
+          id: string
+        }
+        Insert: {
+          agent_email: string
+          agent_name: string
+          call_count?: number
+          date: string
+          fetched_at?: string
+          id?: string
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string
+          call_count?: number
+          date?: string
+          fetched_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       coverage_override_logs: {
         Row: {
           agent_id: string
