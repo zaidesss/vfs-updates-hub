@@ -3,10 +3,12 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/hooks/use-toast';
 
 import { fetchDashboardData, formatGapTime, AgentDashboardData, parseLocalDate } from '@/lib/ticketLogsApi';
 import { supabase } from '@/integrations/supabase/client';
-import { Mail, MessageCircle, Phone } from 'lucide-react';
+import { Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react';
 
 interface TicketDashboardProps {
   zdInstance: string;
@@ -17,6 +19,26 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
   const [data, setData] = useState<AgentDashboardData[]>([]);
   const [dateRangeLabel, setDateRangeLabel] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshingCalls, setIsRefreshingCalls] = useState(false);
+
+  const isZD1 = zdInstance === 'customerserviceadvocates';
+
+  const refreshCallCounts = async () => {
+    setIsRefreshingCalls(true);
+    try {
+      const { error } = await supabase.functions.invoke('fetch-call-counts', {
+        body: { date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) },
+      });
+      if (error) throw error;
+      toast({ title: 'Call counts refreshed', description: 'Latest call data fetched from Zendesk Talk.' });
+      await loadData();
+    } catch (err) {
+      console.error('Failed to refresh call counts:', err);
+      toast({ title: 'Refresh failed', description: 'Could not fetch call counts. Try again later.', variant: 'destructive' });
+    } finally {
+      setIsRefreshingCalls(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -99,9 +121,24 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>{title}</span>
-          <Badge variant="outline" className="text-xs font-normal">
-            {dateRangeLabel || 'Loading...'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {isZD1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshCallCounts}
+                disabled={isRefreshingCalls}
+                className="h-7 px-2 text-xs"
+                title="Refresh call counts from Zendesk Talk"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isRefreshingCalls ? 'animate-spin' : ''}`} />
+                {isRefreshingCalls ? 'Refreshing...' : 'Refresh Calls'}
+              </Button>
+            )}
+            <Badge variant="outline" className="text-xs font-normal">
+              {dateRangeLabel || 'Loading...'}
+            </Badge>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent>
