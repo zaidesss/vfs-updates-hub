@@ -8,8 +8,10 @@ const corsHeaders = {
 
 const THRESHOLDS = { onTimeLogin: 90, shiftComplete: 85, quota: 70, violations: 75, gap: 5 };
 
-// Positions to exclude from team analytics (still included in individual analytics)
-const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
+// Positions to exclude from all team analytics
+const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support'];
+// Positions to exclude from ticket counts and quota only (included in attendance/compliance/time)
+const TICKET_EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -42,6 +44,14 @@ Deno.serve(async (req) => {
     
     if (!profiles?.length) return new Response(JSON.stringify({ success: true, message: "No profiles" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    // Build set of emails for ticket-excluded positions (Logistics agents)
+    const ticketExcludedEmails = new Set<string>();
+    profiles.forEach(p => {
+      if (TICKET_EXCLUDED_POSITIONS.includes(p.position || '')) {
+        ticketExcludedEmails.add(p.email.toLowerCase());
+      }
+    });
+
     const { data: dirs } = await supabase.from("agent_directory").select("email, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off");
     const dirMap = new Map<string, any>(); dirs?.forEach(d => dirMap.set(d.email.toLowerCase(), d));
 
@@ -56,12 +66,12 @@ Deno.serve(async (req) => {
     const { data: gaps } = await supabase.from("ticket_gap_daily").select("agent_email, avg_gap_seconds").eq("date", dateStr);
     const { data: incidents } = await supabase.from("agent_reports").select("agent_email, incident_type").eq("incident_date", dateStr);
 
-    // Aggregate tickets
+    // Aggregate tickets (exclude Logistics/Team Lead/Technical Support)
     let totalEmail = 0, totalChat = 0, totalCall = 0;
     const tixByAgent = new Map<string, number>();
     tickets?.forEach(t => {
       const em = t.agent_email?.toLowerCase();
-      if (!em) return;
+      if (!em || ticketExcludedEmails.has(em)) return;
       tixByAgent.set(em, (tixByAgent.get(em) || 0) + 1);
       const tt = t.ticket_type?.toLowerCase();
       if (tt === "email") totalEmail++; else if (tt === "chat") totalChat++; else if (tt === "call") totalCall++;
@@ -119,6 +129,8 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Skip ticket-excluded positions (Logistics) for quota calculation
+      if (ticketExcludedEmails.has(p.email.toLowerCase())) continue;
       const q = getQuota(p);
       if (q > 0) { quotaAgents++; if ((tixByAgent.get(p.email.toLowerCase()) || 0) >= q) quotaMet++; }
     }

@@ -6,8 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Positions to exclude from team analytics (still included in individual analytics)
-const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
+// Positions to exclude from all team analytics
+const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support'];
+// Positions to exclude from ticket counts and quota only
+const TICKET_EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -59,6 +61,14 @@ Deno.serve(async (req) => {
     
     if (!profiles?.length) return new Response(JSON.stringify({ success: true, message: "No profiles" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    // Build set of emails for ticket-excluded positions (Logistics agents)
+    const ticketExcludedEmails = new Set<string>();
+    profiles.forEach(p => {
+      if (TICKET_EXCLUDED_POSITIONS.includes(p.position || '')) {
+        ticketExcludedEmails.add(p.email.toLowerCase());
+      }
+    });
+
     // Fetch directories for schedule info
     const { data: dirs } = await supabase.from("agent_directory").select("email, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, day_off");
     const dirMap = new Map<string, any>(); dirs?.forEach(d => dirMap.set(d.email.toLowerCase(), d));
@@ -87,12 +97,12 @@ Deno.serve(async (req) => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const getQuota = (p: any) => { const pos = (p.position || "").toLowerCase(); const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0; return pos.includes("hybrid") ? qe + qc + qp : pos.includes("chat") ? qe + qc : pos.includes("phone") ? qe + qp : qe; };
 
-    // Aggregate tickets
+    // Aggregate tickets (exclude Logistics/Team Lead/Technical Support)
     let totalEmail = 0, totalChat = 0, totalCall = 0;
     const tixByAgent = new Map<string, number>();
     tickets?.forEach(t => {
       const em = t.agent_email?.toLowerCase();
-      if (!em) return;
+      if (!em || ticketExcludedEmails.has(em)) return;
       tixByAgent.set(em, (tixByAgent.get(em) || 0) + 1);
       const tt = t.ticket_type?.toLowerCase();
       if (tt === "email") totalEmail++; else if (tt === "chat") totalChat++; else if (tt === "call") totalCall++;
@@ -156,8 +166,9 @@ Deno.serve(async (req) => {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Calculate quota metrics for the week
+    // Calculate quota metrics for the week (exclude Logistics)
     for (const p of profiles) {
+      if (ticketExcludedEmails.has(p.email.toLowerCase())) continue;
       const q = getQuota(p);
       if (q > 0) {
         quotaAgents++;
