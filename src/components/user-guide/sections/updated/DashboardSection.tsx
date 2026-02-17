@@ -28,7 +28,7 @@ export function UpdatedDashboardSection() {
             ['Break In / Break Out', 'Toggles your scheduled break. Shows green when on break.', 'None', 'Must match scheduled break window'],
             ['Coaching', 'Toggles coaching/training status. Shows blue when active.', 'None', 'No time limit'],
             ['Device Restart', 'Toggles restart status. Shows orange with a 5:00 countdown.', '5 minutes', 'Exceeding triggers a red pulse + alert'],
-            ['Bio Break', 'Toggles bio break. Uses a consumable daily allowance.', '4 min (8+ hr shift) or 2 min (shorter)', 'Depleted = button disabled'],
+            ['Bio Break', 'Toggles bio break. Uses a consumable daily allowance.', '5 min (5+ hr shift) or 2.5 min (shorter)', 'Depleted = button disabled'],
             ['OT Login / OT Logout', 'Toggles overtime shift. Only visible if OT is enabled in your profile.', 'None', 'Locks all other buttons while active'],
           ]}
         />
@@ -67,7 +67,7 @@ export function UpdatedDashboardSection() {
 
         <h4 className="font-semibold mt-4 mb-2">How to Use Bio Break</h4>
         <ol className="list-decimal list-inside space-y-2 text-sm">
-          <li>While logged in, click the cyan <strong>Bio</strong> button (shows remaining time, e.g., "Bio (4:00 left)").</li>
+          <li>While logged in, click the cyan <strong>Bio</strong> button (shows remaining time, e.g., "Bio (5:00 left)").</li>
           <li>The button shows a countdown of your remaining daily bio allowance.</li>
           <li>Click <strong>End Bio</strong> when done. Unused time is preserved for later use.</li>
           <li>Once your allowance reaches 0:00, the Bio button is permanently disabled for the rest of the shift.</li>
@@ -75,7 +75,7 @@ export function UpdatedDashboardSection() {
 
         <CalloutBox variant="info" title="Bio Allowance Reset">
           Your bio break allowance resets every time you log in for a new shift. 
-          The allowance is 4 minutes for 8+ hour shifts and 2 minutes for shorter shifts.
+          The allowance is 5 minutes for 5+ hour shifts and 2 minutes 30 seconds for shorter shifts.
         </CalloutBox>
 
         <GuideImagePlaceholder description="Screenshot: Bio Break button showing remaining allowance (e.g., '2:30 left')" />
