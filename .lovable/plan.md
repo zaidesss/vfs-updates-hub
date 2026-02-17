@@ -1,28 +1,34 @@
 
-## Add Agent Filter to All Outage Requests
 
-### What we'll do
-Add a dropdown filter that lets admins filter the outage requests table by agent name. The filter will appear between the tabs and the table, only visible to admins.
+## Exclude Logistics from Ticket Counts Only
 
-### Behavior
-- A "Filter by Agent" select dropdown with all unique agent names from the current requests list
-- An "All Agents" option to clear the filter (default)
-- The filter works in combination with the existing tab filters (Pending, For Review, Override, All)
-- Clearing a tab resets to show all agents unless filtered
+### What changes
+Currently, Logistics agents are fully excluded from all analytics (attendance, tickets, compliance, time) alongside Team Lead and Technical Support. The change will keep Logistics agents in attendance, compliance, and time calculations but exclude their tickets from the ticket count and quota metrics.
+
+### Affected areas
+- EOD Team Analytics (daily)
+- EOW Team Analytics (weekly)
+- Individual Agent Analytics: no change needed (it's per-agent, not team-wide)
 
 ### Technical Details
 
-**File: `src/pages/LeaveRequest.tsx`**
+**Step 1: Update `generate-eod-analytics` edge function**
 
-1. Add new state variable:
-   - `agentFilter` (string, default `'all'`)
+- Change `EXCLUDED_POSITIONS` to only `['Team Lead', 'Technical Support']` for the profile query (so Logistics agents are included in attendance/compliance/time)
+- Add a separate `TICKET_EXCLUDED_POSITIONS` = `['Team Lead', 'Technical Support', 'Logistics']`
+- When aggregating tickets (lines 60-68), filter out tickets from Logistics agents by checking the profile's position before counting
+- When calculating quota (lines 122-123), skip Logistics agents
 
-2. Derive unique agent names from `requests` array for the dropdown options
+**Step 2: Update `generate-weekly-analytics` edge function**
 
-3. Update `filteredRequests` logic (around line 699) to also filter by `agentFilter` when it's not `'all'`
+- Same pattern: narrow `EXCLUDED_POSITIONS` to `['Team Lead', 'Technical Support']`
+- Add `TICKET_EXCLUDED_POSITIONS` including Logistics
+- Filter ticket aggregation and quota calculation to exclude Logistics agents
+- Keep Logistics in attendance, time, and compliance loops
 
-4. Add a Select dropdown between the Tabs and the table (after line 1104 for admin, after line 1113 for non-admin), showing:
-   - "All Agents" as default
-   - Sorted list of unique agent names from the requests
+### Implementation approach
+- Build a set of Logistics agent emails from the profiles query
+- When iterating tickets, skip entries whose `agent_email` belongs to a Logistics agent
+- When calculating quota per agent, skip if agent position is Logistics
+- No frontend changes needed -- the response shape stays the same
 
-5. Reset `agentFilter` to `'all'` when requests reload (optional, keeps UX clean)
