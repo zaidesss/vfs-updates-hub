@@ -66,6 +66,17 @@ Deno.serve(async (req) => {
     const { data: gaps } = await supabase.from("ticket_gap_daily").select("agent_email, avg_gap_seconds").eq("date", dateStr);
     const { data: incidents } = await supabase.from("agent_reports").select("agent_email, incident_type").eq("incident_date", dateStr);
 
+    // Fetch approved Planned Leave for this date
+    const { data: leaves } = await supabase
+      .from("leave_requests")
+      .select("agent_email")
+      .eq("status", "approved")
+      .eq("outage_reason", "Planned Leave")
+      .lte("start_date", dateStr)
+      .gte("end_date", dateStr);
+    const plannedLeaveEmails = new Set<string>();
+    leaves?.forEach(l => plannedLeaveEmails.add(l.agent_email.toLowerCase()));
+
     // Aggregate tickets (exclude Logistics/Team Lead/Technical Support)
     let totalEmail = 0, totalChat = 0, totalCall = 0;
     const tixByAgent = new Map<string, number>();
@@ -100,6 +111,20 @@ Deno.serve(async (req) => {
     const getQuota = (p: any) => { const pos = (p.position || "").toLowerCase(); const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0; return pos.includes("hybrid") ? qe + qc + qp : pos.includes("chat") ? qe + qc : pos.includes("phone") ? qe + qp : qe; };
 
     let scheduled = 0, active = 0, onTime = 0, fullShift = 0, quotaAgents = 0, quotaMet = 0, loggedHrs = 0, reqHrs = 0, hrsAgents = 0;
+    let totalQuotaEmail = 0, totalQuotaChat = 0, totalQuotaCall = 0;
+    let actualQuotaEmail = 0, actualQuotaChat = 0, actualQuotaCall = 0;
+    let onLeave = 0;
+
+    // Track per-agent ticket breakdown for quota
+    const tixByAgentByType = new Map<string, { email: number; chat: number; call: number }>();
+    tickets?.forEach(t => {
+      const em = t.agent_email?.toLowerCase();
+      if (!em || ticketExcludedEmails.has(em)) return;
+      if (!tixByAgentByType.has(em)) tixByAgentByType.set(em, { email: 0, chat: 0, call: 0 });
+      const entry = tixByAgentByType.get(em)!;
+      const tt = t.ticket_type?.toLowerCase();
+      if (tt === "email") entry.email++; else if (tt === "chat") entry.chat++; else if (tt === "call") entry.call++;
+    });
 
     for (const p of profiles) {
       const dir = dirMap.get(p.email.toLowerCase());
@@ -108,6 +133,10 @@ Deno.serve(async (req) => {
       if (!sched) continue;
       const parsed = parseSched(sched);
       if (!parsed) continue;
+
+      // Skip agents on Planned Leave from scheduled count
+      if (plannedLeaveEmails.has(p.email.toLowerCase())) { onLeave++; continue; }
+
       scheduled++;
       let reqMins = parsed.en - parsed.st; if (reqMins < 0) reqMins += 1440;
       reqHrs += reqMins / 60;
@@ -131,8 +160,32 @@ Deno.serve(async (req) => {
 
       // Skip ticket-excluded positions (Logistics) for quota calculation
       if (ticketExcludedEmails.has(p.email.toLowerCase())) continue;
-      const q = getQuota(p);
-      if (q > 0) { quotaAgents++; if ((tixByAgent.get(p.email.toLowerCase()) || 0) >= q) quotaMet++; }
+      const pos = (p.position || "").toLowerCase();
+      const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0;
+      
+      // Determine which quotas apply based on position
+      let agentQuotaEmail = 0, agentQuotaChat = 0, agentQuotaCall = 0;
+      if (pos.includes("hybrid")) { agentQuotaEmail = qe; agentQuotaChat = qc; agentQuotaCall = qp; }
+      else if (pos.includes("chat")) { agentQuotaEmail = qe; agentQuotaChat = qc; }
+      else if (pos.includes("phone")) { agentQuotaEmail = qe; agentQuotaCall = qp; }
+      else { agentQuotaEmail = qe; }
+
+      const totalAgentQuota = agentQuotaEmail + agentQuotaChat + agentQuotaCall;
+      if (totalAgentQuota > 0) {
+        quotaAgents++;
+        totalQuotaEmail += agentQuotaEmail;
+        totalQuotaChat += agentQuotaChat;
+        totalQuotaCall += agentQuotaCall;
+        
+        const agentTix = tixByAgentByType.get(p.email.toLowerCase());
+        if (agentTix) {
+          actualQuotaEmail += Math.min(agentTix.email, agentQuotaEmail);
+          actualQuotaChat += Math.min(agentTix.chat, agentQuotaChat);
+          actualQuotaCall += Math.min(agentTix.call, agentQuotaCall);
+        }
+        
+        if ((tixByAgent.get(p.email.toLowerCase()) || 0) >= totalAgentQuota) quotaMet++;
+      }
     }
 
     const avgGap = gapMap.size > 0 ? Array.from(gapMap.values()).reduce((a, b) => a + b, 0) / gapMap.size / 60 : null;
@@ -140,8 +193,8 @@ Deno.serve(async (req) => {
 
     const a = {
       date: dateStr,
-      attendance: { active, scheduled, onTime, onTimeRate: scheduled > 0 ? (onTime / scheduled) * 100 : 0, fullShift, fullShiftRate: scheduled > 0 ? (fullShift / scheduled) * 100 : 0 },
-      productivity: { total: totalEmail + totalChat + totalCall, email: totalEmail, chat: totalChat, call: totalCall, quotaAgents, quotaMet, quotaRate: quotaAgents > 0 ? (quotaMet / quotaAgents) * 100 : 0, avgGap },
+      attendance: { active, scheduled, onTime, onTimeRate: scheduled > 0 ? (onTime / scheduled) * 100 : 0, fullShift, fullShiftRate: scheduled > 0 ? (fullShift / scheduled) * 100 : 0, onLeave },
+      productivity: { total: totalEmail + totalChat + totalCall, email: totalEmail, chat: totalChat, call: totalCall, quotaAgents, quotaMet, quotaRate: quotaAgents > 0 ? (quotaMet / quotaAgents) * 100 : 0, avgGap, totalQuotaEmail, totalQuotaChat, totalQuotaCall, actualQuotaEmail, actualQuotaChat, actualQuotaCall },
       time: { avgLogged: hrsAgents > 0 ? loggedHrs / hrsAgents : null, avgRequired: scheduled > 0 ? reqHrs / scheduled : null },
       compliance: { clean: zeroViolations, cleanRate: scheduled > 0 ? (zeroViolations / scheduled) * 100 : 0, incidents: incidents?.length || 0, breakdown: incBreakdown },
     };
