@@ -74,16 +74,16 @@ function calculateBioAllowanceFromSchedule(profile: DashboardProfile): number {
   const scheduleKey = dayMap[today];
   const schedule = profile[scheduleKey] as string | null;
   
-  if (!schedule) return 2 * 60; // Default 2 mins (120 seconds)
+  if (!schedule) return 150; // Default 2 mins 30 secs (150 seconds)
   
   const parsed = parseScheduleRange(schedule);
-  if (!parsed) return 2 * 60;
+  if (!parsed) return 150;
   
   let durationMinutes = parsed.endMinutes - parsed.startMinutes;
   if (durationMinutes < 0) durationMinutes += 24 * 60;
   
-  // 8+ hours (480 mins) = 4 mins (240 secs), otherwise 2 mins (120 secs)
-  return durationMinutes >= 480 ? 4 * 60 : 2 * 60;
+  // 5+ hours (300 mins) = 5 mins (300 secs), otherwise 2.5 mins (150 secs)
+  return durationMinutes >= 300 ? 5 * 60 : 150;
 }
 
 export default function AgentDashboard() {
