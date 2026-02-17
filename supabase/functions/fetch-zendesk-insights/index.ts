@@ -101,6 +101,12 @@ async function fetchTicketMetricsBatch(
           const data = await metricsRes.json();
           const tm = data.ticket_metric;
           fullResolutionMinutes = tm?.full_resolution_time_in_minutes?.calendar ?? null;
+          // Debug: log raw metric for first few tickets
+          if (i === 0) {
+            console.log(`DEBUG ticket ${ticketId} full_res:`, JSON.stringify(tm?.full_resolution_time_in_minutes));
+            console.log(`DEBUG ticket ${ticketId} agent_work:`, JSON.stringify(tm?.agent_wait_time_in_minutes));
+            console.log(`DEBUG ticket ${ticketId} reply_time:`, JSON.stringify(tm?.reply_time_in_minutes));
+          }
         }
 
         if (eventsRes.ok) {
