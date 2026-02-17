@@ -1,66 +1,52 @@
 
 
-## Chunked Metric Fetching for Zendesk Insights
+## Fix: Profile Completion Modal Stuck / Unclickable UI
 
-### Problem
-Fetching ART/FRT metrics requires 2 API calls per ticket. For weeks with 900+ tickets, that's 1,800+ API calls in a single edge function call, causing timeouts (60-second limit).
+### Problem Summary
+User `mkcm060104@gmail.com` gets stuck on the "Complete Your Profile" modal after login, unable to interact with the portal. The profile already has all required fields filled, but the modal appears anyway and becomes inescapable when the save fails.
 
-### Solution: Two-Phase Approach
+### Root Causes (3 bugs)
 
-**Phase 1 -- Quick response (ticket count + CSAT)**
-The edge function searches tickets and fetches CSAT (fast). Returns the ticket count, CSAT, and the list of ticket IDs -- but does NOT fetch per-ticket metrics yet.
+1. **Race condition in profile check timing** -- `checkProfileCompletion` does not reset `isLoading = true` on subsequent runs, so the "show modal" effect fires prematurely before the async DB check finishes.
 
-**Phase 2 -- Chunked metric fetching (500 at a time)**
-The frontend sends chunks of 500 ticket IDs to the edge function. Each chunk call fetches metrics for those 500 tickets and returns running totals. The frontend accumulates the results and computes final averages once all chunks are done.
+2. **INSERT instead of UPDATE** -- When `handleSubmit` runs and the SELECT returns an error (logged but not handled as a blocker), the code falls through to INSERT. Since the row already exists, the INSERT fails with an RLS error.
 
-### Changes
+3. **Modal never auto-closes when profile is complete** -- The useEffect that controls the modal only opens it (`setShowProfileModal(true)`) when profile is incomplete. There is no corresponding logic to close it when `isProfileComplete` becomes `true`. Combined with `onOpenChange={() => {}}` and prevented escape/click-outside, the user is permanently stuck.
 
-**1. Edge Function (`fetch-zendesk-insights/index.ts`)**
-- Add a new `mode` parameter: `"search"` (Phase 1) or `"metrics"` (Phase 2)
-- `mode: "search"` -- searches tickets, fetches CSAT, returns `{ ticketIds, totalTickets, csat, ... }`
-- `mode: "metrics"` -- accepts `ticketIds` (up to 500), fetches per-ticket ART/FRT/Full Resolution, returns raw totals and counts (not averages)
-- Cache check still happens first -- if cached with valid metrics, returns immediately (no phases needed)
-- After all chunks are processed, the frontend sends a final `mode: "cache"` call to save the combined results to the database
+### Fix Plan (Step-by-step)
 
-**2. Frontend (`ZendeskInsights.tsx`)**
-- Replace the single `fetchInsights` call with a multi-step flow:
-  1. Call with `mode: "search"` to get ticket count + CSAT instantly (UI shows ticket count and CSAT right away)
-  2. Automatically fire chunk calls (500 IDs each) in sequence
-  3. Show a progress indicator: "Fetching metrics... 500/900 tickets processed"
-  4. Once all chunks return, compute final averages and save to cache
-  5. Update the UI with complete data
-- The "Cached" badge and refresh button continue to work as before
-- Add a progress bar or text showing chunk progress during live fetches
+#### Step 1: Fix the race condition in ProfileCompletionContext
+In `src/context/ProfileCompletionContext.tsx`:
+- Add `setIsLoading(true)` at the start of `checkProfileCompletion` (before the email check early return)
+- Add a new useEffect that **closes** the modal when `isProfileComplete` becomes `true`:
+  ```
+  useEffect(() => {
+    if (isProfileComplete && showProfileModal) {
+      setShowProfileModal(false);
+    }
+  }, [isProfileComplete]);
+  ```
 
-### Flow Diagram
+#### Step 2: Fix the error handling in ProfileCompletionModal save
+In `src/components/ProfileCompletionModal.tsx`:
+- When the SELECT returns an error, abort the save (return early) instead of falling through to INSERT
+- After `refreshProfileStatus()` in the error handler, use the freshly fetched state by calling `markProfileComplete()` directly if the DB data is confirmed complete, rather than relying on the stale closure value
 
-```text
-User selects week
-       |
-  [Check cache] --> HIT --> Show cached data (instant)
-       |
-      MISS
-       |
-  Phase 1: Search tickets + CSAT
-       |
-  Show ticket count + CSAT immediately
-  Show "Fetching metrics..." with progress
-       |
-  Phase 2: Send chunk 1 (IDs 1-500) --> accumulate totals
-  Phase 2: Send chunk 2 (IDs 501-900) --> accumulate totals
-       |
-  Compute final averages
-  Save to cache
-  Show complete data
-```
+#### Step 3: Make the error handler resilient
+- After any save error, re-check profile status and if complete, call `markProfileComplete()` to force-close the modal regardless of stale state
 
-### Step-by-Step Implementation Order
+### Technical Details
 
-**Step 1**: Update the edge function to support `mode` parameter (search / metrics / cache)
+**File: `src/context/ProfileCompletionContext.tsx`**
+- Line 29: Add `setIsLoading(true)` as first line of `checkProfileCompletion`
+- After line 75: Add new useEffect to auto-close modal when profile becomes complete
 
-**Step 2**: Update the frontend to use the multi-phase fetch with progress indicator
+**File: `src/components/ProfileCompletionModal.tsx`**  
+- Lines 112-117: If `selectError` is truthy, call `refreshProfileStatus()` and return early instead of falling through to INSERT/UPDATE logic
+- Lines 130-140: After `refreshProfileStatus()` completes on save error, directly call `markProfileComplete()` since the profile IS complete in the DB (the check will confirm it)
 
-**Step 3**: Clear bad cached entries (weeks with 0 tickets or null metrics from previous attempts)
-
-**Step 4**: Deploy and test
+### What This Fixes
+- User will no longer see the modal when their profile is already complete
+- If the modal does appear and save fails, it will auto-close once the refresh confirms completeness
+- The UI will never become permanently stuck/frozen
 
