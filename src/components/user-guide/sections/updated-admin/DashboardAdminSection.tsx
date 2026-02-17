@@ -87,7 +87,7 @@ export function DashboardAdminSection() {
             ['Logout', 'Must log out', 'Still logged in 3+ hrs past shift end', 'NO_LOGOUT', 'High'],
             ['Break', 'Matches shift allowance', 'Exceeds allowance + 5 min grace', 'OVERBREAK', 'Medium'],
             ['Device Restart', '5 minutes', 'Timer expires without return', 'EXCESSIVE_RESTARTS', 'Low'],
-            ['Bio Break', '4 min (8h+) / 2 min (shorter)', 'Allowance depleted, continues', 'BIO_OVERUSE', 'Low'],
+            ['Bio Break', '5 min (5h+) / 2.5 min (shorter)', 'Allowance depleted, continues', 'BIO_OVERUSE', 'Low'],
             ['Early Out', 'Before scheduled end', 'Logout before shift end time', 'EARLY_OUT', 'Medium'],
             ['Time Not Met', 'Full shift hours', 'Logged hours < required (Upwork prioritized)', 'TIME_NOT_MET', 'Medium'],
             ['Quota Not Met', 'Email/Chat/Phone quota', 'Tickets handled < expected quota', 'QUOTA_NOT_MET', 'Medium'],
