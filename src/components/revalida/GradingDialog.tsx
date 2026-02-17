@@ -179,7 +179,7 @@ export function GradingDialog({
                   {/* Agent's Response */}
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">Agent's Response</Label>
-                    <div className="p-3 rounded-md bg-muted text-sm whitespace-pre-wrap">
+                    <div className="p-3 rounded-md bg-muted text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
                       {answer.answer_value || <em className="text-muted-foreground">No response</em>}
                     </div>
                   </div>
