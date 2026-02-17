@@ -11,10 +11,8 @@ import {
   Calendar as CalendarIcon, 
   User,
   Clock,
-  Target,
   Ticket,
   AlertTriangle,
-  Coffee,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,6 +20,34 @@ import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { INCIDENT_TYPE_CONFIG, type IncidentType } from '@/lib/agentReportsApi';
 import { getESTDayBoundaries, getESTWeekBoundaries, parseDateStringLocal, getESTDateFromTimestamp, generateWeekDates } from '@/lib/timezoneUtils';
+import { getEffectiveScheduleForDate, getEffectiveSchedulesForWeek } from '@/lib/scheduleResolver';
+
+/** Parse a schedule string like "9:00 AM - 6:00 PM" into duration in hours */
+function parseScheduleHours(schedule: string | null): number {
+  if (!schedule || schedule.toLowerCase() === 'day off') return 0;
+  const match = schedule.match(/^(.+?)\s*-\s*(.+)$/);
+  if (!match) return 0;
+  const parseTime = (t: string): number => {
+    const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return 0;
+    let h = parseInt(m[1]);
+    const min = parseInt(m[2]);
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return h + min / 60;
+  };
+  const start = parseTime(match[1]);
+  const end = parseTime(match[2]);
+  return end > start ? end - start : (24 - start) + end;
+}
+
+/** Compute required hours = shift duration - break duration */
+function computeRequiredHours(schedule: string | null, breakSchedule: string | null): number {
+  const shiftHours = parseScheduleHours(schedule);
+  const breakHours = parseScheduleHours(breakSchedule);
+  return Math.max(0, shiftHours - breakHours);
+}
 
 interface AgentMetrics {
   date: string;
@@ -38,6 +64,7 @@ interface AgentMetrics {
   quotaMet: boolean;
   avgGap: number | null;
   breakMinutes: number | null;
+  requiredHours: number | null;
   incidents: { type: IncidentType; count: number }[];
 }
 
@@ -57,6 +84,7 @@ interface WeeklyAgentMetrics {
   quotaMet: boolean;
   avgGap: number | null;
   totalBreakMinutes: number;
+  totalRequiredHours: number;
   incidents: { type: IncidentType; count: number }[];
   dailyBreakdown: { date: string; tickets: number; hours: number; active?: boolean }[];
 }
@@ -208,6 +236,19 @@ export function IndividualAgentAnalytics() {
       incidentMap.set(type, (incidentMap.get(type) || 0) + 1);
     });
 
+    // Get required hours from effective schedule
+    let requiredHours: number | null = null;
+    try {
+      const effectiveSchedule = await getEffectiveScheduleForDate(profile.id, dateStr);
+      if (effectiveSchedule.isDayOff) {
+        requiredHours = 0;
+      } else {
+        requiredHours = computeRequiredHours(effectiveSchedule.schedule, effectiveSchedule.breakSchedule);
+      }
+    } catch (e) {
+      console.error('Failed to compute required hours:', e);
+    }
+
     setDailyMetrics({
       date: dateStr,
       loginTime: loginEvent ? format(new Date(loginEvent.created_at), 'h:mm a') : null,
@@ -218,6 +259,7 @@ export function IndividualAgentAnalytics() {
       quotaMet: totalTickets >= quota,
       avgGap: gap !== undefined ? gap / 60 : null,
       breakMinutes: breakMinutes > 0 ? breakMinutes : null,
+      requiredHours,
       incidents: Array.from(incidentMap.entries()).map(([type, count]) => ({ type, count })),
     });
   };
@@ -354,17 +396,31 @@ export function IndividualAgentAnalytics() {
       incidentMap.set(type, (incidentMap.get(type) || 0) + 1);
     });
 
+    // Get required hours from effective schedules for the week
+    let totalRequiredHours = 0;
+    try {
+      const weekSchedules = await getEffectiveSchedulesForWeek(profile.id, weekStartStr);
+      weekSchedules.forEach(day => {
+        if (!day.isDayOff) {
+          totalRequiredHours += computeRequiredHours(day.schedule, day.breakSchedule);
+        }
+      });
+    } catch (e) {
+      console.error('Failed to compute weekly required hours:', e);
+    }
+
     setWeeklyMetrics({
       weekStart: weekStartStr,
       weekEnd: weekEndStr,
       daysActive,
-      daysScheduled: 5, // Assuming 5-day work week
+      daysScheduled: 5,
       totalHoursWorked,
       tickets: { email: emailCount, chat: chatCount, call: callCount, total: totalTickets },
       weeklyQuota,
       quotaMet: totalTickets >= weeklyQuota * 0.8,
       avgGap,
       totalBreakMinutes,
+      totalRequiredHours,
       incidents: Array.from(incidentMap.entries()).map(([type, count]) => ({ type, count })),
       dailyBreakdown: dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
     });
@@ -488,21 +544,21 @@ export function IndividualAgentAnalytics() {
                 </CardContent>
               </Card>
 
-              {/* Performance */}
+              {/* Time */}
               <Card className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Target className="h-4 w-4 text-purple-600" />
-                    <span className="font-medium text-sm">Performance</span>
+                    <Clock className="h-4 w-4 text-purple-600" />
+                    <span className="font-medium text-sm">Time</span>
                   </div>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Avg Gap</span>
-                      <span className="font-medium">{dailyMetrics.avgGap !== null ? `${dailyMetrics.avgGap.toFixed(1)} min` : '-'}</span>
+                      <span className="text-muted-foreground">Logged</span>
+                      <span className="font-medium">{formatHours(dailyMetrics.hoursWorked)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Break</span>
-                      <span className="font-medium">{dailyMetrics.breakMinutes !== null ? `${Math.round(dailyMetrics.breakMinutes)} min` : '-'}</span>
+                      <span className="text-muted-foreground">Required</span>
+                      <span className="font-medium">{dailyMetrics.requiredHours !== null ? formatHours(dailyMetrics.requiredHours) : '-'}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -572,21 +628,21 @@ export function IndividualAgentAnalytics() {
                 </CardContent>
               </Card>
 
-              {/* Performance */}
+              {/* Time */}
               <Card className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Target className="h-4 w-4 text-purple-600" />
-                    <span className="font-medium text-sm">Performance</span>
+                    <Clock className="h-4 w-4 text-purple-600" />
+                    <span className="font-medium text-sm">Time</span>
                   </div>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Avg Gap</span>
-                      <span className="font-medium">{weeklyMetrics.avgGap !== null ? `${weeklyMetrics.avgGap.toFixed(1)} min` : '-'}</span>
+                      <span className="text-muted-foreground">Logged</span>
+                      <span className="font-medium">{formatHours(weeklyMetrics.totalHoursWorked)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Breaks</span>
-                      <span className="font-medium">{formatHours(weeklyMetrics.totalBreakMinutes / 60)}</span>
+                      <span className="text-muted-foreground">Required</span>
+                      <span className="font-medium">{formatHours(weeklyMetrics.totalRequiredHours)}</span>
                     </div>
                   </div>
                 </CardContent>
