@@ -57,12 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               checkIsSuperAdmin(userEmail),
               checkIsAdmin(userEmail),
               checkIsHR(userEmail),
-              supabase.from('agent_profiles').select('id').eq('email', userEmail).maybeSingle()
+              supabase.rpc('get_profile_id_by_email', { p_email: userEmail })
             ]);
             if (!mounted) return;
             setSuperAdminStatus(isSuperAdminUser);
             setHrStatus(isHRUser);
-            setProfileId(profileResult.data?.id || null);
+            setProfileId(profileResult.data || null);
             setUser({
               email: userEmail,
               name: session.user.user_metadata?.name || userEmail,
@@ -90,12 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             checkIsSuperAdmin(userEmail),
             checkIsAdmin(userEmail),
             checkIsHR(userEmail),
-            supabase.from('agent_profiles').select('id').eq('email', userEmail).maybeSingle()
+            supabase.rpc('get_profile_id_by_email', { p_email: userEmail })
           ]);
           if (!mounted) return;
           setSuperAdminStatus(isSuperAdminUser);
           setHrStatus(isHRUser);
-          setProfileId(profileResult.data?.id || null);
+          setProfileId(profileResult.data || null);
           setUser({
             email: userEmail,
             name: session.user.user_metadata?.name || userEmail,
