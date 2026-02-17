@@ -498,6 +498,7 @@ export interface EOWAnalytics {
     onTimeRate: number;
     fullShiftRate: number;
     attendanceRate: number;
+    leaveDays?: number;
   };
   productivity: {
     total: number;
@@ -508,6 +509,9 @@ export interface EOWAnalytics {
     quotaMet: number;
     quotaRate: number;
     avgGap: number | null;
+    totalQuotaEmail?: number;
+    totalQuotaChat?: number;
+    totalQuotaCall?: number;
   };
   time: {
     totalLogged: number;
