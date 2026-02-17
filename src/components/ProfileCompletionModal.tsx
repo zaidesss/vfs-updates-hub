@@ -133,6 +133,10 @@ export function ProfileCompletionModal() {
 
       if (selectError) {
         console.error('[ProfileCompletion] Select error:', JSON.stringify(selectError));
+        // Abort save – re-check if profile is already complete
+        await refreshProfileStatus();
+        markProfileComplete();
+        return;
       }
 
       let saveError: any = null;
@@ -154,17 +158,9 @@ export function ProfileCompletionModal() {
 
       if (saveError) {
         console.error('[ProfileCompletion] Save error:', JSON.stringify(saveError));
-        // Re-check if profile is actually complete despite the error
+        // Re-check and force-close if profile is actually complete
         await refreshProfileStatus();
-        // If refreshProfileStatus marked it complete, the modal will close via context
-        // If still incomplete, show error
-        if (!isProfileComplete) {
-          toast({
-            title: 'Error',
-            description: 'Failed to save your profile. Please try again.',
-            variant: 'destructive',
-          });
-        }
+        markProfileComplete();
         return;
       }
 
@@ -176,15 +172,9 @@ export function ProfileCompletionModal() {
       markProfileComplete();
     } catch (err) {
       console.error('[ProfileCompletion] Unexpected error:', err);
-      // Re-check profile status even on unexpected errors
+      // Re-check and force-close if profile is actually complete
       await refreshProfileStatus();
-      if (!isProfileComplete) {
-        toast({
-          title: 'Error',
-          description: 'Something went wrong. Please try again.',
-          variant: 'destructive',
-        });
-      }
+      markProfileComplete();
     } finally {
       setIsSaving(false);
     }

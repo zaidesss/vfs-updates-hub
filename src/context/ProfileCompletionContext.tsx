@@ -27,6 +27,7 @@ export function ProfileCompletionProvider({ children }: { children: ReactNode })
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const checkProfileCompletion = async () => {
+    setIsLoading(true);
     if (!user?.email) {
       setIsLoading(false);
       return;
@@ -73,6 +74,13 @@ export function ProfileCompletionProvider({ children }: { children: ReactNode })
       setShowProfileModal(true);
     }
   }, [isDemoLoading, isLoading, hasSeenDemo, showTour, isProfileComplete]);
+
+  // Auto-close modal when profile becomes complete
+  useEffect(() => {
+    if (isProfileComplete && showProfileModal) {
+      setShowProfileModal(false);
+    }
+  }, [isProfileComplete]);
 
   const openProfileModal = () => {
     setShowProfileModal(true);
