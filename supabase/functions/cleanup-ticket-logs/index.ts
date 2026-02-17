@@ -113,6 +113,21 @@ Deno.serve(async (req) => {
       console.error('Error deleting old gap records:', gapDeleteError)
     }
 
+    // Cleanup old call_count_daily records
+    const { data: deletedCallCounts, error: callCountDeleteError } = await supabase
+      .from('call_count_daily')
+      .delete()
+      .lt('date', cutoffDateStr)
+      .select('id')
+
+    const callCountsPurged = deletedCallCounts?.length || 0
+
+    if (callCountDeleteError) {
+      console.error('Error deleting old call count records:', callCountDeleteError)
+    } else {
+      console.log(`Purged ${callCountsPurged} old call_count_daily records`)
+    }
+
     // Cleanup old profile_events (already captured in attendance_snapshots + event_snapshots)
     const { data: deletedEvents, error: profileEventsDeleteError } = await supabase
       .from('profile_events')
@@ -128,7 +143,7 @@ Deno.serve(async (req) => {
       console.log(`Purged ${profileEventsPurged} old profile_events records`)
     }
 
-    console.log(`Cleanup complete. Archived and deleted ${oldLogs.length} ticket logs, purged ${profileEventsPurged} profile events`)
+    console.log(`Cleanup complete. Archived and deleted ${oldLogs.length} ticket logs, purged ${profileEventsPurged} profile events, ${callCountsPurged} call counts`)
 
     return new Response(
       JSON.stringify({ 
@@ -136,7 +151,8 @@ Deno.serve(async (req) => {
         archived: oldLogs.length, 
         archiveFile: fileName,
         cutoffDate: cutoffDateStr,
-        profileEventsPurged
+        profileEventsPurged,
+        callCountsPurged
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
