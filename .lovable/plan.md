@@ -1,37 +1,69 @@
 
 
-## Fix: Re-host Button Visibility and Image URL Paste Support
+## Fix: Dashboard Link Missing for Some Users
 
-### Problems Found
+### Root Cause
 
-1. **Re-host button invisible**: The `RehostImagesButton` component returns `null` when the editor content is empty. Even after content is added, the toolbar has too many items (Image, Attach, Re-host, AI Format, "Supports Markdown" label) that can overflow in the dialog's limited width.
+The "Dashboard" link in the People menu only appears when `profileId` is resolved in the authentication context. This value is fetched by querying the `agent_profiles` table filtered by email.
 
-2. **Pasting image URLs doesn't work**: The current paste handler only detects binary image data from clipboard (e.g., screenshots or "Copy Image"). When you copy an image's URL text (e.g., `https://example.com/image.png`), it pastes as plain text without converting to a markdown image tag.
+The query relies on an RLS (Row-Level Security) policy that matches the profile email against the JWT email claim. In some cases, this query silently returns `null` due to a timing issue -- the JWT claims may not be fully propagated to the database session at the moment the query runs (inside a `setTimeout(0)` in the auth state change handler). When this happens, `profileId` stays `null` and the Dashboard link never appears.
 
-### Fixes
+Both Maryll Kate and salmeromalcom12@gmail.com have identical configurations (both "user" role, both have agent profiles with matching emails). The difference is purely a race condition.
 
-**Step 1: Make Re-host button always visible and fix toolbar overflow**
+### Proposed Fix
 
-File: `src/components/editor/RehostImagesButton.tsx`
-- Remove the `if (!content.trim()) return null;` condition so the button is always visible
-- When clicked with no external images, show a toast saying "No external images found"
+**File: `src/context/AuthContext.tsx`**
 
-File: `src/components/MarkdownEditor.tsx`  
-- Change the toolbar container from `flex` to `flex flex-wrap` so buttons wrap to a second line if needed instead of being cut off
+Add a retry mechanism for the profile ID lookup. If the initial query returns no profile (likely due to RLS timing), retry once after a short delay (500ms). This ensures the JWT is fully set before the RLS policy evaluates.
 
-**Step 2: Auto-detect pasted image URLs and convert to markdown**
+Additionally, add a fallback: if the `maybeSingle()` query still returns null after retry, log a warning so the issue is visible in the console for debugging.
 
-File: `src/components/MarkdownEditor.tsx`
-- Enhance the paste handler to also detect when pasted text looks like an image URL (ends in `.jpg`, `.png`, `.gif`, `.webp`, or matches common image hosting patterns)
-- When an image URL is pasted, automatically wrap it in markdown syntax: `![image](pasted_url)` instead of just inserting raw text
+### Other Considerations Before Proceeding
+
+1. **Should we also add a "Refresh" or re-fetch mechanism?** If a user logs in and the Dashboard link doesn't appear, currently the only fix is to reload the page. We could add a periodic re-check or a manual refresh option.
+
+2. **Should the profile query bypass RLS entirely?** We could create a small database function (RPC) like `get_profile_id_by_email(email)` with `SECURITY DEFINER` that returns just the profile ID. This would eliminate the RLS race condition entirely and be more robust.
+
+3. **Should we show a loading state for the People menu?** Right now, if `profileId` hasn't loaded yet, the Dashboard link simply doesn't appear. We could show a skeleton/loading indicator.
+
+### Recommended Approach
+
+Use option 2 (RPC function) as it is the most robust solution:
+
+**Step 1: Create a database function**
+- Create `get_profile_id_by_email(p_email text)` as a `SECURITY DEFINER` function
+- Returns just the profile `id` from `agent_profiles` matching the email
+- This bypasses RLS entirely, which is safe since it only returns a UUID
+
+**Step 2: Update AuthContext**
+- Replace the direct `agent_profiles` query with an RPC call to `get_profile_id_by_email`
+- This eliminates the race condition since the RPC runs with definer privileges
 
 ### Technical Details
 
-The paste handler enhancement will check for text clipboard data matching image URL patterns:
-
-```text
-Regex: /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i
+Database migration:
+```sql
+CREATE OR REPLACE FUNCTION public.get_profile_id_by_email(p_email text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+  SELECT id FROM public.agent_profiles
+  WHERE LOWER(email) = LOWER(p_email)
+  LIMIT 1;
+$$;
 ```
 
-If matched, it inserts `![image](url)` instead of the raw URL. This works alongside the existing binary image paste support.
+AuthContext change (in both `onAuthStateChange` and `checkSession`):
+```typescript
+// Replace:
+supabase.from('agent_profiles').select('id').eq('email', userEmail).maybeSingle()
+
+// With:
+supabase.rpc('get_profile_id_by_email', { p_email: userEmail })
+```
+
+Then set `profileId` from `result.data` (which will be the UUID directly).
 
