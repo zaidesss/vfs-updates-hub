@@ -1,52 +1,75 @@
 
 
-## Fix: Profile Completion Modal Stuck / Unclickable UI
+## Fix: Day Off Detection Returning "Absent" for Actual Days Off
 
-### Problem Summary
-User `mkcm060104@gmail.com` gets stuck on the "Complete Your Profile" modal after login, unable to interact with the portal. The profile already has all required fields filled, but the modal appears anyway and becomes inescapable when the save fails.
+### Problem
+Pauline (Sunday day off) and Jaeran (Saturday/Sunday day off) are incorrectly flagged as "Absent" on their days off. This affects attendance display across the Agent Dashboard.
 
-### Root Causes (3 bugs)
+### Root Cause: Day Name Format Mismatch
 
-1. **Race condition in profile check timing** -- `checkProfileCompletion` does not reset `isLoading = true` on subsequent runs, so the "show modal" effect fires prematurely before the async DB check finishes.
+There are two compounding bugs caused by inconsistent day name formats:
 
-2. **INSERT instead of UPDATE** -- When `handleSubmit` runs and the SELECT returns an error (logged but not handled as a blocker), the code falls through to INSERT. Since the row already exists, the INSERT fails with an RLS error.
+**Bug 1 -- `fetchDashboardProfile` produces wrong `day_off` format (line 339)**
+```
+dayOffArray = weekSchedules
+  .filter(d => d.isDayOff)
+  .map(d => d.dayName); // Comment says ['Sat', 'Sun'] but actually produces ['Saturday', 'Sunday']
+```
+The RPC `get_effective_schedules_for_week` returns full day names (`'Monday'`, `'Tuesday'`, etc.), so `dayOffArray` ends up as `['Saturday', 'Sunday']` instead of `['Sat', 'Sun']`.
 
-3. **Modal never auto-closes when profile is complete** -- The useEffect that controls the modal only opens it (`setShowProfileModal(true)`) when profile is incomplete. There is no corresponding logic to close it when `isProfileComplete` becomes `true`. Combined with `onOpenChange={() => {}}` and prevented escape/click-outside, the user is permanently stuck.
+**Bug 2 -- `calculateAttendanceForWeek` lookup never matches (line 1593)**
+```
+const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === day.short);
+```
+This compares `'Sunday'` (from RPC) against `'Sun'` (from DAYS array), so `effectiveDay` is always `undefined`.
 
-### Fix Plan (Step-by-step)
+Since `effectiveDay` is undefined, the fallback runs: `dayOffArray.includes('Sun')`. But `dayOffArray` contains `'Sunday'` (from Bug 1), so this also returns `false`. The day is treated as a working day with no login, resulting in "Absent".
 
-#### Step 1: Fix the race condition in ProfileCompletionContext
-In `src/context/ProfileCompletionContext.tsx`:
-- Add `setIsLoading(true)` at the start of `checkProfileCompletion` (before the email check early return)
-- Add a new useEffect that **closes** the modal when `isProfileComplete` becomes `true`:
-  ```
-  useEffect(() => {
-    if (isProfileComplete && showProfileModal) {
-      setShowProfileModal(false);
-    }
-  }, [isProfileComplete]);
-  ```
+**Bug 3 -- Same mismatch in `ShiftScheduleTable` (line 181 and 208)**
+The same `dayName === dayShort` comparison exists in the schedule display table, potentially causing incorrect schedule display.
 
-#### Step 2: Fix the error handling in ProfileCompletionModal save
-In `src/components/ProfileCompletionModal.tsx`:
-- When the SELECT returns an error, abort the save (return early) instead of falling through to INSERT
-- After `refreshProfileStatus()` in the error handler, use the freshly fetched state by calling `markProfileComplete()` directly if the DB data is confirmed complete, rather than relying on the stale closure value
+### Fix Plan
 
-#### Step 3: Make the error handler resilient
-- After any save error, re-check profile status and if complete, call `markProfileComplete()` to force-close the modal regardless of stale state
+All fixes involve converting full day names to short abbreviations for consistent matching.
 
-### Technical Details
+#### Step 1: Fix `fetchDashboardProfile` day_off mapping
+**File: `src/lib/agentDashboardApi.ts` (line 337-339)**
 
-**File: `src/context/ProfileCompletionContext.tsx`**
-- Line 29: Add `setIsLoading(true)` as first line of `checkProfileCompletion`
-- After line 75: Add new useEffect to auto-close modal when profile becomes complete
+Change `.map(d => d.dayName)` to extract the 3-letter abbreviation:
+```
+.map(d => d.dayName.substring(0, 3)); // 'Monday' -> 'Mon', 'Sunday' -> 'Sun'
+```
 
-**File: `src/components/ProfileCompletionModal.tsx`**  
-- Lines 112-117: If `selectError` is truthy, call `refreshProfileStatus()` and return early instead of falling through to INSERT/UPDATE logic
-- Lines 130-140: After `refreshProfileStatus()` completes on save error, directly call `markProfileComplete()` since the profile IS complete in the DB (the check will confirm it)
+This ensures `dayOffArray` contains `['Sat', 'Sun']` as consumers expect.
 
-### What This Fixes
-- User will no longer see the modal when their profile is already complete
-- If the modal does appear and save fails, it will auto-close once the refresh confirms completeness
-- The UI will never become permanently stuck/frozen
+#### Step 2: Fix `calculateAttendanceForWeek` effective schedule lookup
+**File: `src/lib/agentDashboardApi.ts` (line 1593)**
 
+Change the find predicate to match on short name:
+```
+const effectiveDay = effectiveWeekSchedules?.find(
+  d => d.dayName.substring(0, 3) === day.short
+);
+```
+
+This ensures the effective schedule (which knows the true day-off status from the RPC) is properly matched.
+
+#### Step 3: Fix `ShiftScheduleTable` effective schedule lookups
+**File: `src/components/dashboard/ShiftScheduleTable.tsx` (lines 181 and 207)**
+
+Apply the same `.substring(0, 3)` fix to both lookup sites:
+```
+const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === dayShort);
+```
+
+### Additional Considerations
+
+1. **Snapshot path**: The snapshot-based attendance (for weeks older than 2 weeks) reads pre-computed data and does not go through `calculateAttendanceForWeek`, so snapshots already frozen with "absent" for a day off would remain incorrect. However, this only affects historical data.
+
+2. **OT on day off**: The `calculateOTForDay` helper reads OT schedule from the profile using `day.key` (`sun_ot_schedule`), not from effective schedules. This is a separate minor inconsistency but doesn't cause the absent flag.
+
+3. **Coverage Board overrides**: The override path (`if (!override && isDayOff)`) is unaffected since it checks the override map by date string, not day name.
+
+### Summary of Changes
+- `src/lib/agentDashboardApi.ts`: 2 line changes (lines 339 and 1593)
+- `src/components/dashboard/ShiftScheduleTable.tsx`: 2 line changes (lines 181 and 207)
