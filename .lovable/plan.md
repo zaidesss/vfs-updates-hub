@@ -1,45 +1,48 @@
 
 
-## Bio Break Allowance Update
+## Team Status Board: Pending Outages + Logistics Category Fix
 
-### What Changes
-Update bio break allowances from the old values to new thresholds, with 5 hours as the dividing line:
+### Issue 1: Logistics agents showing under Email Support
+In `src/lib/teamStatusApi.ts` line 64, the `categorizeByPosition()` function explicitly maps `'logistics'` to `'emailSupport'`. This is why Lauro, Jesse, and Louela appear under Email Support instead of the Logistics category (which is the `'other'` bucket rendered as "Logistics" in the UI).
 
-| Shift Duration | Old Allowance | New Allowance |
-|---|---|---|
-| Less than 5 hours | 2 minutes | 2 minutes 30 seconds |
-| 5+ hours | 4 minutes | 5 minutes |
+**Fix:** Change `return 'emailSupport'` to `return 'other'` for the logistics position.
+
+### Issue 2: Only approved outages are shown
+The outage query on line 142 filters with `.eq('status', 'approved')`. Pending and for_review outages are excluded entirely.
+
+**Fix:** Change the filter to `.in('status', ['approved', 'pending', 'for_review'])`, then display the outage reason with a "(Pending)" suffix for non-approved statuses.
+
+### Related considerations
+- The "On Leave" badge text on the StatusCard should also differentiate: show "On Leave" for approved, "Pending Leave" for pending/for_review
+- The `hasApprovedOutage` field name becomes slightly misleading since it now includes pending -- we can add an `outageStatus` field to the `TeamMemberStatus` interface to track whether it's approved or pending
+- The online count logic currently excludes agents with approved outages from the count; pending outages should still count as online since the leave isn't confirmed yet
 
 ### Steps (one at a time)
 
-**Step 1 -- Client-side calculation (`src/pages/AgentDashboard.tsx`)**
-- Change threshold from 480 mins (8 hrs) to 300 mins (5 hrs)
-- Change values: 5 min (300s) for 5+ hrs, 2.5 min (150s) for shorter
-- Update default fallback from 120s to 150s
+**Step 1 -- Fix Logistics categorization (`src/lib/teamStatusApi.ts`)**
+- Change line 64 from `return 'emailSupport'` to `return 'other'`
 
-**Step 2 -- Server-side calculation (`src/lib/agentDashboardApi.ts`)**
-- Same threshold and value changes in `calculateBioAllowanceForProfile()`
-- Update default/fallback from 120s to 150s
+**Step 2 -- Include pending/for_review outages (`src/lib/teamStatusApi.ts`)**
+- Change outage query filter from `.eq('status', 'approved')` to `.in('status', ['approved', 'pending', 'for_review'])`
+- Add `status` to the select fields
+- Add `outageStatus` field to `TeamMemberStatus` interface
+- Only exclude from online count if outage is approved (not pending)
+- Set `outageStatus` on the member object
 
-**Step 3 -- Batch report generator (edge function `generate-agent-reports`)**
-- Update default from 120 to 150, threshold from 480 to 300, and long-shift value from 240 to 300
-- Redeploy the edge function
-
-**Step 4 -- User Guide: Dashboard Section**
-- Update bio break row in status buttons table
-- Update bio allowance callout text
-
-**Step 5 -- Admin Guide: Dashboard Admin Section**
-- Update the violations table row for Bio Break
-
-**Step 6 -- User Guide: Agent Reports Section**
-- Update the Bio Overuse row description
+**Step 3 -- Update StatusCard display (`src/components/team-status/StatusCard.tsx`)**
+- Show "(Pending)" suffix on outage reason when status is not approved
+- Change "On Leave" badge to "Pending Leave" for non-approved outages
 
 ### Technical Details
 
-All three code locations use the same pattern:
-```
-durationMinutes >= THRESHOLD ? LONG_SHIFT_VALUE : SHORT_SHIFT_VALUE
-```
-Changes: `480 -> 300`, `4*60 -> 5*60`, `2*60 -> 150`, comments updated accordingly.
+**teamStatusApi.ts changes:**
+- `categorizeByPosition`: `'logistics' -> return 'other'`
+- Outage query: `.eq('status', 'approved')` becomes `.in('status', ['approved', 'pending', 'for_review'])`
+- Add `status` to outage select and outageMap
+- New field `outageStatus: 'approved' | 'pending' | 'for_review' | null` on `TeamMemberStatus`
+- Online count: only subtract when `outageStatus === 'approved'`
+
+**StatusCard.tsx changes:**
+- When `outageStatus !== 'approved'`, append ` (Pending)` to the outage reason label
+- Change "On Leave" badge to "Pending Leave" for pending outages
 
