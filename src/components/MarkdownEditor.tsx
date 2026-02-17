@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +9,7 @@ import { PlaybookArticle } from '@/lib/playbookTypes';
 import { Wand2, Loader2, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FileAttachmentButton, AttachedFile } from './editor/FileAttachmentButton';
+import { ImageInsertButton, uploadImageFile } from './editor/ImageInsertButton';
 
 interface MarkdownEditorProps {
   value: string;
@@ -34,7 +35,62 @@ export function MarkdownEditor({
   const [pendingApproval, setPendingApproval] = useState(false);
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [formattedContent, setFormattedContent] = useState<string | null>(null);
+  const [isPasting, setIsPasting] = useState(false);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Insert text at cursor in the MDEditor textarea
+  const insertAtCursor = useCallback((text: string) => {
+    const textarea = editorContainerRef.current?.querySelector('textarea');
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const before = value.substring(0, start);
+      const after = value.substring(end);
+      onChange(before + text + after);
+      // Restore cursor after insertion
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + text.length;
+        textarea.focus();
+      });
+    } else {
+      // Fallback: append
+      onChange(value + '\n' + text);
+    }
+  }, [value, onChange]);
+
+  // Clipboard paste handler for images
+  useEffect(() => {
+    const container = editorContainerRef.current;
+    if (!container) return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find(item => item.type.startsWith('image/'));
+      if (!imageItem) return;
+
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      setIsPasting(true);
+      try {
+        const url = await uploadImageFile(file);
+        if (url) {
+          const name = file.name || 'pasted-image';
+          insertAtCursor(`![${name}](${url})`);
+          toast({ title: 'Image pasted', description: 'Image uploaded and inserted.' });
+        } else {
+          toast({ title: 'Paste failed', description: 'Could not upload pasted image.', variant: 'destructive' });
+        }
+      } finally {
+        setIsPasting(false);
+      }
+    };
+
+    container.addEventListener('paste', handlePaste);
+    return () => container.removeEventListener('paste', handlePaste);
+  }, [insertAtCursor, toast]);
 
   // Parse content as Playbook JSON if possible
   const playbookData = useMemo<PlaybookArticle | null>(() => {
@@ -145,7 +201,15 @@ export function MarkdownEditor({
   };
 
   return (
-    <div className={cn("border rounded-lg overflow-hidden", className)} data-color-mode="light">
+    <div ref={editorContainerRef} className={cn("relative border rounded-lg overflow-hidden", className)} data-color-mode="light">
+      {isPasting && (
+        <div className="absolute inset-0 z-50 bg-background/60 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Uploading pasted image...
+          </div>
+        </div>
+      )}
       <Tabs value={mode} onValueChange={(v) => setMode(v as 'write' | 'preview')}>
         <div className="flex items-center justify-between border-b bg-muted/30 px-2">
           <TabsList className="h-10 bg-transparent">
@@ -164,6 +228,10 @@ export function MarkdownEditor({
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2">
+            <ImageInsertButton
+              onInsert={insertAtCursor}
+              disabled={isFormatting || pendingApproval}
+            />
             {onAttachmentsChange && (
               <FileAttachmentButton
                 attachments={attachments}
