@@ -68,3 +68,21 @@ export function getAgentClients(email: string): string[] {
   const agentInfo = getAgentInfoByEmail(email);
   return agentInfo?.clients ?? CLIENT_OPTIONS;
 }
+
+// Get unique team leads sorted alphabetically
+export function getUniqueTeamLeads(): string[] {
+  const leads = new Set<string>();
+  Object.values(AGENT_DIRECTORY).forEach(agent => {
+    if (agent.teamLead && agent.teamLead.trim()) {
+      leads.add(agent.teamLead.trim());
+    }
+  });
+  return Array.from(leads).sort();
+}
+
+// Get agent emails that belong to a specific team lead
+export function getAgentEmailsByTeamLead(teamLead: string): string[] {
+  return Object.entries(AGENT_DIRECTORY)
+    .filter(([_, agent]) => agent.teamLead === teamLead)
+    .map(([email]) => email);
+}

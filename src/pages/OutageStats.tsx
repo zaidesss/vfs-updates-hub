@@ -10,12 +10,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle, Zap, Wifi, Heart, Calendar, Wrench, Clock, Timer, HelpCircle, ChevronDown, ChevronRight, Info, FileText, CheckCircle2, XCircle } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
 import { fetchAllLeaveRequests, LeaveRequest } from '@/lib/leaveRequestApi';
 import { useToast } from '@/hooks/use-toast';
 import { Navigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { getUniqueTeamLeads, getAgentEmailsByTeamLead } from '@/lib/agentDirectory';
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -99,6 +102,15 @@ export default function OutageStats() {
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('overview');
   const [policyOpen, setPolicyOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'monthly' | 'quarterly'>('monthly');
+  const [selectedQuarter, setSelectedQuarter] = useState(() => {
+    const now = new Date();
+    const q = Math.ceil((now.getMonth() + 1) / 3);
+    return `${now.getFullYear()}-Q${q}`;
+  });
+  const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
+
+  const teamLeads = useMemo(() => getUniqueTeamLeads(), []);
 
   // Generate months from Jan 2024 to Dec 2026
   const monthOptions = useMemo(() => {
@@ -117,6 +129,31 @@ export default function OutageStats() {
     }
     return months;
   }, []);
+
+  // Generate quarter options from 2024-2026
+  const quarterOptions = useMemo(() => {
+    const quarters = [];
+    for (let year = 2026; year >= 2024; year--) {
+      for (let q = 4; q >= 1; q--) {
+        quarters.push({
+          value: `${year}-Q${q}`,
+          label: `Q${q} ${year}`
+        });
+      }
+    }
+    return quarters;
+  }, []);
+
+  // Helper to get date range for a quarter
+  const getQuarterRange = (quarterStr: string) => {
+    const [yearStr, qStr] = quarterStr.split('-Q');
+    const year = parseInt(yearStr);
+    const q = parseInt(qStr);
+    const startMonth = (q - 1) * 3; // 0-indexed
+    const qStart = startOfMonth(new Date(year, startMonth));
+    const qEnd = endOfMonth(new Date(year, startMonth + 2));
+    return { qStart, qEnd };
+  };
 
   useEffect(() => {
     loadRequests();
@@ -139,29 +176,44 @@ export default function OutageStats() {
     setIsLoading(false);
   };
 
-  // Get unique agents from requests
+  // Get unique agents from requests (filtered by team lead if selected)
   const agents = useMemo(() => {
+    const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
     const agentSet = new Set(requests.map(r => r.agent_email));
-    return Array.from(agentSet).map(email => {
-      const req = requests.find(r => r.agent_email === email);
-      return { email, name: req?.agent_name || email };
-    });
-  }, [requests]);
+    return Array.from(agentSet)
+      .filter(email => !teamLeadEmails || teamLeadEmails.includes(email.toLowerCase().trim()))
+      .map(email => {
+        const req = requests.find(r => r.agent_email === email);
+        return { email, name: req?.agent_name || email };
+      });
+  }, [requests, selectedTeamLead]);
 
-  // Filter requests by selected month and agent
+  // Filter requests by selected period, agent, and team lead
   const filteredRequests = useMemo(() => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const monthStart = startOfMonth(new Date(year, month - 1));
-    const monthEnd = endOfMonth(new Date(year, month - 1));
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (viewMode === 'quarterly') {
+      const { qStart, qEnd } = getQuarterRange(selectedQuarter);
+      periodStart = qStart;
+      periodEnd = qEnd;
+    } else {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      periodStart = startOfMonth(new Date(year, month - 1));
+      periodEnd = endOfMonth(new Date(year, month - 1));
+    }
+
+    const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
 
     return requests.filter(req => {
       const reqStart = parseISO(req.start_date);
       const reqEnd = parseISO(req.end_date);
-      const inMonth = reqStart <= monthEnd && reqEnd >= monthStart;
+      const inPeriod = reqStart <= periodEnd && reqEnd >= periodStart;
       const matchesAgent = selectedAgent === 'all' || req.agent_email === selectedAgent;
-      return inMonth && matchesAgent;
+      const matchesTeamLead = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
+      return inPeriod && matchesAgent && matchesTeamLead;
     });
-  }, [requests, selectedMonth, selectedAgent]);
+  }, [requests, selectedMonth, selectedQuarter, viewMode, selectedAgent, selectedTeamLead]);
 
   // Calculate stats by reason (for breakdown table)
   const reasonStats = useMemo(() => {
@@ -182,28 +234,54 @@ export default function OutageStats() {
     return stats;
   }, [filteredRequests]);
 
-  // Monthly trend data (last 6 months)
+  // Trend data (last 6 months or last 6 quarters)
   const trendData = useMemo(() => {
+    const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
     const data = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const monthStart = startOfMonth(date);
-      const monthEnd = endOfMonth(date);
-      
-      const monthRequests = requests.filter(req => {
-        const reqStart = parseISO(req.start_date);
-        return reqStart >= monthStart && reqStart <= monthEnd;
-      });
 
-      data.push({
-        month: format(date, 'MMM'),
-        fullMonth: format(date, 'MMMM yyyy'),
-        total: monthRequests.length,
-        hours: monthRequests.reduce((sum, r) => sum + (r.outage_duration_hours || 0), 0)
-      });
+    if (viewMode === 'quarterly') {
+      const now = new Date();
+      const currentQ = Math.ceil((now.getMonth() + 1) / 3);
+      const currentYear = now.getFullYear();
+      for (let i = 5; i >= 0; i--) {
+        let q = currentQ - i;
+        let year = currentYear;
+        while (q <= 0) { q += 4; year--; }
+        const { qStart, qEnd } = getQuarterRange(`${year}-Q${q}`);
+        const periodRequests = requests.filter(req => {
+          const reqStart = parseISO(req.start_date);
+          const inPeriod = reqStart >= qStart && reqStart <= qEnd;
+          const matchesTL = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
+          return inPeriod && matchesTL;
+        });
+        data.push({
+          month: `Q${q}`,
+          fullMonth: `Q${q} ${year}`,
+          total: periodRequests.length,
+          hours: periodRequests.reduce((sum, r) => sum + (r.outage_duration_hours || 0), 0)
+        });
+      }
+    } else {
+      for (let i = 5; i >= 0; i--) {
+        const date = subMonths(new Date(), i);
+        const mStart = startOfMonth(date);
+        const mEnd = endOfMonth(date);
+        const monthRequests = requests.filter(req => {
+          const reqStart = parseISO(req.start_date);
+          const inPeriod = reqStart >= mStart && reqStart <= mEnd;
+          const matchesTL = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
+          return inPeriod && matchesTL;
+        });
+        data.push({
+          month: format(date, 'MMM'),
+          fullMonth: format(date, 'MMMM yyyy'),
+          total: monthRequests.length,
+          hours: monthRequests.reduce((sum, r) => sum + (r.outage_duration_hours || 0), 0)
+        });
+      }
     }
     return data;
-  }, [requests]);
+  }, [requests, viewMode, selectedTeamLead]);
 
   // Reason distribution for pie chart
   const reasonDistribution = useMemo(() => {
@@ -325,7 +403,7 @@ export default function OutageStats() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `repeat-offenders-${selectedMonth}.csv`;
+    a.download = `repeat-offenders-${viewMode === 'quarterly' ? selectedQuarter : selectedMonth}${selectedTeamLead !== 'all' ? `-${selectedTeamLead.replace(/\s+/g, '_')}` : ''}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -362,14 +440,48 @@ export default function OutageStats() {
             <p className="text-muted-foreground">Trends, patterns, and repeat offender tracking</p>
           </div>
           
-          <div className="flex gap-3 flex-wrap">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+           <div className="flex gap-3 flex-wrap items-center">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="view-mode" className="text-sm text-muted-foreground whitespace-nowrap">Quarterly</Label>
+              <Switch 
+                id="view-mode"
+                checked={viewMode === 'quarterly'}
+                onCheckedChange={(checked) => setViewMode(checked ? 'quarterly' : 'monthly')}
+              />
+            </div>
+
+            {viewMode === 'monthly' ? (
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Select quarter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {quarterOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            <Select value={selectedTeamLead} onValueChange={setSelectedTeamLead}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select month" />
+                <SelectValue placeholder="Team Lead" />
               </SelectTrigger>
               <SelectContent>
-                {monthOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                <SelectItem value="all">All Team Leads</SelectItem>
+                {teamLeads.map(lead => (
+                  <SelectItem key={lead} value={lead}>{lead}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -412,7 +524,7 @@ export default function OutageStats() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
-                    Monthly Outages
+                    {viewMode === 'quarterly' ? 'Quarterly Outages' : 'Monthly Outages'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -464,8 +576,8 @@ export default function OutageStats() {
               {/* Monthly Trend */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Monthly Trend</CardTitle>
-                  <CardDescription>Outage count over the last 6 months</CardDescription>
+                  <CardTitle>{viewMode === 'quarterly' ? 'Quarterly Trend' : 'Monthly Trend'}</CardTitle>
+                  <CardDescription>Outage count over the last 6 {viewMode === 'quarterly' ? 'quarters' : 'months'}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[300px]">

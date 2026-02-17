@@ -5,11 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Loader2, AlertTriangle, Zap, Wifi, Heart, Calendar, Wrench, Clock, Timer, HelpCircle } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
 import { fetchMyLeaveRequests, fetchAllLeaveRequests, LeaveRequest } from '@/lib/leaveRequestApi';
 import { useToast } from '@/hooks/use-toast';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { getUniqueTeamLeads, getAgentEmailsByTeamLead } from '@/lib/agentDirectory';
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -56,6 +59,15 @@ export default function OutageReport() {
     return estStr.slice(0, 7);
   });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'monthly' | 'quarterly'>('monthly');
+  const [selectedQuarter, setSelectedQuarter] = useState(() => {
+    const now = new Date();
+    const q = Math.ceil((now.getMonth() + 1) / 3);
+    return `${now.getFullYear()}-Q${q}`;
+  });
+  const [selectedTeamLead, setSelectedTeamLead] = useState<string>('all');
+
+  const teamLeads = useMemo(() => getUniqueTeamLeads(), []);
 
   // Generate months from Jan 2024 to Dec 2026
   const monthOptions = useMemo(() => {
@@ -75,14 +87,42 @@ export default function OutageReport() {
     return months;
   }, []);
 
-  // Get unique agents from requests
+  // Generate quarter options from 2024-2026
+  const quarterOptions = useMemo(() => {
+    const quarters = [];
+    for (let year = 2026; year >= 2024; year--) {
+      for (let q = 4; q >= 1; q--) {
+        quarters.push({
+          value: `${year}-Q${q}`,
+          label: `Q${q} ${year}`
+        });
+      }
+    }
+    return quarters;
+  }, []);
+
+  // Helper to get date range for a quarter
+  const getQuarterRange = (quarterStr: string) => {
+    const [yearStr, qStr] = quarterStr.split('-Q');
+    const year = parseInt(yearStr);
+    const q = parseInt(qStr);
+    const startMonth = (q - 1) * 3;
+    const qStart = startOfMonth(new Date(year, startMonth));
+    const qEnd = endOfMonth(new Date(year, startMonth + 2));
+    return { qStart, qEnd };
+  };
+
+  // Get unique agents from requests (filtered by team lead if selected)
   const agents = useMemo(() => {
+    const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
     const agentSet = new Set(requests.map(r => r.agent_email));
-    return Array.from(agentSet).map(email => {
-      const req = requests.find(r => r.agent_email === email);
-      return { email, name: req?.agent_name || email };
-    });
-  }, [requests]);
+    return Array.from(agentSet)
+      .filter(email => !teamLeadEmails || teamLeadEmails.includes(email.toLowerCase().trim()))
+      .map(email => {
+        const req = requests.find(r => r.agent_email === email);
+        return { email, name: req?.agent_name || email };
+      });
+  }, [requests, selectedTeamLead]);
 
   useEffect(() => {
     loadRequests();
@@ -97,7 +137,6 @@ export default function OutageReport() {
       : await fetchMyLeaveRequests(user.email);
     
     if (result.data) {
-      // Only include approved/pending requests (not declined/canceled)
       setRequests(result.data.filter(r => r.status === 'approved' || r.status === 'pending'));
     } else if (result.error) {
       toast({
@@ -109,20 +148,32 @@ export default function OutageReport() {
     setIsLoading(false);
   };
 
-  // Filter requests by selected month and agent
+  // Filter requests by selected period, agent, and team lead
   const filteredRequests = useMemo(() => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const monthStart = startOfMonth(new Date(year, month - 1));
-    const monthEnd = endOfMonth(new Date(year, month - 1));
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (viewMode === 'quarterly') {
+      const { qStart, qEnd } = getQuarterRange(selectedQuarter);
+      periodStart = qStart;
+      periodEnd = qEnd;
+    } else {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      periodStart = startOfMonth(new Date(year, month - 1));
+      periodEnd = endOfMonth(new Date(year, month - 1));
+    }
+
+    const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
 
     return requests.filter(req => {
       const reqStart = parseISO(req.start_date);
       const reqEnd = parseISO(req.end_date);
-      const inMonth = reqStart <= monthEnd && reqEnd >= monthStart;
+      const inPeriod = reqStart <= periodEnd && reqEnd >= periodStart;
       const matchesAgent = selectedAgent === 'all' || req.agent_email === selectedAgent;
-      return inMonth && matchesAgent;
+      const matchesTeamLead = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
+      return inPeriod && matchesAgent && matchesTeamLead;
     });
-  }, [requests, selectedMonth, selectedAgent]);
+  }, [requests, selectedMonth, selectedQuarter, viewMode, selectedAgent, selectedTeamLead]);
 
   // Calculate stats by reason
   const reasonStats = useMemo(() => {
@@ -192,17 +243,53 @@ export default function OutageReport() {
             </p>
           </div>
           
-          <div className="flex gap-3">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select month" />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex gap-3 flex-wrap items-center">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="report-view-mode" className="text-sm text-muted-foreground whitespace-nowrap">Quarterly</Label>
+              <Switch 
+                id="report-view-mode"
+                checked={viewMode === 'quarterly'}
+                onCheckedChange={(checked) => setViewMode(checked ? 'quarterly' : 'monthly')}
+              />
+            </div>
+
+            {viewMode === 'monthly' ? (
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Select quarter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {quarterOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {isAdmin && (
+              <Select value={selectedTeamLead} onValueChange={setSelectedTeamLead}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Team Lead" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Team Leads</SelectItem>
+                  {teamLeads.map(lead => (
+                    <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             
             {isAdmin && (
               <Select value={selectedAgent} onValueChange={setSelectedAgent}>
@@ -228,7 +315,7 @@ export default function OutageReport() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold">{totalStats.count}</p>
-              <p className="text-xs text-muted-foreground">requests this month</p>
+              <p className="text-xs text-muted-foreground">requests this {viewMode === 'quarterly' ? 'quarter' : 'month'}</p>
             </CardContent>
           </Card>
           
