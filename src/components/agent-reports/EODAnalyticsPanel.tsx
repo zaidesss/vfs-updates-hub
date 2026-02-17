@@ -177,6 +177,12 @@ export function EODAnalyticsPanel() {
                         <span className="text-muted-foreground">Active</span>
                         <span className="font-medium">{analytics.attendance.active}/{analytics.attendance.scheduled}</span>
                       </div>
+                      {(analytics.attendance.onLeave ?? 0) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">On Leave</span>
+                          <span className="font-medium text-amber-600">{analytics.attendance.onLeave}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">On-Time</span>
                         <span className="font-medium">{formatPercent(analytics.attendance.onTimeRate)}</span>
@@ -201,13 +207,31 @@ export function EODAnalyticsPanel() {
                         <span className="text-muted-foreground">Tickets</span>
                         <span className="font-medium">{analytics.productivity.total}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Quota Met</span>
-                        <span className="font-medium">{formatPercent(analytics.productivity.quotaRate)}</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">E / C / P</span>
+                        <span className="font-medium">{analytics.productivity.email} / {analytics.productivity.chat} / {analytics.productivity.call}</span>
+                      </div>
+                      {/* Quota: Total fraction */}
+                      <div className="pt-1 border-t border-green-200 dark:border-green-700">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Quota</span>
+                          <span className="font-medium">
+                            {analytics.productivity.total}/{(analytics.productivity.totalQuotaEmail ?? 0) + (analytics.productivity.totalQuotaChat ?? 0) + (analytics.productivity.totalQuotaCall ?? 0)}
+                          </span>
+                        </div>
+                        {/* Per-type quota breakdown */}
+                        <div className="flex justify-between text-xs mt-1">
+                          <span className="text-muted-foreground">E / C / P</span>
+                          <span className="font-medium">
+                            {analytics.productivity.email}/{analytics.productivity.totalQuotaEmail ?? 0}{' · '}
+                            {analytics.productivity.chat}/{analytics.productivity.totalQuotaChat ?? 0}{' · '}
+                            {analytics.productivity.call}/{analytics.productivity.totalQuotaCall ?? 0}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Avg Gap</span>
-                        <span className="font-medium">{formatGap(analytics.productivity.avgGap)}</span>
+                        <span className="font-medium">{analytics.productivity.avgGap !== null && analytics.productivity.avgGap !== undefined ? `${analytics.productivity.avgGap.toFixed(1)} min` : '-'}</span>
                       </div>
                     </div>
                   </CardContent>
