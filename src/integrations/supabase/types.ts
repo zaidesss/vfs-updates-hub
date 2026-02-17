@@ -3566,6 +3566,7 @@ export type Database = {
           override_reason: string
         }[]
       }
+      get_profile_id_by_email: { Args: { p_email: string }; Returns: string }
       get_super_admin_count: { Args: never; Returns: number }
       get_ticket_dashboard_data: {
         Args: {
