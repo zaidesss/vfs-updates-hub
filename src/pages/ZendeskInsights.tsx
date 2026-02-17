@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database } from 'lucide-react';
+import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database, Phone } from 'lucide-react';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,9 +56,9 @@ function formatTime(seconds: number | null, unit: 'seconds' | 'minutes' = 'secon
   return `${s}s`;
 }
 
-async function fetchInsights(weekStart: string, weekEnd: string, zdInstance: 'ZD1' | 'ZD2', forceRefresh = false): Promise<InsightsData> {
+async function fetchInsights(weekStart: string, weekEnd: string, zdInstance: 'ZD1' | 'ZD2', forceRefresh = false, channel = 'all'): Promise<InsightsData> {
   const { data, error } = await supabase.functions.invoke('fetch-zendesk-insights', {
-    body: { weekStart, weekEnd, zdInstance, forceRefresh },
+    body: { weekStart, weekEnd, zdInstance, forceRefresh, channel },
   });
   if (error) throw new Error(error.message || 'Failed to fetch insights');
   return data as InsightsData;
@@ -84,29 +84,29 @@ function MetricCard({ icon: Icon, label, value, subtext }: {
   );
 }
 
-function InsightsCard({ weekStart, weekEnd, zdInstance }: {
+function InsightsCard({ weekStart, weekEnd, zdInstance, channel }: {
   weekStart: string;
   weekEnd: string;
   zdInstance: 'ZD1' | 'ZD2';
+  channel: string;
 }) {
   const queryClient = useQueryClient();
-  const queryKey = ['zendesk-insights', weekStart, weekEnd, zdInstance];
+  const queryKey = ['zendesk-insights', weekStart, weekEnd, zdInstance, channel];
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey,
-    queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance),
-    staleTime: Infinity, // Never auto-refetch cached data
+    queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance, false, channel),
+    staleTime: Infinity,
     gcTime: 30 * 60 * 1000,
     retry: 1,
   });
 
   const handleRefresh = useCallback(async () => {
-    // Force refresh by calling with forceRefresh=true, then update cache
     queryClient.fetchQuery({
       queryKey,
-      queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance, true),
+      queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance, true, channel),
     });
-  }, [queryClient, weekStart, weekEnd, zdInstance]);
+  }, [queryClient, weekStart, weekEnd, zdInstance, channel]);
 
   const instanceLabel = zdInstance === 'ZD1' ? 'Zendesk Instance 1' : 'Zendesk Instance 2';
 
@@ -173,12 +173,14 @@ function InsightsCard({ weekStart, weekEnd, zdInstance }: {
               value={formatTime(data.fullResolutionTimeMinutes, 'minutes')}
               subtext="Created to solved"
             />
-            <MetricCard
-              icon={ThumbsUp}
-              label="CSAT Score"
-              value={data.csatScore !== null ? `${data.csatScore}%` : '—'}
-              subtext={data.csatTotal > 0 ? `${data.csatGood}/${data.csatTotal} rated good` : 'No ratings'}
-            />
+            {channel === 'all' && (
+              <MetricCard
+                icon={ThumbsUp}
+                label="CSAT Score"
+                value={data.csatScore !== null ? `${data.csatScore}%` : '—'}
+                subtext={data.csatTotal > 0 ? `${data.csatGood}/${data.csatTotal} rated good` : 'No ratings'}
+              />
+            )}
             <MetricCard
               icon={MessageSquare}
               label="First Response Time"
@@ -199,6 +201,7 @@ export default function ZendeskInsights() {
   const [selectedYear, setSelectedYear] = useState<string>(String(currentWeekStart.getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState<string>(String(currentWeekStart.getMonth() + 1).padStart(2, '0'));
   const [selectedWeek, setSelectedWeek] = useState<string>(format(currentWeekStart, 'yyyy-MM-dd'));
+  const [selectedChannel, setSelectedChannel] = useState<string>('all');
 
   const availableWeeks = useMemo(() => {
     const year = parseInt(selectedYear);
@@ -296,12 +299,24 @@ export default function ZendeskInsights() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={selectedChannel} onValueChange={setSelectedChannel}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover z-50">
+              <SelectItem value="all">All Channels</SelectItem>
+              <SelectItem value="voice">Voice</SelectItem>
+              <SelectItem value="chat">Chat</SelectItem>
+              <SelectItem value="email">Email</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Instance Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" />
-          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" />
+          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" channel={selectedChannel} />
+          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" channel={selectedChannel} />
         </div>
       </div>
     </Layout>
