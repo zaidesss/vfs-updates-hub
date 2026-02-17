@@ -1,34 +1,42 @@
 
 
-## Exclude Logistics from Ticket Counts Only
+## Step 5: Replace Performance Card with Time Card in Individual Agent Analytics
 
 ### What changes
-Currently, Logistics agents are fully excluded from all analytics (attendance, tickets, compliance, time) alongside Team Lead and Technical Support. The change will keep Logistics agents in attendance, compliance, and time calculations but exclude their tickets from the ticket count and quota metrics.
+The "Performance" card (currently showing Avg Gap and Break) will be renamed to **"Time"** and will display **Logged Time** vs **Required Time** instead. The required time will be derived from the agent's effective schedule using the `get_effective_schedule` RPC.
 
-### Affected areas
-- EOD Team Analytics (daily)
-- EOW Team Analytics (weekly)
-- Individual Agent Analytics: no change needed (it's per-agent, not team-wide)
+### How Required Time is calculated
+- **Daily**: Call `get_effective_schedule(agent_id, date)` to get the effective shift (e.g., "9:00 AM - 6:00 PM"). Parse the start/end times to compute the shift duration in hours, then subtract the break duration from the effective break schedule.
+- **Weekly**: Call `get_effective_schedules_for_week(agent_id, week_start)` to get all 7 days. Sum the non-day-off shift durations minus breaks for the required total.
 
 ### Technical Details
 
-**Step 1: Update `generate-eod-analytics` edge function**
+**File: `src/components/agent-reports/IndividualAgentAnalytics.tsx`**
 
-- Change `EXCLUDED_POSITIONS` to only `['Team Lead', 'Technical Support']` for the profile query (so Logistics agents are included in attendance/compliance/time)
-- Add a separate `TICKET_EXCLUDED_POSITIONS` = `['Team Lead', 'Technical Support', 'Logistics']`
-- When aggregating tickets (lines 60-68), filter out tickets from Logistics agents by checking the profile's position before counting
-- When calculating quota (lines 122-123), skip Logistics agents
+1. **Update data interfaces**
+   - Add `requiredHours: number | null` to `AgentMetrics` (daily)
+   - Add `totalRequiredHours: number` to `WeeklyAgentMetrics` (weekly)
 
-**Step 2: Update `generate-weekly-analytics` edge function**
+2. **Add schedule parsing helper**
+   - A function to parse schedule strings like "9:00 AM - 6:00 PM" and break strings like "2:30 PM - 3:00 PM" into hours, computing `shiftHours - breakHours`
 
-- Same pattern: narrow `EXCLUDED_POSITIONS` to `['Team Lead', 'Technical Support']`
-- Add `TICKET_EXCLUDED_POSITIONS` including Logistics
-- Filter ticket aggregation and quota calculation to exclude Logistics agents
-- Keep Logistics in attendance, time, and compliance loops
+3. **Update `loadDailyMetrics`**
+   - Call `get_effective_schedule` RPC with the agent's profile ID and the selected date
+   - Parse the returned `effective_schedule` and `effective_break_schedule` to compute required hours
+   - If it's a day off, required hours = 0
+   - Store in `requiredHours`
 
-### Implementation approach
-- Build a set of Logistics agent emails from the profiles query
-- When iterating tickets, skip entries whose `agent_email` belongs to a Logistics agent
-- When calculating quota per agent, skip if agent position is Logistics
-- No frontend changes needed -- the response shape stays the same
+4. **Update `loadWeeklyMetrics`**
+   - Call `get_effective_schedules_for_week` RPC with the agent's profile ID and week start
+   - Sum required hours across non-day-off days
+   - Store in `totalRequiredHours`
+
+5. **Update the UI cards (both daily and weekly views)**
+   - Rename "Performance" to "Time"
+   - Replace "Avg Gap" row with "Logged" showing actual hours worked
+   - Replace "Break" row with "Required" showing required hours from schedule
+   - Keep the purple color scheme
+
+### No other files need changes
+The `get_effective_schedule` and `get_effective_schedules_for_week` RPCs already exist in the database, so no backend changes are needed.
 
