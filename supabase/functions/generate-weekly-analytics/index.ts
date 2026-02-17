@@ -84,6 +84,30 @@ Deno.serve(async (req) => {
     const { data: gaps } = await supabase.from("ticket_gap_daily").select("agent_email, avg_gap_seconds, date").gte("date", weekStartStr).lte("date", weekEndStr);
     const { data: incidents } = await supabase.from("agent_reports").select("agent_email, incident_type").gte("incident_date", weekStartStr).lte("incident_date", weekEndStr);
 
+    // Fetch approved Planned Leave within the week range
+    const { data: leaves } = await supabase
+      .from("leave_requests")
+      .select("agent_email, start_date, end_date")
+      .eq("status", "approved")
+      .eq("outage_reason", "Planned Leave")
+      .lte("start_date", weekEndStr)
+      .gte("end_date", weekStartStr);
+    
+    // Build a map of agent email -> set of leave dates within the week
+    const leaveDatesByAgent = new Map<string, Set<string>>();
+    leaves?.forEach(l => {
+      const em = l.agent_email.toLowerCase();
+      if (!leaveDatesByAgent.has(em)) leaveDatesByAgent.set(em, new Set());
+      const leaveSet = leaveDatesByAgent.get(em)!;
+      const start = new Date(Math.max(new Date(l.start_date).getTime(), new Date(weekStartStr).getTime()));
+      const end = new Date(Math.min(new Date(l.end_date).getTime(), new Date(weekEndStr).getTime()));
+      const d = new Date(start);
+      while (d <= end) {
+        leaveSet.add(d.toISOString().split("T")[0]);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+
     // Helper functions
     const parseTime = (t: string): number | null => {
       const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -122,6 +146,19 @@ Deno.serve(async (req) => {
     let totalScheduledDays = 0, totalActiveDays = 0, totalOnTimeDays = 0, totalFullShiftDays = 0;
     let quotaAgents = 0, quotaMet = 0;
     let totalLoggedHrs = 0, totalRequiredHrs = 0;
+    let totalLeaveDays = 0;
+    let totalQuotaEmail = 0, totalQuotaChat = 0, totalQuotaCall = 0;
+
+    // Track per-agent ticket breakdown for quota
+    const tixByAgentByType = new Map<string, { email: number; chat: number; call: number }>();
+    tickets?.forEach(t => {
+      const em = t.agent_email?.toLowerCase();
+      if (!em || ticketExcludedEmails.has(em)) return;
+      if (!tixByAgentByType.has(em)) tixByAgentByType.set(em, { email: 0, chat: 0, call: 0 });
+      const entry = tixByAgentByType.get(em)!;
+      const tt = t.ticket_type?.toLowerCase();
+      if (tt === "email") entry.email++; else if (tt === "chat") entry.chat++; else if (tt === "call") entry.call++;
+    });
 
     // Iterate through each day of the week
     const currentDate = new Date(weekStart);
@@ -140,6 +177,11 @@ Deno.serve(async (req) => {
         if (!sched) continue;
         const parsed = parseSched(sched);
         if (!parsed) continue;
+
+        // Skip agents on Planned Leave for this specific day
+        const agentLeaves = leaveDatesByAgent.get(p.email.toLowerCase());
+        if (agentLeaves?.has(dateStr)) { totalLeaveDays++; continue; }
+
         totalScheduledDays++;
 
         let reqMins = parsed.en - parsed.st; if (reqMins < 0) reqMins += 1440;
@@ -169,11 +211,24 @@ Deno.serve(async (req) => {
     // Calculate quota metrics for the week (exclude Logistics)
     for (const p of profiles) {
       if (ticketExcludedEmails.has(p.email.toLowerCase())) continue;
-      const q = getQuota(p);
-      if (q > 0) {
+      const pos = (p.position || "").toLowerCase();
+      const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0;
+      
+      let agentQuotaEmail = 0, agentQuotaChat = 0, agentQuotaCall = 0;
+      if (pos.includes("hybrid")) { agentQuotaEmail = qe; agentQuotaChat = qc; agentQuotaCall = qp; }
+      else if (pos.includes("chat")) { agentQuotaEmail = qe; agentQuotaChat = qc; }
+      else if (pos.includes("phone")) { agentQuotaEmail = qe; agentQuotaCall = qp; }
+      else { agentQuotaEmail = qe; }
+
+      const totalAgentQuota = agentQuotaEmail + agentQuotaChat + agentQuotaCall;
+      if (totalAgentQuota > 0) {
         quotaAgents++;
-        const weeklyQuota = q * 5; // Assuming 5-day work week
-        if ((tixByAgent.get(p.email.toLowerCase()) || 0) >= weeklyQuota * 0.8) quotaMet++; // 80% of weekly quota
+        // Weekly quota = daily quota * 5
+        totalQuotaEmail += agentQuotaEmail * 5;
+        totalQuotaChat += agentQuotaChat * 5;
+        totalQuotaCall += agentQuotaCall * 5;
+        const weeklyQuota = totalAgentQuota * 5;
+        if ((tixByAgent.get(p.email.toLowerCase()) || 0) >= weeklyQuota * 0.8) quotaMet++;
       }
     }
 
@@ -188,6 +243,7 @@ Deno.serve(async (req) => {
         onTimeRate: totalScheduledDays > 0 ? (totalOnTimeDays / totalScheduledDays) * 100 : 0,
         fullShiftRate: totalScheduledDays > 0 ? (totalFullShiftDays / totalScheduledDays) * 100 : 0,
         attendanceRate: totalScheduledDays > 0 ? (totalActiveDays / totalScheduledDays) * 100 : 0,
+        leaveDays: totalLeaveDays,
       },
       productivity: {
         total: totalEmail + totalChat + totalCall,
@@ -198,6 +254,9 @@ Deno.serve(async (req) => {
         quotaMet,
         quotaRate: quotaAgents > 0 ? (quotaMet / quotaAgents) * 100 : 0,
         avgGap,
+        totalQuotaEmail,
+        totalQuotaChat,
+        totalQuotaCall,
       },
       time: {
         totalLogged: totalLoggedHrs,
