@@ -3302,6 +3302,7 @@ export type Database = {
     Views: {
       agent_profiles_team_status: {
         Row: {
+          agent_name: string | null
           break_schedule: string | null
           day_off: string[] | null
           email: string | null
@@ -3317,14 +3318,17 @@ export type Database = {
           sat_schedule: string | null
           sun_ot_schedule: string | null
           sun_schedule: string | null
+          support_type: string[] | null
           thu_ot_schedule: string | null
           thu_schedule: string | null
           tue_ot_schedule: string | null
           tue_schedule: string | null
           wed_ot_schedule: string | null
           wed_schedule: string | null
+          zendesk_instance: string | null
         }
         Insert: {
+          agent_name?: string | null
           break_schedule?: string | null
           day_off?: string[] | null
           email?: string | null
@@ -3340,14 +3344,17 @@ export type Database = {
           sat_schedule?: string | null
           sun_ot_schedule?: string | null
           sun_schedule?: string | null
+          support_type?: string[] | null
           thu_ot_schedule?: string | null
           thu_schedule?: string | null
           tue_ot_schedule?: string | null
           tue_schedule?: string | null
           wed_ot_schedule?: string | null
           wed_schedule?: string | null
+          zendesk_instance?: string | null
         }
         Update: {
+          agent_name?: string | null
           break_schedule?: string | null
           day_off?: string[] | null
           email?: string | null
@@ -3363,12 +3370,14 @@ export type Database = {
           sat_schedule?: string | null
           sun_ot_schedule?: string | null
           sun_schedule?: string | null
+          support_type?: string[] | null
           thu_ot_schedule?: string | null
           thu_schedule?: string | null
           tue_ot_schedule?: string | null
           tue_schedule?: string | null
           wed_ot_schedule?: string | null
           wed_schedule?: string | null
+          zendesk_instance?: string | null
         }
         Relationships: []
       }
