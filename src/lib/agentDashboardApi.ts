@@ -788,19 +788,19 @@ async function calculateBioAllowanceForProfile(profileId: string, targetDate?: D
     const dateToResolve = targetDate ? (typeof targetDate === 'string' ? new Date(targetDate) : targetDate) : new Date();
     const effectiveSchedule = await getEffectiveScheduleForDate(profileId, dateToResolve);
 
-    if (!effectiveSchedule.schedule) return 2 * 60; // Default 2 minutes
+    if (!effectiveSchedule.schedule) return 150; // Default 2 mins 30 secs
 
     const parsed = parseScheduleRange(effectiveSchedule.schedule);
-    if (!parsed) return 2 * 60;
+    if (!parsed) return 150;
 
     let durationMinutes = parsed.endMinutes - parsed.startMinutes;
     if (durationMinutes < 0) durationMinutes += 24 * 60;
 
-    // 8+ hours (480 mins) = 4 mins (240 secs), otherwise 2 mins (120 secs)
-    return durationMinutes >= 480 ? 4 * 60 : 2 * 60;
+    // 5+ hours (300 mins) = 5 mins (300 secs), otherwise 2.5 mins (150 secs)
+    return durationMinutes >= 300 ? 5 * 60 : 150;
   } catch (err) {
     console.error('Error calculating bio allowance:', err);
-    return 2 * 60; // Default 2 minutes on error
+    return 150; // Default 2 mins 30 secs on error
   }
 }
 
