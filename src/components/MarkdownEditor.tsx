@@ -10,6 +10,7 @@ import { Wand2, Loader2, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FileAttachmentButton, AttachedFile } from './editor/FileAttachmentButton';
 import { ImageInsertButton, uploadImageFile } from './editor/ImageInsertButton';
+import { RehostImagesButton } from './editor/RehostImagesButton';
 
 interface MarkdownEditorProps {
   value: string;
@@ -239,6 +240,11 @@ export function MarkdownEditor({
                 disabled={isFormatting || pendingApproval}
               />
             )}
+            <RehostImagesButton
+              content={value}
+              onContentChange={onChange}
+              disabled={isFormatting || pendingApproval}
+            />
             {pendingApproval ? (
               <>
                 <Button
