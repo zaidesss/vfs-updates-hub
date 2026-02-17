@@ -106,6 +106,7 @@ export default function LeaveRequest() {
   const [selectedRequestForAudit, setSelectedRequestForAudit] = useState<string | null>(null);
   const [auditAgentName, setAuditAgentName] = useState('');
   const [activeTab, setActiveTab] = useState('pending');
+  const [agentFilter, setAgentFilter] = useState('all');
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   
@@ -695,12 +696,16 @@ export default function LeaveRequest() {
 
   const overrideCount = requests.filter(r => (r.status as string) === 'pending_override').length;
 
-  // Filter requests based on active tab
-  const filteredRequests = 
+  // Get unique agent names for filter dropdown
+  const uniqueAgentNames = [...new Set(requests.map(r => r.agent_name))].sort();
+
+  // Filter requests based on active tab and agent filter
+  const filteredRequests = (
     activeTab === 'override' ? requests.filter(r => (r.status as string) === 'pending_override')
     : activeTab === 'pending' ? requests.filter(r => (r.status as string) === 'pending')
     : activeTab === 'for_review' ? requests.filter(r => (r.status as string) === 'for_review')
-    : requests;
+    : requests
+  ).filter(r => agentFilter === 'all' || r.agent_name === agentFilter);
 
   return (
     <Layout>
@@ -1087,21 +1092,37 @@ export default function LeaveRequest() {
           </CardHeader>
           <CardContent>
             {isAdmin && (
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
-                <TabsList data-tour="request-tabs">
-                  <TabsTrigger value="pending">Pending</TabsTrigger>
-                  <TabsTrigger value="for_review">For Review</TabsTrigger>
-                  <TabsTrigger value="override" className="relative">
-                    Override Requests
-                    {overrideCount > 0 && (
-                      <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                        {overrideCount}
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="all">All Requests</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+                  <TabsList data-tour="request-tabs">
+                    <TabsTrigger value="pending">Pending</TabsTrigger>
+                    <TabsTrigger value="for_review">For Review</TabsTrigger>
+                    <TabsTrigger value="override" className="relative">
+                      Override Requests
+                      {overrideCount > 0 && (
+                        <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                          {overrideCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="all">All Requests</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                
+                <div className="mb-4">
+                  <Select value={agentFilter} onValueChange={setAgentFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Filter by Agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Agents</SelectItem>
+                      {uniqueAgentNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
             
             {!isAdmin && (
