@@ -15,6 +15,7 @@ interface InsightsRequest {
   weekStart: string;
   weekEnd: string;
   zdInstance: 'ZD1' | 'ZD2';
+  forceRefresh?: boolean;
 }
 
 interface TicketMetricEvent {
@@ -40,13 +41,12 @@ function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig | null {
   };
 }
 
-// Paginate Zendesk search results
+// Paginate Zendesk search results - NO LIMIT
 async function searchAllTickets(config: ZendeskConfig, query: string): Promise<any[]> {
   const allResults: any[] = [];
   let page = 1;
-  const maxPages = 10;
 
-  while (page <= maxPages) {
+  while (true) {
     const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=desc&per_page=100&page=${page}`;
     const response = await fetch(url, {
       headers: {
@@ -63,6 +63,8 @@ async function searchAllTickets(config: ZendeskConfig, query: string): Promise<a
     const data = await response.json();
     const results = data.results || [];
     allResults.push(...results);
+
+    console.log(`Page ${page}: ${results.length} results (total so far: ${allResults.length})`);
 
     if (results.length < 100 || !data.next_page) break;
     page++;
@@ -90,7 +92,6 @@ async function fetchTicketMetricsBatch(
           'Content-Type': 'application/json',
         };
 
-        // Fetch standard metrics + metric events in parallel
         const [metricsRes, eventsRes] = await Promise.all([
           fetch(`https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metrics.json`, { headers: authHeaders }),
           fetch(`https://${config.subdomain}.zendesk.com/api/v2/tickets/${ticketId}/metric_events.json`, { headers: authHeaders }),
@@ -110,13 +111,11 @@ async function fetchTicketMetricsBatch(
           const data = await eventsRes.json();
           const events: TicketMetricEvent[] = data.ticket_metric_events || [];
 
-          // Agent work time (handle time)
           const workTimeEvents = events.filter(e => e.metric === 'agent_work_time' && e.type === 'update_status');
           if (workTimeEvents.length > 0) {
             agentWorkTimeSeconds = workTimeEvents[workTimeEvents.length - 1].status?.calendar ?? null;
           }
 
-          // FRT: assignment to first reply
           const replyActivate = events.find(e => e.metric === 'reply_time' && e.type === 'activate');
           const replyFulfill = events.find(e => e.metric === 'reply_time' && e.type === 'fulfill');
           if (replyActivate && replyFulfill) {
@@ -196,13 +195,58 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { weekStart, weekEnd, zdInstance } = await req.json() as InsightsRequest;
+    const { weekStart, weekEnd, zdInstance, forceRefresh } = await req.json() as InsightsRequest;
 
     if (!weekStart || !weekEnd || !zdInstance) {
       return new Response(
         JSON.stringify({ error: 'weekStart, weekEnd, and zdInstance are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Initialize Supabase client with service role for cache operations
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check cache first (unless forceRefresh)
+    if (!forceRefresh) {
+      const { data: cached } = await supabase
+        .from('zendesk_insights_cache')
+        .select('*')
+        .eq('zd_instance', zdInstance)
+        .eq('week_start', weekStart)
+        .maybeSingle();
+
+      if (cached) {
+        // For current week: check if cache is older than 30 minutes
+        const now = new Date();
+        const weekEndDate = new Date(weekEnd + 'T23:59:59Z');
+        const isCurrentWeek = weekEndDate >= now;
+        const cacheAge = now.getTime() - new Date(cached.fetched_at).getTime();
+        const thirtyMinutes = 30 * 60 * 1000;
+
+        if (!isCurrentWeek || cacheAge < thirtyMinutes) {
+          console.log(`Returning cached data for ${zdInstance} week ${weekStart} (age: ${Math.round(cacheAge / 1000)}s)`);
+          return new Response(
+            JSON.stringify({
+              zdInstance,
+              weekStart,
+              weekEnd,
+              totalTickets: cached.total_tickets,
+              avgResolutionTimeSeconds: cached.avg_resolution_time_seconds,
+              fullResolutionTimeMinutes: cached.full_resolution_time_minutes,
+              csatScore: cached.csat_score,
+              csatGood: cached.csat_good,
+              csatTotal: cached.csat_total,
+              avgFrtSeconds: cached.avg_frt_seconds,
+              cached: true,
+              cachedAt: cached.fetched_at,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     }
 
     const config = getZdConfig(zdInstance);
@@ -213,7 +257,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Fetching insights for ${zdInstance}, week ${weekStart} to ${weekEnd}`);
+    console.log(`Fetching LIVE insights for ${zdInstance}, week ${weekStart} to ${weekEnd}`);
 
     // Search all solved tickets in the week
     const query = `type:ticket solved>=${weekStart} solved<=${weekEnd}`;
@@ -255,6 +299,29 @@ Deno.serve(async (req) => {
 
     console.log(`${zdInstance} results: ART=${avgResolutionTimeSeconds}s, FRT=${fullResolutionTimeMinutes}min, FRT_sec=${avgFrtSeconds}s, CSAT=${csat.score}%, tickets=${validTickets.length}`);
 
+    // Save to cache (upsert by zd_instance + week_start)
+    const { error: cacheError } = await supabase
+      .from('zendesk_insights_cache')
+      .upsert({
+        zd_instance: zdInstance,
+        week_start: weekStart,
+        week_end: weekEnd,
+        total_tickets: validTickets.length,
+        avg_resolution_time_seconds: avgResolutionTimeSeconds,
+        full_resolution_time_minutes: fullResolutionTimeMinutes,
+        csat_score: csat.score,
+        csat_good: csat.good,
+        csat_total: csat.total,
+        avg_frt_seconds: avgFrtSeconds,
+        fetched_at: new Date().toISOString(),
+      }, { onConflict: 'zd_instance,week_start' });
+
+    if (cacheError) {
+      console.error('Failed to cache insights:', cacheError);
+    } else {
+      console.log(`Cached insights for ${zdInstance} week ${weekStart}`);
+    }
+
     return new Response(
       JSON.stringify({
         zdInstance,
@@ -267,6 +334,7 @@ Deno.serve(async (req) => {
         csatGood: csat.good,
         csatTotal: csat.total,
         avgFrtSeconds,
+        cached: false,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

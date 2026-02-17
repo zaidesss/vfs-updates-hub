@@ -1,14 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle } from 'lucide-react';
+import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database } from 'lucide-react';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format, isSameWeek, addWeeks, differenceInWeeks } from 'date-fns';
 import { ANCHOR_DATE, PORTAL_START_YEAR } from '@/lib/weekConstants';
@@ -37,27 +38,27 @@ interface InsightsData {
   csatGood: number;
   csatTotal: number;
   avgFrtSeconds: number | null;
+  cached?: boolean;
+  cachedAt?: string;
 }
 
 function formatTime(seconds: number | null, unit: 'seconds' | 'minutes' = 'seconds'): string {
   if (seconds === null) return '—';
   if (unit === 'minutes') {
-    // Input is minutes, display as Xh Ym
     const h = Math.floor(seconds / 60);
     const m = seconds % 60;
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
   }
-  // Input is seconds, display as Xm Ys
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
 
-async function fetchInsights(weekStart: string, weekEnd: string, zdInstance: 'ZD1' | 'ZD2'): Promise<InsightsData> {
+async function fetchInsights(weekStart: string, weekEnd: string, zdInstance: 'ZD1' | 'ZD2', forceRefresh = false): Promise<InsightsData> {
   const { data, error } = await supabase.functions.invoke('fetch-zendesk-insights', {
-    body: { weekStart, weekEnd, zdInstance },
+    body: { weekStart, weekEnd, zdInstance, forceRefresh },
   });
   if (error) throw new Error(error.message || 'Failed to fetch insights');
   return data as InsightsData;
@@ -88,12 +89,24 @@ function InsightsCard({ weekStart, weekEnd, zdInstance }: {
   weekEnd: string;
   zdInstance: 'ZD1' | 'ZD2';
 }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['zendesk-insights', weekStart, weekEnd, zdInstance],
+  const queryClient = useQueryClient();
+  const queryKey = ['zendesk-insights', weekStart, weekEnd, zdInstance];
+
+  const { data, isLoading, error, isFetching } = useQuery({
+    queryKey,
     queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance),
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // Never auto-refetch cached data
+    gcTime: 30 * 60 * 1000,
     retry: 1,
   });
+
+  const handleRefresh = useCallback(async () => {
+    // Force refresh by calling with forceRefresh=true, then update cache
+    queryClient.fetchQuery({
+      queryKey,
+      queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance, true),
+    });
+  }, [queryClient, weekStart, weekEnd, zdInstance]);
 
   const instanceLabel = zdInstance === 'ZD1' ? 'Zendesk Instance 1' : 'Zendesk Instance 2';
 
@@ -102,15 +115,33 @@ function InsightsCard({ weekStart, weekEnd, zdInstance }: {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{instanceLabel}</CardTitle>
-          {data && (
-            <Badge variant="secondary" className="text-xs">
-              {data.totalTickets} tickets
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {data?.cached && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <Database className="h-3 w-3" />
+                Cached
+              </Badge>
+            )}
+            {data && (
+              <Badge variant="secondary" className="text-xs">
+                {data.totalTickets} tickets
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleRefresh}
+              disabled={isFetching}
+              title="Refresh from Zendesk"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading && (
+        {(isLoading || (isFetching && !data)) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="p-4 rounded-lg bg-muted/50">
@@ -121,7 +152,7 @@ function InsightsCard({ weekStart, weekEnd, zdInstance }: {
           </div>
         )}
 
-        {error && (
+        {error && !isFetching && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>{(error as Error).message}</AlertDescription>
@@ -176,7 +207,8 @@ export default function ZendeskInsights() {
     const monthEnd = endOfMonth(new Date(year, month, 1));
     const cwStart = startOfWeek(portalNow, { weekStartsOn: 1 });
 
-    const startIdx = Math.max(0, differenceInWeeks(monthStart, ANCHOR_DATE) - 1);
+    // Allow negative indices to support weeks before ANCHOR_DATE
+    const startIdx = differenceInWeeks(monthStart, ANCHOR_DATE) - 1;
     const endIdx = differenceInWeeks(monthEnd, ANCHOR_DATE) + 1;
 
     const weeks: { value: string; label: string; start: Date; end: Date; isCurrent: boolean }[] = [];
