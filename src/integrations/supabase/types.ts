@@ -3247,6 +3247,54 @@ export type Database = {
         }
         Relationships: []
       }
+      zendesk_insights_cache: {
+        Row: {
+          avg_frt_seconds: number | null
+          avg_resolution_time_seconds: number | null
+          created_at: string
+          csat_good: number | null
+          csat_score: number | null
+          csat_total: number | null
+          fetched_at: string
+          full_resolution_time_minutes: number | null
+          id: string
+          total_tickets: number | null
+          week_end: string
+          week_start: string
+          zd_instance: string
+        }
+        Insert: {
+          avg_frt_seconds?: number | null
+          avg_resolution_time_seconds?: number | null
+          created_at?: string
+          csat_good?: number | null
+          csat_score?: number | null
+          csat_total?: number | null
+          fetched_at?: string
+          full_resolution_time_minutes?: number | null
+          id?: string
+          total_tickets?: number | null
+          week_end: string
+          week_start: string
+          zd_instance: string
+        }
+        Update: {
+          avg_frt_seconds?: number | null
+          avg_resolution_time_seconds?: number | null
+          created_at?: string
+          csat_good?: number | null
+          csat_score?: number | null
+          csat_total?: number | null
+          fetched_at?: string
+          full_resolution_time_minutes?: number | null
+          id?: string
+          total_tickets?: number | null
+          week_end?: string
+          week_start?: string
+          zd_instance?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       agent_profiles_team_status: {
