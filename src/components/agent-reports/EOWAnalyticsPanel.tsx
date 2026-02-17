@@ -184,6 +184,12 @@ export function EOWAnalyticsPanel() {
                         <span className="text-muted-foreground">Active Days</span>
                         <span className="font-medium">{analytics.attendance.activeDays}/{analytics.attendance.scheduledDays}</span>
                       </div>
+                      {(analytics.attendance.leaveDays ?? 0) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">On Leave</span>
+                          <span className="font-medium">{analytics.attendance.leaveDays}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">On-Time</span>
                         <span className="font-medium">{formatPercent(analytics.attendance.onTimeRate)}</span>
@@ -208,9 +214,19 @@ export function EOWAnalyticsPanel() {
                         <span className="text-muted-foreground">Total Tickets</span>
                         <span className="font-medium">{analytics.productivity.total}</span>
                       </div>
+                      {(analytics.productivity.email > 0 || analytics.productivity.chat > 0 || analytics.productivity.call > 0) && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Breakdown</span>
+                          <span className="font-medium text-xs">
+                            E: {analytics.productivity.email} · C: {analytics.productivity.chat} · P: {analytics.productivity.call}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Quota Met</span>
-                        <span className="font-medium">{formatPercent(analytics.productivity.quotaRate)}</span>
+                        <span className="text-muted-foreground">Quota</span>
+                        <span className="font-medium">
+                          {analytics.productivity.total}/{(analytics.productivity.totalQuotaEmail ?? 0) + (analytics.productivity.totalQuotaChat ?? 0) + (analytics.productivity.totalQuotaCall ?? 0)}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Avg Gap</span>
