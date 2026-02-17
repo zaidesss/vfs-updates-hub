@@ -116,9 +116,6 @@ export function RehostImagesButton({
     }
   };
 
-  // Don't render if no content
-  if (!content.trim()) return null;
-
   return (
     <>
       <Button

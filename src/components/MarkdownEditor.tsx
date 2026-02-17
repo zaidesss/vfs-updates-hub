@@ -68,7 +68,21 @@ export function MarkdownEditor({
     const handlePaste = async (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items || []);
       const imageItem = items.find(item => item.type.startsWith('image/'));
-      if (!imageItem) return;
+
+      // Check for pasted image URL text
+      if (!imageItem) {
+        const text = e.clipboardData?.getData('text/plain')?.trim();
+        if (text) {
+          const imageUrlRegex = /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i;
+          if (imageUrlRegex.test(text)) {
+            e.preventDefault();
+            insertAtCursor(`![image](${text})`);
+            toast({ title: 'Image URL inserted', description: 'Pasted URL converted to markdown image.' });
+            return;
+          }
+        }
+        return;
+      }
 
       e.preventDefault();
       const file = imageItem.getAsFile();
@@ -228,7 +242,7 @@ export function MarkdownEditor({
               Preview
             </TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <ImageInsertButton
               onInsert={insertAtCursor}
               disabled={isFormatting || pendingApproval}
