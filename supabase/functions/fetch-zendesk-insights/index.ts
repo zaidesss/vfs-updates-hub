@@ -11,13 +11,6 @@ interface ZendeskConfig {
   email: string;
 }
 
-interface InsightsRequest {
-  weekStart: string;
-  weekEnd: string;
-  zdInstance: 'ZD1' | 'ZD2';
-  forceRefresh?: boolean;
-}
-
 interface TicketMetricEvent {
   id: number;
   ticket_id: number;
@@ -74,12 +67,15 @@ async function searchAllTickets(config: ZendeskConfig, query: string): Promise<a
   return allResults;
 }
 
-// Fetch ticket metrics for a batch of tickets
+// Fetch ticket metrics for a batch of ticket IDs (up to 500)
 async function fetchTicketMetricsBatch(
   config: ZendeskConfig,
   ticketIds: number[]
-): Promise<Map<number, { fullResolutionMinutes: number | null; agentWorkTimeSeconds: number | null; frtSeconds: number | null }>> {
-  const results = new Map<number, { fullResolutionMinutes: number | null; agentWorkTimeSeconds: number | null; frtSeconds: number | null }>();
+): Promise<{ totalFullRes: number; fullResCount: number; totalAgentWork: number; agentWorkCount: number; totalFrt: number; frtCount: number }> {
+  let totalFullRes = 0, fullResCount = 0;
+  let totalAgentWork = 0, agentWorkCount = 0;
+  let totalFrt = 0, frtCount = 0;
+
   const batchSize = 5;
 
   for (let i = 0; i < ticketIds.length; i += batchSize) {
@@ -125,26 +121,33 @@ async function fetchTicketMetricsBatch(
           }
         }
 
-        return { ticketId, fullResolutionMinutes, agentWorkTimeSeconds, frtSeconds };
+        return { fullResolutionMinutes, agentWorkTimeSeconds, frtSeconds };
       } catch (err) {
         console.error(`Error fetching metrics for ticket ${ticketId}:`, err);
-        return { ticketId, fullResolutionMinutes: null, agentWorkTimeSeconds: null, frtSeconds: null };
+        return { fullResolutionMinutes: null, agentWorkTimeSeconds: null, frtSeconds: null };
       }
     });
 
     const batchResults = await Promise.all(promises);
     for (const r of batchResults) {
-      results.set(r.ticketId, {
-        fullResolutionMinutes: r.fullResolutionMinutes,
-        agentWorkTimeSeconds: r.agentWorkTimeSeconds,
-        frtSeconds: r.frtSeconds,
-      });
+      if (r.fullResolutionMinutes !== null) {
+        totalFullRes += r.fullResolutionMinutes;
+        fullResCount++;
+      }
+      if (r.agentWorkTimeSeconds !== null) {
+        totalAgentWork += r.agentWorkTimeSeconds;
+        agentWorkCount++;
+      }
+      if (r.frtSeconds !== null) {
+        totalFrt += r.frtSeconds;
+        frtCount++;
+      }
     }
 
     if (i + batchSize < ticketIds.length) await delay(300);
   }
 
-  return results;
+  return { totalFullRes, fullResCount, totalAgentWork, agentWorkCount, totalFrt, frtCount };
 }
 
 // Fetch CSAT for the week
@@ -195,7 +198,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { weekStart, weekEnd, zdInstance, forceRefresh } = await req.json() as InsightsRequest;
+    const body = await req.json();
+    const { weekStart, weekEnd, zdInstance, forceRefresh, mode } = body;
 
     if (!weekStart || !weekEnd || !zdInstance) {
       return new Response(
@@ -209,6 +213,71 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ============ MODE: "cache" ============
+    // Frontend sends final computed results to be saved
+    if (mode === 'cache') {
+      const { totalTickets, avgResolutionTimeSeconds, fullResolutionTimeMinutes, csatScore, csatGood, csatTotal, avgFrtSeconds } = body;
+
+      const { error: cacheError } = await supabase
+        .from('zendesk_insights_cache')
+        .upsert({
+          zd_instance: zdInstance,
+          week_start: weekStart,
+          week_end: weekEnd,
+          total_tickets: totalTickets,
+          avg_resolution_time_seconds: avgResolutionTimeSeconds,
+          full_resolution_time_minutes: fullResolutionTimeMinutes,
+          csat_score: csatScore,
+          csat_good: csatGood,
+          csat_total: csatTotal,
+          avg_frt_seconds: avgFrtSeconds,
+          fetched_at: new Date().toISOString(),
+        }, { onConflict: 'zd_instance,week_start' });
+
+      if (cacheError) {
+        console.error('Failed to cache insights:', cacheError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to save cache', details: cacheError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ============ MODE: "metrics" ============
+    // Frontend sends a chunk of ticket IDs, we fetch metrics and return raw totals
+    if (mode === 'metrics') {
+      const { ticketIds } = body as { ticketIds: number[] };
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'ticketIds array is required for metrics mode' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const config = getZdConfig(zdInstance);
+      if (!config) {
+        return new Response(
+          JSON.stringify({ error: `Zendesk credentials not configured for ${zdInstance}` }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`Fetching metrics for ${ticketIds.length} tickets (${zdInstance})`);
+      const totals = await fetchTicketMetricsBatch(config, ticketIds);
+
+      return new Response(
+        JSON.stringify(totals),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ============ MODE: "search" (default / legacy) ============
     // Check cache first (unless forceRefresh)
     if (!forceRefresh) {
       const { data: cached } = await supabase
@@ -219,20 +288,19 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (cached) {
-        // For current week: check if cache is older than 30 minutes
         const now = new Date();
         const weekEndDate = new Date(weekEnd + 'T23:59:59Z');
         const isCurrentWeek = weekEndDate >= now;
         const cacheAge = now.getTime() - new Date(cached.fetched_at).getTime();
         const thirtyMinutes = 30 * 60 * 1000;
 
-        if (!isCurrentWeek || cacheAge < thirtyMinutes) {
-          console.log(`Returning cached data for ${zdInstance} week ${weekStart} (age: ${Math.round(cacheAge / 1000)}s)`);
+        // Return cached data if valid AND it has metrics (not a partial cache)
+        const hasMetrics = cached.avg_resolution_time_seconds !== null || cached.avg_frt_seconds !== null;
+        if ((!isCurrentWeek || cacheAge < thirtyMinutes) && hasMetrics) {
+          console.log(`Returning cached data for ${zdInstance} week ${weekStart}`);
           return new Response(
             JSON.stringify({
               zdInstance,
-              weekStart,
-              weekEnd,
               totalTickets: cached.total_tickets,
               avgResolutionTimeSeconds: cached.avg_resolution_time_seconds,
               fullResolutionTimeMinutes: cached.full_resolution_time_minutes,
@@ -257,7 +325,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Fetching LIVE insights for ${zdInstance}, week ${weekStart} to ${weekEnd}`);
+    console.log(`Searching tickets for ${zdInstance}, week ${weekStart} to ${weekEnd}`);
 
     // Search all solved tickets in the week
     const query = `type:ticket solved>=${weekStart} solved<=${weekEnd}`;
@@ -267,40 +335,36 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${validTickets.length} solved tickets for ${zdInstance}`);
 
-    // Fetch metrics and CSAT in parallel
-    const [metricsMap, csat] = await Promise.all([
-      ticketIds.length > 0 ? fetchTicketMetricsBatch(config, ticketIds) : Promise.resolve(new Map()),
-      fetchCSAT(config, weekStart, weekEnd),
-    ]);
+    // Fetch CSAT
+    const csat = await fetchCSAT(config, weekStart, weekEnd);
 
-    // Calculate team-wide averages
-    let totalFullRes = 0, fullResCount = 0;
-    let totalAgentWork = 0, agentWorkCount = 0;
-    let totalFrt = 0, frtCount = 0;
-
-    for (const [_, m] of metricsMap) {
-      if (m.fullResolutionMinutes !== null) {
-        totalFullRes += m.fullResolutionMinutes;
-        fullResCount++;
-      }
-      if (m.agentWorkTimeSeconds !== null) {
-        totalAgentWork += m.agentWorkTimeSeconds;
-        agentWorkCount++;
-      }
-      if (m.frtSeconds !== null) {
-        totalFrt += m.frtSeconds;
-        frtCount++;
-      }
+    // If mode is explicitly "search", return ticket IDs for chunked processing
+    if (mode === 'search') {
+      return new Response(
+        JSON.stringify({
+          zdInstance,
+          totalTickets: validTickets.length,
+          ticketIds,
+          csatScore: csat.score,
+          csatGood: csat.good,
+          csatTotal: csat.total,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const avgResolutionTimeSeconds = agentWorkCount > 0 ? Math.round(totalAgentWork / agentWorkCount) : null;
-    const fullResolutionTimeMinutes = fullResCount > 0 ? Math.round(totalFullRes / fullResCount) : null;
-    const avgFrtSeconds = frtCount > 0 ? Math.round(totalFrt / frtCount) : null;
+    // Legacy mode (no mode param): try to fetch everything in one go
+    // This preserves backward compatibility but may timeout for large weeks
+    const [metricsResult] = await Promise.all([
+      ticketIds.length > 0 ? fetchTicketMetricsBatch(config, ticketIds) : Promise.resolve({ totalFullRes: 0, fullResCount: 0, totalAgentWork: 0, agentWorkCount: 0, totalFrt: 0, frtCount: 0 }),
+    ]);
 
-    console.log(`${zdInstance} results: ART=${avgResolutionTimeSeconds}s, FRT=${fullResolutionTimeMinutes}min, FRT_sec=${avgFrtSeconds}s, CSAT=${csat.score}%, tickets=${validTickets.length}`);
+    const avgResolutionTimeSeconds = metricsResult.agentWorkCount > 0 ? Math.round(metricsResult.totalAgentWork / metricsResult.agentWorkCount) : null;
+    const fullResolutionTimeMinutes = metricsResult.fullResCount > 0 ? Math.round(metricsResult.totalFullRes / metricsResult.fullResCount) : null;
+    const avgFrtSeconds = metricsResult.frtCount > 0 ? Math.round(metricsResult.totalFrt / metricsResult.frtCount) : null;
 
-    // Save to cache (upsert by zd_instance + week_start)
-    const { error: cacheError } = await supabase
+    // Save to cache
+    await supabase
       .from('zendesk_insights_cache')
       .upsert({
         zd_instance: zdInstance,
@@ -316,17 +380,9 @@ Deno.serve(async (req) => {
         fetched_at: new Date().toISOString(),
       }, { onConflict: 'zd_instance,week_start' });
 
-    if (cacheError) {
-      console.error('Failed to cache insights:', cacheError);
-    } else {
-      console.log(`Cached insights for ${zdInstance} week ${weekStart}`);
-    }
-
     return new Response(
       JSON.stringify({
         zdInstance,
-        weekStart,
-        weekEnd,
         totalTickets: validTickets.length,
         avgResolutionTimeSeconds,
         fullResolutionTimeMinutes,
