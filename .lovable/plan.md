@@ -1,76 +1,66 @@
 
 
-## Fix: Profile Completion Modal Error and Stuck State
+## Chunked Metric Fetching for Zendesk Insights
 
-### Root Cause
+### Problem
+Fetching ART/FRT metrics requires 2 API calls per ticket. For weeks with 900+ tickets, that's 1,800+ API calls in a single edge function call, causing timeouts (60-second limit).
 
-The `ProfileCompletionModal` uses a Supabase `upsert` with `onConflict: 'email'` to save the profile. When the profile row already exists (pre-created by an admin), the PostgREST upsert can fail due to RLS policy evaluation order -- the INSERT path is attempted first, and the conflict resolution with RLS can be unreliable in some configurations.
+### Solution: Two-Phase Approach
 
-When the upsert fails:
-1. The error toast shows ("Failed to save your profile")
-2. `markProfileComplete()` is never called
-3. The modal has no close button, blocks Escape, and blocks outside clicks
-4. The user is permanently stuck
+**Phase 1 -- Quick response (ticket count + CSAT)**
+The edge function searches tickets and fetches CSAT (fast). Returns the ticket count, CSAT, and the list of ticket IDs -- but does NOT fetch per-ticket metrics yet.
 
-### The Fix (3 changes)
+**Phase 2 -- Chunked metric fetching (500 at a time)**
+The frontend sends chunks of 500 ticket IDs to the edge function. Each chunk call fetches metrics for those 500 tickets and returns running totals. The frontend accumulates the results and computes final averages once all chunks are done.
 
-**Change 1: Replace `upsert` with select-then-update/insert pattern**
+### Changes
 
-In `ProfileCompletionModal.tsx`, replace the single `upsert` call with:
-1. First SELECT to check if the profile row exists
-2. If it exists: UPDATE the row
-3. If it doesn't exist: INSERT a new row
+**1. Edge Function (`fetch-zendesk-insights/index.ts`)**
+- Add a new `mode` parameter: `"search"` (Phase 1) or `"metrics"` (Phase 2)
+- `mode: "search"` -- searches tickets, fetches CSAT, returns `{ ticketIds, totalTickets, csat, ... }`
+- `mode: "metrics"` -- accepts `ticketIds` (up to 500), fetches per-ticket ART/FRT/Full Resolution, returns raw totals and counts (not averages)
+- Cache check still happens first -- if cached with valid metrics, returns immediately (no phases needed)
+- After all chunks are processed, the frontend sends a final `mode: "cache"` call to save the combined results to the database
 
-This avoids the upsert+RLS edge case entirely.
+**2. Frontend (`ZendeskInsights.tsx`)**
+- Replace the single `fetchInsights` call with a multi-step flow:
+  1. Call with `mode: "search"` to get ticket count + CSAT instantly (UI shows ticket count and CSAT right away)
+  2. Automatically fire chunk calls (500 IDs each) in sequence
+  3. Show a progress indicator: "Fetching metrics... 500/900 tickets processed"
+  4. Once all chunks return, compute final averages and save to cache
+  5. Update the UI with complete data
+- The "Cached" badge and refresh button continue to work as before
+- Add a progress bar or text showing chunk progress during live fetches
 
-```text
-// Instead of:
-supabase.from('agent_profiles').upsert({...}, { onConflict: 'email' })
-
-// Do:
-const { data: existing } = await supabase
-  .from('agent_profiles')
-  .select('id')
-  .eq('email', userEmail)
-  .maybeSingle();
-
-if (existing) {
-  // UPDATE existing row
-  await supabase.from('agent_profiles')
-    .update({ full_name, phone_number, birthday, home_address, updated_at })
-    .eq('email', userEmail);
-} else {
-  // INSERT new row
-  await supabase.from('agent_profiles')
-    .insert({ email: userEmail, full_name, phone_number, birthday, home_address, updated_at });
-}
-```
-
-**Change 2: Add error recovery -- re-check profile after failure**
-
-If the save operation fails, re-run the profile completion check. If the profile is actually complete (e.g., data was saved despite the error, or an admin filled it), dismiss the modal anyway.
+### Flow Diagram
 
 ```text
-// In the catch/error block of handleSubmit:
-if (error) {
-  // Re-check if profile is actually complete despite the error
-  await refreshProfileStatus();
-  // If still incomplete, show the error toast
-}
+User selects week
+       |
+  [Check cache] --> HIT --> Show cached data (instant)
+       |
+      MISS
+       |
+  Phase 1: Search tickets + CSAT
+       |
+  Show ticket count + CSAT immediately
+  Show "Fetching metrics..." with progress
+       |
+  Phase 2: Send chunk 1 (IDs 1-500) --> accumulate totals
+  Phase 2: Send chunk 2 (IDs 501-900) --> accumulate totals
+       |
+  Compute final averages
+  Save to cache
+  Show complete data
 ```
 
-**Change 3: Add console logging for the actual error**
+### Step-by-Step Implementation Order
 
-Log the full error object so that if this happens again, the error details are visible in console logs for debugging.
+**Step 1**: Update the edge function to support `mode` parameter (search / metrics / cache)
 
-### Files to Change
+**Step 2**: Update the frontend to use the multi-phase fetch with progress indicator
 
-1. `src/components/ProfileCompletionModal.tsx` -- replace upsert, add error recovery, add logging
-2. `src/context/ProfileCompletionContext.tsx` -- no changes needed (already has `refreshProfileStatus`)
+**Step 3**: Clear bad cached entries (weeks with 0 tickets or null metrics from previous attempts)
 
-### Impact
-
-- Users with pre-created profiles will no longer get stuck on the modal
-- If the save fails for any reason, the system re-checks and dismisses the modal if data is actually there
-- No impact on users whose profiles don't exist yet (INSERT path still works)
+**Step 4**: Deploy and test
 
