@@ -428,12 +428,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Calculate bio allowance (4 mins for 8+ hour shift, 2 mins otherwise)
-      let bioAllowance = 120; // Default 2 mins
+      // Calculate bio allowance (5 mins for 5+ hour shift, 2.5 mins otherwise)
+      let bioAllowance = 150; // Default 2 mins 30 secs
       if (parsedSchedule) {
         let shiftDuration = parsedSchedule.endMinutes - parsedSchedule.startMinutes;
         if (shiftDuration < 0) shiftDuration += 24 * 60;
-        if (shiftDuration >= 480) bioAllowance = 240; // 4 mins for 8+ hour shift
+        if (shiftDuration >= 300) bioAllowance = 300; // 5 mins for 5+ hour shift
       }
 
       if (totalBioSeconds > bioAllowance) {
