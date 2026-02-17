@@ -419,6 +419,7 @@ export interface EODAnalytics {
     onTimeRate: number;
     fullShift: number;
     fullShiftRate: number;
+    onLeave?: number;
   };
   productivity: {
     total: number;
@@ -429,6 +430,12 @@ export interface EODAnalytics {
     quotaMet: number;
     quotaRate: number;
     avgGap: number | null;
+    totalQuotaEmail?: number;
+    totalQuotaChat?: number;
+    totalQuotaCall?: number;
+    actualQuotaEmail?: number;
+    actualQuotaChat?: number;
+    actualQuotaCall?: number;
   };
   time: {
     avgLogged: number | null;
