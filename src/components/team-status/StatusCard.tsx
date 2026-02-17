@@ -33,9 +33,14 @@ const POSITION_BADGE: Record<string, { className: string }> = {
 export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
   // If agent has approved outage, show outage badge instead of status
   const showOutageBadge = member.hasApprovedOutage && member.outageReason;
+  const isPendingOutage = showOutageBadge && member.outageStatus !== 'approved';
+  
+  const outageLabel = isPendingOutage
+    ? `${member.outageReason!} (Pending)`
+    : member.outageReason!;
   
   const statusInfo = showOutageBadge 
-    ? { label: member.outageReason!, className: OUTAGE_BADGE_CLASS }
+    ? { label: outageLabel, className: OUTAGE_BADGE_CLASS }
     : STATUS_DISPLAY[member.currentStatus] || STATUS_DISPLAY.LOGGED_OUT;
   
   const positionStyle = member.position ? POSITION_BADGE[member.position] : null;
@@ -66,7 +71,7 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
           </Badge>
           {showOutageBadge && (
             <Badge variant="outline" className="text-xs">
-              On Leave
+              {isPendingOutage ? 'Pending Leave' : 'On Leave'}
             </Badge>
           )}
           {member.position && positionStyle && (
