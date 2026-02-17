@@ -982,6 +982,30 @@ export type Database = {
         }
         Relationships: []
       }
+      guide_images: {
+        Row: {
+          id: string
+          image_key: string
+          image_url: string
+          uploaded_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          id?: string
+          image_key: string
+          image_url: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          id?: string
+          image_key?: string
+          image_url?: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
       improvements: {
         Row: {
           assignee_email: string | null
