@@ -43,6 +43,8 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
     ? { label: outageLabel, className: OUTAGE_BADGE_CLASS }
     : STATUS_DISPLAY[member.currentStatus] || STATUS_DISPLAY.LOGGED_OUT;
   
+  const showSecondaryBadge = showOutageBadge && !isPendingOutage;
+  
   const positionStyle = member.position ? POSITION_BADGE[member.position] : null;
 
   return (
@@ -69,9 +71,9 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
           <Badge className={cn('font-medium', statusInfo.className)}>
             {statusInfo.label}
           </Badge>
-          {showOutageBadge && (
+          {showSecondaryBadge && (
             <Badge variant="outline" className="text-xs">
-              {isPendingOutage ? 'Pending Leave' : 'On Leave'}
+              On {member.outageReason}
             </Badge>
           )}
           {member.position && positionStyle && (
