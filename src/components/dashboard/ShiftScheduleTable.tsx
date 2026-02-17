@@ -178,7 +178,7 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
   
   const getScheduleForDay = (dayKey: string, dayShort: string): string => {
     // Use effective schedule if available
-    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === dayShort);
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === dayShort);
     if (effectiveDay) {
       if (effectiveDay.isDayOff) return 'Day Off';
       return effectiveDay.schedule || '-';
@@ -204,7 +204,7 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
   };
 
   const isDayOff = (dayShort: string): boolean => {
-    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === dayShort);
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === dayShort);
     if (effectiveDay) return effectiveDay.isDayOff;
     return dayOffArray.includes(dayShort);
   };
