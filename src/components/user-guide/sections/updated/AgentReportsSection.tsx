@@ -33,7 +33,7 @@ export function AgentReportsSection() {
             ['Time Not Met', 'Logged hours fall short of required shift hours', 'Required hours, logged hours, shortfall (mins), source'],
             ['High Ticket Gap', 'Average gap between tickets exceeds threshold (only when quota not met)', 'Avg gap (seconds), ticket count'],
             ['Excessive Restarts', 'Device restart duration exceeds 5-minute limit', 'Total restart duration (mins), limit, exceeded by'],
-            ['Bio Overuse', 'Bio break time exceeds shift-based allowance (4 min for 8+ hrs, 2 min for shorter)', 'Bio time used, allowance, overage (seconds)'],
+            ['Bio Overuse', 'Bio break time exceeds shift-based allowance (5 min for 5+ hrs, 2.5 min for shorter)', 'Bio time used, allowance, overage (seconds)'],
             ['Over Break', 'Total break time exceeds daily allowance plus 5-minute grace period', 'Break duration, allowance, overage'],
           ]}
         />
