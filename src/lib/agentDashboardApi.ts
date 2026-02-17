@@ -336,7 +336,7 @@ export async function fetchDashboardProfile(profileId: string, weekStart?: Date 
       const weekSchedules = await getEffectiveSchedulesForWeek(profileId, weekStartStr);
       dayOffArray = weekSchedules
         .filter(d => d.isDayOff)
-        .map(d => d.dayName); // e.g., ['Sat', 'Sun']
+        .map(d => d.dayName.substring(0, 3)); // e.g., ['Sat', 'Sun']
       
       // Get break schedule from today's effective schedule
       const todayStr = getTodayEST();
@@ -1590,7 +1590,7 @@ export function calculateAttendanceForWeek(
     // If there's a coverage override, skip the day_off check — agent is scheduled to work
     // 1. Check if it's a day off (only when no override)
     // Use effective schedule if available, otherwise fall back to profile day_off array
-    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName === day.short);
+    const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === day.short);
     const isDayOff = effectiveDay ? effectiveDay.isDayOff : dayOffArray.includes(day.short);
     
     if (!override && isDayOff) {
