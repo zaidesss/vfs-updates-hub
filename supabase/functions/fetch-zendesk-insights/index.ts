@@ -205,7 +205,8 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { weekStart, weekEnd, zdInstance, forceRefresh, mode } = body;
+    const { weekStart, weekEnd, zdInstance, forceRefresh, mode, channel } = body;
+    const channelFilter: string = channel || 'all';
 
     if (!weekStart || !weekEnd || !zdInstance) {
       return new Response(
@@ -230,6 +231,7 @@ Deno.serve(async (req) => {
           zd_instance: zdInstance,
           week_start: weekStart,
           week_end: weekEnd,
+          channel: channelFilter,
           total_tickets: totalTickets,
           avg_resolution_time_seconds: avgResolutionTimeSeconds,
           full_resolution_time_minutes: fullResolutionTimeMinutes,
@@ -238,7 +240,7 @@ Deno.serve(async (req) => {
           csat_total: csatTotal,
           avg_frt_seconds: avgFrtSeconds,
           fetched_at: new Date().toISOString(),
-        }, { onConflict: 'zd_instance,week_start' });
+        }, { onConflict: 'zd_instance,week_start,channel' });
 
       if (cacheError) {
         console.error('Failed to cache insights:', cacheError);
@@ -291,6 +293,7 @@ Deno.serve(async (req) => {
         .select('*')
         .eq('zd_instance', zdInstance)
         .eq('week_start', weekStart)
+        .eq('channel', channelFilter)
         .maybeSingle();
 
       if (cached) {
@@ -333,16 +336,19 @@ Deno.serve(async (req) => {
 
     console.log(`Searching tickets for ${zdInstance}, week ${weekStart} to ${weekEnd}`);
 
-    // Search all solved tickets in the week
-    const query = `type:ticket solved>=${weekStart} solved<=${weekEnd}`;
+    // Search all solved tickets in the week, optionally filtered by channel
+    let query = `type:ticket solved>=${weekStart} solved<=${weekEnd}`;
+    if (channelFilter === 'voice') query += ' via:voice';
+    else if (channelFilter === 'chat') query += ' via:chat';
+    else if (channelFilter === 'email') query += ' via:mail';
     const tickets = await searchAllTickets(config, query);
     const validTickets = tickets.filter((t: any) => t.status !== 'deleted');
     const ticketIds = validTickets.map((t: any) => t.id as number);
 
     console.log(`Found ${validTickets.length} solved tickets for ${zdInstance}`);
 
-    // Fetch CSAT
-    const csat = await fetchCSAT(config, weekStart, weekEnd);
+    // Fetch CSAT only for 'all' channel (not reliably filterable by channel)
+    const csat = channelFilter === 'all' ? await fetchCSAT(config, weekStart, weekEnd) : { good: 0, total: 0, score: null };
 
     // If mode is explicitly "search", return ticket IDs for chunked processing
     if (mode === 'search') {
@@ -376,6 +382,7 @@ Deno.serve(async (req) => {
         zd_instance: zdInstance,
         week_start: weekStart,
         week_end: weekEnd,
+        channel: channelFilter,
         total_tickets: validTickets.length,
         avg_resolution_time_seconds: avgResolutionTimeSeconds,
         full_resolution_time_minutes: fullResolutionTimeMinutes,
@@ -384,7 +391,7 @@ Deno.serve(async (req) => {
         csat_total: csat.total,
         avg_frt_seconds: avgFrtSeconds,
         fetched_at: new Date().toISOString(),
-      }, { onConflict: 'zd_instance,week_start' });
+      }, { onConflict: 'zd_instance,week_start,channel' });
 
     return new Response(
       JSON.stringify({

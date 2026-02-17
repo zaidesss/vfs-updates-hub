@@ -3251,6 +3251,7 @@ export type Database = {
         Row: {
           avg_frt_seconds: number | null
           avg_resolution_time_seconds: number | null
+          channel: string
           created_at: string
           csat_good: number | null
           csat_score: number | null
@@ -3266,6 +3267,7 @@ export type Database = {
         Insert: {
           avg_frt_seconds?: number | null
           avg_resolution_time_seconds?: number | null
+          channel?: string
           created_at?: string
           csat_good?: number | null
           csat_score?: number | null
@@ -3281,6 +3283,7 @@ export type Database = {
         Update: {
           avg_frt_seconds?: number | null
           avg_resolution_time_seconds?: number | null
+          channel?: string
           created_at?: string
           csat_good?: number | null
           csat_score?: number | null
