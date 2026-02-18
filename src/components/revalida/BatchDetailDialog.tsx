@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Separator } from '@/components/ui/separator';
 import { CheckCircle2, Clock, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { RevalidaBatch, RevalidaQuestion, isDeadlinePassed, getTimeRemaining } from '@/lib/revalidaApi';
@@ -77,8 +77,7 @@ export function BatchDetailDialog({
           </div>
 
           {/* Scrollable Questions Section */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full">
+          <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="space-y-4 p-6 pt-4">
                 {sortedQuestions.map((question, idx) => (
                   <Card key={question.id} className="border-border">
@@ -156,7 +155,6 @@ export function BatchDetailDialog({
                   </Card>
                 ))}
               </div>
-            </ScrollArea>
           </div>
         </div>
       </DialogContent>
