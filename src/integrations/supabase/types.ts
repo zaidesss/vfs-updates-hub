@@ -1264,6 +1264,45 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_audit_log: {
+        Row: {
+          action_type: string
+          area: string
+          changed_by: string
+          changes: Json | null
+          created_at: string
+          entity_id: string | null
+          entity_label: string | null
+          id: string
+          metadata: Json | null
+          reference_number: string | null
+        }
+        Insert: {
+          action_type: string
+          area: string
+          changed_by: string
+          changes?: Json | null
+          created_at?: string
+          entity_id?: string | null
+          entity_label?: string | null
+          id?: string
+          metadata?: Json | null
+          reference_number?: string | null
+        }
+        Update: {
+          action_type?: string
+          area?: string
+          changed_by?: string
+          changes?: Json | null
+          created_at?: string
+          entity_id?: string | null
+          entity_label?: string | null
+          id?: string
+          metadata?: Json | null
+          reference_number?: string | null
+        }
+        Relationships: []
+      }
       portal_changelog: {
         Row: {
           category: string
