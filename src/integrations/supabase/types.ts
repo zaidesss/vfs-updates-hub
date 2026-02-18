@@ -1596,6 +1596,41 @@ export type Database = {
           },
         ]
       }
+      qa_evaluation_replies: {
+        Row: {
+          created_at: string
+          evaluation_id: string
+          id: string
+          message: string
+          user_email: string
+          user_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          evaluation_id: string
+          id?: string
+          message: string
+          user_email: string
+          user_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          evaluation_id?: string
+          id?: string
+          message?: string
+          user_email?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_evaluation_replies_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "qa_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qa_evaluation_scores: {
         Row: {
           ai_accepted: boolean | null
