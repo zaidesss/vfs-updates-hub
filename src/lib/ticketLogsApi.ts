@@ -122,6 +122,7 @@ export interface AgentDashboardData {
     email: number;
     chat: number;
     call: number;
+    autosolvedChat: number;
     avgGapSeconds: number | null;
     isActive: boolean;
   }[];
@@ -243,7 +244,7 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
   const agentMap: Record<string, { 
     email: string | null; 
     isActive: boolean;
-    counts: Record<string, { email: number; chat: number; call: number; avgGapSeconds: number | null }> 
+    counts: Record<string, { email: number; chat: number; call: number; autosolvedChat: number; avgGapSeconds: number | null }> 
   }> = {};
 
   for (const row of data || []) {
@@ -263,6 +264,7 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
         email: 0, 
         chat: 0, 
         call: 0, 
+        autosolvedChat: 0,
         avgGapSeconds: null 
       };
     }
@@ -271,6 +273,7 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
       email: Number(row.email_count),
       chat: Number(row.chat_count),
       call: Number(row.call_count),
+      autosolvedChat: Number(row.autosolved_chat_count || 0),
       avgGapSeconds: row.avg_gap_seconds ? Number(row.avg_gap_seconds) : null,
     };
   }
@@ -284,6 +287,7 @@ export async function fetchDashboardData(zdInstance?: string): Promise<{ data: A
       email: agentData.counts[date]?.email || 0,
       chat: agentData.counts[date]?.chat || 0,
       call: agentData.counts[date]?.call || 0,
+      autosolvedChat: agentData.counts[date]?.autosolvedChat || 0,
       avgGapSeconds: agentData.counts[date]?.avgGapSeconds ?? null,
       isActive: agentData.isActive,
     })),

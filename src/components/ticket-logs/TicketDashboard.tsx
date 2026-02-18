@@ -218,9 +218,16 @@ export function TicketDashboard({ zdInstance, title }: TicketDashboardProps) {
                           key={`${agent.agent_name}-${dateData.date}-chat`}
                           className="border border-border px-2 py-2 text-center bg-green-50 dark:bg-green-950/30"
                         >
-                          <span className={dateData.chat > 0 ? 'font-semibold text-green-700 dark:text-green-300' : 'text-muted-foreground'}>
-                            {dateData.chat}
-                          </span>
+                          <div className="flex flex-col items-center">
+                            <span className={dateData.chat > 0 ? 'font-semibold text-green-700 dark:text-green-300' : 'text-muted-foreground'}>
+                              {dateData.chat}
+                            </span>
+                            {dateData.autosolvedChat > 0 && (
+                              <span className="text-[9px] text-orange-600 dark:text-orange-400 leading-tight" title="Auto-solved chats (3-min inactivity)">
+                                {dateData.autosolvedChat} auto
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td
                           key={`${agent.agent_name}-${dateData.date}-call`}

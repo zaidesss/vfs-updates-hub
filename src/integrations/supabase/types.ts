@@ -2694,6 +2694,7 @@ export type Database = {
           agent_name: string
           created_at: string | null
           id: string
+          is_autosolved: boolean | null
           is_ot: boolean | null
           status: string
           ticket_id: string
@@ -2706,6 +2707,7 @@ export type Database = {
           agent_name: string
           created_at?: string | null
           id?: string
+          is_autosolved?: boolean | null
           is_ot?: boolean | null
           status: string
           ticket_id: string
@@ -2718,6 +2720,7 @@ export type Database = {
           agent_name?: string
           created_at?: string | null
           id?: string
+          is_autosolved?: boolean | null
           is_ot?: boolean | null
           status?: string
           ticket_id?: string
@@ -3300,6 +3303,7 @@ export type Database = {
       }
       zendesk_insights_cache: {
         Row: {
+          autosolved_chat_count: number | null
           avg_frt_seconds: number | null
           avg_resolution_time_seconds: number | null
           channel: string
@@ -3316,6 +3320,7 @@ export type Database = {
           zd_instance: string
         }
         Insert: {
+          autosolved_chat_count?: number | null
           avg_frt_seconds?: number | null
           avg_resolution_time_seconds?: number | null
           channel?: string
@@ -3332,6 +3337,7 @@ export type Database = {
           zd_instance: string
         }
         Update: {
+          autosolved_chat_count?: number | null
           avg_frt_seconds?: number | null
           avg_resolution_time_seconds?: number | null
           channel?: string
@@ -3577,6 +3583,7 @@ export type Database = {
         Returns: {
           agent_email: string
           agent_name: string
+          autosolved_chat_count: number
           avg_gap_seconds: number
           call_count: number
           chat_count: number
