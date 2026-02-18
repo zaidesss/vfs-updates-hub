@@ -46,14 +46,18 @@ import {
   markAgentReviewed,
   updateQAEvaluation,
   sendQANotification,
+  fetchEvaluationReplies,
+  createEvaluationReply,
   SCORING_CATEGORIES,
   PASS_THRESHOLD,
   type QAEvaluation,
   type QAEvaluationScore,
   type QAActionNeeded,
-  type QAEvaluationEvent
+  type QAEvaluationEvent,
+  type QAEvaluationReply
 } from '@/lib/qaEvaluationsApi';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CoachingReminderDialog } from '@/components/qa/CoachingReminderDialog';
 
 const EST_TIMEZONE = 'America/New_York';
@@ -83,6 +87,7 @@ export default function QAEvaluationDetail() {
   const [acknowledgementChecked, setAcknowledgementChecked] = useState(false);
   const [agentRemarks, setAgentRemarks] = useState('');
   const [showCoachingReminder, setShowCoachingReminder] = useState(false);
+  const [replyMessage, setReplyMessage] = useState('');
 
   const canViewAll = isAdmin || isHR || isSuperAdmin;
 
@@ -98,6 +103,28 @@ export default function QAEvaluationDetail() {
     queryKey: ['qa-evaluation-events', id],
     queryFn: () => fetchEvaluationEvents(id!),
     enabled: !!id,
+  });
+
+  // Fetch threaded replies
+  const { data: replies = [] } = useQuery({
+    queryKey: ['qa-evaluation-replies', id],
+    queryFn: () => fetchEvaluationReplies(id!),
+    enabled: !!id,
+  });
+
+  // Create reply mutation
+  const replyMutation = useMutation({
+    mutationFn: (message: string) =>
+      createEvaluationReply(id!, message, user?.email || '', user?.name || ''),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation-replies', id] });
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluation-events', id] });
+      setReplyMessage('');
+      toast({ title: 'Reply sent' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
   });
 
   const evaluation = data?.evaluation;
@@ -664,10 +691,91 @@ export default function QAEvaluationDetail() {
                   Reviewed on {evaluation.agent_reviewed_at ? format(new Date(evaluation.agent_reviewed_at), 'MMM d, yyyy \'at\' h:mm a') : 'Unknown'}
                 </span>
               </div>
-              {evaluation.agent_remarks && (
-                <div className="mt-3 p-3 bg-muted rounded-lg">
-                  <Label className="text-xs text-muted-foreground">Agent Remarks</Label>
-                  <p className="text-sm mt-1 whitespace-pre-wrap">{evaluation.agent_remarks}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Threaded Conversation */}
+        {(evaluation.agent_remarks || replies.length > 0 || (evaluation.agent_reviewed && (isAgent || canViewAll))) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Conversation
+              </CardTitle>
+              <CardDescription>
+                Discussion between agent and evaluator/admin
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Messages */}
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                {/* Original agent remarks as first message */}
+                {evaluation.agent_remarks && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-lg p-3 bg-primary text-primary-foreground">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold">{evaluation.agent_name}</span>
+                        {evaluation.agent_reviewed_at && (
+                          <span className="text-xs opacity-70">
+                            {format(new Date(evaluation.agent_reviewed_at), 'MMM d, yyyy h:mm a')}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap">{evaluation.agent_remarks}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Threaded replies */}
+                {replies.map((reply) => {
+                  const isReplyFromAgent = reply.user_email.toLowerCase() === evaluation.agent_email.toLowerCase();
+                  return (
+                    <div key={reply.id} className={`flex ${isReplyFromAgent ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-lg p-3 ${
+                        isReplyFromAgent
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-semibold ${isReplyFromAgent ? '' : 'text-foreground'}`}>
+                            {reply.user_name || reply.user_email}
+                          </span>
+                          <span className={`text-xs ${isReplyFromAgent ? 'opacity-70' : 'text-muted-foreground'}`}>
+                            {format(new Date(reply.created_at), 'MMM d, yyyy h:mm a')}
+                          </span>
+                        </div>
+                        <p className={`text-sm whitespace-pre-wrap ${isReplyFromAgent ? '' : 'text-foreground'}`}>
+                          {reply.message}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Reply input */}
+              {(isAgent || canViewAll) && evaluation.status === 'sent' && (
+                <div className="flex gap-2 pt-2 border-t">
+                  <Textarea
+                    placeholder="Type your reply..."
+                    value={replyMessage}
+                    onChange={(e) => setReplyMessage(e.target.value)}
+                    rows={2}
+                    className="flex-1"
+                  />
+                  <Button
+                    size="icon"
+                    onClick={() => replyMessage.trim() && replyMutation.mutate(replyMessage.trim())}
+                    disabled={!replyMessage.trim() || replyMutation.isPending}
+                    className="self-end"
+                  >
+                    {replyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -707,7 +815,8 @@ export default function QAEvaluationDetail() {
                       {event.event_type === 'evaluation_created' && <FileText className="h-3 w-3 text-primary" />}
                       {event.event_type === 'evaluation_sent' && <Send className="h-3 w-3 text-primary" />}
                       {event.event_type === 'evaluation_edited' && <Pencil className="h-3 w-3 text-chart-4" />}
-                      {!['notification_sent', 'notification_resent', 'agent_acknowledged', 'agent_reviewed', 'agent_remarks', 'action_status_changed', 'action_resolved', 'evaluation_created', 'evaluation_sent', 'evaluation_edited'].includes(event.event_type) && (
+                      {event.event_type === 'evaluation_reply' && <MessageSquare className="h-3 w-3 text-primary" />}
+                      {!['notification_sent', 'notification_resent', 'agent_acknowledged', 'agent_reviewed', 'agent_remarks', 'action_status_changed', 'action_resolved', 'evaluation_created', 'evaluation_sent', 'evaluation_edited', 'evaluation_reply'].includes(event.event_type) && (
                         <Clock className="h-3 w-3 text-muted-foreground" />
                       )}
                     </div>
