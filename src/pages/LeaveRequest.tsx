@@ -463,6 +463,15 @@ export default function LeaveRequest() {
         description: editingRequest ? 'Outage request updated successfully' : 'Outage request submitted successfully'
       });
       const savedRequest = result.data;
+      const leaveChanges: Record<string, { old: string | null; new: string | null }> = {};
+      if (editingRequest) {
+        const fields = ['start_date', 'end_date', 'start_time', 'end_time', 'outage_reason', 'client_name', 'team_lead_name'] as const;
+        for (const f of fields) {
+          const oldVal = String((editingRequest as any)[f] ?? '');
+          const newVal = String((formData as any)[f] ?? '');
+          if (oldVal !== newVal) leaveChanges[f] = { old: oldVal || null, new: newVal || null };
+        }
+      }
       writeAuditLog({
         area: 'Leave Requests',
         action_type: editingRequest ? 'updated' : 'created',
@@ -470,6 +479,7 @@ export default function LeaveRequest() {
         entity_label: formData.agent_name || user?.email || '',
         reference_number: savedRequest?.reference_number || (editingRequest as any)?.reference_number || null,
         changed_by: user?.email || '',
+        changes: Object.keys(leaveChanges).length > 0 ? leaveChanges : undefined,
         metadata: { agent_email: user?.email, reason: formData.outage_reason },
       });
       resetForm();

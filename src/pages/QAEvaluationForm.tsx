@@ -872,12 +872,31 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
         description: toastDesc,
       });
       
+      const qaChanges: Record<string, { old: string | null; new: string | null }> = {};
+      if (isEditMode && existingEvalData?.evaluation) {
+        const orig = existingEvalData.evaluation;
+        const origStatus = orig.status || '';
+        if (origStatus !== status) qaChanges.status = { old: origStatus, new: status };
+        const origScore = String(orig.total_score ?? '');
+        const newScore = String(totals.totalScore ?? '');
+        if (origScore !== newScore) qaChanges.total_score = { old: origScore, new: newScore };
+        const origPct = String(orig.percentage ?? '');
+        const newPct = String(totals.percentage ?? '');
+        if (origPct !== newPct) qaChanges.percentage = { old: origPct, new: newPct };
+        const origRating = orig.rating || '';
+        const newRating = totals.hasCriticalFail ? 'Fail' : (totals.percentage >= 80 ? 'Pass' : 'Fail');
+        if (origRating !== newRating) qaChanges.rating = { old: origRating, new: newRating };
+        const origCritical = String(orig.has_critical_fail ?? 'false');
+        const newCritical = String(totals.hasCriticalFail ?? 'false');
+        if (origCritical !== newCritical) qaChanges.has_critical_fail = { old: origCritical, new: newCritical };
+      }
       writeAuditLog({
         area: 'QA Evaluations',
         action_type: isEditMode ? 'updated' : 'created',
         entity_id: evaluationId,
         entity_label: selectedAgent?.agent_name || selectedAgent?.full_name || selectedAgent?.email || '',
         changed_by: user?.email || '',
+        changes: Object.keys(qaChanges).length > 0 ? qaChanges : undefined,
         metadata: { agent_email: selectedAgent?.email, status },
       });
       

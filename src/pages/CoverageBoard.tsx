@@ -246,12 +246,20 @@ export default function CoverageBoard() {
 
        toast.success(`${pendingOverrides.size} override(s) saved`);
        queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
+       // Build summary of overrides in metadata
+       const overrideSummary: string[] = [];
+       for (const [, pending] of pendingOverrides) {
+         if (pending._delete) continue;
+         const agent = agents.find(a => a.id === pending.agent_id);
+         const agentLabel = agent?.agent_name || agent?.full_name || agent?.email || pending.agent_id;
+         overrideSummary.push(`${agentLabel} (${pending.date}): ${pending.override_start}-${pending.override_end} [${pending.block_type || 'override'}]`);
+       }
        writeAuditLog({
          area: 'Coverage Board',
          action_type: 'updated',
          entity_label: `${pendingOverrides.size} override(s)`,
          changed_by: user?.email || '',
-         metadata: { override_count: pendingOverrides.size },
+         metadata: { override_count: pendingOverrides.size, overrides: overrideSummary.slice(0, 20) },
        });
        setPendingOverrides(new Map());
        setEditMode(false);

@@ -156,12 +156,19 @@ export function ChangelogManagement({ currentUserEmail }: ChangelogManagementPro
         toast.error('Failed to update entry', { description: error.message });
       } else {
         toast.success('Changelog entry updated');
+        const clChanges: Record<string, { old: string | null; new: string | null }> = {};
+        if (editingEntry.title !== formData.title.trim()) clChanges.title = { old: editingEntry.title, new: formData.title.trim() };
+        if (editingEntry.description !== formData.description.trim()) clChanges.description = { old: editingEntry.description.substring(0, 200), new: formData.description.trim().substring(0, 200) };
+        if (editingEntry.category !== formData.category) clChanges.category = { old: editingEntry.category, new: formData.category };
+        if (editingEntry.feature_link !== (formData.feature_link.trim() || null)) clChanges.feature_link = { old: editingEntry.feature_link, new: formData.feature_link.trim() || null };
         writeAuditLog({
           area: 'Knowledge Base',
           action_type: 'updated',
           entity_id: editingEntry.id,
           entity_label: formData.title.trim(),
+          reference_number: editingEntry.reference_number,
           changed_by: currentUserEmail,
+          changes: Object.keys(clChanges).length > 0 ? clChanges : undefined,
         });
         await loadEntries();
         setIsDialogOpen(false);
