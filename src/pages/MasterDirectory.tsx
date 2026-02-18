@@ -160,6 +160,15 @@ export default function MasterDirectory() {
         .from('agent_profiles')
         .update({ ticket_assignment_enabled: enabled })
         .eq('email', email.toLowerCase());
+      
+      const agent = editedData.find(e => e.email.toLowerCase() === email.toLowerCase());
+      writeAuditLog({
+        area: 'Master Directory',
+        action_type: 'updated',
+        entity_label: agent?.agent_name || email,
+        changed_by: user?.email || '',
+        changes: { ticket_assignment_enabled: { old: String(!enabled), new: String(enabled) } },
+      });
     } catch (error) {
       console.error('Failed to update ticket assignment:', error);
     }
@@ -217,6 +226,13 @@ export default function MasterDirectory() {
       toast({
         title: 'Sync Complete',
         description: `Successfully synced ${synced} profile(s) to Master Directory.`,
+      });
+      writeAuditLog({
+        area: 'Master Directory',
+        action_type: 'updated',
+        entity_label: 'Sync All from Bios',
+        changed_by: user?.email || '',
+        metadata: { synced_count: synced },
       });
       await loadData(); // Refresh the data
     } else {
