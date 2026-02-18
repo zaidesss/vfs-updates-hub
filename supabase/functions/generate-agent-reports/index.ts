@@ -89,6 +89,35 @@ function isEmailSupport(profile: AgentProfile): boolean {
   return position === 'email support';
 }
 
+/**
+ * Calculate severity based on time overage in minutes
+ */
+function calculateTimeSeverity(minutes: number): string {
+  if (minutes <= 5) return 'low';
+  if (minutes <= 15) return 'medium';
+  return 'high';
+}
+
+/**
+ * Calculate severity based on quota shortfall
+ */
+function calculateQuotaSeverity(shortfall: number): string {
+  if (shortfall <= 10) return 'low';
+  if (shortfall <= 30) return 'medium';
+  return 'high';
+}
+
+/**
+ * Calculate severity based on average gap in minutes
+ * Returns null if gap is under 5 minutes (no report needed)
+ */
+function calculateGapSeverity(gapMinutes: number): string | null {
+  if (gapMinutes < 5) return null;
+  if (gapMinutes <= 10) return 'low';
+  if (gapMinutes <= 20) return 'medium';
+  return 'high';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
