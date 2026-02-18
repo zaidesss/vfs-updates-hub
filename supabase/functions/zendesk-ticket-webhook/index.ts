@@ -12,6 +12,7 @@ interface TicketPayload {
   timestamp: string
   ticket_type: string
   agent_name: string
+  is_autosolved?: string
 }
 
 Deno.serve(async (req) => {
@@ -111,6 +112,9 @@ Deno.serve(async (req) => {
       normalizedType = 'Email'
     }
 
+    // Parse is_autosolved flag (string "true" from Zendesk trigger)
+    const isAutosolved = payload.is_autosolved === 'true' || payload.is_autosolved === true
+
     const { data, error } = await supabase
       .from('ticket_logs')
       .insert({
@@ -122,6 +126,7 @@ Deno.serve(async (req) => {
         agent_name: payload.agent_name,
         agent_email: agentEmail,
         is_ot: isOt,
+        is_autosolved: isAutosolved,
       })
       .select()
       .single()
@@ -134,10 +139,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Ticket log inserted successfully:', data.id, isOt ? '(OT)' : '')
+    console.log('Ticket log inserted successfully:', data.id, isOt ? '(OT)' : '', isAutosolved ? '(AUTOSOLVED)' : '')
 
     return new Response(
-      JSON.stringify({ success: true, id: data.id, is_ot: isOt }),
+      JSON.stringify({ success: true, id: data.id, is_ot: isOt, is_autosolved: isAutosolved }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
