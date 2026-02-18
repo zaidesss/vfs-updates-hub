@@ -58,11 +58,19 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
       );
       break;
     case 'absent':
-      badges.push(
-        <Badge key="absent" variant="destructive">
-          Absent
-        </Badge>
-      );
+      if (dayAttendance.isNcns) {
+        badges.push(
+          <Badge key="absent-ncns" className="bg-red-800 hover:bg-red-900 text-white dark:bg-red-900 dark:hover:bg-red-950">
+            Absent (NCNS)
+          </Badge>
+        );
+      } else {
+        badges.push(
+          <Badge key="absent" variant="destructive">
+            Absent
+          </Badge>
+        );
+      }
       break;
     case 'on_leave':
       badges.push(
