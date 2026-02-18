@@ -23,6 +23,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { DatePicker, formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -234,13 +235,19 @@ export default function ManageProfilesPage() {
         title: 'Success',
         description: `Profile for ${editData.full_name || editData.email} saved successfully`
       });
-      // Update the usersWithProfiles state with the new profile
       setUsersWithProfiles(prev => prev.map(u => 
         u.email === selectedUser.email 
           ? { ...u, profile: result.data! }
           : u
       ));
       setSelectedUser(prev => prev ? { ...prev, profile: result.data! } : null);
+      writeAuditLog({
+        area: 'Profile',
+        action_type: selectedUser.profile ? 'updated' : 'created',
+        entity_label: editData.full_name || editData.email,
+        changed_by: user?.email || '',
+        metadata: { target_email: editData.email },
+      });
     } else if (result.error) {
       toast({
         title: 'Error',
@@ -262,6 +269,16 @@ export default function ManageProfilesPage() {
         description: `Request ${action} successfully`
       });
       setChangeRequests(prev => prev.map(r => r.id === requestId ? result.data! : r));
+      const request = changeRequests.find(r => r.id === requestId);
+      writeAuditLog({
+        area: 'Profile',
+        action_type: 'updated',
+        entity_label: request?.requested_by_name || request?.requested_by_email || '',
+        reference_number: request?.reference_number || null,
+        changed_by: user?.email || '',
+        changes: { status: { old: 'pending', new: action } },
+        metadata: { target_email: request?.target_email, field: request?.field_name },
+      });
     } else if (result.error) {
       toast({
         title: 'Error',
