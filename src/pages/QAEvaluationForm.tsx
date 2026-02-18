@@ -633,13 +633,54 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
         await supabase.from('qa_evaluation_scores').delete().eq('evaluation_id', editId);
         await supabase.from('qa_action_needed').delete().eq('evaluation_id', editId);
         
-        // Log edit event
+        // Compute diff for activity history
+        const changes: { field: string; from: string; to: string }[] = [];
+        const oldEval = existingEvalData!.evaluation;
+        const oldScores = existingEvalData!.scores || [];
+        
+        const diffField = (field: string, oldVal: string | null | undefined, newVal: string | null | undefined) => {
+          const o = (oldVal || '').trim();
+          const n = (newVal || '').trim();
+          if (o !== n) changes.push({ field, from: o, to: n });
+        };
+        
+        diffField('Agent', oldEval.agent_name, toProperCase(selectedAgent!.full_name || selectedAgent!.agent_name || selectedAgent!.email));
+        diffField('Audit Date', oldEval.audit_date, auditDate);
+        diffField('ZD Instance', oldEval.zd_instance, zdInstance);
+        diffField('Ticket ID', oldEval.ticket_id, ticketId);
+        diffField('Interaction Type', oldEval.interaction_type, interactionType);
+        diffField('Accuracy Feedback', oldEval.accuracy_feedback || '', accuracyFeedback);
+        diffField('Compliance Feedback', oldEval.compliance_feedback || '', complianceFeedback);
+        diffField('Customer Experience Feedback', oldEval.customer_exp_feedback || '', customerExpFeedback);
+        diffField('Coaching Date', oldEval.coaching_date || '', coachingDate);
+        diffField('Coaching Time', (oldEval as any).coaching_time || '', coachingTime);
+        diffField('Work Week Start', oldEval.work_week_start || '', workWeekStart);
+        diffField('Work Week End', oldEval.work_week_end || '', workWeekEnd);
+        
+        // Compare category scores
+        SCORING_CATEGORIES.forEach(cat => {
+          const oldCatScores = oldScores.filter(s => s.category === cat.category && !s.is_critical);
+          const oldEarned = oldCatScores.reduce((sum, s) => sum + (s.score_earned || 0), 0);
+          const oldMax = oldCatScores.reduce((sum, s) => sum + s.max_points, 0);
+          const newCatData = totals.categoryScores[cat.category];
+          if (newCatData && (oldEarned !== newCatData.earned || oldMax !== newCatData.max)) {
+            changes.push({ field: `${cat.category} Score`, from: `${oldEarned}/${oldMax}`, to: `${newCatData.earned}/${newCatData.max}` });
+          }
+        });
+        
+        const changeCount = changes.length;
+        const editDescription = changeCount > 0
+          ? `Evaluation was edited (${changeCount} field${changeCount !== 1 ? 's' : ''} changed)`
+          : 'Evaluation was edited';
+        
+        // Log edit event with diff metadata
         await createEvaluationEvent(
           editId,
           'evaluation_edited',
-          'Evaluation was edited',
+          editDescription,
           user!.email,
-          evaluatorName
+          evaluatorName,
+          changeCount > 0 ? { changes } : undefined
         );
       } else {
         // Create new evaluation

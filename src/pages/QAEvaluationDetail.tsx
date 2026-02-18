@@ -59,6 +59,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CoachingReminderDialog } from '@/components/qa/CoachingReminderDialog';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { ChevronDown } from 'lucide-react';
 
 const EST_TIMEZONE = 'America/New_York';
 
@@ -835,6 +837,31 @@ export default function QAEvaluationDetail() {
                         <span className="mx-2">•</span>
                         <span>{formatInEST(event.created_at, 'MMM d, yyyy')} at {formatInEST(event.created_at, 'h:mm a')} EST</span>
                       </div>
+                      {/* Expandable change details for edit events */}
+                      {event.event_type === 'evaluation_edited' && (event.metadata as any)?.changes?.length > 0 && (
+                        <Collapsible className="mt-2">
+                          <CollapsibleTrigger className="flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer">
+                            <ChevronDown className="h-3.5 w-3.5 transition-transform [[data-state=open]_&]:rotate-180" />
+                            Show {((event.metadata as any).changes as any[]).length} change{((event.metadata as any).changes as any[]).length !== 1 ? 's' : ''}
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 space-y-1.5">
+                            {((event.metadata as any).changes as { field: string; from: string; to: string }[]).map((change, ci) => (
+                              <div key={ci} className="flex flex-wrap items-baseline gap-1.5 text-sm pl-1 border-l-2 border-muted-foreground/20 ml-1">
+                                <span className="font-semibold text-foreground">{change.field}:</span>
+                                {change.from && (
+                                  <span className="bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 line-through px-1.5 py-0.5 rounded text-xs max-w-[280px] truncate inline-block align-bottom">
+                                    {change.from}
+                                  </span>
+                                )}
+                                <span className="text-muted-foreground">→</span>
+                                <span className="bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-300 font-medium px-1.5 py-0.5 rounded text-xs max-w-[280px] truncate inline-block align-bottom">
+                                  {change.to || '(empty)'}
+                                </span>
+                              </div>
+                            ))}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
                     </div>
                   </div>
                 ))}
