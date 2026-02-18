@@ -703,3 +703,72 @@ export async function resendQANotification(evaluationId: string): Promise<void> 
     throw new Error(error.message || 'Failed to send notification');
   }
 }
+
+// ---- Threaded Replies ----
+
+export interface QAEvaluationReply {
+  id: string;
+  evaluation_id: string;
+  user_email: string;
+  user_name: string | null;
+  message: string;
+  created_at: string;
+}
+
+// Fetch all replies for an evaluation
+export async function fetchEvaluationReplies(evaluationId: string): Promise<QAEvaluationReply[]> {
+  const { data, error } = await supabase
+    .from('qa_evaluation_replies')
+    .select('*')
+    .eq('evaluation_id', evaluationId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as QAEvaluationReply[];
+}
+
+// Create a new reply on an evaluation
+export async function createEvaluationReply(
+  evaluationId: string,
+  message: string,
+  userEmail: string,
+  userName: string
+): Promise<QAEvaluationReply> {
+  const { data, error } = await supabase
+    .from('qa_evaluation_replies')
+    .insert({
+      evaluation_id: evaluationId,
+      user_email: userEmail,
+      user_name: userName,
+      message,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Log as evaluation event
+  try {
+    await createEvaluationEvent(
+      evaluationId,
+      'evaluation_reply',
+      `${userName} replied to the evaluation`,
+      userEmail,
+      userName,
+      { message_preview: message.substring(0, 100) }
+    );
+  } catch (e) {
+    console.error('Failed to log reply event:', e);
+  }
+
+  // Send notification
+  try {
+    await supabase.functions.invoke('send-qa-reply-notification', {
+      body: { evaluationId, replyId: data.id },
+    });
+  } catch (e) {
+    console.error('Failed to send reply notification:', e);
+  }
+
+  return data as QAEvaluationReply;
+}
