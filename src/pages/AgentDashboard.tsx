@@ -592,17 +592,17 @@ export default function AgentDashboard() {
           },
           status: 'open',
         });
-      }
 
-      // Send notifications (Slack, email, in-app)
-      await supabase.functions.invoke('send-status-alert-notification', {
-        body: {
-          agentEmail,
-          agentName,
-          alertType: 'BIO_OVERUSE',
-          details: { allowance: bioAllowance },
-        },
-      });
+        // Send notifications (Slack, email, in-app) only when a new report is created
+        await supabase.functions.invoke('send-status-alert-notification', {
+          body: {
+            agentEmail,
+            agentName,
+            alertType: 'BIO_OVERUSE',
+            details: { allowance: bioAllowance },
+          },
+        });
+      }
     } catch (err) {
       console.error('Failed to send bio alert:', err);
     }

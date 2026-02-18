@@ -748,7 +748,7 @@ export async function updateProfileStatus(
         // Trigger automatic ticket assignment on login
         triggerTicketAssignment(profileId, agentProfile.email)
           .catch((err) => console.error('Failed to trigger ticket assignment:', err));
-      } else if (eventType === 'LOGOUT' || eventType === 'OT_LOGOUT') {
+      } else if (eventType === 'LOGOUT') {
         checkAndAlertEarlyOut(profileId, agentProfile.email, agentProfile.full_name || agentProfile.email, now)
           .catch((err) => console.error('Failed to check early out:', err));
         
