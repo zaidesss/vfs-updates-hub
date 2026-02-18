@@ -16,9 +16,9 @@ interface UpdatesContextType {
   getAcknowledgementsForUpdate: (updateId: string) => Acknowledgement[];
   createUpdate: (update: Omit<Update, 'id' | 'posted_at'>) => Promise<void>;
   editUpdate: (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>, changedBy?: string) => Promise<void>;
-  updateUpdateStatus: (id: string, status: Update['status']) => Promise<void>;
+  updateUpdateStatus: (id: string, status: Update['status'], changedBy?: string) => Promise<void>;
   refreshData: () => Promise<void>;
-  ensureLoaded: () => void; // Trigger lazy loading
+  ensureLoaded: () => void;
   getPendingUpdates: (agentEmail: string) => Update[];
   getPendingUpdateCount: (agentEmail: string) => number;
 }
@@ -182,8 +182,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const updateUpdateStatus = async (id: string, status: Update['status']) => {
-    const result = await apiEditUpdate(id, { status });
+  const updateUpdateStatus = async (id: string, status: Update['status'], changedBy?: string) => {
+    const result = await apiEditUpdate(id, { status }, changedBy);
     
     if (result.error) {
       toast({

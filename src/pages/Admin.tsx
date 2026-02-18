@@ -496,24 +496,8 @@ export default function Admin() {
 
 
   const handleEditUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
-    const originalUpdate = editingUpdate;
     await editUpdate(updateId, update, user?.email);
     setEditingUpdate(null);
-    const changes: Record<string, { old: string | null; new: string | null }> = {};
-    if (originalUpdate) {
-      if (update.title && update.title !== originalUpdate.title) changes.title = { old: originalUpdate.title, new: update.title };
-      if (update.status && update.status !== originalUpdate.status) changes.status = { old: originalUpdate.status, new: update.status };
-      if (update.category && update.category !== originalUpdate.category) changes.category = { old: originalUpdate.category, new: update.category };
-    }
-    writeAuditLog({
-      area: 'Updates',
-      action_type: 'updated',
-      entity_id: updateId,
-      entity_label: update.title || originalUpdate?.title || '',
-      reference_number: (originalUpdate as any)?.reference_number || null,
-      changed_by: user?.email || '',
-      changes: Object.keys(changes).length > 0 ? changes : undefined,
-    });
   };
 
   const generateBulkPassword = () => {
@@ -1506,7 +1490,7 @@ export default function Admin() {
                               </Dialog>
                               <Select
                                 value={update.status}
-                                onValueChange={(value: Update['status']) => updateUpdateStatus(update.id, value)}
+                                onValueChange={(value: Update['status']) => updateUpdateStatus(update.id, value, user?.email)}
                               >
                                 <SelectTrigger className="w-28 h-8">
                                   <SelectValue />

@@ -1,5 +1,6 @@
 import { Update, Acknowledgement, UpdateChangeHistory } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -496,6 +497,17 @@ export async function createUpdate(update: Omit<Update, 'id' | 'posted_at'>): Pr
       }
     }
 
+    // Audit log
+    writeAuditLog({
+      area: 'Updates',
+      action_type: 'created',
+      entity_id: newUpdate.id,
+      entity_label: newUpdate.title,
+      reference_number: newUpdate.reference_number || undefined,
+      changed_by: update.posted_by,
+      metadata: { status: update.status, category: update.category || null },
+    });
+
     return { data: { ok: true, update: newUpdate }, error: null };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -583,6 +595,30 @@ export async function editUpdate(
         if (historyError) {
           console.error('Error saving change history:', historyError);
         }
+      }
+    }
+
+    // Audit log for edit
+    if (currentUpdate && changedBy) {
+      const auditChanges: Record<string, { old: string | null; new: string | null }> = {};
+      const fieldsToAudit = ['title', 'summary', 'body', 'help_center_url', 'posted_by', 'deadline_at', 'status'];
+      for (const field of fieldsToAudit) {
+        const oldVal = currentUpdate[field];
+        const newVal = data[field];
+        if (oldVal !== newVal) {
+          auditChanges[field] = { old: oldVal ?? null, new: newVal ?? null };
+        }
+      }
+      if (Object.keys(auditChanges).length > 0) {
+        writeAuditLog({
+          area: 'Updates',
+          action_type: 'updated',
+          entity_id: updateId,
+          entity_label: editedUpdate.title,
+          reference_number: editedUpdate.reference_number || undefined,
+          changed_by: changedBy,
+          changes: auditChanges,
+        });
       }
     }
 
