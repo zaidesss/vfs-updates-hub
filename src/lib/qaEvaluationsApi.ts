@@ -629,7 +629,7 @@ export function calculateScoreTotals(scores: { score_earned: number | null; max_
 // Send QA notification
 export async function sendQANotification(
   evaluationId: string,
-  type: 'new_evaluation' | 'acknowledgment'
+  type: 'new_evaluation' | 'acknowledgment' | 'evaluation_updated'
 ): Promise<void> {
   const { error } = await supabase.functions.invoke('send-qa-notification', {
     body: { evaluationId, type },

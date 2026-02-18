@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface NotificationRequest {
   evaluationId: string;
-  type: 'new_evaluation' | 'acknowledgment';
+  type: 'new_evaluation' | 'acknowledgment' | 'evaluation_updated';
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -226,6 +226,79 @@ const handler = async (req: Request): Promise<Response> => {
           actor_email: evaluation.agent_email,
           actor_name: evaluation.agent_name,
           metadata: { to: teamLeadEmail ? [teamLeadEmail] : [evaluation.agent_email], messageId: emailResult.messageId },
+        });
+    } else if (type === 'evaluation_updated') {
+      subject = `QA Evaluation Updated - ${evaluation.reference_number || evaluation.ticket_id}`;
+      htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">QA Evaluation Updated</h2>
+          <p>Hello ${evaluation.agent_name},</p>
+          <p>Your QA evaluation has been updated. Please log in and review the changes.</p>
+          
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p><strong>Reference:</strong> ${evaluation.reference_number}</p>
+            <p><strong>Audit Date:</strong> ${evaluation.audit_date}</p>
+            <p><strong>Ticket:</strong> #${evaluation.ticket_id}</p>
+          </div>
+          
+          <a href="${evaluationUrl}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">View Evaluation</a>
+          
+          <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated notification from the Agent Portal.</p>
+        </div>
+      `;
+
+      // Send to agent with team lead in CC
+      const emailResult = await sendEmail({
+        to: [evaluation.agent_email],
+        cc: teamLeadEmail && teamLeadEmail !== evaluation.agent_email 
+          ? [teamLeadEmail] 
+          : undefined,
+        subject,
+        html: htmlContent,
+      });
+
+      if (!emailResult.success) {
+        console.error('Failed to send evaluation updated email:', emailResult.error);
+        
+        await supabase
+          .from('qa_evaluation_events')
+          .insert({
+            evaluation_id: evaluationId,
+            event_type: 'notification_failed',
+            event_description: `Update notification email failed to send to ${evaluation.agent_email}`,
+            actor_email: 'system',
+            actor_name: 'System',
+            metadata: { error: emailResult.error, to: evaluation.agent_email },
+          });
+        
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: emailResult.error }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Log success event
+      await supabase
+        .from('qa_evaluation_events')
+        .insert({
+          evaluation_id: evaluationId,
+          event_type: 'update_notification_sent',
+          event_description: `Update notification email sent to ${evaluation.agent_email}`,
+          actor_email: 'system',
+          actor_name: 'System',
+          metadata: { to: evaluation.agent_email, cc: teamLeadEmail ? [teamLeadEmail] : [], messageId: emailResult.messageId },
+        });
+
+      // Create in-app notification for the agent
+      await supabase
+        .from('notifications')
+        .insert({
+          user_email: evaluation.agent_email,
+          title: 'QA Evaluation Updated',
+          message: `Your QA evaluation ${evaluation.reference_number || ''} has been updated. Please review the changes.`,
+          type: 'qa_evaluation',
+          reference_id: evaluationId,
+          reference_type: 'qa_evaluation',
         });
     }
 

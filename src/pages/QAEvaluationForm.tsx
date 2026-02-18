@@ -30,6 +30,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, 
@@ -143,6 +153,9 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   // Track if form has been initialized from edit data
   const [editDataLoaded, setEditDataLoaded] = useState(false);
+  // Re-acknowledgement dialog state
+  const [showReAckDialog, setShowReAckDialog] = useState(false);
+  const [savedEvaluationId, setSavedEvaluationId] = useState<string | null>(null);
 
   // Fetch agents
   const { data: agents = [] } = useQuery({
@@ -736,6 +749,10 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
       return { evaluationId, status };
     },
     onSuccess: async ({ evaluationId, status }) => {
+      const originalStatus = existingEvalData?.evaluation?.status;
+      const wasAcknowledged = existingEvalData?.evaluation?.agent_acknowledged === true;
+      const wasSentOrAcknowledged = originalStatus === 'sent' || originalStatus === 'acknowledged' || wasAcknowledged;
+
       // Send email notification if status is 'sent' and not editing (new evaluation)
       if (status === 'sent' && !isEditMode) {
         try {
@@ -765,8 +782,8 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
         }
       }
       
-      // If editing and status changed to sent, log the event
-      if (status === 'sent' && isEditMode) {
+      // If editing and status changed to sent (draft -> sent), log and notify
+      if (status === 'sent' && isEditMode && originalStatus === 'draft') {
         await createEvaluationEvent(
           evaluationId,
           'evaluation_sent',
@@ -784,6 +801,23 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
       queryClient.invalidateQueries({ queryKey: ['qa-evaluation-edit', editId] });
       
+      // If editing a non-draft evaluation (sent/acknowledged), handle post-save flow
+      if (isEditMode && wasSentOrAcknowledged && status === 'draft') {
+        if (wasAcknowledged) {
+          // Show re-acknowledgement dialog
+          setSavedEvaluationId(evaluationId);
+          setShowReAckDialog(true);
+          return; // Don't navigate yet
+        } else {
+          // Sent but not acknowledged — notify agent silently
+          try {
+            await sendQANotification(evaluationId, 'evaluation_updated');
+          } catch (notifError) {
+            console.error('Failed to send update notification:', notifError);
+          }
+        }
+      }
+
       const toastTitle = isEditMode 
         ? (status === 'sent' ? 'Evaluation updated and sent' : 'Changes saved')
         : (status === 'sent' ? 'Evaluation sent' : 'Draft saved');
@@ -1242,21 +1276,77 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
             disabled={saveMutation.isPending}
           >
             <Save className="h-4 w-4 mr-2" />
-            {isEditMode ? 'Save Changes' : 'Save Draft'}
+            {isEditMode ? 'Save Draft' : 'Save Draft'}
           </Button>
-          <Button 
-            onClick={() => saveMutation.mutate('sent')}
-            disabled={!isFormValid || saveMutation.isPending}
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            Send to Agent
-          </Button>
+          {/* Hide Send to Agent when editing a non-draft evaluation */}
+          {!(isEditMode && existingEvalData?.evaluation?.status && existingEvalData.evaluation.status !== 'draft') && (
+            <Button 
+              onClick={() => saveMutation.mutate('sent')}
+              disabled={!isFormValid || saveMutation.isPending}
+            >
+              {saveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Send to Agent
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Re-acknowledgement Dialog */}
+      <AlertDialog open={showReAckDialog} onOpenChange={setShowReAckDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Does the agent need to review this again?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You made changes to this evaluation. The agent already acknowledged it. Would you like the agent to review it again?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={async () => {
+                setShowReAckDialog(false);
+                toast({ title: 'Changes saved', description: 'Acknowledgement was kept.' });
+                navigate(`/team-performance/qa-evaluations/${editId}`);
+              }}
+            >
+              No, just save
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                try {
+                  if (savedEvaluationId) {
+                    await updateQAEvaluation(savedEvaluationId, {
+                      agent_acknowledged: false,
+                      acknowledged_at: null,
+                      status: 'sent',
+                    });
+                    await createEvaluationEvent(
+                      savedEvaluationId,
+                      'acknowledgement_reset',
+                      'Acknowledgement was reset — agent needs to review again',
+                      user!.email,
+                      evaluatorName
+                    );
+                    await sendQANotification(savedEvaluationId, 'evaluation_updated');
+                    queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+                    queryClient.invalidateQueries({ queryKey: ['qa-evaluation', editId] });
+                  }
+                  toast({ title: 'Sent back to agent', description: 'The agent will be notified to review the changes.' });
+                } catch (err: any) {
+                  toast({ title: 'Error', description: err.message, variant: 'destructive' });
+                }
+                setShowReAckDialog(false);
+                navigate(`/team-performance/qa-evaluations/${editId}`);
+              }}
+            >
+              Yes, send it back
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Layout>
   );
 }

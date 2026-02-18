@@ -271,39 +271,41 @@ export default function QAEvaluationDetail() {
             </p>
           </div>
           
-          {/* Draft Actions - Edit and Send */}
-          {canViewAll && evaluation.status === 'draft' && (
+          {/* Edit & Send Actions */}
+          {canViewAll && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 onClick={() => navigate(`/team-performance/qa-evaluations/edit/${id}`)}
               >
                 <Pencil className="h-4 w-4 mr-2" />
-                Edit Draft
+                Edit
               </Button>
-              <Button
-                onClick={async () => {
-                  try {
-                    await updateQAEvaluation(id!, { status: 'sent' });
-                    await sendQANotification(id!, 'new_evaluation');
-                    queryClient.invalidateQueries({ queryKey: ['qa-evaluation', id] });
-                    queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
-                    toast({
-                      title: 'Evaluation sent',
-                      description: 'The agent will receive a notification email.',
-                    });
-                  } catch (err: any) {
-                    toast({
-                      title: 'Error',
-                      description: err.message,
-                      variant: 'destructive',
-                    });
-                  }
-                }}
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Send to Agent
-              </Button>
+              {evaluation.status === 'draft' && (
+                <Button
+                  onClick={async () => {
+                    try {
+                      await updateQAEvaluation(id!, { status: 'sent' });
+                      await sendQANotification(id!, 'new_evaluation');
+                      queryClient.invalidateQueries({ queryKey: ['qa-evaluation', id] });
+                      queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+                      toast({
+                        title: 'Evaluation sent',
+                        description: 'The agent will receive a notification email.',
+                      });
+                    } catch (err: any) {
+                      toast({
+                        title: 'Error',
+                        description: err.message,
+                        variant: 'destructive',
+                      });
+                    }
+                  }}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send to Agent
+                </Button>
+              )}
             </div>
           )}
         </div>

@@ -39,7 +39,8 @@ import {
   FileText,
   MoreHorizontal,
   RefreshCw,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getMonth, getYear } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
@@ -582,6 +583,14 @@ export default function QAEvaluations() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {canCreate && (
+                                <DropdownMenuItem
+                                  onClick={() => navigate(`/team-performance/qa-evaluations/edit/${evaluation.id}`)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit
+                                </DropdownMenuItem>
+                              )}
                               {canCreate && evaluation.status === 'sent' && (
                                 <DropdownMenuItem
                                   onClick={() => resendMutation.mutate(evaluation)}
