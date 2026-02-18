@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Loader } from 'lucide-react';
 import { RevalidaV2Batch, createBatch, generateQuestions } from '@/lib/revalidaV2Api';
 import { toast } from 'sonner';
+import { writeAuditLog } from '@/lib/auditLogApi';
+import { useAuth } from '@/context/AuthContext';
 
 interface BatchConfigFormProps {
   onBatchCreated: (batch: RevalidaV2Batch) => void;
@@ -14,6 +16,7 @@ interface BatchConfigFormProps {
 
 export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -47,6 +50,15 @@ export const BatchConfigForm = ({ onBatchCreated }: BatchConfigFormProps) => {
 
       // Start question generation
       await generateQuestions(newBatch.id);
+      
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'created',
+        entity_id: newBatch.id,
+        entity_label: formData.title,
+        changed_by: user?.email || '',
+        metadata: { version: 'v2', mcq_count: formData.mcqCount, tf_count: formData.tfCount, situational_count: formData.situationalCount },
+      });
       
       // Invalidate batch list query to refresh UI
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });

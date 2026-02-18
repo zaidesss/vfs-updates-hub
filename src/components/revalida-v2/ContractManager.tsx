@@ -7,8 +7,11 @@ import { Upload, Trash2 } from 'lucide-react';
 import { RevalidaV2Contract, listContracts, createContract, updateContract, deleteContract } from '@/lib/revalidaV2Api';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { writeAuditLog } from '@/lib/auditLogApi';
+import { useAuth } from '@/context/AuthContext';
 
 export const ContractManager = forwardRef<HTMLDivElement>((_, ref) => {
+  const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [contractName, setContractName] = useState('');
@@ -46,6 +49,14 @@ export const ContractManager = forwardRef<HTMLDivElement>((_, ref) => {
         uploaded_by: 'current_user',
       });
 
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'created',
+        entity_id: contract.id,
+        entity_label: contractName,
+        changed_by: user?.email || '',
+        metadata: { type: 'contract', version: 'v2' },
+      });
       refetch();
       setSelectedFile(null);
       setContractName('');
@@ -61,6 +72,15 @@ export const ContractManager = forwardRef<HTMLDivElement>((_, ref) => {
   const handleToggleActive = async (contract: RevalidaV2Contract) => {
     try {
       await updateContract(contract.id, { is_active: !contract.is_active });
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'updated',
+        entity_id: contract.id,
+        entity_label: contract.name,
+        changed_by: user?.email || '',
+        changes: { is_active: { old: String(contract.is_active), new: String(!contract.is_active) } },
+        metadata: { type: 'contract', version: 'v2' },
+      });
       refetch();
       toast.success(`Contract ${!contract.is_active ? 'activated' : 'deactivated'}`);
     } catch (error) {
@@ -72,7 +92,16 @@ export const ContractManager = forwardRef<HTMLDivElement>((_, ref) => {
     if (!confirm('Are you sure you want to delete this contract?')) return;
     
     try {
+      const contract = contracts.find(c => c.id === contractId);
       await deleteContract(contractId);
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'deleted',
+        entity_id: contractId,
+        entity_label: contract?.name || contractId,
+        changed_by: user?.email || '',
+        metadata: { type: 'contract', version: 'v2' },
+      });
       refetch();
       toast.success('Contract deleted');
     } catch (error) {

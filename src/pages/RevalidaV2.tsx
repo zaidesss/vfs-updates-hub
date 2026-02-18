@@ -32,6 +32,7 @@ import { BatchCardV2 } from '@/components/revalida-v2/BatchCardV2';
 import { SubmissionDetailV2 } from '@/components/revalida-v2/SubmissionDetailV2';
 import { AlertCircle, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 export default function RevalidaV2() {
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
@@ -104,6 +105,16 @@ export default function RevalidaV2() {
       const batchTitle = batch?.title || 'Revalida Assessment';
       const testUrl = `${window.location.origin}/team-performance/revalida-v2`;
       
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'updated',
+        entity_id: targetId,
+        entity_label: batchTitle,
+        changed_by: user?.email || '',
+        changes: { status: { old: 'draft', new: 'published' } },
+        metadata: { version: 'v2' },
+      });
+      
       supabase.functions.invoke('send-revalida-notification', {
         body: { batchTitle, testUrl, version: 'v2' },
       }).then(({ error }) => {
@@ -122,7 +133,17 @@ export default function RevalidaV2() {
 
   const handleDeactivate = async (id: string) => {
     try {
+      const batch = batches.find(b => b.id === id);
       await deactivateBatch(id);
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'updated',
+        entity_id: id,
+        entity_label: batch?.title || id,
+        changed_by: user?.email || '',
+        changes: { status: { old: 'active', new: 'deactivated' } },
+        metadata: { version: 'v2' },
+      });
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batch', id] });
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
       toast.success('Batch deactivated successfully.');
@@ -133,7 +154,16 @@ export default function RevalidaV2() {
 
   const handleDelete = async (id: string) => {
     try {
+      const batch = batches.find(b => b.id === id);
       await deleteBatch(id);
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: 'deleted',
+        entity_id: id,
+        entity_label: batch?.title || id,
+        changed_by: user?.email || '',
+        metadata: { version: 'v2' },
+      });
       queryClient.invalidateQueries({ queryKey: ['revalida-v2-batches'] });
       toast.success('Batch deleted successfully.');
     } catch (error) {
