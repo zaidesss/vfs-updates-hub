@@ -958,6 +958,12 @@ export default function LeaveRequest() {
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-sm text-primary hover:underline truncate flex-1"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (url && url.startsWith('http')) {
+                              window.open(url, '_blank', 'noopener,noreferrer');
+                            }
+                          }}
                         >
                           Attachment {idx + 1}
                         </a>
@@ -1233,6 +1239,12 @@ export default function LeaveRequest() {
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (url && url.startsWith('http')) {
+                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
                               >
                                 <FileText className="h-3 w-3" />
                                 Attachment {idx + 1}
