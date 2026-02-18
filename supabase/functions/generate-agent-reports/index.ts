@@ -831,8 +831,8 @@ Deno.serve(async (req) => {
         await supabase.from('notifications').insert(notifications);
       }
 
-      // Send email via Resend
-      if (resendApiKey && adminEmails.length > 0) {
+      // Send email to admins
+      if (adminEmails.length > 0) {
         const htmlBody = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>📊 Daily Agent Report</h2>
