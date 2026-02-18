@@ -180,11 +180,22 @@ export default function MasterDirectory() {
         title: 'Saved',
         description: 'All changes have been saved successfully.',
       });
+      // Build summary of changed agents/fields
+      const dirChanges: string[] = [];
+      editedData.forEach((entry) => {
+        const orig = originalData.find(o => o.id === entry.id);
+        if (!orig) { dirChanges.push(`${entry.agent_name || entry.email}: new entry`); return; }
+        const changedFields: string[] = [];
+        const fields = ['agent_name', 'support_account', 'support_type', 'quota', 'weekday_schedule', 'weekend_schedule'] as const;
+        fields.forEach(f => { if (String((orig as any)[f] ?? '') !== String((entry as any)[f] ?? '')) changedFields.push(f); });
+        if (changedFields.length > 0) dirChanges.push(`${entry.agent_name || entry.email}: ${changedFields.join(', ')}`);
+      });
       writeAuditLog({
         area: 'Master Directory',
         action_type: 'updated',
         entity_label: 'Bulk directory update',
         changed_by: user?.email || '',
+        metadata: { changed_agents: dirChanges.slice(0, 20), total_changes: dirChanges.length },
       });
       await loadData();
     } else {

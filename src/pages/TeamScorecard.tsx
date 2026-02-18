@@ -365,11 +365,26 @@ export default function TeamScorecard() {
       toast.success('Metrics saved successfully');
       setEditedMetrics({});
       queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
+      // Build condensed diff of edited metrics
+      const metricChanges: Record<string, { old: string | null; new: string | null }> = {};
+      Object.entries(editedMetrics).forEach(([agentEmail, edits]) => {
+        const sc = scorecards?.find(s => s.agent.email.toLowerCase() === agentEmail);
+        if (!sc) return;
+        if (edits.callAht !== undefined && edits.callAht !== sc.callAht)
+          metricChanges[`${agentEmail}:call_aht`] = { old: String(sc.callAht ?? ''), new: String(edits.callAht) };
+        if (edits.chatAht !== undefined && edits.chatAht !== sc.chatAht)
+          metricChanges[`${agentEmail}:chat_aht`] = { old: String(sc.chatAht ?? ''), new: String(edits.chatAht) };
+        if (edits.chatFrt !== undefined && edits.chatFrt !== sc.chatFrt)
+          metricChanges[`${agentEmail}:chat_frt`] = { old: String(sc.chatFrt ?? ''), new: String(edits.chatFrt) };
+        if (edits.orderEscalation !== undefined)
+          metricChanges[`${agentEmail}:order_escalation`] = { old: null, new: String(edits.orderEscalation) };
+      });
       writeAuditLog({
         area: 'Scorecard',
         action_type: 'updated',
         entity_label: `Metrics edit: ${weekStartStr}`,
         changed_by: user?.email || '',
+        changes: Object.keys(metricChanges).length > 0 ? metricChanges : undefined,
         metadata: { week_start: weekStartStr, support_type: supportType },
       });
     },
