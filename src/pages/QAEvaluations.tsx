@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
@@ -272,7 +273,8 @@ export default function QAEvaluations() {
   // Delete mutation (Super Admin only)
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteQAEvaluation(id),
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
+      const deletedEval = evaluations?.find(e => e.id === deletedId);
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
       toast({
         title: 'Evaluation deleted',
@@ -280,6 +282,16 @@ export default function QAEvaluations() {
       });
       setDeleteModalOpen(false);
       setEvaluationToDelete(null);
+      if (deletedEval) {
+        writeAuditLog({
+          area: 'QA Evaluations',
+          action_type: 'deleted',
+          entity_id: deletedId,
+          entity_label: deletedEval.agent_name || deletedEval.agent_email,
+          reference_number: deletedEval.reference_number || null,
+          changed_by: user?.email || '',
+        });
+      }
     },
     onError: (error: any) => {
       toast({

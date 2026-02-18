@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AGENT_DIRECTORY } from '@/lib/agentDirectory';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -364,6 +365,13 @@ export default function TeamScorecard() {
       toast.success('Metrics saved successfully');
       setEditedMetrics({});
       queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
+      writeAuditLog({
+        area: 'Scorecard',
+        action_type: 'updated',
+        entity_label: `Metrics edit: ${weekStartStr}`,
+        changed_by: user?.email || '',
+        metadata: { week_start: weekStartStr, support_type: supportType },
+      });
     },
     onError: (error) => {
       toast.error(`Error saving metrics: ${error.message}`);
@@ -395,6 +403,13 @@ export default function TeamScorecard() {
         setEditedMetrics({});
         queryClient.invalidateQueries({ queryKey: ['scorecard', weekStartStr, supportType] });
         queryClient.invalidateQueries({ queryKey: ['scorecard-saved', weekStartStr, weekEndStr, supportType] });
+        writeAuditLog({
+          area: 'Scorecard',
+          action_type: 'created',
+          entity_label: `Scorecard snapshot: ${weekStartStr}`,
+          changed_by: user?.email || '',
+          metadata: { week_start: weekStartStr, week_end: weekEndStr, support_type: supportType },
+        });
       } else {
         toast.error(`Failed to save: ${result.error}`);
       }

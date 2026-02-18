@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Megaphone, Send, Loader2, Users, UserCheck, Shield, Mail } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { useAuth } from '@/context/AuthContext';
 import { EmailPreview } from './EmailPreview';
 
@@ -171,6 +172,14 @@ export function AnnouncementSender() {
 
       toast.success('Announcement sent successfully!', {
         description: `Sent to ${data.recipientCount} recipient(s)`,
+      });
+
+      writeAuditLog({
+        area: 'Announcements',
+        action_type: 'created',
+        entity_label: subject,
+        changed_by: user?.email || '',
+        metadata: { recipient_group: recipientGroup, recipient_count: data.recipientCount },
       });
 
       // Reset form
