@@ -693,6 +693,65 @@ Deno.serve(async (req) => {
           }
         }
       }
+
+      // ========================
+      // Check for NCNS (No Call No Show)
+      // Agent has a scheduled shift, no login events, and no approved/pending outage request
+      // ========================
+      if (loginEvents.length === 0 && parsedSchedule) {
+        const reportKey = `${profile.email.toLowerCase()}_NCNS`;
+        if (!existingReportSet.has(reportKey)) {
+          // Check for approved or pending outage request covering this date
+          const { data: outageRequests } = await supabase
+            .from('leave_requests')
+            .select('id')
+            .eq('agent_email', profile.email.toLowerCase())
+            .lte('start_date', targetDateStr)
+            .gte('end_date', targetDateStr)
+            .in('status', ['approved', 'pending', 'for_review', 'pending_override'])
+            .limit(1);
+
+          if (!outageRequests || outageRequests.length === 0) {
+            console.log(`NCNS detected for ${agentName} - scheduled shift ${schedule} but no login and no outage request`);
+            reportsToCreate.push({
+              agent_email: profile.email.toLowerCase(),
+              agent_name: agentName,
+              profile_id: profile.id,
+              incident_date: targetDateStr,
+              incident_type: 'NCNS',
+              severity: 'critical',
+              details: {
+                scheduledShift: schedule,
+                message: 'Agent was scheduled but did not log in and has no outage request',
+              },
+              status: 'open',
+            });
+
+            // Trigger real-time Slack + Email alert
+            try {
+              await fetch(`${supabaseUrl}/functions/v1/send-status-alert-notification`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  agentEmail: profile.email.toLowerCase(),
+                  agentName,
+                  alertType: 'NCNS',
+                  details: {
+                    scheduledShift: schedule,
+                    incidentDate: targetDateStr,
+                    severity: 'critical',
+                  },
+                }),
+              });
+            } catch (alertErr) {
+              console.error(`Failed to send NCNS alert for ${agentName}:`, alertErr);
+            }
+          }
+        }
+      }
     }
 
     // Insert all reports
