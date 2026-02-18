@@ -249,6 +249,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Write audit log
+    await supabase.from("portal_audit_log").insert({
+      area: "Agent Reports",
+      action_type: "created",
+      entity_label: `EOD Analytics - ${dateStr}`,
+      changed_by: "system",
+      metadata: { type: "eod_analytics", date: dateStr, status, active_agents: a.attendance.active, total_tickets: a.productivity.total, silent },
+    });
+
     return new Response(JSON.stringify({ success: true, date: dateStr, analytics }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error: unknown) {
     console.error("Error:", error);
