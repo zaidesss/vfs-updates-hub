@@ -1,22 +1,49 @@
 
 
-## Fix: Batch Details Dialog Scroll Issue
+## Add NCNS (No Call No Show) Incident Type to Agent Reports
 
-**Problem:** The Batch Details popup (eye icon) doesn't allow scrolling through all questions. The dialog content is cut off.
+### Overview
+Add a new "NCNS" (No Call No Show) incident type that automatically flags agents who are scheduled to work but fail to log in within 2 hours of their shift start AND have no approved/pending outage request for that day. This also introduces a new "Critical" severity level for urgent attention.
 
-**Root Cause:** In `BatchDetailDialog.tsx`, the `ScrollArea` component wraps the questions list, but the dialog's inner layout isn't properly constraining heights to allow the scroll area to activate. The `flex-1 min-h-0` container needs the ScrollArea to have an explicit height, and the viewport needs `overflow-y: auto`.
+### What Changes
 
-**Technical Details:**
+**1. New "Critical" Severity Level**
+- Adds a `critical` severity with distinct dark-red styling (e.g., `bg-red-200 text-red-900`) to visually stand out above "High"
+- Appears across all incident types where applicable, but NCNS defaults to it
 
-File: `src/components/revalida/BatchDetailDialog.tsx`
+**2. NCNS Incident Detection (Batch Job)**
+- In the daily `generate-agent-reports` edge function, after processing all agents:
+  - For each agent with a scheduled shift (not day off, not blank schedule):
+    - Check if they have ANY login event for the day
+    - If NO login found, check if there's an approved/pending outage request covering that date
+    - If no login AND no outage request: generate an NCNS report with `critical` severity
+- The 2-hour window is enforced by the batch job timing (runs at 5 AM UTC / midnight EST, well past any shift's 2-hour mark)
 
-1. Add `overflow-hidden` to the `DialogContent` and ensure `flex flex-col` is properly set with a fixed max height.
-2. Ensure the scrollable container div has proper `overflow-auto` as a fallback, and that the `ScrollArea` component's viewport gets full height.
+**3. Real-time Slack + Email Alerts**
+- Add `NCNS` to the `send-status-alert-notification` edge function
+- Sends a Slack message to `#a_agent_reports` and email to all admins/HR
+- Message format: "Agent was absent (No Call No Show) on [date] -- critical severity"
 
-The fix is a small CSS adjustment to the scrollable section — replacing the `ScrollArea` with a simple `div` using `overflow-y-auto` (since the Radix ScrollArea can sometimes have viewport sizing issues in flex layouts), or ensuring the ScrollArea viewport gets proper styling.
+**4. UI Updates**
+- `agentReportsApi.ts`: Add `NCNS` to `IncidentType`, `INCIDENT_TYPE_CONFIG` (label: "Absent (NCNS)", color: dark red, icon: user-x), and `critical` to `SEVERITY_CONFIG` and `ReportSeverity`
+- `ReportDetailDialog.tsx`: Add icon mapping for the new type
+- NCNS is NOT added to `ESCALATABLE_INCIDENT_TYPES` (standalone only per your preference)
 
-**Approach:** Replace the `ScrollArea` wrapper with a plain `div` that has `overflow-y-auto` and proper flex constraints, which is more reliable in this flex dialog layout.
+### Technical Steps (executed one at a time)
 
-**Changes:**
-- `src/components/revalida/BatchDetailDialog.tsx` — Change the scrollable questions section from `ScrollArea` to a simple `overflow-y-auto` div, removing the `ScrollArea` import if no longer needed.
+**Step 1 -- Database: Allow NCNS and Critical**
+- The `agent_reports` table stores `incident_type` and `severity` as text columns, so no schema migration is needed -- new values work immediately.
+
+**Step 2 -- Frontend: Add NCNS type + Critical severity**
+- Update `agentReportsApi.ts` with new type and severity config
+- Update `ReportDetailDialog.tsx` icon map
+
+**Step 3 -- Backend: Add NCNS detection to `generate-agent-reports`**
+- After existing checks, add NCNS logic:
+  - If agent has no login events AND no leave request covering the date, create NCNS report
+
+**Step 4 -- Backend: Add NCNS to `send-status-alert-notification`**
+- Add NCNS alert config and Slack/email message formatting
+
+**Step 5 -- Deploy and verify**
 
