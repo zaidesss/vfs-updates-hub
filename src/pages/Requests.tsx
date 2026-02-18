@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CATEGORIES, getCategoryLabel } from '@/lib/categories';
 import { PRE_APPROVERS, FINAL_APPROVER, isPreApprover, isFinalApprover } from '@/lib/approvers';
 import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates, deleteArticleRequest } from '@/lib/requestApi';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
 import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -168,11 +169,20 @@ export default function Requests() {
 
   const handleDeleteRequest = async (requestId: string) => {
     setDeletingRequest(requestId);
+    const deletedReq = requests.find(r => r.id === requestId);
     const result = await deleteArticleRequest(requestId);
     if (result.error) {
       toast({ title: 'Error', description: result.error, variant: 'destructive' });
     } else {
       toast({ title: 'Deleted', description: 'Request has been deleted.' });
+      writeAuditLog({
+        area: 'Knowledge Base',
+        action_type: 'deleted',
+        entity_id: requestId,
+        entity_label: deletedReq?.description?.substring(0, 100) || requestId,
+        reference_number: (deletedReq as any)?.reference_number || undefined,
+        changed_by: user?.email || '',
+      });
       loadRequests();
     }
     setDeletingRequest(null);

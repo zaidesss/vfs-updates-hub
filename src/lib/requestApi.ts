@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { ArticleRequest, ArticleRequestWithApprovals, RequestApproval, FinalDecision } from '@/types/request';
 import { PRE_APPROVERS, FINAL_APPROVER } from '@/lib/approvers';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -112,6 +113,16 @@ export async function createArticleRequest(request: {
       console.error('Failed to send notifications:', notifyError);
     }
 
+    writeAuditLog({
+      area: 'Knowledge Base',
+      action_type: 'created',
+      entity_id: data.id,
+      entity_label: request.description.substring(0, 100),
+      reference_number: data.reference_number || undefined,
+      changed_by: request.submitted_by,
+      metadata: { request_type: request.request_type, category: request.category, priority: request.priority },
+    });
+
     return { data: data as ArticleRequest, error: null };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -147,6 +158,15 @@ export async function approveRequest(requestId: string, approverEmail: string): 
       console.error('Error checking full approval:', checkError);
     }
 
+    writeAuditLog({
+      area: 'Knowledge Base',
+      action_type: 'updated',
+      entity_id: requestId,
+      entity_label: 'Pre-approval',
+      changed_by: approverEmail,
+      metadata: { stage: 'pre_approval' },
+    });
+
     return { data: { ok: true }, error: null };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -176,6 +196,15 @@ export async function finalizeRequestReview(
       console.error('Error finalizing review:', error);
       return { data: null, error: error.message };
     }
+
+    writeAuditLog({
+      area: 'Knowledge Base',
+      action_type: 'updated',
+      entity_id: requestId,
+      entity_label: `Final review: ${decision}`,
+      changed_by: approverEmail,
+      metadata: { stage: 'final_review', decision, notes },
+    });
 
     return { data: { ok: true }, error: null };
   } catch (err) {
