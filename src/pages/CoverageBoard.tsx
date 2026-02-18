@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Pencil, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import {
   fetchAgentSchedules,
   fetchOverridesForWeek,
@@ -245,6 +246,13 @@ export default function CoverageBoard() {
 
        toast.success(`${pendingOverrides.size} override(s) saved`);
        queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
+       writeAuditLog({
+         area: 'Coverage Board',
+         action_type: 'updated',
+         entity_label: `${pendingOverrides.size} override(s)`,
+         changed_by: user?.email || '',
+         metadata: { override_count: pendingOverrides.size },
+       });
        setPendingOverrides(new Map());
        setEditMode(false);
      } catch (err: any) {

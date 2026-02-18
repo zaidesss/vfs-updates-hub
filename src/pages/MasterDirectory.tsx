@@ -23,6 +23,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { Save, Search, ExternalLink, RefreshCw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -179,7 +180,12 @@ export default function MasterDirectory() {
         title: 'Saved',
         description: 'All changes have been saved successfully.',
       });
-      // Refresh data to get updated timestamps
+      writeAuditLog({
+        area: 'Master Directory',
+        action_type: 'updated',
+        entity_label: 'Bulk directory update',
+        changed_by: user?.email || '',
+      });
       await loadData();
     } else {
       toast({

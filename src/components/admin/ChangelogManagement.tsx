@@ -22,6 +22,7 @@ import { formatDisplayDate } from '@/components/ui/date-picker';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 interface ChangelogEntry {
   id: string;
@@ -155,6 +156,13 @@ export function ChangelogManagement({ currentUserEmail }: ChangelogManagementPro
         toast.error('Failed to update entry', { description: error.message });
       } else {
         toast.success('Changelog entry updated');
+        writeAuditLog({
+          area: 'Knowledge Base',
+          action_type: 'updated',
+          entity_id: editingEntry.id,
+          entity_label: formData.title.trim(),
+          changed_by: currentUserEmail,
+        });
         await loadEntries();
         setIsDialogOpen(false);
         resetForm();
@@ -168,6 +176,12 @@ export function ChangelogManagement({ currentUserEmail }: ChangelogManagementPro
         toast.error('Failed to create entry', { description: error.message });
       } else {
         toast.success('Changelog entry created');
+        writeAuditLog({
+          area: 'Knowledge Base',
+          action_type: 'created',
+          entity_label: formData.title.trim(),
+          changed_by: currentUserEmail,
+        });
         await loadEntries();
         setIsDialogOpen(false);
         resetForm();
@@ -189,6 +203,14 @@ export function ChangelogManagement({ currentUserEmail }: ChangelogManagementPro
       toast.error('Failed to delete entry', { description: error.message });
     } else {
       toast.success('Changelog entry deleted');
+      writeAuditLog({
+        area: 'Knowledge Base',
+        action_type: 'deleted',
+        entity_id: entryToDelete.id,
+        entity_label: entryToDelete.title,
+        reference_number: entryToDelete.reference_number,
+        changed_by: currentUserEmail,
+      });
       await loadEntries();
     }
 

@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, AlertTriangle, Clock, CheckCircle2, XCircle, Ban, Pencil, Upload, X, FileText, History, Trash2, ShieldAlert } from 'lucide-react';
 import { LeaveAuditLog } from '@/components/leave/LeaveAuditLog';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { format, parseISO } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
@@ -461,6 +462,16 @@ export default function LeaveRequest() {
         title: 'Success',
         description: editingRequest ? 'Outage request updated successfully' : 'Outage request submitted successfully'
       });
+      const savedRequest = result.data;
+      writeAuditLog({
+        area: 'Leave Requests',
+        action_type: editingRequest ? 'updated' : 'created',
+        entity_id: savedRequest?.id || editingRequest?.id,
+        entity_label: formData.agent_name || user?.email || '',
+        reference_number: savedRequest?.reference_number || (editingRequest as any)?.reference_number || null,
+        changed_by: user?.email || '',
+        metadata: { agent_email: user?.email, reason: formData.outage_reason },
+      });
       resetForm();
       loadRequests();
     }
@@ -560,6 +571,16 @@ export default function LeaveRequest() {
         title: 'Success',
         description: `Request ${decisionDialog.decision}`
       });
+      const decidedRequest = requests.find(r => r.id === decisionDialog.requestId);
+      writeAuditLog({
+        area: 'Leave Requests',
+        action_type: 'updated',
+        entity_id: decisionDialog.requestId,
+        entity_label: decidedRequest?.agent_name || '',
+        reference_number: (decidedRequest as any)?.reference_number || null,
+        changed_by: user?.email || '',
+        changes: { status: { old: decidedRequest?.status || 'pending', new: decisionDialog.decision } },
+      });
       loadRequests();
     }
     
@@ -639,6 +660,12 @@ export default function LeaveRequest() {
       toast({
         title: 'Success',
         description: 'Request deleted'
+      });
+      writeAuditLog({
+        area: 'Leave Requests',
+        action_type: 'deleted',
+        entity_id: id,
+        changed_by: user?.email || '',
       });
       loadRequests();
     }

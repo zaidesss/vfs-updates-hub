@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -869,6 +870,15 @@ export default function QAEvaluationForm({ editId }: QAEvaluationFormProps) {
       toast({
         title: toastTitle,
         description: toastDesc,
+      });
+      
+      writeAuditLog({
+        area: 'QA Evaluations',
+        action_type: isEditMode ? 'updated' : 'created',
+        entity_id: evaluationId,
+        entity_label: selectedAgent?.agent_name || selectedAgent?.full_name || selectedAgent?.email || '',
+        changed_by: user?.email || '',
+        metadata: { agent_email: selectedAgent?.email, status },
       });
       
       // Navigate to detail view if editing, otherwise to list
