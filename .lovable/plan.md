@@ -1,63 +1,59 @@
 
 
-## Track Auto-Solved Chats and Show Adjusted AHT
+## Add Threaded Conversation for QA Evaluation Remarks
 
 ### Summary
-Add tracking for `chat_autosolved` tickets across both ZD1 and ZD2. The autosolved count will appear separately in Ticket Logs (beside regular chats) and in a new section on Zendesk Insights showing the adjusted AHT calculation.
+Currently, the agent can leave a one-time remark on a QA evaluation, but Super Admin, Admin, and HR cannot respond. We will add a threaded conversation system (similar to the existing Questions thread) so both parties can go back and forth. The agent will receive email + in-app notifications when an admin responds.
 
-### What You Need to Do in Zendesk
-For the **autosolved chat trigger** (the one that fires on 3-min inactivity), add one extra field to the webhook JSON body:
+### Changes Overview
 
+**Step 1 -- Create `qa_evaluation_replies` table**
+- New table with columns: `id`, `evaluation_id` (FK to qa_evaluations), `user_email`, `user_name`, `message`, `created_at`
+- RLS policies: agent can see/insert on their own evaluation; admin/HR/super_admin can see/insert on any evaluation
+- The existing `agent_remarks` field stays as-is (it becomes the first message in the thread conceptually)
+
+**Step 2 -- Add API functions in `qaEvaluationsApi.ts`**
+- `fetchEvaluationReplies(evaluationId)` -- fetch all replies for an evaluation
+- `createEvaluationReply(evaluationId, message, userEmail, userName)` -- insert a new reply
+
+**Step 3 -- Update QA Evaluation Detail page UI**
+- Replace the static "Agent Remarks" display card with a threaded conversation card
+- Show the original `agent_remarks` as the first message (from the agent)
+- Show all subsequent replies in chronological order, chat-style (agent on right, admin on left)
+- Add a reply text area at the bottom for admin/HR/super_admin to respond
+- Also allow the agent to continue replying (back-and-forth)
+- Log each reply as an event in the Activity History
+
+**Step 4 -- Create notification edge function**
+- New function `send-qa-reply-notification` (similar to `send-question-reply-notification`)
+- Sends email to the agent when admin/HR replies
+- Sends email to the evaluator + admin/HR when the agent replies
+- Creates in-app notification for the recipient
+
+**Step 5 -- Wire up notifications**
+- After a reply is inserted, invoke the edge function to notify the other party
+- Email includes the reply text, evaluation reference number, and a prompt to log in
+
+### Technical Details
+
+**New table schema:**
 ```text
-{
-  "zd_instance": "customerserviceadvocates",
-  "ticket_id": "{{ticket.id}}",
-  "status": "{{ticket.status}}",
-  "timestamp": "{{ticket.updated_at_with_timestamp}}",
-  "ticket_type": "Chat",
-  "agent_name": "{{ticket.ticket_field_14923047306265}}",
-  "is_autosolved": "true"
-}
+qa_evaluation_replies
+  - id: uuid (PK, default gen_random_uuid())
+  - evaluation_id: uuid (FK -> qa_evaluations.id, ON DELETE CASCADE)
+  - user_email: text (not null)
+  - user_name: text
+  - message: text (not null)
+  - created_at: timestamptz (default now())
 ```
 
-The manually solved chat trigger stays unchanged (it will default to `is_autosolved: false`). Do this for both ZD1 and ZD2 triggers.
+**RLS policies:**
+- SELECT: agent can read where evaluation.agent_email = their email; admin/HR/super_admin can read all
+- INSERT: agent can insert on their own evaluation; admin/HR/super_admin can insert on any
 
----
-
-### Portal Changes (Step by Step)
-
-**Step 1 -- Add `is_autosolved` column to `ticket_logs` table**
-- New boolean column, defaults to `false`, nullable
-- No impact on existing data -- all current rows will be `false`
-
-**Step 2 -- Update the webhook edge function**
-- Accept `is_autosolved` from the payload
-- Store it in the new column
-- Backward-compatible: if the field is missing, defaults to `false`
-
-**Step 3 -- Update `get_ticket_dashboard_data` database function**
-- Add `autosolved_chat_count` to the return columns
-- Count tickets where `ticket_type = 'Chat' AND is_autosolved = true`
-
-**Step 4 -- Update Ticket Logs UI**
-- Add a small autosolved indicator next to the chat count (e.g., "5 (2 auto)" or a separate sub-column)
-- Show it in a non-intrusive way so it doesn't clutter the existing table
-
-**Step 5 -- Add "Adjusted AHT" section to Zendesk Insights**
-- New card/section showing:
-  - Total autosolved chats for the selected week
-  - Zendesk AHT (existing "Avg Resolution Time")
-  - Adjusted AHT = removes 180 seconds per autosolved ticket from the total agent work time
-  - Formula: `(Total Agent Work Time - (Autosolved Count x 180)) / Total Tickets`
-- Kept visually separate from the existing metrics as requested
-
-**Step 6 -- Update Zendesk Insights cache table**
-- Add `autosolved_chat_count` column to `zendesk_insights_cache` so the count persists with cached data
-
-### Considerations Already Addressed
-- Both ZD1 and ZD2 supported
-- Existing ticket_logs data unaffected (defaults to `false`)
-- Deduplication logic unchanged -- same 120-second window applies
-- OT tickets that are also autosolved will carry both flags independently
-- The Team Scorecard's chat count will include autosolved chats in the total (they are still real chats handled by agents)
-
+**UI behavior:**
+- The "Review Evaluation" section (where agent submits initial remarks) stays the same
+- Once remarks are submitted, the remarks card becomes a conversation thread
+- Admin/HR see a reply box below the thread at all times
+- Agent also sees a reply box to continue the conversation
+- Each new reply logs an `evaluation_reply` event in the activity history
