@@ -9,7 +9,7 @@ const corsHeaders = {
 interface AlertRequest {
   agentEmail: string;
   agentName: string;
-  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET' | 'QUOTA_NOT_MET' | 'HIGH_GAP';
+  alertType: 'EXCESSIVE_RESTART' | 'BIO_OVERUSE' | 'LATE_LOGIN' | 'EARLY_OUT' | 'NO_LOGOUT' | 'OVERBREAK' | 'TIME_NOT_MET' | 'QUOTA_NOT_MET' | 'HIGH_GAP' | 'NCNS';
   details: Record<string, any>;
 }
 
@@ -24,6 +24,7 @@ const ALERT_CONFIGS: Record<string, { emoji: string; label: string; defaultSever
   TIME_NOT_MET: { emoji: '⏱️', label: 'Hours Not Met', defaultSeverity: 'medium' },
   QUOTA_NOT_MET: { emoji: '📊', label: 'Quota Not Met', defaultSeverity: 'medium' },
   HIGH_GAP: { emoji: '⏳', label: 'High Ticket Gap', defaultSeverity: 'medium' },
+  NCNS: { emoji: '🚫', label: 'Absent (NCNS)', defaultSeverity: 'critical' },
 };
 
 Deno.serve(async (req) => {
@@ -121,6 +122,11 @@ Deno.serve(async (req) => {
         const avgGapMinutes = details.avgGapMinutes || 0;
         title = `⚠️ High Ticket Gap: ${agentName}`;
         message = `${agentName} had an average ticket gap of ${avgGapMinutes.toFixed(1)} minutes.`;
+        break;
+      case 'NCNS':
+        const ncnsDate = details.incidentDate || formattedDate;
+        title = `🚫 Absent (NCNS): ${agentName}`;
+        message = `${agentName} was scheduled to work on ${ncnsDate} but did not log in and has no outage request.`;
         break;
       default:
         title = `⚠️ ${label}: ${agentName}`;
@@ -231,6 +237,9 @@ Deno.serve(async (req) => {
             break;
           case 'HIGH_GAP':
             slackMessage = `${emoji} *${label}* • ${agentName} avg ticket gap ${(details.avgGapMinutes || 0).toFixed(1)} mins (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
+            break;
+          case 'NCNS':
+            slackMessage = `${emoji} *${label}* • ${agentName} was absent on ${details.incidentDate || 'N/A'} — no login & no outage request (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
             break;
           default:
             slackMessage = `${emoji} *${label}* • ${agentName} - ${message} (${severity} severity). <${agentReportsUrl}|Review in Agent Reports>`;
