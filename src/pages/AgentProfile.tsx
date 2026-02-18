@@ -9,7 +9,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit } from 'lucide-react';
+import { Loader2, Save, User, DollarSign, Wifi, Building2, Briefcase, FileEdit, Activity } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MyActivityTab } from '@/components/profile/MyActivityTab';
 import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
@@ -480,7 +482,20 @@ export default function AgentProfilePage() {
           <PageGuideButton pageId="profile" />
         </div>
 
-        <Card>
+        <Tabs defaultValue="profile" className="w-full">
+          <TabsList>
+            <TabsTrigger value="profile">
+              <User className="h-4 w-4 mr-1.5" />
+              Profile
+            </TabsTrigger>
+            <TabsTrigger value="activity">
+              <Activity className="h-4 w-4 mr-1.5" />
+              My Activity
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile" className="mt-4">
+          <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -912,6 +927,22 @@ export default function AgentProfilePage() {
             </Button>
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="activity" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  My Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MyActivityTab agentEmail={user?.email || ''} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <ProfileChangeRequestDialog
