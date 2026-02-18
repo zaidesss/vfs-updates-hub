@@ -241,11 +241,37 @@ export default function ManageProfilesPage() {
           : u
       ));
       setSelectedUser(prev => prev ? { ...prev, profile: result.data! } : null);
+
+      // Build field-level diff for audit log
+      const oldProfile = selectedUser.profile;
+      const trackedFields: (keyof AgentProfile)[] = [
+        'full_name', 'agent_name', 'position', 'employment_status', 'hourly_rate',
+        'payment_frequency', 'start_date', 'team_lead', 'support_account', 'clients',
+        'break_schedule', 'ot_enabled', 'phone_number', 'home_address', 'birthday',
+        'emergency_contact_name', 'emergency_contact_phone', 'bank_name',
+        'bank_account_number', 'bank_account_holder', 'primary_internet_provider',
+        'primary_internet_speed', 'backup_internet_provider', 'backup_internet_speed',
+        'backup_internet_type', 'headset_model', 'upwork_username', 'upwork_profile_url',
+        'upwork_contract_id', 'zendesk_instance', 'zendesk_user_id',
+        'quota_email', 'quota_phone', 'quota_chat', 'quota_ot_email',
+      ];
+      const changes: Record<string, { old: string | null; new: string | null }> = {};
+      if (oldProfile) {
+        for (const field of trackedFields) {
+          const oldVal = String(oldProfile[field] ?? '');
+          const newVal = String((editData as any)[field] ?? '');
+          if (oldVal !== newVal) {
+            changes[field] = { old: oldVal || null, new: newVal || null };
+          }
+        }
+      }
+
       writeAuditLog({
         area: 'Profile',
         action_type: selectedUser.profile ? 'updated' : 'created',
         entity_label: editData.full_name || editData.email,
         changed_by: user?.email || '',
+        changes: Object.keys(changes).length > 0 ? changes : undefined,
         metadata: { target_email: editData.email },
       });
     } else if (result.error) {
