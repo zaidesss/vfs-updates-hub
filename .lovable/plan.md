@@ -1,29 +1,48 @@
 
-# Fix: Remove Richelle's Accidental Logout on Thursday Feb 12
+
+# Fix: Create Clean Tuesday Session for Juno
 
 ## What Happened
-On Thursday, February 12, Richelle accidentally clicked "Log Out" at 3:00 PM EST instead of "Break." She immediately logged back in within 1 minute and then properly went on break. Her actual session was continuous from 8:57 AM to 6:31 PM EST.
+On Tuesday (Feb 17), Juno logged in at 1:58 AM EST but her logout at 1:00 PM EST did not go through due to a slow internet connection. A stale logout then appeared at 12:43 AM EST on Wednesday (Feb 18), which is orphaned (no corresponding login for Wednesday).
 
-## What Needs to Be Done
+## Current State
+- **Login**: Feb 17, 1:58 AM EST (06:58:18 UTC) -- correct
+- **No Tuesday logout recorded** -- needs to be added
+- **Orphaned logout**: Feb 18, 12:43 AM EST (05:43:56 UTC) -- needs to be removed
+- **No NO_LOGOUT incident** found in agent_reports (audit may not have generated one yet)
+- **Profile status**: Currently LOGGED_OUT (from the orphaned logout)
 
-### Step 1: Delete the Two Accidental Profile Events
-Remove the following two records from the `profile_events` table:
+## Steps
 
-1. **Accidental LOGOUT** at 3:00 PM EST (ID: `41122073-b060-4432-b483-94baaf9a4e85`) — this is the mistaken logout
-2. **Re-LOGIN** at 3:00 PM EST (ID: `bf1f8f32-08d7-41dc-ad10-ab8152aa9a98`) — the immediate re-login after the mistake
+### Step 1: Insert the Missing Tuesday Logout Event
+Add a LOGOUT event at 1:00 PM EST on Tuesday, Feb 17 (= 18:00:00 UTC on Feb 17).
 
-After deletion, Richelle's Thursday timeline will cleanly show:
-- Login at 8:57 AM
-- Bio Break 11:46 AM - 11:47 AM
-- Break 3:01 PM - 3:29 PM
-- Logout at 6:31 PM
-- OT session 6:57 PM - 9:01 PM
+This creates a clean Tuesday session: Login 1:58 AM EST to Logout 1:00 PM EST.
 
-### What Was Already Verified (No Action Needed)
-- No EARLY_OUT incident exists in `agent_reports` for this date
-- No auto-generated leave request exists for this date
-- No attendance snapshot exists for this date
-- The dashboard will automatically recalculate the correct hours once the events are removed
+### Step 2: Remove the Orphaned Wednesday Logout
+Delete the stale logout event at Feb 18, 12:43 AM EST (ID: `6c53e70c-4609-4091-ac34-7f10e3bbd7e1`). This logout has no corresponding login on Wednesday and would pollute that day's data.
 
-### Step 2: Verify
-After the deletion, the Agent Dashboard for the week of Feb 9-15 should display Thursday correctly without any early out flag.
+### Step 3: Reset Profile Status
+After removing the orphaned logout, reset Juno's `profile_status` to LOGGED_OUT with the correct Tuesday logout timestamp, so the dashboard displays accurately.
+
+### Step 4: Verify
+Confirm the Tuesday timeline is clean and no NO_LOGOUT incidents exist.
+
+## Technical Details
+
+**Insert (profile_events)**:
+```sql
+INSERT INTO profile_events (profile_id, event_type, prev_status, new_status, created_at)
+VALUES ('e5dd639c-d1c0-4f34-af50-014f58fd3220', 'LOGOUT', 'LOGGED_IN', 'LOGGED_OUT', '2026-02-17 18:00:00+00');
+```
+
+**Delete orphaned logout**:
+```sql
+DELETE FROM profile_events WHERE id = '6c53e70c-4609-4091-ac34-7f10e3bbd7e1';
+```
+
+**Update profile_status** (set status_since to the correct Tuesday logout time):
+```sql
+UPDATE profile_status SET status_since = '2026-02-17 18:00:00+00' WHERE profile_id = 'e5dd639c-d1c0-4f34-af50-014f58fd3220';
+```
+
