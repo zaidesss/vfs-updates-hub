@@ -10,9 +10,10 @@ export type IncidentType =
   | 'LATE_LOGIN' 
   | 'EARLY_OUT' 
   | 'BIO_OVERUSE'
-  | 'OVERBREAK';
+  | 'OVERBREAK'
+  | 'NCNS';
 
-export type ReportSeverity = 'low' | 'medium' | 'high';
+export type ReportSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type ReportStatus = 'open' | 'reviewed' | 'validated' | 'dismissed';
 
 export interface AgentReport {
@@ -61,12 +62,14 @@ export const INCIDENT_TYPE_CONFIG: Record<IncidentType, { label: string; color: 
   EARLY_OUT: { label: 'Early Out', color: 'text-orange-600', icon: 'door-open' },
   BIO_OVERUSE: { label: 'Bio Overuse', color: 'text-blue-600', icon: 'user' },
   OVERBREAK: { label: 'Over Break', color: 'text-pink-600', icon: 'coffee' },
+  NCNS: { label: 'Absent (NCNS)', color: 'text-red-900', icon: 'user-x' },
 };
 
 export const SEVERITY_CONFIG: Record<ReportSeverity, { label: string; color: string }> = {
   low: { label: 'Low', color: 'bg-green-100 text-green-800' },
   medium: { label: 'Medium', color: 'bg-amber-100 text-amber-800' },
   high: { label: 'High', color: 'bg-red-100 text-red-800' },
+  critical: { label: 'Critical', color: 'bg-red-200 text-red-900' },
 };
 
 export const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {

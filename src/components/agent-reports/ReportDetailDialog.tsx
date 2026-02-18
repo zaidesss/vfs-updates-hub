@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { 
   Target, LogOut, Clock, RotateCcw, Timer, LogIn, DoorOpen, User,
-  CheckCircle, XCircle, ArrowUpRight, Coffee
+  CheckCircle, XCircle, ArrowUpRight, Coffee, UserX
 } from 'lucide-react';
 import {
   type AgentReport,
@@ -49,6 +49,7 @@ const ICON_MAP: Record<string, typeof Target> = {
   'door-open': DoorOpen,
   user: User,
   coffee: Coffee,
+  'user-x': UserX,
 };
 
 // Convert minutes from midnight to HH:MM format
@@ -394,6 +395,23 @@ export function ReportDetailDialog({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Source</span>
                 <span className="font-medium capitalize">{details.source}</span>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'NCNS':
+        return (
+          <div className="space-y-2">
+            <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+              <p className="text-sm font-medium text-red-900 dark:text-red-200">
+                Agent was scheduled to work but did not log in and has no outage request for this date.
+              </p>
+            </div>
+            {details.scheduledShift && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Scheduled Shift</span>
+                <span className="font-medium">{details.scheduledShift}</span>
               </div>
             )}
           </div>
