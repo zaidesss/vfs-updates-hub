@@ -1,13 +1,13 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Layout } from '@/components/Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database, Phone } from 'lucide-react';
+import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database, Phone, Bot } from 'lucide-react';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -194,6 +194,108 @@ function InsightsCard({ weekStart, weekEnd, zdInstance, channel }: {
   );
 }
 
+function AdjustedAHTSection({ weekStart, weekEnd, zdInstance, channel }: {
+  weekStart: string;
+  weekEnd: string;
+  zdInstance: 'ZD1' | 'ZD2';
+  channel: string;
+}) {
+  const zdInstanceMap = { ZD1: 'customerserviceadvocates', ZD2: 'customerserviceadvocateshelp' };
+
+  // Reuse the same insights query to get AHT and totalTickets
+  const { data: insightsData } = useQuery({
+    queryKey: ['zendesk-insights', weekStart, weekEnd, zdInstance, channel],
+    queryFn: () => fetchInsights(weekStart, weekEnd, zdInstance, false, channel),
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const { data: autosolvedCount, isLoading } = useQuery({
+    queryKey: ['autosolved-count', weekStart, weekEnd, zdInstance],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('ticket_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('zd_instance', zdInstanceMap[zdInstance])
+        .eq('is_autosolved', true)
+        .gte('timestamp', `${weekStart}T00:00:00-05:00`)
+        .lte('timestamp', `${weekEnd}T23:59:59-05:00`);
+      if (error) throw error;
+      return count || 0;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const ahtSeconds = insightsData?.avgResolutionTimeSeconds ?? null;
+  const totalTickets = insightsData?.totalTickets ?? 0;
+  const count = autosolvedCount ?? 0;
+
+  // Adjusted AHT: remove 180s per autosolved ticket from total work time, then re-average
+  const adjustedAHT = useMemo(() => {
+    if (ahtSeconds === null || totalTickets === 0) return null;
+    const totalWorkTime = ahtSeconds * totalTickets;
+    const adjustedWorkTime = totalWorkTime - (count * 180);
+    if (adjustedWorkTime <= 0) return 0;
+    return Math.round(adjustedWorkTime / totalTickets);
+  }, [ahtSeconds, totalTickets, count]);
+
+  const timeSaved = count * 180;
+  const instanceLabel = zdInstance === 'ZD1' ? 'ZD1' : 'ZD2';
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-orange-500" />
+          <CardTitle className="text-lg">{instanceLabel} — Auto-Solved Impact</CardTitle>
+        </div>
+        <CardDescription className="text-xs">
+          Deducts 3 min (180s) per auto-solved chat from total agent work time
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="p-4 rounded-lg bg-muted/50">
+                <Skeleton className="h-4 w-24 mb-2" />
+                <Skeleton className="h-7 w-16" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <MetricCard
+              icon={Bot}
+              label="Auto-Solved Chats"
+              value={String(count)}
+              subtext="3-min inactivity auto-close"
+            />
+            <MetricCard
+              icon={Timer}
+              label="Zendesk AHT"
+              value={formatTime(ahtSeconds)}
+              subtext="Raw from Zendesk"
+            />
+            <MetricCard
+              icon={Clock}
+              label="Adjusted AHT"
+              value={formatTime(adjustedAHT)}
+              subtext={count > 0 ? `−${formatTime(timeSaved)} removed` : 'No adjustment'}
+            />
+            <MetricCard
+              icon={BarChart3}
+              label="Time Saved"
+              value={formatTime(timeSaved)}
+              subtext={`${count} × 180s`}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ZendeskInsights() {
   const { now: portalNow } = usePortalClock();
   const currentWeekStart = useMemo(() => startOfWeek(portalNow, { weekStartsOn: 1 }), [portalNow.toDateString()]);
@@ -317,6 +419,12 @@ export default function ZendeskInsights() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" channel={selectedChannel} />
           <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" channel={selectedChannel} />
+        </div>
+
+        {/* Auto-Solved Chat Impact */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AdjustedAHTSection weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" channel={selectedChannel} />
+          <AdjustedAHTSection weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" channel={selectedChannel} />
         </div>
       </div>
     </Layout>
