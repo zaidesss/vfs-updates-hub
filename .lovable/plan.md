@@ -1,39 +1,29 @@
 
 
-## Fix: Missing Severity Helper Functions in generate-agent-reports
+## Show NCNS Label on Agent Dashboard
 
-### Problem
-The `generate-agent-reports` edge function crashes with `calculateQuotaSeverity is not defined` because three severity helper functions were lost during a previous edit:
-- `calculateTimeSeverity(minutes)` -- used by LATE_LOGIN, EARLY_OUT, BIO_OVERUSE, OVERBREAK, EXCESSIVE_RESTARTS, TIME_NOT_MET
-- `calculateQuotaSeverity(shortfall)` -- used by QUOTA_NOT_MET
-- `calculateGapSeverity(gapMinutes)` -- used by HIGH_GAP
+### Overview
+When an agent's shift schedule shows "Absent" status, and there's an NCNS report for that date, the badge should display **"Absent (NCNS)"** in a darker red to distinguish it from a regular absence (where the agent might have a pending outage request).
 
-### Fix
+### What Changes
 
-**Step 1 -- Add the missing helper functions** to `supabase/functions/generate-agent-reports/index.ts` (after the existing helper functions, before `Deno.serve`):
+**1. Add `isNcns` flag to `DayAttendance` interface** (`agentDashboardApi.ts`)
+- Add an optional `isNcns?: boolean` field to the `DayAttendance` interface
 
-```text
-calculateTimeSeverity(minutes):
-  <= 5  -> "low"
-  <= 15 -> "medium"
-  else  -> "high"
+**2. Fetch NCNS reports during attendance building** (`agentDashboardApi.ts`)
+- In the `buildWeekAttendance` function (or the caller that assembles dashboard data), query `agent_reports` for NCNS incidents matching the agent's email and the week's date range
+- When a day resolves to `absent` status, check if an NCNS report exists for that date and set `isNcns: true`
 
-calculateQuotaSeverity(shortfall):
-  <= 10 -> "low"
-  <= 30 -> "medium"
-  else  -> "high"
+**3. Update badge rendering** (`ShiftScheduleTable.tsx`)
+- In the `getStatusBadges` function, update the `absent` case to check `dayAttendance.isNcns`
+- If true, render **"Absent (NCNS)"** with a darker red style (e.g., `bg-red-700 text-white`) to visually differentiate it from a standard "Absent"
 
-calculateGapSeverity(gapMinutes):
-  < 5   -> null (no report)
-  <= 10 -> "low"
-  <= 20 -> "medium"
-  else  -> "high"
-```
+### Considerations
+- Should we also show "Absent (NCNS)" differently from an absent day that has a pending outage request? Currently both show "Absent" -- but NCNS means no outage request exists at all. This change already addresses that distinction.
+- The snapshot-based attendance (for past weeks) would also need the NCNS flag. We can add it to the snapshot query path as well.
 
-**Step 2 -- Re-deploy and test** with Pauline for 2026-02-17 (yesterday). The request body uses `date` (not `targetDate`).
+### Technical Steps (one at a time)
 
-### Expected Result
-- Pauline (Tuesday schedule 12:00 PM - 7:30 PM, no login, no outage request) gets an NCNS report with `critical` severity
-- Other agents with violations also get their reports generated
-- Slack + email alert fires for NCNS
+**Step 1** -- Add `isNcns` to `DayAttendance` and fetch NCNS reports in `buildWeekAttendance`
 
+**Step 2** -- Update `ShiftScheduleTable` badge rendering for the NCNS variant
