@@ -1,48 +1,22 @@
 
 
-# Fix: Create Clean Tuesday Session for Juno
+## Fix: Batch Details Dialog Scroll Issue
 
-## What Happened
-On Tuesday (Feb 17), Juno logged in at 1:58 AM EST but her logout at 1:00 PM EST did not go through due to a slow internet connection. A stale logout then appeared at 12:43 AM EST on Wednesday (Feb 18), which is orphaned (no corresponding login for Wednesday).
+**Problem:** The Batch Details popup (eye icon) doesn't allow scrolling through all questions. The dialog content is cut off.
 
-## Current State
-- **Login**: Feb 17, 1:58 AM EST (06:58:18 UTC) -- correct
-- **No Tuesday logout recorded** -- needs to be added
-- **Orphaned logout**: Feb 18, 12:43 AM EST (05:43:56 UTC) -- needs to be removed
-- **No NO_LOGOUT incident** found in agent_reports (audit may not have generated one yet)
-- **Profile status**: Currently LOGGED_OUT (from the orphaned logout)
+**Root Cause:** In `BatchDetailDialog.tsx`, the `ScrollArea` component wraps the questions list, but the dialog's inner layout isn't properly constraining heights to allow the scroll area to activate. The `flex-1 min-h-0` container needs the ScrollArea to have an explicit height, and the viewport needs `overflow-y: auto`.
 
-## Steps
+**Technical Details:**
 
-### Step 1: Insert the Missing Tuesday Logout Event
-Add a LOGOUT event at 1:00 PM EST on Tuesday, Feb 17 (= 18:00:00 UTC on Feb 17).
+File: `src/components/revalida/BatchDetailDialog.tsx`
 
-This creates a clean Tuesday session: Login 1:58 AM EST to Logout 1:00 PM EST.
+1. Add `overflow-hidden` to the `DialogContent` and ensure `flex flex-col` is properly set with a fixed max height.
+2. Ensure the scrollable container div has proper `overflow-auto` as a fallback, and that the `ScrollArea` component's viewport gets full height.
 
-### Step 2: Remove the Orphaned Wednesday Logout
-Delete the stale logout event at Feb 18, 12:43 AM EST (ID: `6c53e70c-4609-4091-ac34-7f10e3bbd7e1`). This logout has no corresponding login on Wednesday and would pollute that day's data.
+The fix is a small CSS adjustment to the scrollable section — replacing the `ScrollArea` with a simple `div` using `overflow-y-auto` (since the Radix ScrollArea can sometimes have viewport sizing issues in flex layouts), or ensuring the ScrollArea viewport gets proper styling.
 
-### Step 3: Reset Profile Status
-After removing the orphaned logout, reset Juno's `profile_status` to LOGGED_OUT with the correct Tuesday logout timestamp, so the dashboard displays accurately.
+**Approach:** Replace the `ScrollArea` wrapper with a plain `div` that has `overflow-y-auto` and proper flex constraints, which is more reliable in this flex dialog layout.
 
-### Step 4: Verify
-Confirm the Tuesday timeline is clean and no NO_LOGOUT incidents exist.
-
-## Technical Details
-
-**Insert (profile_events)**:
-```sql
-INSERT INTO profile_events (profile_id, event_type, prev_status, new_status, created_at)
-VALUES ('e5dd639c-d1c0-4f34-af50-014f58fd3220', 'LOGOUT', 'LOGGED_IN', 'LOGGED_OUT', '2026-02-17 18:00:00+00');
-```
-
-**Delete orphaned logout**:
-```sql
-DELETE FROM profile_events WHERE id = '6c53e70c-4609-4091-ac34-7f10e3bbd7e1';
-```
-
-**Update profile_status** (set status_since to the correct Tuesday logout time):
-```sql
-UPDATE profile_status SET status_since = '2026-02-17 18:00:00+00' WHERE profile_id = 'e5dd639c-d1c0-4f34-af50-014f58fd3220';
-```
+**Changes:**
+- `src/components/revalida/BatchDetailDialog.tsx` — Change the scrollable questions section from `ScrollArea` to a simple `overflow-y-auto` div, removing the `ScrollArea` import if no longer needed.
 
