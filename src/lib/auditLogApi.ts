@@ -53,6 +53,29 @@ export async function fetchAuditLogs(filters: AuditLogFilters = {}): Promise<Aud
   return (data || []) as unknown as AuditLogEntry[];
 }
 
+/**
+ * Fetch audit logs relevant to a specific agent email.
+ * Searches changed_by, entity_label, and metadata for the email.
+ */
+export async function fetchMyActivityLogs(agentEmail: string): Promise<AuditLogEntry[]> {
+  const emailLower = agentEmail.toLowerCase();
+
+  // Fetch logs where the agent was the actor OR the subject
+  const { data, error } = await supabase
+    .from('portal_audit_log')
+    .select('*')
+    .or(`changed_by.ilike.%${emailLower}%,metadata->>target_email.ilike.%${emailLower}%,metadata->>agent_email.ilike.%${emailLower}%`)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (error) {
+    console.error('Error fetching my activity logs:', error);
+    return [];
+  }
+
+  return (data || []) as unknown as AuditLogEntry[];
+}
+
 export async function writeAuditLog(entry: {
   area: string;
   action_type: string;
