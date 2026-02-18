@@ -351,6 +351,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Write audit log
+    await supabase.from("portal_audit_log").insert({
+      area: "Agent Reports",
+      action_type: "created",
+      entity_label: `EOW Analytics - ${weekStartStr} to ${weekEndStr}`,
+      changed_by: "system",
+      metadata: { type: "eow_analytics", week_start: weekStartStr, week_end: weekEndStr, status, silent },
+    });
+
     return new Response(JSON.stringify({ success: true, weekStart: weekStartStr, weekEnd: weekEndStr, analytics: result }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error: unknown) {
     console.error("Error:", error);

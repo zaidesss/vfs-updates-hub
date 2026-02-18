@@ -28,6 +28,7 @@ import {
 } from '@/lib/leaveRequestApi';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { EscalationConfirmDialog } from './EscalationConfirmDialog';
 
 interface ReportDetailDialogProps {
@@ -89,6 +90,15 @@ export function ReportDetailDialog({
 
     if (result.success) {
       toast({ title: 'Status Updated', description: `Report marked as ${STATUS_CONFIG[newStatus].label.toLowerCase()}` });
+      writeAuditLog({
+        area: 'Agent Reports',
+        action_type: 'updated',
+        entity_id: report.id,
+        entity_label: report.agent_name,
+        changed_by: currentUserEmail,
+        changes: { status: { old: report.status, new: newStatus } },
+        metadata: { incident_type: report.incident_type, agent_email: report.agent_email },
+      });
       onStatusUpdated();
       onOpenChange(false);
     } else {
@@ -216,7 +226,22 @@ export function ReportDetailDialog({
         title: 'Outage Request Created',
         description: `Request ${result.data?.reference_number || ''} created for ${report.agent_name}`,
       });
-      
+
+      writeAuditLog({
+        area: 'Agent Reports',
+        action_type: 'updated',
+        entity_id: report.id,
+        entity_label: report.agent_name,
+        changed_by: currentUserEmail,
+        changes: { status: { old: report.status, new: 'reviewed' } },
+        metadata: {
+          incident_type: report.incident_type,
+          agent_email: report.agent_email,
+          escalated_to: 'outage_request',
+          outage_reference: result.data?.reference_number || null,
+        },
+      });
+
       onStatusUpdated();
       onOpenChange(false);
     } catch (err: any) {
