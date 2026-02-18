@@ -1,49 +1,39 @@
 
 
-## Add NCNS (No Call No Show) Incident Type to Agent Reports
+## Fix: Missing Severity Helper Functions in generate-agent-reports
 
-### Overview
-Add a new "NCNS" (No Call No Show) incident type that automatically flags agents who are scheduled to work but fail to log in within 2 hours of their shift start AND have no approved/pending outage request for that day. This also introduces a new "Critical" severity level for urgent attention.
+### Problem
+The `generate-agent-reports` edge function crashes with `calculateQuotaSeverity is not defined` because three severity helper functions were lost during a previous edit:
+- `calculateTimeSeverity(minutes)` -- used by LATE_LOGIN, EARLY_OUT, BIO_OVERUSE, OVERBREAK, EXCESSIVE_RESTARTS, TIME_NOT_MET
+- `calculateQuotaSeverity(shortfall)` -- used by QUOTA_NOT_MET
+- `calculateGapSeverity(gapMinutes)` -- used by HIGH_GAP
 
-### What Changes
+### Fix
 
-**1. New "Critical" Severity Level**
-- Adds a `critical` severity with distinct dark-red styling (e.g., `bg-red-200 text-red-900`) to visually stand out above "High"
-- Appears across all incident types where applicable, but NCNS defaults to it
+**Step 1 -- Add the missing helper functions** to `supabase/functions/generate-agent-reports/index.ts` (after the existing helper functions, before `Deno.serve`):
 
-**2. NCNS Incident Detection (Batch Job)**
-- In the daily `generate-agent-reports` edge function, after processing all agents:
-  - For each agent with a scheduled shift (not day off, not blank schedule):
-    - Check if they have ANY login event for the day
-    - If NO login found, check if there's an approved/pending outage request covering that date
-    - If no login AND no outage request: generate an NCNS report with `critical` severity
-- The 2-hour window is enforced by the batch job timing (runs at 5 AM UTC / midnight EST, well past any shift's 2-hour mark)
+```text
+calculateTimeSeverity(minutes):
+  <= 5  -> "low"
+  <= 15 -> "medium"
+  else  -> "high"
 
-**3. Real-time Slack + Email Alerts**
-- Add `NCNS` to the `send-status-alert-notification` edge function
-- Sends a Slack message to `#a_agent_reports` and email to all admins/HR
-- Message format: "Agent was absent (No Call No Show) on [date] -- critical severity"
+calculateQuotaSeverity(shortfall):
+  <= 10 -> "low"
+  <= 30 -> "medium"
+  else  -> "high"
 
-**4. UI Updates**
-- `agentReportsApi.ts`: Add `NCNS` to `IncidentType`, `INCIDENT_TYPE_CONFIG` (label: "Absent (NCNS)", color: dark red, icon: user-x), and `critical` to `SEVERITY_CONFIG` and `ReportSeverity`
-- `ReportDetailDialog.tsx`: Add icon mapping for the new type
-- NCNS is NOT added to `ESCALATABLE_INCIDENT_TYPES` (standalone only per your preference)
+calculateGapSeverity(gapMinutes):
+  < 5   -> null (no report)
+  <= 10 -> "low"
+  <= 20 -> "medium"
+  else  -> "high"
+```
 
-### Technical Steps (executed one at a time)
+**Step 2 -- Re-deploy and test** with Pauline for 2026-02-17 (yesterday). The request body uses `date` (not `targetDate`).
 
-**Step 1 -- Database: Allow NCNS and Critical**
-- The `agent_reports` table stores `incident_type` and `severity` as text columns, so no schema migration is needed -- new values work immediately.
-
-**Step 2 -- Frontend: Add NCNS type + Critical severity**
-- Update `agentReportsApi.ts` with new type and severity config
-- Update `ReportDetailDialog.tsx` icon map
-
-**Step 3 -- Backend: Add NCNS detection to `generate-agent-reports`**
-- After existing checks, add NCNS logic:
-  - If agent has no login events AND no leave request covering the date, create NCNS report
-
-**Step 4 -- Backend: Add NCNS to `send-status-alert-notification`**
-- Add NCNS alert config and Slack/email message formatting
-
-**Step 5 -- Deploy and verify**
+### Expected Result
+- Pauline (Tuesday schedule 12:00 PM - 7:30 PM, no login, no outage request) gets an NCNS report with `critical` severity
+- Other agents with violations also get their reports generated
+- Slack + email alert fires for NCNS
 
