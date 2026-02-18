@@ -52,6 +52,7 @@ import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
 import { AnnouncementSender } from '@/components/admin/AnnouncementSender';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 export default function Admin() {
   const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
@@ -262,6 +263,13 @@ export default function Admin() {
       toast.success('User created successfully', { 
         description: 'A welcome email with credentials has been sent.' 
       });
+      writeAuditLog({
+        area: 'User Management',
+        action_type: 'created',
+        entity_label: normalizeNameForStorage(newUserData.name.trim()),
+        changed_by: user?.email || '',
+        metadata: { target_email: newUserData.email.trim().toLowerCase(), role: newUserData.role },
+      });
     }
   };
 
@@ -285,9 +293,16 @@ export default function Admin() {
     }
 
     setUsers(prev => prev.filter(u => u.email.toLowerCase() !== email.toLowerCase()));
-    await loadDeletedUsers(); // Refresh deleted users list
+    await loadDeletedUsers();
     toast.success('User deleted successfully', { 
       description: 'All user data has been permanently removed. You can restore this user from Deleted Users.' 
+    });
+    writeAuditLog({
+      area: 'User Management',
+      action_type: 'deleted',
+      entity_label: getNameByEmail(email),
+      changed_by: user?.email || '',
+      metadata: { target_email: email.toLowerCase() },
     });
   };
 
@@ -339,6 +354,13 @@ export default function Admin() {
     toast.success('User restored successfully', { 
       description: 'The user can now log in with the new password.' 
     });
+    writeAuditLog({
+      area: 'User Management',
+      action_type: 'created',
+      entity_label: userToRestore.name || userToRestore.email,
+      changed_by: user?.email || '',
+      metadata: { target_email: userToRestore.email, role: restoreUserData.role, restored: true },
+    });
   };
 
   const generateRestorePassword = () => {
@@ -368,6 +390,13 @@ export default function Admin() {
     toast.success('Email changed successfully', {
       description: 'All acknowledgements and data have been transferred to the new email.'
     });
+    writeAuditLog({
+      area: 'User Management',
+      action_type: 'updated',
+      entity_label: getNameByEmail(changeEmailData.newEmail.trim()),
+      changed_by: user?.email || '',
+      changes: { email: { old: changeEmailData.oldEmail.trim().toLowerCase(), new: changeEmailData.newEmail.trim().toLowerCase() } },
+    });
   };
 
   const handleResetPassword = async (email: string) => {
@@ -382,6 +411,13 @@ export default function Admin() {
 
     toast.success('Password reset required', {
       description: 'User will be prompted to change their password on next login.'
+    });
+    writeAuditLog({
+      area: 'User Management',
+      action_type: 'updated',
+      entity_label: getNameByEmail(email),
+      changed_by: user?.email || '',
+      metadata: { target_email: email.toLowerCase(), action: 'force_password_reset' },
     });
   };
 
@@ -401,8 +437,17 @@ export default function Admin() {
       return;
     }
 
+    const oldRole = users.find(u => u.email.toLowerCase() === email.toLowerCase())?.role || 'unknown';
     await loadUsers();
     toast.success('Role updated successfully');
+    writeAuditLog({
+      area: 'User Management',
+      action_type: 'updated',
+      entity_label: getNameByEmail(email),
+      changed_by: user?.email || '',
+      changes: { role: { old: oldRole, new: newRole } },
+      metadata: { target_email: email.toLowerCase() },
+    });
   };
 
   // HR can only see updates list and delete, not admin/user management
@@ -419,6 +464,7 @@ export default function Admin() {
 
   const handleDeleteUpdate = async (updateId: string) => {
     setDeletingUpdateId(updateId);
+    const deletedUpdate = updates.find(u => u.id === updateId);
     const result = await deleteUpdate(updateId);
     setDeletingUpdateId(null);
     
@@ -430,6 +476,16 @@ export default function Admin() {
     toast.success('Update deleted permanently');
     setUpdateToDelete(null);
     refreshData();
+    if (deletedUpdate) {
+      writeAuditLog({
+        area: 'Updates',
+        action_type: 'deleted',
+        entity_id: updateId,
+        entity_label: deletedUpdate.title,
+        reference_number: (deletedUpdate as any).reference_number || null,
+        changed_by: user?.email || '',
+      });
+    }
   };
 
   const handleRefresh = async () => {
@@ -440,8 +496,24 @@ export default function Admin() {
 
 
   const handleEditUpdate = async (updateId: string, update: Partial<Omit<Update, 'id' | 'posted_at'>>) => {
+    const originalUpdate = editingUpdate;
     await editUpdate(updateId, update, user?.email);
     setEditingUpdate(null);
+    const changes: Record<string, { old: string | null; new: string | null }> = {};
+    if (originalUpdate) {
+      if (update.title && update.title !== originalUpdate.title) changes.title = { old: originalUpdate.title, new: update.title };
+      if (update.status && update.status !== originalUpdate.status) changes.status = { old: originalUpdate.status, new: update.status };
+      if (update.category && update.category !== originalUpdate.category) changes.category = { old: originalUpdate.category, new: update.category };
+    }
+    writeAuditLog({
+      area: 'Updates',
+      action_type: 'updated',
+      entity_id: updateId,
+      entity_label: update.title || originalUpdate?.title || '',
+      reference_number: (originalUpdate as any)?.reference_number || null,
+      changed_by: user?.email || '',
+      changes: Object.keys(changes).length > 0 ? changes : undefined,
+    });
   };
 
   const generateBulkPassword = () => {
@@ -517,6 +589,15 @@ export default function Admin() {
       });
     } else {
       toast.success(`Successfully added ${added} users with ${bulkImportRole.replace('_', ' ')} role`);
+    }
+    if (added > 0) {
+      writeAuditLog({
+        area: 'User Management',
+        action_type: 'created',
+        entity_label: `Bulk import: ${added} users`,
+        changed_by: user?.email || '',
+        metadata: { role: bulkImportRole, added_count: added, failed_count: failed.length },
+      });
     }
   };
 
