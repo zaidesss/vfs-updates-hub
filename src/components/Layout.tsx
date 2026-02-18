@@ -174,6 +174,7 @@ export function Layout({ children }: LayoutProps) {
         icon: Settings,
         items: [
           { href: '/admin', label: 'Admin Panel', icon: Settings },
+          { href: '/admin/audit-log', label: 'Audit Log', icon: ClipboardList },
         ],
       });
     }
