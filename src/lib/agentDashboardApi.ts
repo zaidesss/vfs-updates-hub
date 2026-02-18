@@ -51,6 +51,7 @@ export interface DayAttendance {
   otHoursWorkedMinutes?: number;  // OT hours worked in minutes
   otTicketCount?: number;         // OT tickets handled on this day (from snapshots)
   effectiveQuotaOtEmail?: number | null; // Effective-dated OT quota from snapshot
+  isNcns?: boolean;               // true if NCNS report exists for this absent day
 }
 
 /**
@@ -2667,6 +2668,25 @@ export async function fetchAttendanceDualRead(
   if (dataSource === 'snapshot') {
     const snapshotResult = await fetchAttendanceSnapshots(profileId, weekStart, weekEnd);
     if (snapshotResult.data) {
+      // Also check for NCNS reports on snapshot data
+      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+      const { data: ncnsData } = await supabase
+        .from('agent_reports')
+        .select('incident_date')
+        .eq('agent_email', profile.email.toLowerCase())
+        .eq('incident_type', 'NCNS')
+        .gte('incident_date', weekStartStr)
+        .lte('incident_date', weekEndStr);
+      const ncnsDates = new Set<string>((ncnsData || []).map((r: any) => r.incident_date));
+      for (const day of snapshotResult.data) {
+        if (day.status === 'absent') {
+          const dateStr = format(day.date, 'yyyy-MM-dd');
+          if (ncnsDates.has(dateStr)) {
+            day.isNcns = true;
+          }
+        }
+      }
       return { ...snapshotResult, dataSource: 'snapshot' };
     }
     // Fall back to live data if no snapshot exists
@@ -2675,22 +2695,37 @@ export async function fetchAttendanceDualRead(
   // Live data path
   const { getEffectiveSchedulesForWeek } = await import('@/lib/scheduleResolver');
   
-  const [loginEventsResult, allEventsResult, leavesResult, overridesResult, weekSchedules] = await Promise.all([
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+  const [loginEventsResult, allEventsResult, leavesResult, overridesResult, weekSchedules, ncnsResult] = await Promise.all([
     getWeekLoginEvents(profileId, weekStart, weekEnd),
     getWeekAllEvents(profileId, weekStart, weekEnd),
     getApprovedLeavesForWeek(profile.email, weekStart, weekEnd),
     fetchCoverageOverridesForAgent(
       profileId,
-      format(weekStart, 'yyyy-MM-dd'),
-      format(weekEnd, 'yyyy-MM-dd')
+      weekStartStr,
+      weekEndStr
     ),
     getEffectiveSchedulesForWeek(profileId, weekStart),
+    supabase
+      .from('agent_reports')
+      .select('incident_date')
+      .eq('agent_email', profile.email.toLowerCase())
+      .eq('incident_type', 'NCNS')
+      .gte('incident_date', weekStartStr)
+      .lte('incident_date', weekEndStr),
   ]);
 
   const loginEvents: ProfileEvent[] = loginEventsResult.data || [];
   const allEvents: ProfileEvent[] = allEventsResult.data || [];
   const approvedLeaves: ApprovedLeave[] = leavesResult.data || [];
   const coverageOverrides: CoverageOverrideForWeek[] = overridesResult.data || [];
+
+  // Build a set of dates with NCNS reports
+  const ncnsDates = new Set<string>(
+    (ncnsResult.data || []).map((r: any) => r.incident_date)
+  );
 
   const attendance = calculateAttendanceForWeek(
     profile,
@@ -2701,6 +2736,16 @@ export async function fetchAttendanceDualRead(
     coverageOverrides,
     weekSchedules
   );
+
+  // Tag absent days with NCNS flag
+  for (const day of attendance) {
+    if (day.status === 'absent') {
+      const dateStr = format(day.date, 'yyyy-MM-dd');
+      if (ncnsDates.has(dateStr)) {
+        day.isNcns = true;
+      }
+    }
+  }
 
   return { data: attendance, error: null, dataSource: 'live' };
 }
