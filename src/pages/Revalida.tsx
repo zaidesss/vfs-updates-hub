@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { isDeadlinePassed } from '@/lib/revalidaApi';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import {
   fetchBatches,
   fetchBatchById,
@@ -199,13 +200,29 @@ export default function Revalida() {
       if (editingBatch) {
         // Update existing batch
         await updateBatch(editingBatch.id, title, questionsImport);
+        writeAuditLog({
+          area: 'Revalida',
+          action_type: 'updated',
+          entity_id: editingBatch.id,
+          entity_label: title,
+          changed_by: user.email,
+          metadata: { version: 'v1', question_count: questions.length },
+        });
         toast({
           title: 'Batch Updated',
           description: `"${title}" has been saved.`,
         });
       } else {
         // Create new batch
-        await createBatch(title, questionsImport, user.email);
+        const batch = await createBatch(title, questionsImport, user.email);
+        writeAuditLog({
+          area: 'Revalida',
+          action_type: 'created',
+          entity_id: batch.id,
+          entity_label: title,
+          changed_by: user.email,
+          metadata: { version: 'v1', question_count: questions.length },
+        });
         toast({
           title: 'Batch Created',
           description: `"${title}" has been saved as a draft.`,
@@ -266,6 +283,16 @@ export default function Revalida() {
 
       await publishBatch(batch.id);
       
+      writeAuditLog({
+        area: 'Revalida',
+        action_type: editingBatch ? 'updated' : 'created',
+        entity_id: batch.id,
+        entity_label: title,
+        changed_by: user.email,
+        changes: { status: { old: editingBatch ? 'draft' : null, new: 'published' } },
+        metadata: { version: 'v1', question_count: questions.length },
+      });
+      
       toast({
         title: 'Batch Published',
         description: 'The test is now available to agents for 48 hours.',
@@ -296,6 +323,16 @@ export default function Revalida() {
     // Get batch title for notification
     const batch = batches.find(b => b.id === batchId);
     
+    writeAuditLog({
+      area: 'Revalida',
+      action_type: 'updated',
+      entity_id: batchId,
+      entity_label: batch?.title || batchId,
+      changed_by: user?.email || '',
+      changes: { status: { old: 'draft', new: 'published' } },
+      metadata: { version: 'v1' },
+    });
+    
     toast({
       title: 'Batch Published',
       description: 'The test is now available to agents for 48 hours.',
@@ -311,7 +348,17 @@ export default function Revalida() {
 
   // Handle deactivate
   const handleDeactivate = async (batchId: string) => {
+    const batch = batches.find(b => b.id === batchId);
     await deactivateBatch(batchId);
+    writeAuditLog({
+      area: 'Revalida',
+      action_type: 'updated',
+      entity_id: batchId,
+      entity_label: batch?.title || batchId,
+      changed_by: user?.email || '',
+      changes: { status: { old: 'active', new: 'deactivated' } },
+      metadata: { version: 'v1' },
+    });
     toast({
       title: 'Batch Deactivated',
       description: 'The test is no longer available to agents.',
@@ -321,7 +368,16 @@ export default function Revalida() {
 
   // Handle delete
   const handleDelete = async (batchId: string) => {
+    const batch = batches.find(b => b.id === batchId);
     await deleteBatch(batchId);
+    writeAuditLog({
+      area: 'Revalida',
+      action_type: 'deleted',
+      entity_id: batchId,
+      entity_label: batch?.title || batchId,
+      changed_by: user?.email || '',
+      metadata: { version: 'v1' },
+    });
     toast({
       title: 'Batch Deleted',
       description: 'The batch and all associated data have been removed.',
@@ -491,6 +547,15 @@ export default function Revalida() {
     if (!gradingAttempt || !user?.email) return;
 
     await finalizeAttempt(gradingAttempt.id, user.email);
+    writeAuditLog({
+      area: 'Revalida',
+      action_type: 'updated',
+      entity_id: gradingAttempt.id,
+      entity_label: `Grading: ${gradingAttempt.agent_email}`,
+      changed_by: user.email,
+      changes: { status: { old: 'needs_manual_review', new: 'graded' } },
+      metadata: { version: 'v1', batch_id: gradingAttempt.batch_id },
+    });
     toast({
       title: 'Grading Complete',
       description: 'The attempt has been finalized.',
