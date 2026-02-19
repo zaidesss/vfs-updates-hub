@@ -9,10 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, FileText, Megaphone, Search, Filter, Loader2 } from 'lucide-react';
-import { fetchAuditLogs, AuditLogEntry, AuditLogFilters, AUDIT_AREAS, ACTION_TYPES } from '@/lib/auditLogApi';
+import { ChevronDown, ChevronRight, FileText, Megaphone, Search, Filter, Loader2, Trash2 } from 'lucide-react';
+import { fetchAuditLogs, deleteAuditLog, AuditLogEntry, AuditLogFilters, AUDIT_AREAS, ACTION_TYPES } from '@/lib/auditLogApi';
 import { format } from 'date-fns';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
+import { useToast } from '@/hooks/use-toast';
+import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 
 const ACTION_TYPE_COLORS: Record<string, string> = {
   created: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
@@ -57,7 +59,7 @@ function ChangeDetails({ changes }: { changes: Record<string, { old: string | nu
   );
 }
 
-function AuditLogRow({ entry, isSuperAdmin }: { entry: AuditLogEntry; isSuperAdmin: boolean }) {
+function AuditLogRow({ entry, isSuperAdmin, onDelete }: { entry: AuditLogEntry; isSuperAdmin: boolean; onDelete: (id: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const displayName = getKnownNameByEmail(entry.changed_by) || entry.changed_by;
 
@@ -108,6 +110,15 @@ function AuditLogRow({ entry, isSuperAdmin }: { entry: AuditLogEntry; isSuperAdm
                 <Megaphone className="h-3 w-3 mr-1" />
                 Announce
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                title="Delete this log entry"
+                onClick={() => onDelete(entry.id)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
             </div>
           </TableCell>
         )}
@@ -135,10 +146,12 @@ function AuditLogRow({ entry, isSuperAdmin }: { entry: AuditLogEntry; isSuperAdm
 
 export default function AuditLog() {
   const { user, isAdmin, isHR, isSuperAdmin } = useAuth();
+  const { toast } = useToast();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<AuditLogFilters>({});
   const [searchBy, setSearchBy] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadLogs = async () => {
     setIsLoading(true);
@@ -163,6 +176,17 @@ export default function AuditLog() {
   const clearFilters = () => {
     setFilters({});
     setSearchBy('');
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const success = await deleteAuditLog(deleteTarget);
+    if (success) {
+      setLogs(prev => prev.filter(l => l.id !== deleteTarget));
+      toast({ title: 'Deleted', description: 'Audit log entry removed.' });
+    } else {
+      toast({ title: 'Error', description: 'Failed to delete entry.', variant: 'destructive' });
+    }
   };
 
   return (
@@ -289,7 +313,7 @@ export default function AuditLog() {
                   </TableHeader>
                   <TableBody>
                     {logs.map(entry => (
-                      <AuditLogRow key={entry.id} entry={entry} isSuperAdmin={isSuperAdmin} />
+                      <AuditLogRow key={entry.id} entry={entry} isSuperAdmin={isSuperAdmin} onDelete={(id) => setDeleteTarget(id)} />
                     ))}
                   </TableBody>
                 </Table>
@@ -298,6 +322,14 @@ export default function AuditLog() {
           </CardContent>
         </Card>
       </div>
+
+      <DeleteConfirmationModal
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Audit Log Entry"
+        description="This will permanently remove this audit log entry. This action cannot be undone."
+      />
     </Layout>
   );
 }
