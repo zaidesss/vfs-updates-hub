@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
-import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel, parseTimeToDecimal as parseTimeToDecimalLocal } from './ShiftBlock';
+import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel, parseTimeToDecimal as parseTimeToDecimalLocal, parseScheduleRange } from './ShiftBlock';
 import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import {
   HOURS_PER_DAY,
@@ -11,6 +11,7 @@ import {
   computeDailyHours,
   formatDaysOff,
   getEffectiveBlocks,
+  getScheduleForDay,
   type AgentGroup,
   type AgentScheduleRow,
   type CoverageOverride,
@@ -345,6 +346,61 @@ function AgentRow({
         }
         const dayBlocks = getEffectiveBlocks(agent, dayOff, override, leave, showEffective);
         blocks.push(...dayBlocks);
+      }
+    }
+
+    // ── Sunday overnight spillover onto Monday ──
+    // Sunday is dayOffset=6, JS day index 0. Check if Sunday's schedule is overnight.
+    const sundayOffset = 6;
+    const sundayDateStr = format(addDays(weekStart, sundayOffset), 'yyyy-MM-dd');
+    const sundayBaseKey = `${agent.id}:${sundayDateStr}`;
+    const sundayDbOverride = overrideMap.get(sundayBaseKey);
+    const sundayPendingRegular = pendingOverrides?.get(`${sundayBaseKey}:regular`);
+    const sundayPendingOt = pendingOverrides?.get(`${sundayBaseKey}:ot`);
+    const sundayPendingOverride = pendingOverrides?.get(`${sundayBaseKey}:override`);
+
+    // Helper to check and add spillover for a given schedule string and type
+    const addSpillover = (scheduleStr: string | null, type: 'regular' | 'ot') => {
+      if (!scheduleStr || scheduleStr.toLowerCase() === 'day off') return;
+      const range = parseScheduleRange(scheduleStr);
+      if (!range) return;
+      // Overnight: end < start (e.g., 10PM=22 to 4:30AM=4.5)
+      if (range.end < range.start) {
+        const parts = scheduleStr.split(/\s*[-–]\s*/);
+        blocks.push({
+          dayOffset: 0, // Monday
+          startHour: 0,
+          endHour: range.end,
+          type,
+          startLabel: parts[0] || '',
+          endLabel: parts[1] || '',
+          isOverridden: false,
+        });
+      }
+    };
+
+    // Determine effective Sunday schedule (override > pending > base)
+    if (sundayPendingOverride && !sundayPendingOverride._delete) {
+      const overrideSchedule = `${sundayPendingOverride.override_start} - ${sundayPendingOverride.override_end}`;
+      addSpillover(overrideSchedule, 'regular');
+    } else if (sundayDbOverride && showEffective) {
+      const overrideSchedule = `${sundayDbOverride.override_start} - ${sundayDbOverride.override_end}`;
+      addSpillover(overrideSchedule, 'regular');
+    } else {
+      // Check base schedule for regular
+      const sunJsDay = 0; // Sunday JS day index
+      const { schedule: sunSchedule, otSchedule: sunOtSchedule } = getScheduleForDay(agent, sunJsDay);
+
+      if (sundayPendingRegular && !sundayPendingRegular._delete) {
+        addSpillover(`${sundayPendingRegular.override_start} - ${sundayPendingRegular.override_end}`, 'regular');
+      } else {
+        addSpillover(sunSchedule, 'regular');
+      }
+
+      if (sundayPendingOt && !sundayPendingOt._delete) {
+        addSpillover(`${sundayPendingOt.override_start} - ${sundayPendingOt.override_end}`, 'ot');
+      } else {
+        addSpillover(sunOtSchedule, 'ot');
       }
     }
 
