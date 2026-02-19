@@ -4,10 +4,18 @@ export function ActivitySection() {
   return (
     <GuideSection letter="T" color="bg-cyan-500" title="My Activity Page">
       <p className="text-muted-foreground mb-4">
-        The My Activity page is a personal progress tracker showing your acknowledgement history and completion rate.
+        The My Activity page has two tabs: <strong>Activity Log</strong> (your portal-wide audit trail) and <strong>Acknowledgements</strong> (your update completion progress).
       </p>
 
-      <h3 className="font-semibold mb-2">Stats Cards</h3>
+      <h3 className="font-semibold mb-2">Activity Log Tab</h3>
+      <Checklist items={[
+        "Shows all portal actions that involve you — changes you made or actions taken on your profile.",
+        "Entries show who performed the action, what changed, and when.",
+        "Click any entry to expand and see field-level diffs (old → new values).",
+        "Covers Profile edits, Leave Requests, QA Evaluations, Schedule changes, and more.",
+      ]} />
+
+      <h3 className="font-semibold mb-2 mt-4">Acknowledgements Tab</h3>
       <QuickTable 
         headers={['Card', 'What It Shows', 'Color']}
         rows={[
@@ -33,7 +41,7 @@ export function ActivitySection() {
       ]} />
 
       <CalloutBox variant="tip">
-        Check this page regularly to monitor your progress. Aim for 100% completion to stay fully informed.
+        Check the Activity Log tab regularly to see changes made to your profile, schedule, or evaluations. Use the Acknowledgements tab to track your update completion progress.
       </CalloutBox>
     </GuideSection>
   );
