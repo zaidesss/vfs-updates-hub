@@ -282,6 +282,16 @@ export default function QAEvaluations() {
         user?.email || '',
         user?.name
       );
+      writeAuditLog({
+        area: 'QA Evaluations',
+        action_type: 'updated',
+        entity_id: evaluation.id,
+        entity_label: `${evaluation.agent_name} – ${evaluation.reference_number || 'QA Eval'}`,
+        reference_number: evaluation.reference_number || undefined,
+        changed_by: user?.name || user?.email || '',
+        changes: { status: { old: 'draft', new: 'sent' } },
+        metadata: { target_email: evaluation.agent_email, action: 'sent_to_agent' },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
