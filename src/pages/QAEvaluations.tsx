@@ -41,11 +41,12 @@ import {
   MoreHorizontal,
   RefreshCw,
   Trash2,
-  Pencil
+  Pencil,
+  Send
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getMonth, getYear } from 'date-fns';
 import { toZonedTime, format as formatTz } from 'date-fns-tz';
-import { fetchQAEvaluations, resendQANotification, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation, type QAEvaluationFilters } from '@/lib/qaEvaluationsApi';
+import { fetchQAEvaluations, resendQANotification, finalizeAndSendEvaluation, createEvaluationEvent, deleteQAEvaluation, PASS_THRESHOLD, type QAEvaluation, type QAEvaluationFilters } from '@/lib/qaEvaluationsApi';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { QAWeeklyComparison } from '@/components/qa/QAWeeklyComparison';
 import { QAPerformanceSummary } from '@/components/qa/QAPerformanceSummary';
@@ -264,6 +265,34 @@ export default function QAEvaluations() {
     onError: (error: any) => {
       toast({
         title: 'Failed to resend',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Send to Agent mutation (for draft evaluations)
+  const sendToAgentMutation = useMutation({
+    mutationFn: async (evaluation: QAEvaluation) => {
+      await finalizeAndSendEvaluation(evaluation.id);
+      await createEvaluationEvent(
+        evaluation.id,
+        'sent_to_agent',
+        'Evaluation finalized and sent to agent from list view',
+        user?.email || '',
+        user?.name
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-evaluations'] });
+      toast({
+        title: 'Sent to Agent',
+        description: 'The evaluation has been sent to the agent.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to send',
         description: error.message,
         variant: 'destructive',
       });
@@ -601,6 +630,15 @@ export default function QAEvaluations() {
                                 >
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit
+                                </DropdownMenuItem>
+                              )}
+                              {canCreate && evaluation.status === 'draft' && (
+                                <DropdownMenuItem
+                                  onClick={() => sendToAgentMutation.mutate(evaluation)}
+                                  disabled={sendToAgentMutation.isPending}
+                                >
+                                  <Send className={`h-4 w-4 mr-2 ${sendToAgentMutation.isPending ? 'animate-spin' : ''}`} />
+                                  Send to Agent
                                 </DropdownMenuItem>
                               )}
                               {canCreate && evaluation.status === 'sent' && (
