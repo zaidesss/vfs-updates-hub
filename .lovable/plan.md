@@ -1,42 +1,58 @@
 
-## Fix: Sunday Overnight Shifts Not Showing Spillover on Monday
 
-### Problem
-Agents with Sunday overnight shifts (e.g., 10:00 PM - 4:30 AM) have their shift blocks clamped at midnight on the Coverage Board. The portion that extends into Monday (12:00 AM - 4:30 AM) is invisible. OT blocks work because they are stored as separate daytime schedules (e.g., 4:30 AM - 5:30 AM) on each day.
+## Fix Reversed Slack Notifications, Activity Timeline, and False Reports
 
-### Root Cause
-In `src/lib/coverageBoardApi.ts`, the `splitOvernight()` function (line 292) handles overnight shifts by extending past hour 24. But for Sunday (dayOffset=6, the last day in the grid), it clamps to `endHour: 24` since there is no "day 7" column to extend into. The Monday column (dayOffset=0) only renders Monday's own schedule and never checks if the previous Sunday had a spillover.
+### Issues Found
 
-### Solution
-Add spillover block generation in the `AgentRow` component (`CoverageTimeline.tsx`). After iterating through all 7 days (Mon-Sun), check if Sunday's schedule is an overnight shift. If so, create an additional "spillover" block on Monday (dayOffset=0) from hour 0 to the overnight end time.
+**Issue 1: Reversed Slack Thread for Login/Logout**
+When Rezajoy clicked LOGOUT first and then LOGIN (re-login for her next shift), the LOGOUT message became the parent Slack thread in #a_cyrus_li-lo, and the LOGIN became a reply. The user expects LOGIN to always be the parent thread.
 
-### Technical Changes
+**Root Cause:** In `supabase/functions/send-profile-status-notification/index.ts`, the first event of the EST day on a given channel creates the parent thread. Since she clicked LOGOUT before LOGIN, LOGOUT became the parent.
 
-**File: `src/components/coverage-board/CoverageTimeline.tsx`** (in the `allBlocks` useMemo, around line 278-366)
+**Fix:** Modify the edge function so that LOGOUT events never create a new thread on the li-lo channel. If no existing thread exists for the day, post LOGOUT as a standalone message (no thread). When the subsequent LOGIN arrives, it will create the thread, becoming the parent. Any future events (including the standalone LOGOUT) won't be affected since Slack doesn't retroactively group standalone messages. Alternatively: if the event is LOGOUT and there's no existing thread, defer thread creation -- post the LOGOUT as a standalone message and do NOT save the thread_ts. The next event (LOGIN) will then create the actual parent thread.
 
-After the main day loop (lines 285-349), add logic to detect Sunday overnight spillover:
+---
 
-1. After generating all blocks for days 0-6, look at Sunday's (dayOffset=6) schedule
-2. Parse the Sunday schedule. If it is an overnight shift (end time < start time), calculate the spillover hours
-3. Create a new block on Monday (dayOffset=0) from startHour=0 to endHour=spilloverHours, with the same type (regular) and appropriate labels
-4. Do the same check for Sunday OT if applicable
-5. The spillover block should be rendered with slightly reduced opacity or a visual indicator to show it originates from the previous day
+**Issue 2: DailyEventSummary Timezone Bug**
+In `src/components/dashboard/DailyEventSummary.tsx`, the component uses `isSameDay(eventDate, safeDay)` from date-fns, which compares dates in the browser's local timezone. For agents in non-EST timezones (e.g., Philippines, UTC+8), events are grouped by the wrong day boundary. For example, 2:58 PM EST (19:58 UTC) = 3:58 AM PHT the next day, so it would not appear on "today" for a PHT browser.
 
-This approach keeps `splitOvernight()` unchanged (Sunday still clamps at 24) and adds the spillover as a separate block on Monday's column. This is consistent with how the grid already works -- blocks are positioned by dayOffset and hour offsets.
+**Fix:** Replace `isSameDay` with an EST-based comparison using `getESTDateFromTimestamp` (already available in the codebase). Compare the EST date string of each event's `created_at` against the EST date string of the `selectedDay`.
 
-### Implementation Details
+---
 
-```text
-allBlocks useMemo (after day loop ends):
+**Issue 3: False NO_LOGOUT and TIME_NOT_MET Reports for Overnight Agents (2/18)**
+The batch job `generate-agent-reports` ran at midnight EST on 2/18 and flagged ALL overnight shift agents with NO_LOGOUT because their shifts hadn't ended yet at batch run time. We already deployed the overnight shift fix to the edge function, so future runs won't have this problem. But the false reports from 2/18 need to be cleaned up.
 
-1. Find Sunday blocks where type is 'regular' or 'ot'
-2. For each, get the agent's Sunday schedule (from profile or override)
-3. Parse start/end times
-4. If overnight (end < start), spillover = end hours
-5. Push new block: { dayOffset: 0, startHour: 0, endHour: spillover, type, labels }
-```
+**Affected agents (false NO_LOGOUT on 2/18):**
+- arancillotrish06@gmail.com (5:00 PM - 12:30 AM)
+- erikarheasantiago123@gmail.com (7:00 PM - 6:30 AM)
+- jaeransanchez@gmail.com (4:00 PM - 2:00 AM)
+- jannahdelacruz21@gmail.com (3:00 PM - 12:30 AM)
+- joydocto56@gmail.com (3:00 PM - 12:30 AM)
+- preciousgagarra21@gmail.com (10:00 PM - 4:30 AM)
+- willangelinereyes@gmail.com (8:00 PM - 3:30 AM)
 
-### Edge Cases
-- If Monday already has a schedule starting at or before the spillover end, both blocks will render (overlapping is acceptable and already handled visually by z-index)
-- If Sunday has a coverage override that changes the overnight shift, the spillover should reflect the override, not the base schedule
-- The spillover block should not be draggable/editable in edit mode (it is derived, not a standalone schedule)
+Each also has an associated false TIME_NOT_MET report (negative logged hours) caused by the missing logout confusing the time calculation.
+
+**Note:** lorenzphilip0397@gmail.com (9 AM - 5 PM) and malcom@persistbrands.com (9 AM - 5 PM, schedule was broken until just now) have daytime schedules, so their NO_LOGOUT reports may be legitimate.
+
+**Fix:** Delete the false NO_LOGOUT and TIME_NOT_MET reports for the 7 overnight agents listed above.
+
+---
+
+### Implementation Order
+
+1. **Delete false reports** for overnight agents (database correction)
+2. **Fix Slack thread logic** so LOGOUT never creates the parent thread (edge function)
+3. **Fix DailyEventSummary timezone** to use EST-based day comparison (client code)
+
+### Technical Details
+
+**Files to modify:**
+- `supabase/functions/send-profile-status-notification/index.ts` -- Add logic: if event is LOGIN or LOGOUT and no existing thread, only create a new thread for LOGIN. For LOGOUT without a thread, post as standalone (don't save thread_ts).
+- `src/components/dashboard/DailyEventSummary.tsx` -- Replace `isSameDay(eventDate, safeDay)` with EST-based date comparison using `getESTDateFromTimestamp` from `agentDashboardApi.ts`.
+
+**Database corrections:**
+- Delete 7 false NO_LOGOUT reports (arancillo, erika, jaeran, jannah, joy, precious, will) for incident_date 2026-02-18
+- Delete corresponding false TIME_NOT_MET reports for the same agents where loggedHours is negative
+
