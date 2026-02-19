@@ -319,26 +319,51 @@ Deno.serve(async (req) => {
         
         let skipNoLogout = false;
         if (isOvernightShift) {
-          // For overnight shifts, check if there's a logout event in the extended window
-          // that falls after midnight EST AND after the last login (same session)
-          const allProfileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
-          const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
-          const postMidnightSessionLogouts = allProfileEvents.filter(e => {
-            if (e.event_type !== 'LOGOUT') return false;
-            // Must be after the last login to belong to current session
-            if (new Date(e.created_at).getTime() <= lastLoginTime) return false;
-            const eventDate = new Date(e.created_at);
-            const eventHourEST = parseInt(new Intl.DateTimeFormat('en-US', {
-              timeZone: 'America/New_York',
-              hour: '2-digit',
-              hour12: false,
-            }).format(eventDate));
-            // Post-midnight means hour 0-4 (12:00 AM - 4:59 AM EST)
-            return eventHourEST < 5;
-          });
-          if (postMidnightSessionLogouts.length > 0) {
+          // For overnight shifts, first check if the shift hasn't ended yet.
+          // If the shift end time (in UTC) is still in the future, the agent is still working —
+          // skip NO_LOGOUT entirely to avoid false positives.
+          // Shift end in EST = endMinutes; convert to UTC by adding 5 hours (EST = UTC-5)
+          const shiftEndMinutesEST = parsedSchedule.endMinutes; // e.g., 270 for 4:30 AM
+          const shiftEndHourEST = Math.floor(shiftEndMinutesEST / 60);
+          const shiftEndMinEST = shiftEndMinutesEST % 60;
+          // The overnight shift ends on the NEXT calendar day in EST
+          const shiftEndDateEST = new Date(targetDateStr);
+          shiftEndDateEST.setDate(shiftEndDateEST.getDate() + 1); // next day
+          // Build UTC time: EST + 5 hours
+          const shiftEndUTC = new Date(Date.UTC(
+            shiftEndDateEST.getFullYear(),
+            shiftEndDateEST.getMonth(),
+            shiftEndDateEST.getDate(),
+            shiftEndHourEST + 5,
+            shiftEndMinEST,
+            0
+          ));
+          
+          if (Date.now() < shiftEndUTC.getTime()) {
             skipNoLogout = true;
-            console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift with post-midnight session logout found`);
+            console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift hasn't ended yet (ends at ${shiftEndUTC.toISOString()})`);
+          }
+
+          if (!skipNoLogout) {
+            // Shift has ended — check if there's a logout event in the extended window
+            // that falls after midnight EST AND after the last login (same session)
+            const allProfileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
+            const lastLoginTime = new Date(loginEvents[loginEvents.length - 1].created_at).getTime();
+            const postMidnightSessionLogouts = allProfileEvents.filter(e => {
+              if (e.event_type !== 'LOGOUT') return false;
+              if (new Date(e.created_at).getTime() <= lastLoginTime) return false;
+              const eventDate = new Date(e.created_at);
+              const eventHourEST = parseInt(new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/New_York',
+                hour: '2-digit',
+                hour12: false,
+              }).format(eventDate));
+              return eventHourEST < 5;
+            });
+            if (postMidnightSessionLogouts.length > 0) {
+              skipNoLogout = true;
+              console.log(`Skipping NO_LOGOUT for ${agentName} - overnight shift with post-midnight session logout found`);
+            }
           }
         }
         
