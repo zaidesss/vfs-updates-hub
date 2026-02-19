@@ -3,8 +3,9 @@ import { Badge } from '@/components/ui/badge';
 import { Activity, LogIn, LogOut, Coffee, GraduationCap, RotateCcw, Droplet, Clock } from 'lucide-react';
 import type { ProfileEvent } from '@/lib/agentDashboardApi';
 import { formatTimeInEST } from '@/lib/agentDashboardApi';
-import { format, parseISO, isSameDay, isToday } from 'date-fns';
+import { format, parseISO, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { getESTDateFromTimestamp, getTodayEST } from '@/lib/timezoneUtils';
 
 interface DailyEventSummaryProps {
   events: ProfileEvent[];
@@ -80,12 +81,13 @@ export function DailyEventSummary({ events, selectedDay, className }: DailyEvent
   const isTodaySelected = isToday(safeDay);
   const dayLabel = isTodaySelected ? "Today's" : `${format(safeDay, 'EEEE')}'s`;
 
-  // Filter events for selected day
+  // Get EST date string for the selected day
+  const selectedDayEST = getESTDateFromTimestamp(safeDay.toISOString());
+
+  // Filter events for selected day using EST-based comparison
   const todayEvents = events.filter((event) => {
     if (!event.created_at) return false;
-    const eventDate = parseISO(event.created_at);
-    if (isNaN(eventDate.getTime())) return false;
-    return isSameDay(eventDate, safeDay);
+    return getESTDateFromTimestamp(event.created_at) === selectedDayEST;
   });
 
   // Sort by time ascending
