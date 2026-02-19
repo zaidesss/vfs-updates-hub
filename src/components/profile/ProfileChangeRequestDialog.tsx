@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { createProfileChangeRequest } from '@/lib/agentProfileApi';
 import { useToast } from '@/hooks/use-toast';
+import { writeAuditLog } from '@/lib/auditLogApi';
 
 interface ProfileChangeRequestDialogProps {
   isOpen: boolean;
@@ -70,6 +71,15 @@ export function ProfileChangeRequestDialog({
       toast({
         title: 'Request Submitted',
         description: `Your change request (${result.data.reference_number}) has been submitted for review.`
+      });
+      writeAuditLog({
+        area: 'Profile',
+        action_type: 'created',
+        entity_label: `Change Request: ${fieldLabel}`,
+        reference_number: result.data.reference_number,
+        changed_by: targetEmail,
+        changes: { [fieldName]: { old: currentValue, new: requestedValue.trim() } },
+        metadata: { type: 'change_request', target_email: targetEmail },
       });
       setRequestedValue('');
       setReason('');

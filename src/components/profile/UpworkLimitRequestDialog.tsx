@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { Loader2, Send, Clock, User } from 'lucide-react';
 
 interface UpworkLimitRequestDialogProps {
@@ -65,6 +66,15 @@ export function UpworkLimitRequestDialog({
       toast({
         title: 'Request Sent',
         description: 'Upwork Limit Adjustment request has been submitted successfully.',
+      });
+
+      writeAuditLog({
+        area: 'Profile',
+        action_type: 'created',
+        entity_label: `Upwork Limit Request: ${agentName}`,
+        changed_by: requestedBy,
+        changes: { upwork_limit: { old: String(currentTotalHours), new: String(limitValue) } },
+        metadata: { type: 'upwork_limit_request', agent_email: agentEmail },
       });
 
       // Reset and close

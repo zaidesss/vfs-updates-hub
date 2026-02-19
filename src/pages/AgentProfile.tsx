@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MyActivityTab } from '@/components/profile/MyActivityTab';
 import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
+import { writeAuditLog } from '@/lib/auditLogApi';
 import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
 import { getAgentInfoByEmail } from '@/lib/agentDirectory';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
@@ -434,6 +435,36 @@ export default function AgentProfilePage() {
         }
       }
       
+      // Audit log for self-edit
+      const trackedFields: (keyof AgentProfile)[] = [
+        'full_name', 'phone_number', 'birthday', 'home_address',
+        'emergency_contact_name', 'emergency_contact_phone',
+        'primary_internet_provider', 'primary_internet_speed',
+        'backup_internet_provider', 'backup_internet_speed', 'backup_internet_type',
+        'bank_name', 'bank_account_number', 'bank_account_holder',
+        'upwork_profile_url', 'upwork_username', 'headset_model',
+      ];
+      const changes: Record<string, { old: string | null; new: string | null }> = {};
+      if (originalProfile) {
+        for (const field of trackedFields) {
+          const oldVal = String(originalProfile[field] ?? '');
+          const newVal = String((profile as any)[field] ?? '');
+          if (oldVal !== newVal) {
+            changes[field] = { old: oldVal || null, new: newVal || null };
+          }
+        }
+      }
+      if (Object.keys(changes).length > 0 || !originalProfile) {
+        writeAuditLog({
+          area: 'Profile',
+          action_type: originalProfile ? 'updated' : 'created',
+          entity_label: profile.full_name || profile.email,
+          changed_by: user.email,
+          changes: Object.keys(changes).length > 0 ? changes : undefined,
+          metadata: { self_edit: true },
+        });
+      }
+
       toast({
         title: 'Success',
         description: scheduleChanged 
