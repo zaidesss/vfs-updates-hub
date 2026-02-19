@@ -103,6 +103,9 @@ Deno.serve(async (req) => {
     let message: string;
     const slackPayload: Record<string, unknown> = { channel };
 
+    // Determine if this LOGOUT should skip thread creation on li-lo channel
+    const isLogoutWithoutThread = isLoginLogout && eventType === 'LOGOUT' && !existingThread?.thread_ts;
+
     if (existingThread?.thread_ts) {
       // Reply in existing thread — shorter message (no agent name, no @channel)
       message = `${label} at ${formattedTime} EST`;
@@ -136,7 +139,9 @@ Deno.serve(async (req) => {
     }
 
     // If this was a new top-level message, save the thread_ts for future replies
-    if (!existingThread?.thread_ts && slackResult.ts) {
+    // BUT: skip saving thread_ts for LOGOUT on li-lo channel when no thread exists yet
+    // This ensures LOGIN will become the parent thread instead
+    if (!existingThread?.thread_ts && slackResult.ts && !isLogoutWithoutThread) {
       const { error: insertError } = await supabase
         .from('slack_threads')
         .insert({
