@@ -106,6 +106,19 @@ export async function writeAuditLog(entry: {
   return true;
 }
 
+export async function deleteAuditLog(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('portal_audit_log')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting audit log:', error);
+    return false;
+  }
+  return true;
+}
+
 export const AUDIT_AREAS = [
   'QA Evaluations',
   'Updates',
