@@ -1,53 +1,42 @@
 
-## Fix Three Dashboard & Compliance Bugs
+## Fix: Sunday Overnight Shifts Not Showing Spillover on Monday
 
-### Bug 1: Malcom's Schedule Data Issue + Missing Proactive Stale Detection
+### Problem
+Agents with Sunday overnight shifts (e.g., 10:00 PM - 4:30 AM) have their shift blocks clamped at midnight on the Coverage Board. The portion that extends into Monday (12:00 AM - 4:30 AM) is invisible. OT blocks work because they are stored as separate daytime schedules (e.g., 4:30 AM - 5:30 AM) on each day.
 
-**Root Cause:** Malcom's schedule is stored as "9:00 PM-5:00 PM" instead of "9:00 AM-5:00 PM". The PM/PM format makes the code interpret it as an overnight shift, preventing stale session cleanup. Additionally, stale session detection only fires on LOGIN/LOGOUT button clicks, not on dashboard page load.
+### Root Cause
+In `src/lib/coverageBoardApi.ts`, the `splitOvernight()` function (line 292) handles overnight shifts by extending past hour 24. But for Sunday (dayOffset=6, the last day in the grid), it clamps to `endHour: 24` since there is no "day 7" column to extend into. The Monday column (dayOffset=0) only renders Monday's own schedule and never checks if the previous Sunday had a spillover.
 
-**Fix:**
-1. Correct Malcom's schedule data from "9:00 PM-5:00 PM" to "9:00 AM-5:00 PM" in the database (both `agent_directory` and any `agent_schedule_assignments` if applicable).
-2. Add proactive stale session detection on dashboard page load -- when the dashboard component mounts and detects `profile_status.status_since` is from a previous EST day, automatically trigger the same auto-logout logic (insert SYSTEM_AUTO_LOGOUT event at 11:59:59 PM EST of the stale day, reset status to LOGGED_OUT, create NO_LOGOUT report).
+### Solution
+Add spillover block generation in the `AgentRow` component (`CoverageTimeline.tsx`). After iterating through all 7 days (Mon-Sun), check if Sunday's schedule is an overnight shift. If so, create an additional "spillover" block on Monday (dayOffset=0) from hour 0 to the overnight end time.
 
----
+### Technical Changes
 
-### Bug 2: False NO_LOGOUT for Overnight Shifts (Precious)
+**File: `src/components/coverage-board/CoverageTimeline.tsx`** (in the `allBlocks` useMemo, around line 278-366)
 
-**Root Cause:** The `generate-agent-reports` batch job runs at 5 AM UTC (midnight EST). For overnight shifts ending after midnight EST (e.g., 10 PM - 4:30 AM), the agent hasn't logged out yet because their shift isn't over. The batch incorrectly flags them for NO_LOGOUT.
+After the main day loop (lines 285-349), add logic to detect Sunday overnight spillover:
 
-**Fix:**
-In the `generate-agent-reports` edge function, before creating a NO_LOGOUT report for an overnight shift, check if the shift end time (in UTC) is AFTER the current time. If the shift hasn't ended yet, skip the NO_LOGOUT check for that agent. Specifically:
-- Detect overnight shifts (endMinutes < startMinutes)
-- Calculate the UTC time when the shift actually ends (next day at endMinutes EST)
-- If `Date.now()` is before that UTC time, skip the NO_LOGOUT report
+1. After generating all blocks for days 0-6, look at Sunday's (dayOffset=6) schedule
+2. Parse the Sunday schedule. If it is an overnight shift (end time < start time), calculate the spillover hours
+3. Create a new block on Monday (dayOffset=0) from startHour=0 to endHour=spilloverHours, with the same type (regular) and appropriate labels
+4. Do the same check for Sunday OT if applicable
+5. The spillover block should be rendered with slightly reduced opacity or a visual indicator to show it originates from the previous day
 
-Also delete the false NO_LOGOUT report already created for Precious on 2/18.
+This approach keeps `splitOvernight()` unchanged (Sunday still clamps at 24) and adds the spillover as a separate block on Monday's column. This is consistent with how the grid already works -- blocks are positioned by dayOffset and hour offsets.
 
----
+### Implementation Details
 
-### Bug 3: False Late OT for Back-to-Back Shifts (Precious)
+```text
+allBlocks useMemo (after day loop ends):
 
-**Root Cause:** Precious's regular shift ends at 4:30 AM and her OT starts at 4:30 AM. She physically cannot OT_LOGIN at exactly 4:30 AM because she needs to LOGOUT first and re-LOGIN. The 10-minute grace period doesn't account for this transition time when OT immediately follows a regular shift.
+1. Find Sunday blocks where type is 'regular' or 'ot'
+2. For each, get the agent's Sunday schedule (from profile or override)
+3. Parse start/end times
+4. If overnight (end < start), spillover = end hours
+5. Push new block: { dayOffset: 0, startHour: 0, endHour: spillover, type, labels }
+```
 
-**Fix:**
-In the OT late detection logic (`agentDashboardApi.ts`, around line 1580), when checking if an OT login is late, detect if the OT schedule start matches the regular shift end time. If they are back-to-back (OT start === shift end), extend the grace period to 30 minutes instead of 10 to account for the logout/login transition.
-
----
-
-### Implementation Order
-1. Fix Malcom's schedule data (database correction)
-2. Delete Precious's false NO_LOGOUT report (database correction)
-3. Fix the batch job overnight shift logic (edge function)
-4. Fix OT late detection grace period for back-to-back shifts (client code)
-5. Add proactive stale session detection on dashboard page load (client code)
-
-### Technical Details
-
-**Files to modify:**
-- `supabase/functions/generate-agent-reports/index.ts` -- Add overnight shift time check before NO_LOGOUT creation
-- `src/lib/agentDashboardApi.ts` -- Add back-to-back OT grace period logic (~line 1580) and proactive stale detection function
-- `src/components/dashboard/StatusButtons.tsx` or the dashboard page component -- Call proactive stale detection on mount
-
-**Database corrections:**
-- Update `agent_directory` schedule for malcom@persistbrands.com
-- Delete false agent_report for Precious (incident_type=NO_LOGOUT, incident_date=2026-02-18)
+### Edge Cases
+- If Monday already has a schedule starting at or before the spillover end, both blocks will render (overlapping is acceptable and already handled visually by z-index)
+- If Sunday has a coverage override that changes the overnight shift, the spillover should reflect the override, not the base schedule
+- The spillover block should not be draggable/editable in edit mode (it is derived, not a standalone schedule)
