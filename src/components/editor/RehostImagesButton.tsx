@@ -53,8 +53,8 @@ export function RehostImagesButton({
   const handleOpen = () => {
     if (externalImages.length === 0) {
       toast({
-        title: 'No external images',
-        description: 'All images in the content are already hosted on your storage.',
+        title: 'No external images found',
+        description: 'All images in the body are already hosted on your storage, or there are no ![image](url) patterns to re-host.',
       });
       return;
     }
@@ -124,11 +124,16 @@ export function RehostImagesButton({
         size="sm"
         disabled={disabled}
         onClick={handleOpen}
-        className="h-7 text-xs gap-1.5"
-        title="Re-host external images to your own storage"
+        className="h-7 text-xs gap-1.5 relative"
+        title="Re-host external images to your own storage so they don't break if the source changes"
       >
         <RefreshCw className="h-3.5 w-3.5" />
         Re-host
+        {externalImages.length > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-orange-500 text-[10px] text-white flex items-center justify-center font-medium">
+            {externalImages.length}
+          </span>
+        )}
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
