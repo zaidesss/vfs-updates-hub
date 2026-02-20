@@ -1,33 +1,42 @@
 
 
-## Add Full Update Preview to Eye Icon Dialog (Admin Panel)
+## Fix AI-Formatted (Playbook) Preview in Admin Update Dialog
 
-### What Changes
+### Problem
 
-The eye icon button on each row in "All Updates" currently opens a small dialog showing only the acknowledgement list. We will expand it to show a **full preview of the update** (title, metadata, rendered markdown body with images) followed by the acknowledgement list -- similar to how the Announcement feature shows a rich preview before the action section.
+The eye icon preview dialog in the Admin panel only uses `MarkdownRenderer` to render the update body. Updates formatted by the AI use a JSON-based "Playbook" format (with `title`, `sections`, etc.). Since `MarkdownRenderer` cannot parse JSON, those updates display as raw JSON text instead of a rich preview.
 
-### Implementation
+The `UpdateDetail.tsx` page already handles this correctly by attempting to parse the body as JSON and rendering it with `PlaybookPage` when valid.
 
-**File: `src/pages/Admin.tsx`** (lines ~1448-1490)
+### Fix
 
-Replace the current eye icon Dialog content with an enhanced preview that includes:
+**File: `src/pages/Admin.tsx`**
 
-1. **Header section**: Update title, reference number, category badge, status badge, posted date, deadline, posted by, and help center link
-2. **Body section**: The update's markdown body rendered using `MarkdownRenderer` (which already handles images via `ReactMarkdown` with `remarkGfm` -- any `![image](url)` in markdown will render as actual images)
-3. **Acknowledgement section**: The existing acknowledged users list with export button, kept below the preview with a separator
+1. Import `PlaybookPage` and `PlaybookArticle` type (same as `UpdateDetail.tsx` does)
+2. Before rendering the body in the preview dialog, attempt to parse it as Playbook JSON
+3. If it parses successfully (has `title` and `sections` array), render with `PlaybookPage`
+4. Otherwise, fall back to `MarkdownRenderer` as it does now
 
 ### Technical Details
 
-- Import `MarkdownRenderer` from `@/components/MarkdownRenderer` (already used in `UpdateDetail.tsx`)
-- Import `Separator` from `@/components/ui/separator`
-- The `MarkdownRenderer` component uses `ReactMarkdown` with `remarkGfm` and already has `prose-img:rounded-lg prose-img:shadow-md` styling, so any markdown images (like the storage URLs shown in the screenshot) will render properly
-- Set `showToc={false}` on `MarkdownRenderer` since this is a dialog preview, not a full page
-- Widen the dialog to `max-w-4xl` for better readability
-- Add proper scrolling for long update bodies
+Add these imports:
+- `import { PlaybookPage } from '@/components/playbook/PlaybookPage'`
+- `import { PlaybookArticle } from '@/lib/playbookTypes'`
 
-### Considerations
+Replace the body rendering block (~line 1483-1487) with logic that mirrors `UpdateDetail.tsx` lines 96-103:
 
-- **No other files need changes** -- the `MarkdownRenderer` already handles all markdown features including images, tables, callouts, and links
-- The dialog will have two clear sections: "Preview" at the top and "Acknowledgements" at the bottom, separated by a visual divider
-- The acknowledgement list and CSV export remain exactly as they are today
+```typescript
+// Attempt playbook parse
+let playbookData: PlaybookArticle | null = null;
+try {
+  const parsed = JSON.parse(update.body);
+  if (parsed.title && parsed.sections && Array.isArray(parsed.sections)) {
+    playbookData = parsed;
+  }
+} catch { /* not JSON, use markdown */ }
 
+// Render
+{playbookData ? <PlaybookPage article={playbookData} /> : <MarkdownRenderer ... />}
+```
+
+No other files need changes -- this reuses existing components.
