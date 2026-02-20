@@ -1,0 +1,762 @@
+========================================================
+QA EVALUATIONS — COMPLETE PAGE GUIDE
+========================================================
+Written in plain, easy-to-read language.
+Last updated: February 2026
+
+========================================================
+TABLE OF CONTENTS
+========================================================
+1. What Is This Page?
+2. Who Can See What?
+3. The Main List View
+4. Filters (Year, Month, Week, Agent)
+5. Stats Cards
+6. Performance Summary
+7. Weekly Comparison Chart
+8. Search Bar
+9. The Evaluations Table
+10. Actions Menu (Three-Dot Button)
+11. Creating a New Evaluation
+12. The Evaluation Form (Step by Step)
+13. AI-Powered Scoring
+14. Scoring System Explained
+15. Critical Errors
+16. Action Plans
+17. Saving vs. Sending
+18. Editing an Evaluation
+19. Viewing an Evaluation (Detail Page)
+20. Agent Acknowledgement
+21. Agent Review & Remarks
+22. Threaded Conversation
+23. Action Item Tracking
+24. Activity History (Audit Trail)
+25. Coaching Reminder
+26. Re-Acknowledgement Flow
+27. Notifications & Emails
+28. Repeat Violation Tracking
+29. Deleting an Evaluation
+30. Exporting Data
+31. Roles & Permissions Summary
+
+========================================================
+1. WHAT IS THIS PAGE?
+========================================================
+QA Evaluations is where team leads check how well
+agents handle customer tickets. A lead picks a ticket,
+scores the agent on different skills, and sends the
+results to the agent. The agent then reviews the scores,
+acknowledges the feedback, and works on any action items.
+
+Think of it like a report card for each support ticket.
+
+========================================================
+2. WHO CAN SEE WHAT?
+========================================================
+There are two groups of users:
+
+AGENTS (regular users):
+- Can only see their own evaluations.
+- Can acknowledge evaluations sent to them.
+- Can mark evaluations as "Reviewed" and add remarks.
+- Can reply in the conversation thread.
+- Can check off action items as they finish them.
+
+ADMIN / HR / SUPER ADMIN:
+- Can see all evaluations for every agent.
+- Can create new evaluations.
+- Can edit any evaluation.
+- Can filter by agent.
+- Can resend notification emails.
+- Can send draft evaluations to agents.
+- Can change action item statuses.
+- Can view the full activity history.
+- Super Admin can also delete evaluations.
+
+========================================================
+3. THE MAIN LIST VIEW
+========================================================
+When you open QA Evaluations, you land on the main list.
+This page shows:
+- A row of filter dropdowns at the top
+- Four stats cards below the filters
+- A performance summary section
+- A weekly comparison chart (if data exists)
+- A table listing all evaluations
+
+========================================================
+4. FILTERS (YEAR, MONTH, WEEK, AGENT)
+========================================================
+At the top of the page, you have four filter dropdowns:
+
+YEAR: Pick the year you want to look at. It goes back
+up to 10 years. When you change the year, the week
+filter resets to "All Weeks."
+
+MONTH: Pick a month (January through December). When
+you change the month, the week filter resets too.
+
+WEEK: Shows the weeks that have evaluations in the
+selected month. Each week runs Monday to Sunday. You
+can pick "All Weeks" to see the whole month, or pick
+a specific week like "Week 1 (02/03 - 02/09)."
+
+AGENT (Admin/HR/Super Admin only): Pick a specific
+agent to see only their evaluations, or choose
+"All Agents" to see everyone.
+
+The filters work together. First pick a year, then a
+month, then (optionally) a week and agent. The table
+and stats update right away.
+
+========================================================
+5. STATS CARDS
+========================================================
+Below the filters, you see four summary cards:
+
+TOTAL EVALUATIONS: How many evaluations match your
+current filters.
+
+AVERAGE SCORE: The average percentage across all
+filtered evaluations.
+
+ACKNOWLEDGED: How many evaluations the agent has
+acknowledged (confirmed they read it).
+
+PENDING REVIEW: How many evaluations are sent but
+not yet acknowledged by the agent.
+
+========================================================
+6. PERFORMANCE SUMMARY
+========================================================
+This section shows a breakdown of performance for the
+filtered evaluations. It gives you a quick view of
+how agents are doing overall for the selected period.
+
+========================================================
+7. WEEKLY COMPARISON CHART
+========================================================
+This chart shows up to 4 weeks side by side. For each
+week, you see:
+- The date range (like 02/03 - 02/09)
+- How many evaluations were done
+- The average score percentage
+- Individual score badges showing each evaluation's
+  percentage (color-coded green for pass, red for fail)
+
+Pass means 96% or higher. Fail means below 96%.
+
+========================================================
+8. SEARCH BAR
+========================================================
+Above the table, there is a search box. You can type
+to find evaluations by:
+- Agent name
+- Reference number (like QA-0042)
+- Ticket ID
+- Evaluator name
+
+The search filters instantly as you type.
+
+========================================================
+9. THE EVALUATIONS TABLE
+========================================================
+The table has these columns:
+
+REF #: A unique reference number (like QA-0042).
+  Click it to open the evaluation detail page.
+
+WORK WEEK: The Monday-to-Sunday work week this
+  evaluation covers (like 02/03 - 02/09/26).
+
+DATE / TIME (EST): When the evaluation was created,
+  shown in Eastern time.
+
+AGENT: The name of the agent being evaluated.
+
+TICKET: The Zendesk ticket number. If it is a link,
+  clicking it opens the ticket in Zendesk.
+
+EVALUATOR: The name of the person who did the
+  evaluation.
+
+SCORE: The percentage score. If there is a critical
+  fail, it shows in red.
+
+RATING: A badge showing Pass, Fail, or Critical Fail.
+  - Pass (green): 96% or higher, no critical errors.
+  - Fail (red): Below 96%.
+  - Critical Fail (red): Any critical error was found.
+
+STATUS: Shows the current state:
+  - "draft" (gray): Saved but not sent to the agent yet.
+  - "Pending" (outline): Sent but agent has not
+    acknowledged it.
+  - "Acknowledged" (green): Agent confirmed they read it.
+
+ACTIONS: A three-dot menu button (see next section).
+
+========================================================
+10. ACTIONS MENU (THREE-DOT BUTTON)
+========================================================
+Click the three-dot button (⋯) on any row to see
+options. What you see depends on your role and the
+evaluation's status:
+
+EDIT (Admin/HR/Super Admin):
+  Opens the evaluation form so you can change scores,
+  feedback, or other details.
+
+SEND TO AGENT (Admin/HR/Super Admin, draft only):
+  Changes the status from "draft" to "sent" and sends
+  the agent an email notification. This is a quick way
+  to send without opening the evaluation first.
+
+RESEND NOTIFICATION (Admin/HR/Super Admin, sent only):
+  Sends the notification email again if the agent
+  missed it.
+
+DELETE (Super Admin only):
+  Permanently removes the evaluation. A confirmation
+  popup appears first asking you to confirm.
+
+========================================================
+11. CREATING A NEW EVALUATION
+========================================================
+Click the "New Evaluation" button at the top right.
+This opens the evaluation form (see next section).
+
+Only Admin, HR, and Super Admin users can create
+evaluations.
+
+========================================================
+12. THE EVALUATION FORM (STEP BY STEP)
+========================================================
+The form has several sections. Here is what you fill in:
+
+--- EVALUATION DETAILS ---
+
+WORK WEEK START: Pick the Monday that starts the work
+  week you are evaluating. It must be a Monday — if you
+  pick a different day, you get an error message.
+
+WORK WEEK END: Pick the Sunday that ends the work week.
+  It must be a Sunday.
+
+COACHING DATE (required): The date you plan to coach
+  the agent about this evaluation.
+
+COACHING TIME (optional): The time for the coaching
+  session.
+
+AGENT: Start typing the agent's name in the search box.
+  A dropdown list appears. Pick the agent you want to
+  evaluate.
+
+AUDIT DATE: The date you are doing this audit. It
+  defaults to today.
+
+ZD INSTANCE: Pick which Zendesk account the ticket is
+  from. Options are:
+  - customerserviceadvocates
+  - customerserviceadvocateshelp
+
+INTERACTION TYPE: Pick the type of customer interaction:
+  - Call
+  - Email
+  - Chat
+  - Hybrid
+  - Logistics
+  - Other
+
+TICKET #: Type the Zendesk ticket number. After typing
+  it, you can:
+  - Click "Fetch Ticket" to automatically pull the
+    ticket conversation into the form.
+  - Click the link icon to open the ticket in Zendesk.
+
+TICKET CONTENT: This is a big text box. Either the
+  fetched ticket content appears here, or you can paste
+  it manually. The AI uses this content to suggest
+  scores.
+
+--- VIOLATION HISTORY WARNING ---
+
+If the selected agent has failed any scoring categories
+before, a red warning box appears. It lists which
+categories they failed, how many times, and when the
+last failure happened. This helps you watch for
+repeat problems.
+
+--- PENDING ACTIONS ---
+
+If the agent has unfinished action items from previous
+evaluations, they show up in an orange card. Each item
+shows what the action is, which category it belongs to,
+and which previous evaluation it came from.
+
+--- SCORING SECTIONS ---
+
+There are three scoring categories. Each one has its
+own card on the form:
+
+  1. ACCURACY (21 points max)
+  2. COMPLIANCE (17 points max)
+  3. CUSTOMER EXPERIENCE (14 points max)
+
+Total possible: 52 points.
+
+Inside each category, you see:
+- Critical error questions at the top (Yes/No)
+- Regular scoring items below (Pass/Fail for each)
+- A feedback text box
+- An action plan picker
+
+See the next sections for details on each part.
+
+========================================================
+13. AI-POWERED SCORING
+========================================================
+After you paste or fetch ticket content, click the
+"Analyze with AI" button. The AI reads the ticket
+and suggests scores for every category.
+
+For each item, you see a button like "AI: Fail" or
+"AI: 3". Click it to accept the AI's suggestion. Or
+ignore it and pick your own score.
+
+If the AI thinks an item should fail, it also gives a
+short reason why (called a "justification"). Click
+"AI Justification" to expand and read it.
+
+The AI also suggests action plans. Suggested ones show
+up highlighted in the action plan list.
+
+You can always override the AI. It is just a helper.
+
+========================================================
+14. SCORING SYSTEM EXPLAINED
+========================================================
+This uses "all-or-nothing" scoring. For each item, the
+agent either PASSES (gets full points) or FAILS (gets
+zero points). There are no partial scores.
+
+For example, "Understanding the Issue" is worth 5
+points. The agent either gets 5 or 0. There is no
+getting 3 out of 5.
+
+To score an item, use the dropdown next to it. You see
+two choices:
+  - 0 (Fail)
+  - [Max Points] (Pass)
+
+The form will not let you save until every single item
+has a score selected.
+
+PASS THRESHOLD: The agent needs 96% or higher to pass
+the evaluation overall. That means out of 52 points,
+the agent needs at least 50 points (49.92 rounds to
+49.92, so practically 50).
+
+========================================================
+15. CRITICAL ERRORS
+========================================================
+Each category has critical error questions at the top.
+These are serious mistakes that automatically fail the
+entire evaluation, no matter what the other scores are.
+
+The critical errors are:
+
+ACCURACY:
+  - Incorrect Critical Info: Did the agent give wrong
+    important information to the customer?
+
+COMPLIANCE:
+  - Policy and Process Breach: Did the agent break a
+    major company rule?
+  - Security Breach: Did the agent cause a security
+    problem?
+
+CUSTOMER EXPERIENCE:
+  - Rude / Disrespectful Behavior: Was the agent rude
+    to the customer?
+
+For each critical error, you pick "Yes" or "No."
+
+If you pick "Yes" for ANY critical error:
+  - The entire evaluation score becomes 0%.
+  - The rating becomes "Critical Fail."
+  - The category card gets a red border.
+
+The individual category scores are still saved for
+coaching purposes, but the total score is forced to 0.
+
+========================================================
+16. ACTION PLANS
+========================================================
+At the bottom of each scoring category, there is an
+action plan section. This is where you pick what the
+agent needs to work on.
+
+ACTION PLAN LIST: A set of pre-made action items
+  organized by category. Check the boxes next to the
+  ones that apply. Items suggested by AI show up with
+  a highlight.
+
+CUSTOM ACTION: A text box where you can type a custom
+  action item if none of the pre-made ones fit.
+
+Action items from all three categories are saved
+together with the evaluation.
+
+========================================================
+17. SAVING VS. SENDING
+========================================================
+At the bottom of the form, you have two buttons:
+
+SAVE AS DRAFT: Saves everything but does NOT send it
+  to the agent. The evaluation status stays "draft."
+  You can come back and edit it later.
+
+SAVE & SEND: Saves everything AND sends it to the
+  agent. The agent gets an email notification and can
+  see it on their QA Evaluations page. The status
+  changes to "sent."
+
+You can also send a draft later using the "Send to
+Agent" option in the three-dot menu on the list page.
+
+========================================================
+18. EDITING AN EVALUATION
+========================================================
+To edit an evaluation:
+1. Click the three-dot menu and choose "Edit," or
+2. Open the detail page and click the "Edit" button.
+
+When editing, you can change any field: agent, scores,
+feedback, action plans, dates, etc.
+
+The system tracks what you changed. It compares the old
+values to the new ones and logs the differences in the
+activity history.
+
+If the evaluation was already sent or acknowledged:
+- If it was acknowledged: After saving, a popup asks
+  if you want to reset the acknowledgement and ask the
+  agent to re-acknowledge.
+- If it was sent but not acknowledged: The agent gets
+  a notification that the evaluation was updated.
+
+========================================================
+19. VIEWING AN EVALUATION (DETAIL PAGE)
+========================================================
+Click the reference number in the table to open the
+detail page. This page shows everything about one
+evaluation:
+
+HEADER: The reference number, pass/fail badge, draft
+  badge (if applicable), and the agent's name. Admin
+  users also see Edit and Send to Agent buttons.
+
+OVERVIEW CARD: Shows four pieces of info in a row:
+  - Agent name
+  - Evaluator name
+  - Audit date
+  - Ticket number (clickable link to Zendesk)
+
+  Below that, if available:
+  - Work week date range
+  - Coaching date and time
+
+SCORE SUMMARY: Four boxes showing:
+  - Total Score (like 48 / 52)
+  - Percentage (like 92.31%)
+  - Critical Error (Yes or No)
+  - Status (Acknowledged or Pending)
+
+SCORES BY CATEGORY: Each of the three categories
+  (Accuracy, Compliance, Customer Experience) gets its
+  own card. Inside, you see every scoring item with:
+  - The item name and description
+  - Whether it passed or failed
+  - The points earned out of the maximum
+  - For critical items: whether a critical error was
+    detected (shown in red if yes)
+
+FEEDBACK CARD: Shows the written feedback for each
+  category (Accuracy, Compliance, Customer Experience).
+
+========================================================
+20. AGENT ACKNOWLEDGEMENT
+========================================================
+When an agent opens an evaluation that was sent to them,
+they see an "Acknowledgement Required" section at the
+bottom.
+
+The agent must:
+1. Check the checkbox that says they reviewed the
+   evaluation, understand the feedback, and agree to
+   work on the action items.
+2. Click "Submit Acknowledgement."
+
+After acknowledging:
+- The status changes to "Acknowledged."
+- A notification email is sent to the evaluator and
+  team lead.
+- The acknowledgement date and time are recorded.
+- A coaching reminder popup appears (see section 25).
+
+========================================================
+21. AGENT REVIEW & REMARKS
+========================================================
+After acknowledging, agents can also "Mark as Reviewed."
+This is a separate step where the agent can add optional
+remarks — like questions, disagreements, or comments.
+
+The review section shows:
+- A text box for remarks (optional)
+- A "Mark as Reviewed" button
+
+Once reviewed:
+- A green "Reviewed on [date]" banner appears.
+- The remarks become the first message in the
+  conversation thread.
+
+========================================================
+22. THREADED CONVERSATION
+========================================================
+After the agent adds remarks, a conversation section
+appears. This works like a chat:
+
+- Agent messages appear on the right side (highlighted).
+- Admin/evaluator messages appear on the left side.
+- Each message shows the sender's name and timestamp.
+
+Both the agent and admin/HR/Super Admin users can type
+replies. Each reply:
+- Appears instantly in the thread
+- Creates an event in the activity history
+- Sends an email notification to the other person
+
+The conversation stays open as long as the evaluation
+status is "sent."
+
+========================================================
+23. ACTION ITEM TRACKING
+========================================================
+If the evaluation has action items, they appear in an
+"Action Items" card on the detail page.
+
+FOR AGENTS:
+- Each unresolved action has a checkbox.
+- Check it to mark the action as done.
+- Resolved items show a green checkmark and get
+  strikethrough text.
+
+FOR ADMIN/HR/SUPER ADMIN:
+- Instead of a checkbox, you see a status dropdown
+  with four options:
+  - Pending (orange)
+  - In Progress (blue)
+  - Resolved (green)
+  - Carried Over (purple)
+- Changing the status logs an event in the activity
+  history.
+
+Each action item also shows its category badge (like
+"Accuracy" or "Compliance").
+
+========================================================
+24. ACTIVITY HISTORY (AUDIT TRAIL)
+========================================================
+Admin, HR, and Super Admin users see an "Activity
+History" section at the bottom of the detail page.
+
+This is a timeline showing everything that happened
+with this evaluation, newest first:
+
+- evaluation_created: When it was first made.
+- evaluation_sent: When it was sent to the agent.
+- evaluation_edited: When someone changed it. You can
+  expand to see exactly which fields changed (old
+  value → new value).
+- notification_sent: When an email was sent.
+- notification_resent: When an email was resent.
+- agent_acknowledged: When the agent acknowledged it.
+- agent_reviewed: When the agent marked it as reviewed.
+- evaluation_reply: When someone posted in the thread.
+- action_status_changed: When an action item's status
+  was updated.
+- sent_to_agent: When it was sent from the list view.
+
+Each event shows:
+- A description of what happened
+- The event type as a badge
+- Who did it
+- The date and time in EST
+
+========================================================
+25. COACHING REMINDER
+========================================================
+After an agent acknowledges an evaluation, a popup
+appears reminding them about their coaching session.
+
+The popup shows:
+- The coaching date
+- The coaching time (if set)
+- The evaluator's name
+
+The agent clicks "Got it" to close the popup.
+
+========================================================
+26. RE-ACKNOWLEDGEMENT FLOW
+========================================================
+If an admin edits an evaluation that was already
+acknowledged by the agent, a special popup appears
+after saving.
+
+The popup asks: "Do you want to reset the
+acknowledgement and ask the agent to re-acknowledge?"
+
+If the admin says yes:
+- The agent_acknowledged flag resets to false.
+- The agent gets a new notification email.
+- The agent must acknowledge the updated evaluation
+  again.
+
+If the admin says no:
+- The changes are saved but the acknowledgement stays.
+
+========================================================
+27. NOTIFICATIONS & EMAILS
+========================================================
+The system sends email notifications at these moments:
+
+NEW EVALUATION: When an evaluation is sent to the
+  agent for the first time. Goes to the agent and
+  their team lead.
+
+RESEND: When someone clicks "Resend Notification."
+  Goes to the agent.
+
+ACKNOWLEDGEMENT: When the agent acknowledges. Goes to
+  the evaluator and team lead.
+
+EVALUATION UPDATED: When an admin edits a sent
+  evaluation. Goes to the agent.
+
+REPLY NOTIFICATION: When someone posts a reply in the
+  conversation thread. Goes to the other person
+  (agent or evaluator).
+
+CUSTOM ACTION NOTIFICATION: When a custom action item
+  is used (not from the standard list). Goes to a
+  designated recipient.
+
+All notifications also create an in-app notification
+in the notification bell.
+
+========================================================
+28. REPEAT VIOLATION TRACKING
+========================================================
+The system tracks when an agent fails the same category
+across multiple evaluations.
+
+When creating a new evaluation:
+- If the agent failed "Language & Grammar" before, the
+  scoring row shows a badge like "2nd occurrence"
+  with references to previous evaluations (like
+  "QA-0038, QA-0041").
+- This helps evaluators see patterns of repeated
+  mistakes.
+
+When saving a "sent" evaluation:
+- The system records which items the agent failed in
+  a tracking table (qa_action_plan_occurrences).
+- Next time, the occurrence count goes up.
+
+========================================================
+29. DELETING AN EVALUATION
+========================================================
+Only Super Admin users can delete evaluations.
+
+To delete:
+1. Click the three-dot menu on the list view.
+2. Click "Delete."
+3. A confirmation popup appears showing the reference
+   number.
+4. Click "Delete" to confirm.
+
+Deleting is permanent. The evaluation and all its
+scores, actions, and events are removed. An audit log
+entry is created to record who deleted it.
+
+========================================================
+30. EXPORTING DATA
+========================================================
+The performance summary section may include export
+options for downloading evaluation data as CSV files.
+The CSV export includes proper formatting for scores,
+percentages, and dates.
+
+========================================================
+31. ROLES & PERMISSIONS SUMMARY
+========================================================
+
+ACTION                  | Agent | Admin | HR | Super Admin
+------------------------|-------|-------|----|------------
+View own evaluations    |  Yes  |  Yes  | Yes|    Yes
+View all evaluations    |  No   |  Yes  | Yes|    Yes
+Create evaluation       |  No   |  Yes  | Yes|    Yes
+Edit evaluation         |  No   |  Yes  | Yes|    Yes
+Delete evaluation       |  No   |  No   | No |    Yes
+Send to agent           |  No   |  Yes  | Yes|    Yes
+Resend notification     |  No   |  Yes  | Yes|    Yes
+Acknowledge evaluation  |  Yes  |  No   | No |    No
+Mark as reviewed        |  Yes  |  No   | No |    No
+Add remarks             |  Yes  |  No   | No |    No
+Reply in thread         |  Yes  |  Yes  | Yes|    Yes
+Resolve action items    |  Yes  |  Yes  | Yes|    Yes
+Change action status    |  No   |  Yes  | Yes|    Yes
+View activity history   |  No   |  Yes  | Yes|    Yes
+Filter by agent         |  No   |  Yes  | Yes|    Yes
+
+========================================================
+SCORING CATEGORIES REFERENCE
+========================================================
+
+ACCURACY (21 points total):
+  - Incorrect Critical Info (Critical Error, 0 pts)
+  - Language & Grammar (3 pts)
+  - Clarity & Structure (2 pts)
+  - Understanding the Issue (5 pts)
+  - Solution Accuracy (6 pts)
+  - First Contact Resolution (3 pts)
+  - Timeliness (2 pts)
+
+COMPLIANCE (17 points total):
+  - Policy and Process Breach (Critical Error, 0 pts)
+  - Security Breach (Critical Error, 0 pts)
+  - Account Verification (4 pts)
+  - Policy Compliance (4 pts)
+  - Escalation Handling (3 pts)
+  - Documentation (3 pts)
+  - Confidentiality (3 pts)
+
+CUSTOMER EXPERIENCE (14 points total):
+  - Rude / Disrespectful Behavior (Critical Error, 0 pts)
+  - Greeting & Introduction (2 pts)
+  - Tone & Empathy (3 pts)
+  - Active Listening / Acknowledgement (3 pts)
+  - Proactive Assistance (4 pts)
+  - Positive Language (3 pts)
+  - Rapport Building (2 pts)
+  - Closure (2 pts)
+
+GRAND TOTAL: 52 points
+PASS THRESHOLD: 96% (approximately 50 out of 52)
+CRITICAL FAIL: Any critical error = automatic 0%
+
+========================================================
+END OF GUIDE
+========================================================
