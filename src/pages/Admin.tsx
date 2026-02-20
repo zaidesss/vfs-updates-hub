@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { PlaybookPage } from '@/components/playbook/PlaybookPage';
+import { PlaybookArticle } from '@/lib/playbookTypes';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
 import { Layout } from '@/components/Layout';
@@ -1480,11 +1482,25 @@ export default function Admin() {
                                   </DialogHeader>
 
                                   {/* Update Body Preview */}
-                                  {update.body && (
-                                    <div className="mt-4">
-                                      <MarkdownRenderer content={update.body} showToc={false} />
-                                    </div>
-                                  )}
+                                  {update.body && (() => {
+                                    let playbookData: PlaybookArticle | null = null;
+                                    try {
+                                      const parsed = JSON.parse(update.body);
+                                      if (parsed.title && parsed.sections && Array.isArray(parsed.sections)) {
+                                        playbookData = parsed;
+                                      }
+                                    } catch { /* not JSON, use markdown */ }
+
+                                    return playbookData ? (
+                                      <div className="mt-4">
+                                        <PlaybookPage article={playbookData} />
+                                      </div>
+                                    ) : (
+                                      <div className="mt-4">
+                                        <MarkdownRenderer content={update.body} showToc={false} />
+                                      </div>
+                                    );
+                                  })()}
 
                                   <Separator className="my-4" />
 
