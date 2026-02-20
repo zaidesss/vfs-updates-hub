@@ -8,7 +8,7 @@ import { PlaybookPage } from './playbook/PlaybookPage';
 import { PlaybookArticle } from '@/lib/playbookTypes';
 import { Wand2, Loader2, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { FileAttachmentButton, AttachedFile } from './editor/FileAttachmentButton';
+import { FileAttachmentButton } from './editor/FileAttachmentButton';
 import { ImageInsertButton, uploadImageFile } from './editor/ImageInsertButton';
 import { RehostImagesButton } from './editor/RehostImagesButton';
 
@@ -18,8 +18,6 @@ interface MarkdownEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: number;
-  attachments?: AttachedFile[];
-  onAttachmentsChange?: (attachments: AttachedFile[]) => void;
 }
 
 export function MarkdownEditor({ 
@@ -28,8 +26,6 @@ export function MarkdownEditor({
   placeholder = "Write your article content here...\n\nSupports **markdown** formatting:\n- # Heading 1\n- ## Heading 2\n- **bold** and *italic*\n- Lists, tables, code blocks\n- > Blockquotes for messaging templates",
   className,
   minHeight = 400,
-  attachments = [],
-  onAttachmentsChange
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [isFormatting, setIsFormatting] = useState(false);
@@ -136,14 +132,7 @@ export function MarkdownEditor({
     setIsFormatting(true);
     
     try {
-      // Build attachment info for AI
-      const attachmentInfo = attachments.length > 0 
-        ? attachments.map(a => ({
-            name: a.name,
-            url: a.url,
-            type: a.type
-          }))
-        : [];
+      const attachmentInfo: { name: string; url: string; type: string }[] = [];
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/format-update`,
@@ -247,13 +236,10 @@ export function MarkdownEditor({
               onInsert={insertAtCursor}
               disabled={isFormatting || pendingApproval}
             />
-            {onAttachmentsChange && (
-              <FileAttachmentButton
-                attachments={attachments}
-                onAttachmentsChange={onAttachmentsChange}
-                disabled={isFormatting || pendingApproval}
-              />
-            )}
+            <FileAttachmentButton
+              onInsert={insertAtCursor}
+              disabled={isFormatting || pendingApproval}
+            />
             <RehostImagesButton
               content={value}
               onContentChange={onChange}

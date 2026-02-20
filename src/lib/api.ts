@@ -622,15 +622,17 @@ export async function editUpdate(
       }
     }
 
-    // Send notification for edit
-    try {
-      await supabase.functions.invoke('send-notifications', {
-        body: { updateTitle: update.title || editedUpdate.title, isEdit: true, referenceNumber: data.reference_number }
-      });
-      console.log('Notifications sent for edited update');
-    } catch (notifyError) {
-      console.error('Failed to send edit notifications:', notifyError);
-      // Don't fail the edit - notifications are best-effort
+    // Send notification for edit — only if the update is published
+    if (editedUpdate.status === 'published') {
+      try {
+        await supabase.functions.invoke('send-notifications', {
+          body: { updateTitle: update.title || editedUpdate.title, isEdit: true, referenceNumber: data.reference_number }
+        });
+        console.log('Notifications sent for edited update');
+      } catch (notifyError) {
+        console.error('Failed to send edit notifications:', notifyError);
+        // Don't fail the edit - notifications are best-effort
+      }
     }
 
     return { data: { ok: true, update: editedUpdate }, error: null };
