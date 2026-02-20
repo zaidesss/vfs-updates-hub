@@ -24,13 +24,14 @@ import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { DatePicker, formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { writeAuditLog } from '@/lib/auditLogApi';
+import { getAgentInfoByEmail, getUniqueTeamLeads } from '@/lib/agentDirectory';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
 const BACKUP_INTERNET_TYPES = ['Mobile Data', 'Neighbor\'s WiFi', 'Backup Fiber', 'Pocket WiFi', 'Other'];
 
 export default function ManageProfilesPage() {
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, isHR } = useAuth();
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(true);
@@ -44,10 +45,20 @@ export default function ManageProfilesPage() {
   const [editData, setEditData] = useState<AgentProfileInput | null>(null);
   const [rateHistoryUI, setRateHistoryUI] = useState<{ date: string; rate: string }[]>([]);
   const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
+  const [teamLeadFilter, setTeamLeadFilter] = useState('');
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-set team lead filter for Team Lead users (not HR/Super Admin)
+  useEffect(() => {
+    if (!user?.email || isSuperAdmin || isHR) return;
+    const agentInfo = getAgentInfoByEmail(user.email);
+    if (agentInfo?.position === 'Team Lead') {
+      setTeamLeadFilter(agentInfo.name);
+    }
+  }, [user?.email, isSuperAdmin, isHR]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -314,11 +325,13 @@ export default function ManageProfilesPage() {
     }
   };
 
-  const filteredUsers = usersWithProfiles.filter(u => 
-    (u.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (u.profile?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = usersWithProfiles.filter(u => {
+    const matchesSearch = (u.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      (u.profile?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTeamLead = !teamLeadFilter || (u.profile?.team_lead || '') === teamLeadFilter;
+    return matchesSearch && matchesTeamLead;
+  });
 
   const pendingRequests = changeRequests.filter(r => r.status === 'pending');
   const daysEmployed = editData?.start_date ? calculateDaysEmployed(editData.start_date) : 0;
@@ -465,6 +478,8 @@ export default function ManageProfilesPage() {
                 canEditCompensation={canEditCompensation}
                 daysEmployed={daysEmployed}
                 setSelectedUser={setSelectedUser}
+                teamLeadFilter={teamLeadFilter}
+                setTeamLeadFilter={setTeamLeadFilter}
               />
             </TabsContent>
           </Tabs>
@@ -487,6 +502,8 @@ export default function ManageProfilesPage() {
             canEditCompensation={canEditCompensation}
             daysEmployed={daysEmployed}
             setSelectedUser={setSelectedUser}
+            teamLeadFilter={teamLeadFilter}
+            setTeamLeadFilter={setTeamLeadFilter}
           />
         )}
 
@@ -521,6 +538,8 @@ interface ProfilesGridProps {
   canEditCompensation: boolean;
   daysEmployed: number;
   setSelectedUser: (user: UserWithProfile | null) => void;
+  teamLeadFilter: string;
+  setTeamLeadFilter: (value: string) => void;
 }
 
 function ProfilesGrid({
@@ -538,8 +557,12 @@ function ProfilesGrid({
   canEditWorkInfo,
   canEditCompensation,
   daysEmployed,
-  setSelectedUser
+  setSelectedUser,
+  teamLeadFilter,
+  setTeamLeadFilter
 }: ProfilesGridProps) {
+  const teamLeads = getUniqueTeamLeads();
+  
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Agent List */}
@@ -554,6 +577,19 @@ function ProfilesGrid({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+          </div>
+          <div className="mt-2">
+            <Select value={teamLeadFilter || 'all'} onValueChange={(val) => setTeamLeadFilter(val === 'all' ? '' : val)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Filter by Team Lead" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Team Leads</SelectItem>
+                {teamLeads.map((lead) => (
+                  <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent className="p-0">
