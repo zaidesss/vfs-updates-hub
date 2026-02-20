@@ -48,6 +48,8 @@ import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { EditUpdateDialog } from '@/components/EditUpdateDialog';
 import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { CreateUpdateDialog } from '@/components/admin/CreateUpdateDialog';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { Separator } from '@/components/ui/separator';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
@@ -1451,41 +1453,69 @@ export default function Admin() {
                                     <Eye className="h-4 w-4" />
                                   </Button>
                                 </DialogTrigger>
-                                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                                   <DialogHeader>
-                                    <DialogTitle>{update.title}</DialogTitle>
+                                    <div className="space-y-3">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {update.reference_number && (
+                                          <Badge variant="outline" className="font-mono text-xs">{update.reference_number}</Badge>
+                                        )}
+                                        <Badge variant="secondary">{update.category}</Badge>
+                                        <Badge variant={update.status === 'published' ? 'default' : 'outline'}>
+                                          {update.status}
+                                        </Badge>
+                                      </div>
+                                      <DialogTitle className="text-xl">{update.title}</DialogTitle>
+                                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                        <span>Posted: {formatDisplayDate(update.posted_at)}</span>
+                                        {update.deadline_at && <span>Deadline: {formatDisplayDate(update.deadline_at)}</span>}
+                                        {update.posted_by && <span>By: {getNameByEmail(update.posted_by)}</span>}
+                                        {update.help_center_url && (
+                                          <a href={update.help_center_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                                            <ExternalLink className="h-3 w-3" /> Help Center
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
                                   </DialogHeader>
-                                  <Tabs defaultValue="acknowledged" className="mt-4">
-                                    <div className="flex items-center justify-between mb-4">
-                                      <TabsList>
-                                        <TabsTrigger value="acknowledged">
-                                          Acknowledged ({ackCount})
-                                        </TabsTrigger>
-                                      </TabsList>
+
+                                  {/* Update Body Preview */}
+                                  {update.body && (
+                                    <div className="mt-4">
+                                      <MarkdownRenderer content={update.body} showToc={false} />
+                                    </div>
+                                  )}
+
+                                  <Separator className="my-4" />
+
+                                  {/* Acknowledgements Section */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                      <h3 className="text-sm font-semibold text-foreground">
+                                        Acknowledged ({ackCount}/{totalUsers})
+                                      </h3>
                                       <Button variant="outline" size="sm" onClick={() => exportAcknowledgements(update)}>
                                         <Download className="mr-2 h-4 w-4" />
                                         Export CSV
                                       </Button>
                                     </div>
-                                    <TabsContent value="acknowledged">
-                                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                                        {getAcknowledgementsForUpdate(update.id).map(ack => (
-                                          <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
-                                            <CheckCircle2 className="h-4 w-4 text-success" />
-                                            <div className="flex-1">
-                                              <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
-                                              <p className="text-xs text-muted-foreground">
-                                                {formatDisplayDateTime(ack.acknowledged_at)}
-                                              </p>
-                                            </div>
+                                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                                      {getAcknowledgementsForUpdate(update.id).map(ack => (
+                                        <div key={ack.agent_email} className="flex items-center gap-3 p-2 rounded bg-success/5">
+                                          <CheckCircle2 className="h-4 w-4 text-success" />
+                                          <div className="flex-1">
+                                            <p className="text-sm font-medium">{getNameByEmail(ack.agent_email)}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {formatDisplayDateTime(ack.acknowledged_at)}
+                                            </p>
                                           </div>
-                                        ))}
-                                        {getAcknowledgementsForUpdate(update.id).length === 0 && (
-                                          <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
-                                        )}
-                                      </div>
-                                    </TabsContent>
-                                  </Tabs>
+                                        </div>
+                                      ))}
+                                      {getAcknowledgementsForUpdate(update.id).length === 0 && (
+                                        <p className="text-muted-foreground text-center py-4">No acknowledgements yet</p>
+                                      )}
+                                    </div>
+                                  </div>
                                 </DialogContent>
                               </Dialog>
                               <Select
