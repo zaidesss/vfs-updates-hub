@@ -463,6 +463,42 @@ export default function AgentDashboard() {
     }
   };
 
+  // Real-time subscription: refresh attendance when profile_events change
+  useEffect(() => {
+    if (!profileId) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const channel = supabase
+      .channel(`dashboard-events-${profileId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'profile_events',
+          filter: `profile_id=eq.${profileId}`,
+        },
+        (payload) => {
+          const eventType = (payload.new as any)?.event_type;
+          const relevantEvents = ['LOGIN', 'LOGOUT', 'OT_LOGIN', 'OT_LOGOUT'];
+          if (!relevantEvents.includes(eventType)) return;
+
+          // Debounce to avoid multiple rapid reloads
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            loadDashboardData();
+          }, 600);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [profileId]);
+
   const handleStatusChange = async (eventType: EventType) => {
     if (!profileId || !user?.email) return;
 
@@ -492,7 +528,8 @@ export default function AgentDashboard() {
         description: `Status changed to ${result.newStatus.replace('_', ' ')}`,
       });
       
-      // Reload attendance data after status change
+      // Reload attendance data after status change (delay to let DB commit)
+      await new Promise(resolve => setTimeout(resolve, 500));
       await loadDashboardData();
     } else {
       toast({
