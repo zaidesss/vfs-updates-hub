@@ -499,6 +499,23 @@ export default function AgentDashboard() {
     };
   }, [profileId]);
 
+  // 30-second polling fallback in case realtime misses events (current week only)
+  useEffect(() => {
+    if (!profileId) return;
+
+    const todayEST = parseDateStringLocal(getTodayEST());
+    const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
+    const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
+
+    if (!isCurrentWeek) return; // Only poll for the current week
+
+    const interval = setInterval(() => {
+      loadDashboardData();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [profileId, weekStart, loadDashboardData]);
+
   const handleStatusChange = async (eventType: EventType) => {
     if (!profileId || !user?.email) return;
 
@@ -737,6 +754,20 @@ export default function AgentDashboard() {
                         {a.dayKey} | {a.status} | login: {a.loginTime || '—'} | mins: {a.hoursWorkedMinutes ?? '—'}
                       </p>
                     ))}
+                  </div>
+                  <p className="mt-2"><strong>Expected date keys for this week:</strong></p>
+                  <div className="pl-2 space-y-0.5">
+                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => {
+                      const dt = new Date(weekStart);
+                      dt.setDate(weekStart.getDate() + i);
+                      const expected = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+                      const matched = attendance.find(a => a.dayKey === expected);
+                      return (
+                        <p key={i} className={matched ? 'text-green-600' : 'text-red-500'}>
+                          {d}: {expected} → {matched ? `✓ ${matched.status}` : '✗ no match'}
+                        </p>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </CollapsibleContent>
