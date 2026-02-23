@@ -1598,7 +1598,7 @@ export function calculateAttendanceForWeek(
       const otData = calculateOTForDay();
       return { 
         date, 
-        dayKey: day.key, 
+        dayKey: dateStr, 
         status: 'day_off' as AttendanceStatus,
         ...otData,
       };
@@ -1616,7 +1616,7 @@ export function calculateAttendanceForWeek(
       const otData = calculateOTForDay();
       return {
         date,
-        dayKey: day.key,
+        dayKey: dateStr,
         status: 'on_leave' as AttendanceStatus,
         leaveType: leaveForDay.outage_reason,
         ...otData,
@@ -1744,7 +1744,7 @@ export function calculateAttendanceForWeek(
 
       return {
         date,
-        dayKey: day.key,
+        dayKey: dateStr,
         status: isLate ? 'late' as AttendanceStatus : 'present' as AttendanceStatus,
         loginTime: formattedLoginTime,
         logoutTime: formattedLogoutTime,
@@ -1768,10 +1768,10 @@ export function calculateAttendanceForWeek(
 
     // 6. No login - check if past or pending
     if (isPast) {
-      return { date, dayKey: day.key, status: 'absent' as AttendanceStatus, ...otData };
+      return { date, dayKey: dateStr, status: 'absent' as AttendanceStatus, ...otData };
     }
 
-    return { date, dayKey: day.key, status: 'pending' as AttendanceStatus, ...otData };
+    return { date, dayKey: dateStr, status: 'pending' as AttendanceStatus, ...otData };
   });
 }
 
