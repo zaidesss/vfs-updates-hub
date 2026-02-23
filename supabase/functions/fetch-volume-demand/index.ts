@@ -36,9 +36,6 @@ async function zdFetch(config: ZendeskConfig, url: string) {
   return response.json();
 }
 
-/**
- * Count total results for a Zendesk search query.
- */
 async function countSearchResults(config: ZendeskConfig, query: string): Promise<number> {
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=1&page=1`;
   const data = await zdFetch(config, url);
@@ -52,9 +49,6 @@ interface OldestTicket {
   created_at: string;
 }
 
-/**
- * Find the oldest ticket matching a query (sorted by created asc, limit 1).
- */
 async function findOldestTicket(config: ZendeskConfig, query: string): Promise<OldestTicket | null> {
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=asc&per_page=1&page=1`;
   const data = await zdFetch(config, url);
@@ -66,6 +60,8 @@ async function findOldestTicket(config: ZendeskConfig, query: string): Promise<O
 }
 
 const STATUS_KEYS = ['new', 'open', 'pending', 'hold'] as const;
+const CHANNEL_TAGS = ['emails', 'chat', 'voice'] as const;
+const CHANNEL_NAMES = ['email', 'chat', 'call'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -92,38 +88,45 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching volume demand for ${zdInstance}, ${startDate} to ${endDate}`);
 
-    // Base query: unresolved tickets (status < solved) created in date range
     const baseQuery = `type:ticket status<solved created>=${startDate} created<=${endDate}`;
 
-    // Build all queries in parallel:
-    // 1) Total + channel counts (4 queries)
-    // 2) Per-status counts (4 queries)
-    // 3) Per-status oldest ticket (4 queries)
+    // Build all queries in parallel
     const promises: Promise<any>[] = [
-      // Original channel queries
-      countSearchResults(config, baseQuery),                        // 0: total
-      countSearchResults(config, `${baseQuery} tags:emails`),       // 1: email
-      countSearchResults(config, `${baseQuery} tags:chat`),         // 2: chat
-      countSearchResults(config, `${baseQuery} tags:voice`),        // 3: call
+      // [0-3] Original channel queries
+      countSearchResults(config, baseQuery),
+      countSearchResults(config, `${baseQuery} tags:emails`),
+      countSearchResults(config, `${baseQuery} tags:chat`),
+      countSearchResults(config, `${baseQuery} tags:voice`),
     ];
 
-    // Status count queries (no date filter — we want ALL unresolved per status)
+    // [4-7] Per-status total counts
     for (const status of STATUS_KEYS) {
       promises.push(countSearchResults(config, `type:ticket status:${status} created>=${startDate} created<=${endDate}`));
     }
 
-    // Oldest ticket per status (no date filter — oldest across all time for that status)
+    // [8-11] Oldest ticket per status
     for (const status of STATUS_KEYS) {
       promises.push(findOldestTicket(config, `type:ticket status:${status}`));
     }
 
+    // [12-23] Per-status per-channel counts (4 statuses × 3 channels)
+    for (const status of STATUS_KEYS) {
+      for (const tag of CHANNEL_TAGS) {
+        promises.push(countSearchResults(config, `type:ticket status:${status} tags:${tag} created>=${startDate} created<=${endDate}`));
+      }
+    }
+
     const results = await Promise.all(promises);
 
-    const statuses: Record<string, { count: number; oldest: OldestTicket | null }> = {};
+    const statuses: Record<string, any> = {};
     STATUS_KEYS.forEach((status, i) => {
+      const channelBase = 12 + i * 3;
       statuses[status] = {
         count: results[4 + i] as number,
         oldest: results[8 + i] as OldestTicket | null,
+        email: results[channelBase] as number,
+        chat: results[channelBase + 1] as number,
+        call: results[channelBase + 2] as number,
       };
     });
 

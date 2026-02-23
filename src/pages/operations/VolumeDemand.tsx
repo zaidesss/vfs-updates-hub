@@ -21,6 +21,9 @@ interface OldestTicket {
 interface StatusInfo {
   count: number;
   oldest: OldestTicket | null;
+  email: number;
+  chat: number;
+  call: number;
 }
 
 interface VolumeDemandResult {
@@ -237,6 +240,9 @@ function InstanceCard({
                       colorClass={colorClass}
                       subdomain={subdomain}
                       todayEST={todayEST}
+                      emailCount={info.email ?? 0}
+                      chatCount={info.chat ?? 0}
+                      callCount={info.call ?? 0}
                     />
                   );
                 })}
@@ -256,6 +262,9 @@ function StatusRow({
   colorClass,
   subdomain,
   todayEST,
+  emailCount,
+  chatCount,
+  callCount,
 }: {
   label: string;
   count: number;
@@ -263,36 +272,56 @@ function StatusRow({
   colorClass: string;
   subdomain: string;
   todayEST: string;
+  emailCount: number;
+  chatCount: number;
+  callCount: number;
 }) {
   const today = parseLocalDate(todayEST);
 
   return (
-    <div className="flex items-start justify-between gap-2">
-      <div className="flex items-center gap-2 min-w-[100px]">
-        <Circle className={cn('h-3 w-3 fill-current', colorClass)} />
-        <span className="text-sm font-medium text-foreground">{label}</span>
+    <div className="space-y-1">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-[100px]">
+          <Circle className={cn('h-3 w-3 fill-current', colorClass)} />
+          <span className="text-sm font-medium text-foreground">{label}</span>
+        </div>
+        <div className="text-right flex-1">
+          <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
+          {oldest && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              <a
+                href={`https://${subdomain}.zendesk.com/agent/tickets/${oldest.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                #{oldest.id}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <span className="ml-1.5">
+                {format(new Date(oldest.created_at), 'MMM d, yyyy')}
+              </span>
+              <span className="ml-1 text-muted-foreground/70">
+                ({differenceInCalendarDays(today, new Date(oldest.created_at))}d ago)
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-      <div className="text-right flex-1">
-        <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
-        {oldest && (
-          <div className="text-xs text-muted-foreground mt-0.5">
-            <a
-              href={`https://${subdomain}.zendesk.com/agent/tickets/${oldest.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-            >
-              #{oldest.id}
-              <ExternalLink className="h-3 w-3" />
-            </a>
-            <span className="ml-1.5">
-              {format(new Date(oldest.created_at), 'MMM d, yyyy')}
-            </span>
-            <span className="ml-1 text-muted-foreground/70">
-              ({differenceInCalendarDays(today, new Date(oldest.created_at))}d ago)
-            </span>
-          </div>
-        )}
+      {/* Channel sub-counts */}
+      <div className="flex items-center gap-3 pl-5 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <Mail className="h-3 w-3 text-primary" />
+          {emailCount.toLocaleString()}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <MessageSquare className="h-3 w-3 text-warning" />
+          {chatCount.toLocaleString()}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Phone className="h-3 w-3 text-blue-500" />
+          {callCount.toLocaleString()}
+        </span>
       </div>
     </div>
   );
