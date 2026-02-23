@@ -1,42 +1,40 @@
 
 
-## Recover Dropped Auto-Solved Chat Tickets (Feb 9 - Present)
+## Update Recovery Function: Skip Only Existing Chat Duplicates
 
 ### Problem
-Since February 9, all auto-solved chat tickets were silently dropped due to a missing comma in the Zendesk trigger JSON. The "Auto-End Session" trigger was the **only** capture point for these tickets. Result: **0 autosolved records** in the database out of 33,190 total tickets.
+The current duplicate check looks for any existing `ticket_id` regardless of `ticket_type`. Since we're recovering Chat tickets, we should only skip if that ticket already exists as a **Chat** type. If the same ticket ID exists as an Email type, we still need to insert the Chat record.
 
-### Recovery Approach
-Create a one-time recovery edge function (`recover-autosolved-tickets`) that:
-1. Queries the Zendesk Search API on **both instances** for tickets tagged `chat_autosolved` since Feb 9
-2. Extracts the agent name from the custom field (ZD1: `14923047306265`, ZD2: `44524282221593`)
-3. Looks up `agent_email` from `agent_directory` (same logic as the webhook)
-4. Inserts each ticket into `ticket_logs` with `is_autosolved: true` and `ticket_type: 'Chat'`
-5. Skips any ticket that already exists (by `ticket_id` + `zd_instance`) to avoid duplicates
+### Change
+**File**: `supabase/functions/recover-autosolved-tickets/index.ts`
 
-### Before I Proceed, Consider These
+Update the duplicate-check query (lines 168-175) to also filter by `ticket_type = 'Chat'`:
 
-1. **OT status**: The webhook normally checks if the agent is currently ON_OT at the moment the ticket arrives. For historical recovery, we can't know past OT status -- these will all be inserted with `is_ot: false`. Is that acceptable?
+**Before:**
+```typescript
+const { data: existing } = await supabase
+  .from('ticket_logs')
+  .select('ticket_id')
+  .eq('zd_instance', instance.key)
+  .in('ticket_id', ticketIds)
 
-2. **Timestamp accuracy**: The recovery will use the ticket's `updated_at` timestamp from Zendesk (same as what the trigger would have sent). This should be accurate.
+const existingSet = new Set((existing || []).map((e: any) => e.ticket_id))
+```
 
-3. **Zendesk API rate limits**: The Search API has a limit of ~380 requests per minute. If there are thousands of auto-solved tickets, the function will paginate with delays. It may take a minute or two to complete.
+**After:**
+```typescript
+const { data: existing } = await supabase
+  .from('ticket_logs')
+  .select('ticket_id')
+  .eq('zd_instance', instance.key)
+  .eq('ticket_type', 'Chat')
+  .in('ticket_id', ticketIds)
 
-4. **Duplicate ticket IDs**: Some of these auto-solved tickets might already exist in `ticket_logs` from a different trigger (e.g., if a regular solved trigger also fired for the same ticket). The function will skip those to avoid double-counting. Do you want it to **update** existing records to mark them as `is_autosolved: true` instead, or only insert net-new ones?
+const existingSet = new Set((existing || []).map((e: any) => e.ticket_id))
+```
 
-### Technical Details
-
-**New file**: `supabase/functions/recover-autosolved-tickets/index.ts`
-
-- Uses the same Zendesk auth pattern as `fetch-zendesk-ticket` (Basic auth with admin email + API token)
-- Search query: `type:ticket tags:chat_autosolved created>2025-02-09`
-- Processes both ZD1 (`customerserviceadvocates`) and ZD2 (`customerserviceadvocateshelp`)
-- For each ticket found:
-  - Extracts agent tag from the instance-specific custom field
-  - Looks up agent email from `agent_directory`
-  - Checks if ticket already exists in `ticket_logs`
-  - Inserts with `ticket_type: 'Chat'`, `is_autosolved: true`, `is_ot: false`
-- Returns a summary: total found, inserted, skipped (duplicates)
-- One-time use -- invoke manually, then delete
-
-**Invocation**: Call it once via the backend function invoke after deployment. No UI changes needed.
+This is a one-line addition (`.eq('ticket_type', 'Chat')`) that ensures:
+- If ticket 12345 exists as **Chat** -- skip (already counted)
+- If ticket 12345 exists as **Email** only -- insert the Chat record (different interaction type)
+- If ticket 12345 doesn't exist at all -- insert
 
