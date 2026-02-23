@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
           .from('ticket_logs')
           .select('ticket_id')
           .eq('zd_instance', instance.key)
+          .eq('ticket_type', 'Chat')
           .in('ticket_id', ticketIds)
 
         const existingSet = new Set((existing || []).map((e: any) => e.ticket_id))
