@@ -10,10 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap, Sparkles, TrendingUp, Gauge, Briefcase, MessageSquare, GitCompare, Target, Bot
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -167,6 +169,21 @@ export function Layout({ children }: LayoutProps) {
       ],
     });
 
+    // Operations Group (available to all users)
+    groups.push({
+      label: 'Operations',
+      icon: Briefcase,
+      items: [
+        { href: '/operations/reports/volume', label: 'Volume & Demand', icon: TrendingUp },
+        { href: '/operations/reports/responsiveness', label: 'Responsiveness', icon: Gauge },
+        { href: '/operations/reports/workload', label: 'Workload', icon: Briefcase },
+        { href: '/operations/reports/contact-reasons', label: 'Contact Reasons', icon: MessageSquare },
+        { href: '/operations/reports/comparison', label: '4-Week Comparison', icon: GitCompare },
+        { href: '/operations/reports/capacity', label: 'Capacity Planning', icon: Target },
+        { href: '/operations/ai/recommendations', label: 'AI Recommendations', icon: Bot },
+      ],
+    });
+
     // Admin Group (only for admin/HR)
     if (isAdmin || isHR) {
       groups.push({
@@ -244,20 +261,49 @@ export function Layout({ children }: LayoutProps) {
                     align="start" 
                     className="w-48 bg-popover border border-border shadow-lg z-50"
                   >
-                    {group.items.map((item) => (
-                      <DropdownMenuItem key={item.href} asChild>
-                        <Link
-                          to={item.href}
-                          className={cn(
-                            'flex items-center gap-2 w-full cursor-pointer',
-                            location.pathname === item.href && 'bg-accent'
-                          )}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          {item.label}
-                        </Link>
-                      </DropdownMenuItem>
-                    ))}
+                    {group.label === 'Operations' ? (
+                      <>
+                        <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">Reports</DropdownMenuLabel>
+                        {group.items.filter(item => item.href.includes('/reports/')).map((item) => (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link to={item.href} className={cn('flex items-center gap-2 w-full cursor-pointer', location.pathname === item.href && 'bg-accent')}>
+                              <item.icon className="h-4 w-4" />
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3" />
+                          AI
+                        </DropdownMenuLabel>
+                        {group.items.filter(item => item.href.includes('/ai/')).map((item) => (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link to={item.href} className={cn('flex items-center gap-2 w-full cursor-pointer', location.pathname === item.href && 'bg-accent')}>
+                              <item.icon className="h-4 w-4" />
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        {group.items.map((item) => (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link
+                              to={item.href}
+                              className={cn(
+                                'flex items-center gap-2 w-full cursor-pointer',
+                                location.pathname === item.href && 'bg-accent'
+                              )}
+                            >
+                              <item.icon className="h-4 w-4" />
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
                     {/* Improvements Tracker - Admin menu only */}
                     {group.label === 'Admin' && (isAdmin || isHR) && (
                       <DropdownMenuItem 
