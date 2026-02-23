@@ -36,7 +36,24 @@ Deno.serve(async (req) => {
       )
     }
 
-    const payload: TicketPayload = await req.json()
+    const rawBody = await req.text()
+    let payload: TicketPayload
+    try {
+      payload = JSON.parse(rawBody)
+    } catch (parseError) {
+      console.error('JSON parse failed. Raw body:', rawBody)
+      // Attempt cleanup: strip trailing commas before } or ]
+      try {
+        const cleaned = rawBody.replace(/,\s*([\]}])/g, '$1')
+        payload = JSON.parse(cleaned)
+        console.log('Recovered payload after cleanup:', JSON.stringify(payload))
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid JSON', raw_length: rawBody.length }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
     console.log('Received ticket webhook:', JSON.stringify(payload))
 
     if (!payload.zd_instance || !payload.ticket_id || !payload.status || !payload.timestamp || !payload.ticket_type || !payload.agent_name) {
