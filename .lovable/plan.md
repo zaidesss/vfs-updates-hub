@@ -1,80 +1,58 @@
 
 
-## Volume & Demand Enhancement: Per-Status Breakdown with Oldest Ticket
+## Fix: Malformed JSON Webhook + Add Raw Body Logging
 
-### What's Changing
+### Problem
+The "TicketLogger Chat Lovable (Auto-End Session)" Zendesk trigger is sending malformed JSON to the webhook endpoint. Multiple failures today show: `Expected ',' or '}' after property value in JSON at position 183-188`. Ticket 47141 (and others) are being silently dropped.
 
-Inside each ZD1/ZD2 instance card, a new **Status Breakdown** section will appear below the existing Email/Chat/Call channel breakdown. It will show:
+### Root Cause
+The Zendesk trigger's JSON body template likely has a syntax error -- possibly an unescaped double quote in a placeholder value (like agent name containing special characters), a missing comma, or a trailing comma.
 
-- Ticket counts for each status: **New**, **Open**, **Pending**, **Hold**
-- For each status, the **oldest ticket** displayed as:
-  - Zendesk Ticket ID (clickable link)
-  - Created date
-  - Age in days (e.g., "45 days ago")
+### What We'll Do
 
-The existing channel breakdown (Email/Chat/Call with daily averages) remains unchanged.
+**Step 1: Update the webhook to log the raw body on parse failure**
 
-### Visual Layout (per instance card)
+Modify `supabase/functions/zendesk-ticket-webhook/index.ts` to:
+- Read the request body as **text first** (not directly as JSON)
+- Try `JSON.parse()` on the text
+- If parsing fails, **log the raw text** so you can see exactly what Zendesk sent
+- Attempt a basic cleanup (strip trailing commas, trim whitespace) and retry parsing
+- Only then return the error if it still fails
 
-```text
-+----------------------------------+
-|  ZD1                         [R] |
-|  customerserviceadvocates        |
-|                                  |
-|  Total Unresolved: 245           |
-|                                  |
-|  --- Channel Breakdown ---       |
-|  Email: 120  (17/d)              |
-|  Chat:  80   (11/d)              |
-|  Call:  45   (6/d)               |
-|                                  |
-|  --- Status Breakdown ---        |
-|  New:     12  | Oldest: #48201   |
-|               | Jan 9 (45d ago)  |
-|  Open:    98  | Oldest: #41003   |
-|               | Dec 2 (83d ago)  |
-|  Pending: 85  | Oldest: #39877   |
-|               | Nov 15 (100d ago)|
-|  Hold:    50  | Oldest: #44120   |
-|               | Dec 28 (57d ago) |
-+----------------------------------+
-```
+This gives you full visibility into what the broken payload looks like, and auto-fixes common JSON issues.
 
----
+**Step 2: Fix the Zendesk trigger (your side)**
+
+Once you share the trigger's JSON body template, I'll identify the exact syntax error and tell you what to change in Zendesk.
 
 ### Technical Details
 
-**Step 1: Update edge function `fetch-volume-demand`**
+Changes to `supabase/functions/zendesk-ticket-webhook/index.ts`:
 
-Add per-status queries to the existing function. For each status (new, open, pending, hold):
-- Count query: `type:ticket status:new created>={startDate} created<={endDate}`
-- Oldest ticket query: `type:ticket status:new` sorted by `created` ascending, fetching only 1 result to get the ticket ID, created date
+```text
+BEFORE (line 39):
+  const payload: TicketPayload = await req.json()
 
-The response shape will expand to include:
-```json
-{
-  "zdInstance": "ZD1",
-  "total": 245,
-  "email": 120, "chat": 80, "call": 45,
-  "statuses": {
-    "new":     { "count": 12, "oldest": { "id": 48201, "created_at": "2026-01-09T..." } },
-    "open":    { "count": 98, "oldest": { "id": 41003, "created_at": "2025-12-02T..." } },
-    "pending": { "count": 85, "oldest": { "id": 39877, "created_at": "2025-11-15T..." } },
-    "hold":    { "count": 50, "oldest": { "id": 44120, "created_at": "2025-12-28T..." } }
+AFTER:
+  const rawBody = await req.text()
+  let payload: TicketPayload
+  try {
+    payload = JSON.parse(rawBody)
+  } catch (parseError) {
+    console.error('JSON parse failed. Raw body:', rawBody)
+    // Attempt cleanup: strip trailing commas before } or ]
+    try {
+      const cleaned = rawBody.replace(/,\s*([\]}])/g, '$1')
+      payload = JSON.parse(cleaned)
+      console.log('Recovered payload after cleanup:', JSON.stringify(payload))
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON', raw_length: rawBody.length }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
   }
-}
 ```
 
-This adds 8 additional API calls (4 counts + 4 oldest lookups) per instance, run in parallel.
-
-**Step 2: Update `VolumeDemand.tsx` UI**
-
-- Add a "Status Breakdown" section below the channel rows in each `InstanceCard`
-- Each status row shows: status name, count, and oldest ticket info (ID as link to Zendesk, date, days ago)
-- Uses `differenceInCalendarDays` from date-fns for the "days ago" calculation
-- Ticket ID links to `https://{subdomain}.zendesk.com/agent/tickets/{id}`
-
-**Files modified:**
-- `supabase/functions/fetch-volume-demand/index.ts` (add status count + oldest ticket queries)
-- `src/pages/operations/VolumeDemand.tsx` (add status breakdown UI section)
+This is a single file change to `supabase/functions/zendesk-ticket-webhook/index.ts`. No database changes needed. The edge function will auto-deploy.
 
