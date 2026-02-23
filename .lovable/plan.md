@@ -1,58 +1,42 @@
 
 
-## Fix: Malformed JSON Webhook + Add Raw Body Logging
+## Recover Dropped Auto-Solved Chat Tickets (Feb 9 - Present)
 
 ### Problem
-The "TicketLogger Chat Lovable (Auto-End Session)" Zendesk trigger is sending malformed JSON to the webhook endpoint. Multiple failures today show: `Expected ',' or '}' after property value in JSON at position 183-188`. Ticket 47141 (and others) are being silently dropped.
+Since February 9, all auto-solved chat tickets were silently dropped due to a missing comma in the Zendesk trigger JSON. The "Auto-End Session" trigger was the **only** capture point for these tickets. Result: **0 autosolved records** in the database out of 33,190 total tickets.
 
-### Root Cause
-The Zendesk trigger's JSON body template likely has a syntax error -- possibly an unescaped double quote in a placeholder value (like agent name containing special characters), a missing comma, or a trailing comma.
+### Recovery Approach
+Create a one-time recovery edge function (`recover-autosolved-tickets`) that:
+1. Queries the Zendesk Search API on **both instances** for tickets tagged `chat_autosolved` since Feb 9
+2. Extracts the agent name from the custom field (ZD1: `14923047306265`, ZD2: `44524282221593`)
+3. Looks up `agent_email` from `agent_directory` (same logic as the webhook)
+4. Inserts each ticket into `ticket_logs` with `is_autosolved: true` and `ticket_type: 'Chat'`
+5. Skips any ticket that already exists (by `ticket_id` + `zd_instance`) to avoid duplicates
 
-### What We'll Do
+### Before I Proceed, Consider These
 
-**Step 1: Update the webhook to log the raw body on parse failure**
+1. **OT status**: The webhook normally checks if the agent is currently ON_OT at the moment the ticket arrives. For historical recovery, we can't know past OT status -- these will all be inserted with `is_ot: false`. Is that acceptable?
 
-Modify `supabase/functions/zendesk-ticket-webhook/index.ts` to:
-- Read the request body as **text first** (not directly as JSON)
-- Try `JSON.parse()` on the text
-- If parsing fails, **log the raw text** so you can see exactly what Zendesk sent
-- Attempt a basic cleanup (strip trailing commas, trim whitespace) and retry parsing
-- Only then return the error if it still fails
+2. **Timestamp accuracy**: The recovery will use the ticket's `updated_at` timestamp from Zendesk (same as what the trigger would have sent). This should be accurate.
 
-This gives you full visibility into what the broken payload looks like, and auto-fixes common JSON issues.
+3. **Zendesk API rate limits**: The Search API has a limit of ~380 requests per minute. If there are thousands of auto-solved tickets, the function will paginate with delays. It may take a minute or two to complete.
 
-**Step 2: Fix the Zendesk trigger (your side)**
-
-Once you share the trigger's JSON body template, I'll identify the exact syntax error and tell you what to change in Zendesk.
+4. **Duplicate ticket IDs**: Some of these auto-solved tickets might already exist in `ticket_logs` from a different trigger (e.g., if a regular solved trigger also fired for the same ticket). The function will skip those to avoid double-counting. Do you want it to **update** existing records to mark them as `is_autosolved: true` instead, or only insert net-new ones?
 
 ### Technical Details
 
-Changes to `supabase/functions/zendesk-ticket-webhook/index.ts`:
+**New file**: `supabase/functions/recover-autosolved-tickets/index.ts`
 
-```text
-BEFORE (line 39):
-  const payload: TicketPayload = await req.json()
+- Uses the same Zendesk auth pattern as `fetch-zendesk-ticket` (Basic auth with admin email + API token)
+- Search query: `type:ticket tags:chat_autosolved created>2025-02-09`
+- Processes both ZD1 (`customerserviceadvocates`) and ZD2 (`customerserviceadvocateshelp`)
+- For each ticket found:
+  - Extracts agent tag from the instance-specific custom field
+  - Looks up agent email from `agent_directory`
+  - Checks if ticket already exists in `ticket_logs`
+  - Inserts with `ticket_type: 'Chat'`, `is_autosolved: true`, `is_ot: false`
+- Returns a summary: total found, inserted, skipped (duplicates)
+- One-time use -- invoke manually, then delete
 
-AFTER:
-  const rawBody = await req.text()
-  let payload: TicketPayload
-  try {
-    payload = JSON.parse(rawBody)
-  } catch (parseError) {
-    console.error('JSON parse failed. Raw body:', rawBody)
-    // Attempt cleanup: strip trailing commas before } or ]
-    try {
-      const cleaned = rawBody.replace(/,\s*([\]}])/g, '$1')
-      payload = JSON.parse(cleaned)
-      console.log('Recovered payload after cleanup:', JSON.stringify(payload))
-    } catch {
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON', raw_length: rawBody.length }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-  }
-```
-
-This is a single file change to `supabase/functions/zendesk-ticket-webhook/index.ts`. No database changes needed. The edge function will auto-deploy.
+**Invocation**: Call it once via the backend function invoke after deployment. No UI changes needed.
 
