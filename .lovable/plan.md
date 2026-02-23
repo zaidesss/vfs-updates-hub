@@ -1,65 +1,50 @@
 
 
-## Add "Operations" Menu with Reports and AI Sub-menus
+## Build Volume & Demand Page
 
-### What Changes
+### Overview
 
-A new top-level dropdown menu called **Operations** will be added to the navbar, positioned between **Team Performance** and **Admin**. It will contain two sub-groups mirroring the Eazey Portal:
+Replace the placeholder "Coming Soon" page at `/operations/reports/volume` with a fully functional Volume & Demand analytics dashboard. This page will visualize daily ticket volumes from both Zendesk instances (ZD1 and ZD2), broken down by channel (Email, Chat, Call), using your existing `ticket_logs` and `call_count_daily` data.
 
-**Reports sub-items:**
-- Volume and Demand
-- Responsiveness
-- Workload
-- Contact Reasons
-- 4-Week Comparison
-- Capacity Planning
+### What the Page Will Show
 
-**AI sub-items:**
-- AI Recommendations
+1. **Summary Cards** -- Total tickets for the selected period, broken down by channel (Email, Chat, Call), plus a daily average
+2. **Daily Volume Bar Chart** -- Stacked bar chart (recharts) showing daily ticket counts by channel, with both instances combined or filtered
+3. **Instance Comparison** -- Side-by-side cards showing ZD1 vs ZD2 totals for the selected period
+4. **Channel Distribution** -- Pie/donut chart showing the percentage split across Email, Chat, and Call
+5. **Daily Data Table** -- Tabular breakdown of each day's counts (date, email, chat, call, total)
 
-All 7 items will link to placeholder pages for now (simple "Coming Soon" style pages).
+### Filters/Controls
 
-### Possible Considerations
+- **Instance Selector**: "Both", "ZD1 Only", or "ZD2 Only"
+- **Date Range**: Rolling 2-week window (default, matching Ticket Logs), with option to pick custom start/end dates
+- **Channel Filter**: All, Email, Chat, Call
 
-Before we proceed, here are things to think about:
-- **Access control**: Should Operations be visible to all users, or only admins/team leads? The current plan makes it visible to all (like Team Performance). We can restrict later.
-- **Route prefix**: All new routes will use `/operations/reports/...` and `/operations/ai/...` to keep them organized and separate from existing `/team-performance/` routes.
-- **The dropdown will show Reports and AI as labeled sections** within a single "Operations" dropdown (using separators/labels), matching the visual style of the screenshot where they appear as two distinct groups.
+### Data Source
 
-### Implementation Steps
+All data comes from the existing `ticket_logs` table (queried directly via the client library) plus `call_count_daily` for ZD1 call counts. No new database tables, edge functions, or API calls needed.
 
-**Step 1**: Create 7 placeholder page components in `src/pages/operations/`
+### Implementation Details
 
-**Step 2**: Add routes in `src/App.tsx` for all 7 pages
+**File modified:**
+- `src/pages/operations/VolumeDemand.tsx` -- Complete rewrite from placeholder to full dashboard
 
-**Step 3**: Add the "Operations" nav group in `src/components/Layout.tsx` between Team Performance and Admin, with two visual sections (Reports and AI) using dropdown menu labels/separators
+**Key technical choices:**
+- Uses `@tanstack/react-query` for data fetching (consistent with ZendeskInsights pattern)
+- Uses `recharts` `BarChart` for the daily volume chart and `PieChart` for channel distribution
+- Queries `ticket_logs` grouped by date and ticket_type with EST timezone casting
+- Merges `call_count_daily` data for ZD1 call counts (same logic as `get_ticket_dashboard_data`)
+- Uses existing UI components: `Card`, `Select`, `Badge`, `Skeleton`
+- Uses `date-fns` for date manipulation, `date-picker` for custom range selection
+- Responsive grid layout: summary cards on top, chart below, table at bottom
 
-### Technical Details
+**No database changes needed** -- this is a read-only frontend page using existing tables.
 
-**New files (7 placeholder pages):**
-- `src/pages/operations/VolumeDemand.tsx`
-- `src/pages/operations/Responsiveness.tsx`
-- `src/pages/operations/Workload.tsx`
-- `src/pages/operations/ContactReasons.tsx`
-- `src/pages/operations/FourWeekComparison.tsx`
-- `src/pages/operations/CapacityPlanning.tsx`
-- `src/pages/operations/AIRecommendations.tsx`
+### Step-by-Step
 
-Each placeholder page follows the existing pattern with `Layout` wrapper, title, and a "Coming Soon" message.
+We will implement this in a single step since it's one file (`VolumeDemand.tsx`). The page will:
 
-**`src/App.tsx`** -- Add 7 new protected routes:
-```
-/operations/reports/volume
-/operations/reports/responsiveness
-/operations/reports/workload
-/operations/reports/contact-reasons
-/operations/reports/comparison
-/operations/reports/capacity
-/operations/ai/recommendations
-```
-
-**`src/components/Layout.tsx`** -- Add Operations group between Team Performance and Admin:
-- Uses `BarChart3` icon for the group (matching the screenshot's chart icon for Reports)
-- Uses `DropdownMenuLabel` and `DropdownMenuSeparator` to visually separate "Reports" and "AI" sections within one dropdown
-- Import `Sparkles` icon from lucide-react for the AI section label
-
+1. Query `ticket_logs` with date range + instance filters, grouping by date and ticket_type
+2. Query `call_count_daily` for ZD1 call data in the same range
+3. Merge the results into a daily breakdown array
+4. Render summary cards, bar chart, pie chart, and data table
