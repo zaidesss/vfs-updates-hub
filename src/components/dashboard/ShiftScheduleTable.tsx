@@ -246,10 +246,28 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
             </TableRow>
           </TableHeader>
           <TableBody>
-            {DAYS.map((day) => {
+            {DAYS.map((day, index) => {
               const isOff = isDayOff(day.short);
               const schedule = getScheduleForDay(day.key, day.short);
-              const dayAttendance = attendance.find((a) => a.dayKey === day.key);
+              
+              // Primary match: compute the actual date for this row and match by date string
+              const dayDate = new Date(weekStart);
+              dayDate.setDate(weekStart.getDate() + index);
+              const y = dayDate.getFullYear();
+              const m = String(dayDate.getMonth() + 1).padStart(2, '0');
+              const dd = String(dayDate.getDate()).padStart(2, '0');
+              const dateStr = `${y}-${m}-${dd}`;
+              
+              // Fallback: also try matching by short day name for safety
+              const dayAttendance = attendance.find((a) => a.dayKey === dateStr)
+                || attendance.find((a) => {
+                  if (!a.dayKey) return false;
+                  // If dayKey looks like a date, derive the short day name
+                  const parsed = new Date(a.dayKey + 'T00:00:00');
+                  if (isNaN(parsed.getTime())) return a.dayKey === day.key;
+                  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                  return names[parsed.getDay()] === day.short;
+                });
               
               return (
                 <TableRow key={day.key} className={isOff ? 'bg-muted/50' : ''}>
