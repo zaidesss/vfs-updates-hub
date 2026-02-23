@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Bug } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
-import { getTodayEST } from '@/lib/timezoneUtils';
+import { getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
@@ -103,20 +104,13 @@ export default function AgentDashboard() {
   const [effectiveWeekSchedules, setEffectiveWeekSchedules] = useState<import('@/lib/scheduleResolver').EffectiveDaySchedule[]>([]);
   
   // Week selector state - use EST for consistent week boundaries
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Get current date in EST timezone
-    const now = new Date();
-    return new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  });
+  // Use stable EST date construction (Intl-based, no browser-specific parsing)
+  const [selectedDate, setSelectedDate] = useState(() => parseDateStringLocal(getTodayEST()));
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
   const weekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
   
   // Day selector state - default to current day for current week, or Sunday for past weeks
-  const [selectedDay, setSelectedDay] = useState<Date>(() => {
-    const now = new Date();
-    const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    return todayEST;
-  });
+  const [selectedDay, setSelectedDay] = useState<Date>(() => parseDateStringLocal(getTodayEST()));
   
   // Bio break state
   const [bioTimeRemaining, setBioTimeRemaining] = useState<number | null>(null);
@@ -222,7 +216,7 @@ export default function AgentDashboard() {
       // Check for today's attendance and auto-generate Late Login outage if needed
       const todayStr = getTodayEST();
       const todayAttendance = weekAttendance.find(
-        (d) => format(d.date, 'yyyy-MM-dd') === todayStr
+        (d) => d.dayKey === todayStr
       );
       
       // If today's status is "late" and there's a login time, auto-generate outage request
@@ -264,8 +258,8 @@ export default function AgentDashboard() {
       const { data: tag } = await getAgentTagByEmail(profileResult.data.email);
       
       // Determine the appropriate day to fetch data for (shared across branches)
-      const now = new Date();
-      const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      // Use stable EST date for week comparison
+      const todayEST = parseDateStringLocal(getTodayEST());
       const currentWeekStart = startOfWeek(todayEST, { weekStartsOn: 1 });
       const isCurrentWeek = format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
       
@@ -291,7 +285,7 @@ export default function AgentDashboard() {
       } else {
         // No tag, get portal hours from the attendance for the selected day
         const dayStr = format(defaultDay, 'yyyy-MM-dd');
-        const dayAttendance = weekAttendance.find((d) => format(d.date, 'yyyy-MM-dd') === dayStr);
+        const dayAttendance = weekAttendance.find((d) => d.dayKey === dayStr);
         setPortalHours(dayAttendance?.hoursWorkedMinutes ? dayAttendance.hoursWorkedMinutes / 60 : null);
         setPortalLoginTime(dayAttendance?.loginTime || null);
       }
@@ -451,8 +445,8 @@ export default function AgentDashboard() {
   const handleWeekChange = (date: Date) => {
     setSelectedDate(date);
     
-    const now = new Date();
-    const todayEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    // Use stable EST date for week comparison
+    const todayEST = parseDateStringLocal(getTodayEST());
     const newWeekStart = startOfWeek(date, { weekStartsOn: 1 });
     const newWeekEnd = endOfWeek(date, { weekStartsOn: 1 });
     
@@ -680,6 +674,38 @@ export default function AgentDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Admin-only Debug Card (temporary — remove after verification) */}
+        {isAdmin && (
+          <Collapsible>
+            <Card className="border-dashed border-yellow-500/50">
+              <CardHeader className="pb-2">
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer w-full">
+                  <Bug className="h-4 w-4" />
+                  <span>Debug (Admins Only)</span>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="text-xs font-mono space-y-1">
+                  <p><strong>Viewer TZ:</strong> {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+                  <p><strong>selectedDate:</strong> {selectedDate.toString()} → {format(selectedDate, 'yyyy-MM-dd')}</p>
+                  <p><strong>weekStart:</strong> {format(weekStart, 'yyyy-MM-dd')}</p>
+                  <p><strong>weekEnd:</strong> {format(weekEnd, 'yyyy-MM-dd')}</p>
+                  <p><strong>dataSource:</strong> {dataSource}</p>
+                  <p><strong>selectedDay:</strong> {format(selectedDay, 'yyyy-MM-dd')}</p>
+                  <p><strong>Attendance ({attendance.length} rows):</strong></p>
+                  <div className="pl-2 space-y-0.5">
+                    {attendance.slice(0, 7).map((a, i) => (
+                      <p key={i}>
+                        {a.dayKey} | {a.status} | login: {a.loginTime || '—'} | mins: {a.hoursWorkedMinutes ?? '—'}
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+        )}
 
         {/* Profile Header */}
         <ProfileHeader profile={profile} />
