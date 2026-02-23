@@ -1,50 +1,73 @@
 
 
-## Build Volume & Demand Page
+## Volume & Demand - New Implementation Plan
 
 ### Overview
 
-Replace the placeholder "Coming Soon" page at `/operations/reports/volume` with a fully functional Volume & Demand analytics dashboard. This page will visualize daily ticket volumes from both Zendesk instances (ZD1 and ZD2), broken down by channel (Email, Chat, Call), using your existing `ticket_logs` and `call_count_daily` data.
+Completely rework the Volume & Demand page to query the **Zendesk Search API** directly (live) instead of using the `ticket_logs` database table. The page will show two side-by-side instance cards (ZD1 and ZD2), each displaying the count of currently unresolved tickets broken down by channel tags.
 
-### What the Page Will Show
+### What It Will Look Like
 
-1. **Summary Cards** -- Total tickets for the selected period, broken down by channel (Email, Chat, Call), plus a daily average
-2. **Daily Volume Bar Chart** -- Stacked bar chart (recharts) showing daily ticket counts by channel, with both instances combined or filtered
-3. **Instance Comparison** -- Side-by-side cards showing ZD1 vs ZD2 totals for the selected period
-4. **Channel Distribution** -- Pie/donut chart showing the percentage split across Email, Chat, and Call
-5. **Daily Data Table** -- Tabular breakdown of each day's counts (date, email, chat, call, total)
+Two cards side by side (similar to Zendesk Insights layout):
 
-### Filters/Controls
+```text
++---------------------------+    +---------------------------+
+|  ZD1                      |    |  ZD2                      |
+|  Total: 245               |    |  Total: 189               |
+|                           |    |                           |
+|  Email: 120  (avg: 17/d)  |    |  Email: 95   (avg: 14/d)  |
+|  Chat:  80   (avg: 11/d)  |    |  Chat:  64   (avg: 9/d)   |
+|  Call:  45   (avg: 6/d)   |    |  Call:  30   (avg: 4/d)   |
++---------------------------+    +---------------------------+
+```
 
-- **Instance Selector**: "Both", "ZD1 Only", or "ZD2 Only"
-- **Date Range**: Rolling 2-week window (default, matching Ticket Logs), with option to pick custom start/end dates
-- **Channel Filter**: All, Email, Chat, Call
+### Data Source & Logic
 
-### Data Source
+- **Total Tickets**: Zendesk Search API query for tickets with `status:new OR status:open OR status:pending OR status:hold` (excludes Solved and Closed), created within the selected date range
+- **Email**: Tickets with tag `emails`
+- **Chat**: Tickets with tag `chat`
+- **Call**: Tickets with tag `voice`
+- **Daily Average**: Total count divided by the number of days in the selected date range (e.g., if range is Feb 23-Mar 1 but today is Feb 23, average = total / 1)
 
-All data comes from the existing `ticket_logs` table (queried directly via the client library) plus `call_count_daily` for ZD1 call counts. No new database tables, edge functions, or API calls needed.
+### Default Date Range
 
-### Implementation Details
+Current work week (Monday to Sunday), using the portal clock for consistency.
 
-**File modified:**
-- `src/pages/operations/VolumeDemand.tsx` -- Complete rewrite from placeholder to full dashboard
+### Daily Average Calculation
 
-**Key technical choices:**
-- Uses `@tanstack/react-query` for data fetching (consistent with ZendeskInsights pattern)
-- Uses `recharts` `BarChart` for the daily volume chart and `PieChart` for channel distribution
-- Queries `ticket_logs` grouped by date and ticket_type with EST timezone casting
-- Merges `call_count_daily` data for ZD1 call counts (same logic as `get_ticket_dashboard_data`)
-- Uses existing UI components: `Card`, `Select`, `Badge`, `Skeleton`
-- Uses `date-fns` for date manipulation, `date-picker` for custom range selection
-- Responsive grid layout: summary cards on top, chart below, table at bottom
+Divide by the **actual number of days in the selected range**, capped at today. For example:
+- Range Feb 23 to Mar 1, today is Feb 23 --> divide by 1
+- Range Feb 16 to Feb 22 (past week) --> divide by 7
+- Range Feb 16 to Feb 20 --> divide by 5
 
-**No database changes needed** -- this is a read-only frontend page using existing tables.
+---
 
-### Step-by-Step
+### Technical Details
 
-We will implement this in a single step since it's one file (`VolumeDemand.tsx`). The page will:
+**Step 1: Create new edge function `fetch-volume-demand`**
 
-1. Query `ticket_logs` with date range + instance filters, grouping by date and ticket_type
-2. Query `call_count_daily` for ZD1 call data in the same range
-3. Merge the results into a daily breakdown array
-4. Render summary cards, bar chart, pie chart, and data table
+This edge function will:
+- Accept `zdInstance` ("ZD1" or "ZD2"), `startDate`, and `endDate`
+- Run 4 Zendesk Search API queries (paginated, no limit):
+  1. Total unresolved: `type:ticket status<solved created>={startDate} created<={endDate}`
+  2. Email: same + `tags:emails`
+  3. Chat: same + `tags:chat`
+  4. Call: same + `tags:voice`
+- Return `{ total, email, chat, call }` counts
+- Uses existing secrets `ZENDESK_API_TOKEN_ZD1`, `ZENDESK_API_TOKEN_ZD2`, and `ZENDESK_ADMIN_EMAIL`
+- Reuses the same paginated search pattern from `fetch-zendesk-insights`
+
+**Step 2: Rewrite `src/pages/operations/VolumeDemand.tsx`**
+
+- Remove all `ticket_logs` / `call_count_daily` queries, bar charts, pie charts, and daily breakdown table
+- Add two side-by-side instance cards (ZD1 and ZD2) using `useQuery` to call the edge function
+- Each card shows: Total, Email (+ daily avg), Chat (+ daily avg), Call (+ daily avg)
+- Default date range: current week (Mon-Sun) with a date range picker
+- Daily average = count / number of days in range (capped at today)
+- Loading skeletons and error handling consistent with ZendeskInsights page
+- Refresh button per card to force re-fetch
+
+**Files changed:**
+- `supabase/functions/fetch-volume-demand/index.ts` (new edge function)
+- `src/pages/operations/VolumeDemand.tsx` (complete rewrite)
+
