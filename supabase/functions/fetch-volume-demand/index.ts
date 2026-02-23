@@ -9,8 +9,6 @@ interface ZendeskConfig {
   email: string;
 }
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig | null {
   const token = Deno.env.get(instance === 'ZD1' ? 'ZENDESK_API_TOKEN_ZD1' : 'ZENDESK_API_TOKEN_ZD2');
   const email = Deno.env.get('ZENDESK_ADMIN_EMAIL');
@@ -23,32 +21,51 @@ function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig | null {
   };
 }
 
-/**
- * Count total results for a Zendesk search query by paginating through all pages.
- * We only need the count, not individual ticket data.
- */
-async function countSearchResults(config: ZendeskConfig, query: string): Promise<number> {
-  // First page gives us the total count directly
-  const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=1&page=1`;
+async function zdFetch(config: ZendeskConfig, url: string) {
   const response = await fetch(url, {
     headers: {
       'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
       'Content-Type': 'application/json',
     },
   });
-
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Search failed: ${response.status} - ${errorText}`);
-    throw new Error(`Zendesk search failed: ${response.status}`);
+    console.error(`Zendesk API failed: ${response.status} - ${errorText}`);
+    throw new Error(`Zendesk API failed: ${response.status}`);
   }
+  return response.json();
+}
 
-  const data = await response.json();
-  // Zendesk search returns a "count" field with the total number of results
+/**
+ * Count total results for a Zendesk search query.
+ */
+async function countSearchResults(config: ZendeskConfig, query: string): Promise<number> {
+  const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=1&page=1`;
+  const data = await zdFetch(config, url);
   const total = data.count ?? 0;
   console.log(`Query: "${query}" => count: ${total}`);
   return total;
 }
+
+interface OldestTicket {
+  id: number;
+  created_at: string;
+}
+
+/**
+ * Find the oldest ticket matching a query (sorted by created asc, limit 1).
+ */
+async function findOldestTicket(config: ZendeskConfig, query: string): Promise<OldestTicket | null> {
+  const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&sort_by=created_at&sort_order=asc&per_page=1&page=1`;
+  const data = await zdFetch(config, url);
+  if (data.results && data.results.length > 0) {
+    const ticket = data.results[0];
+    return { id: ticket.id, created_at: ticket.created_at };
+  }
+  return null;
+}
+
+const STATUS_KEYS = ['new', 'open', 'pending', 'hold'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -78,21 +95,46 @@ Deno.serve(async (req) => {
     // Base query: unresolved tickets (status < solved) created in date range
     const baseQuery = `type:ticket status<solved created>=${startDate} created<=${endDate}`;
 
-    // Run 4 queries in parallel: total, email (tag:emails), chat (tag:chat), call (tag:voice)
-    const [total, emailCount, chatCount, callCount] = await Promise.all([
-      countSearchResults(config, baseQuery),
-      countSearchResults(config, `${baseQuery} tags:emails`),
-      countSearchResults(config, `${baseQuery} tags:chat`),
-      countSearchResults(config, `${baseQuery} tags:voice`),
-    ]);
+    // Build all queries in parallel:
+    // 1) Total + channel counts (4 queries)
+    // 2) Per-status counts (4 queries)
+    // 3) Per-status oldest ticket (4 queries)
+    const promises: Promise<any>[] = [
+      // Original channel queries
+      countSearchResults(config, baseQuery),                        // 0: total
+      countSearchResults(config, `${baseQuery} tags:emails`),       // 1: email
+      countSearchResults(config, `${baseQuery} tags:chat`),         // 2: chat
+      countSearchResults(config, `${baseQuery} tags:voice`),        // 3: call
+    ];
+
+    // Status count queries (no date filter — we want ALL unresolved per status)
+    for (const status of STATUS_KEYS) {
+      promises.push(countSearchResults(config, `type:ticket status:${status} created>=${startDate} created<=${endDate}`));
+    }
+
+    // Oldest ticket per status (no date filter — oldest across all time for that status)
+    for (const status of STATUS_KEYS) {
+      promises.push(findOldestTicket(config, `type:ticket status:${status}`));
+    }
+
+    const results = await Promise.all(promises);
+
+    const statuses: Record<string, { count: number; oldest: OldestTicket | null }> = {};
+    STATUS_KEYS.forEach((status, i) => {
+      statuses[status] = {
+        count: results[4 + i] as number,
+        oldest: results[8 + i] as OldestTicket | null,
+      };
+    });
 
     return new Response(
       JSON.stringify({
         zdInstance,
-        total,
-        email: emailCount,
-        chat: chatCount,
-        call: callCount,
+        total: results[0],
+        email: results[1],
+        chat: results[2],
+        call: results[3],
+        statuses,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
