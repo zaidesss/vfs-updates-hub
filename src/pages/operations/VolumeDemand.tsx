@@ -223,33 +223,68 @@ function InstanceCard({
               <p className="text-3xl font-bold text-foreground">{data.total.toLocaleString()}</p>
             </div>
 
-            {/* Channel Breakdown */}
-            <div className="space-y-3 border-t pt-3">
-              <ChannelRow icon={<Mail className="h-4 w-4" />} label="Email" count={data.email} avg={avg(data.email)} colorClass="text-primary" />
-              <ChannelRow icon={<MessageSquare className="h-4 w-4" />} label="Chat" count={data.chat} avg={avg(data.chat)} colorClass="text-warning" />
-              <ChannelRow icon={<Phone className="h-4 w-4" />} label="Call" count={data.call} avg={avg(data.call)} colorClass="text-blue-500" />
-            </div>
+            {/* Channel Breakdown with per-channel status details */}
+            <div className="space-y-4 border-t pt-3">
+              {([
+                { channelKey: 'email', icon: <Mail className="h-4 w-4" />, label: 'Email', count: data.email, colorClass: 'text-primary' },
+                { channelKey: 'chat', icon: <MessageSquare className="h-4 w-4" />, label: 'Chat', count: data.chat, colorClass: 'text-warning' },
+                { channelKey: 'call', icon: <Phone className="h-4 w-4" />, label: 'Call', count: data.call, colorClass: 'text-blue-500' },
+              ] as const).map(({ channelKey, icon, label: chLabel, count: chCount, colorClass: chColor }) => (
+                <div key={channelKey}>
+                  <div className="flex items-center justify-between">
+                    <div className={cn('flex items-center gap-2 text-sm font-medium', chColor)}>
+                      {icon}
+                      {chLabel}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-lg font-semibold text-foreground">{chCount.toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground ml-2">({avg(chCount)}/d)</span>
+                    </div>
+                  </div>
 
-            {/* Status Breakdown */}
-            {data.statuses && (
-              <div className="space-y-3 border-t pt-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">By Status</p>
-                {STATUS_CONFIG.map(({ key, label: statusLabel, colorClass }) => {
-                  const info = data.statuses![key];
-                  if (!info) return null;
-                  return (
-                    <StatusRow
-                      key={key}
-                      label={statusLabel}
-                      count={info.count}
-                      channels={info.channels}
-                      colorClass={colorClass}
-                      subdomain={subdomain}
-                    />
-                  );
-                })}
-              </div>
-            )}
+                  {/* Per-status breakdown for this channel */}
+                  {data.statuses && (
+                    <div className="grid grid-cols-4 gap-2 mt-2 pl-6">
+                      {STATUS_CONFIG.map(({ key, label: statusLabel, colorClass }) => {
+                        const detail = data.statuses![key]?.channels?.[channelKey as 'email' | 'chat' | 'call'];
+                        if (!detail) return <div key={key} />;
+                        return (
+                          <div key={key} className="space-y-0.5">
+                            <div className="flex items-center gap-1">
+                              <Circle className={cn('h-2.5 w-2.5 fill-current', colorClass)} />
+                              <span className="text-xs font-medium text-foreground">{statusLabel}</span>
+                            </div>
+                            {detail.oldest ? (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(detail.oldest.created_at), 'MMM d, yyyy')}
+                                </p>
+                                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
+                                <a
+                                  href={`https://${subdomain}.zendesk.com/agent/tickets/${detail.oldest.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
+                                >
+                                  #{detail.oldest.id}
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs text-muted-foreground">—</p>
+                                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
+                                <p className="text-xs text-muted-foreground">—</p>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
       </CardContent>
@@ -257,99 +292,6 @@ function InstanceCard({
   );
 }
 
-function StatusRow({
-  label,
-  count,
-  channels,
-  colorClass,
-  subdomain,
-}: {
-  label: string;
-  count: number;
-  channels: { email: ChannelDetail; chat: ChannelDetail; call: ChannelDetail };
-  colorClass: string;
-  subdomain: string;
-}) {
-  const channelEntries: { key: string; icon: React.ReactNode; detail: ChannelDetail; iconColor: string }[] = [
-    { key: 'email', icon: <Mail className="h-3 w-3" />, detail: channels?.email ?? { count: 0, oldest: null }, iconColor: 'text-primary' },
-    { key: 'chat', icon: <MessageSquare className="h-3 w-3" />, detail: channels?.chat ?? { count: 0, oldest: null }, iconColor: 'text-warning' },
-    { key: 'call', icon: <Phone className="h-3 w-3" />, detail: channels?.call ?? { count: 0, oldest: null }, iconColor: 'text-blue-500' },
-  ];
-
-  return (
-    <div className="space-y-1.5">
-      {/* Status header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Circle className={cn('h-3 w-3 fill-current', colorClass)} />
-          <span className="text-sm font-medium text-foreground">{label}</span>
-        </div>
-        <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
-      </div>
-
-      {/* Channel columns */}
-      <div className="grid grid-cols-3 gap-2 pl-5">
-        {channelEntries.map(({ key, icon, detail, iconColor }) => (
-          <div key={key} className="space-y-0.5">
-            <div className={cn('flex items-center gap-1 text-xs font-medium', iconColor)}>
-              {icon}
-            </div>
-            {detail.oldest ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {format(new Date(detail.oldest.created_at), 'MMM d, yyyy')}
-                </p>
-                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
-                <a
-                  href={`https://${subdomain}.zendesk.com/agent/tickets/${detail.oldest.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
-                >
-                  #{detail.oldest.id}
-                  <ExternalLink className="h-2.5 w-2.5" />
-                </a>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-muted-foreground">—</p>
-                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">—</p>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ChannelRow({
-  icon,
-  label,
-  count,
-  avg,
-  colorClass,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  avg: number;
-  colorClass: string;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className={cn('flex items-center gap-2 text-sm font-medium', colorClass)}>
-        {icon}
-        {label}
-      </div>
-      <div className="text-right">
-        <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
-        <span className="text-xs text-muted-foreground ml-2">({avg}/d)</span>
-      </div>
-    </div>
-  );
-}
 
 function DateRangePicker({
   startDate,
