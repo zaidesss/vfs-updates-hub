@@ -1,36 +1,65 @@
 
 
-## Add Team Lead Filter to Manage Agent Profiles
+## Add "Operations" Menu with Reports and AI Sub-menus
 
 ### What Changes
 
-Add a "Team Lead" dropdown filter to the agent list in the Manage Profiles page. When a Team Lead logs in and views All Bios, the list automatically filters to show only their agents. HR and Super Admin roles see all agents by default (no auto-filter).
+A new top-level dropdown menu called **Operations** will be added to the navbar, positioned between **Team Performance** and **Admin**. It will contain two sub-groups mirroring the Eazey Portal:
 
-### How It Works
+**Reports sub-items:**
+- Volume and Demand
+- Responsiveness
+- Workload
+- Contact Reasons
+- 4-Week Comparison
+- Capacity Planning
 
-1. On page load, check if the logged-in user is a Team Lead (using `getAgentInfoByEmail` from `agentDirectory.ts` -- if their `position === 'Team Lead'`, they are one)
-2. If they are a Team Lead, auto-set the filter to their name (from the directory)
-3. Show a "Team Lead" dropdown filter above or next to the search bar, populated with all unique team leads via `getUniqueTeamLeads()`
-4. Include an "All" option so team leads can clear the filter and browse everyone
-5. HR (`isHR`) and Super Admin (`isSuperAdmin`) skip the auto-filter -- they see all agents by default
+**AI sub-items:**
+- AI Recommendations
 
-### Implementation
+All 7 items will link to placeholder pages for now (simple "Coming Soon" style pages).
 
-**File: `src/pages/ManageProfiles.tsx`**
+### Possible Considerations
 
-- Import `getAgentInfoByEmail` and `getUniqueTeamLeads` from `@/lib/agentDirectory`
-- Add state: `teamLeadFilter` (string, defaults to `''` meaning "All")
-- In a `useEffect`, check if the current user is a Team Lead and not HR/Super Admin. If so, set `teamLeadFilter` to their name
-- Update `filteredUsers` to also filter by `team_lead` field on the profile when `teamLeadFilter` is set
-- Add a Select dropdown in the `ProfilesGrid` component (next to the search input) for choosing the team lead filter
-- Pass the filter state and setter as new props to `ProfilesGrid`
+Before we proceed, here are things to think about:
+- **Access control**: Should Operations be visible to all users, or only admins/team leads? The current plan makes it visible to all (like Team Performance). We can restrict later.
+- **Route prefix**: All new routes will use `/operations/reports/...` and `/operations/ai/...` to keep them organized and separate from existing `/team-performance/` routes.
+- **The dropdown will show Reports and AI as labeled sections** within a single "Operations" dropdown (using separators/labels), matching the visual style of the screenshot where they appear as two distinct groups.
 
-### What the User Sees
+### Implementation Steps
 
-- **Team Lead user**: Opens All Bios and sees only their team members listed. A "Team Lead" dropdown shows their name pre-selected. They can switch to "All" to see everyone.
-- **HR / Super Admin user**: Opens All Bios and sees all agents. The dropdown defaults to "All". They can filter by any team lead if needed.
+**Step 1**: Create 7 placeholder page components in `src/pages/operations/`
+
+**Step 2**: Add routes in `src/App.tsx` for all 7 pages
+
+**Step 3**: Add the "Operations" nav group in `src/components/Layout.tsx` between Team Performance and Admin, with two visual sections (Reports and AI) using dropdown menu labels/separators
 
 ### Technical Details
 
-The filter matches `user.profile?.team_lead` against the selected team lead name. The agent directory lookup uses the logged-in user's email to determine if they are a Team Lead and what their display name is. No database changes are needed -- this is purely a frontend filter using existing profile data.
+**New files (7 placeholder pages):**
+- `src/pages/operations/VolumeDemand.tsx`
+- `src/pages/operations/Responsiveness.tsx`
+- `src/pages/operations/Workload.tsx`
+- `src/pages/operations/ContactReasons.tsx`
+- `src/pages/operations/FourWeekComparison.tsx`
+- `src/pages/operations/CapacityPlanning.tsx`
+- `src/pages/operations/AIRecommendations.tsx`
+
+Each placeholder page follows the existing pattern with `Layout` wrapper, title, and a "Coming Soon" message.
+
+**`src/App.tsx`** -- Add 7 new protected routes:
+```
+/operations/reports/volume
+/operations/reports/responsiveness
+/operations/reports/workload
+/operations/reports/contact-reasons
+/operations/reports/comparison
+/operations/reports/capacity
+/operations/ai/recommendations
+```
+
+**`src/components/Layout.tsx`** -- Add Operations group between Team Performance and Admin:
+- Uses `BarChart3` icon for the group (matching the screenshot's chart icon for Reports)
+- Uses `DropdownMenuLabel` and `DropdownMenuSeparator` to visually separate "Reports" and "AI" sections within one dropdown
+- Import `Sparkles` icon from lucide-react for the AI section label
 
