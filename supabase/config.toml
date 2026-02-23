@@ -155,3 +155,6 @@ verify_jwt = false
 
 [functions.fetch-call-counts]
 verify_jwt = false
+
+[functions.recover-autosolved-tickets]
+verify_jwt = false
