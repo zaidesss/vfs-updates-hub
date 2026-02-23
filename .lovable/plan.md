@@ -1,96 +1,60 @@
 
 
-## Fix: Consistent Attendance Display Across All Viewers
+## Fix: Shift Schedule Not Updating to "Present" After Login
 
-### Root Cause (Confirmed)
+### Problem
+When an agent logs in (either by clicking "Log In" on the dashboard or by opening the dashboard after logging in), the Shift Schedule table still shows "Pending" for today and all future days. The "Current Status" card correctly shows "Logged In," but the attendance table does not reflect it.
 
-Two bugs are causing different viewers to see different attendance:
+### Root Cause
 
-**Bug 1 -- Unstable date construction (the Sunday mismatch)**
-The dashboard initializes `selectedDate` using:
-```
-new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-```
-This converts a date to a locale string, then re-parses it with `new Date(string)`. Parsing rules differ across browsers/locales, which can shift the resulting date by ~1 day near midnight or DST boundaries. This causes `weekStart`/`weekEnd` to shift by a day for some viewers, making Sunday either appear in the wrong week or get misclassified.
+There are **two issues**:
 
-**Bug 2 -- Inconsistent `dayKey` format between live and snapshot paths**
-- Live attendance sets `dayKey` to 3-letter abbreviations (`'mon'`, `'tue'`, `'sun'`)
-- Snapshot attendance sets `dayKey` to date strings (`'2026-02-16'`)
-- UI comparisons use `a.dayKey === format(selectedDay, 'yyyy-MM-dd')` -- this **only matches snapshots**, never live data
-- This means OT quota lookups and day-specific data retrieval silently fail for live data
+1. **Race condition after status change**: When the user clicks "Log In," `handleStatusChange` calls `updateProfileStatus` (which inserts the LOGIN event into `profile_events`), then immediately calls `loadDashboardData()`. However, the re-fetch of `profile_events` may execute before the database has fully committed the INSERT, so the attendance calculation doesn't find the LOGIN event and marks today as "Pending."
 
-### Implementation Plan (Step by Step)
+2. **No real-time refresh**: If the user opens the dashboard after already being logged in from another session/page, the attendance loads once on mount. There's no mechanism to auto-refresh if the data was stale or if events arrive after the initial load.
 
-#### Step 1: Fix `dayKey` in `calculateAttendanceForWeek` (live path)
+### Proposed Fix (Step-by-Step)
 
-**File**: `src/lib/agentDashboardApi.ts`
-
-Change all `dayKey: day.key` assignments (lines ~1601, 1619, 1747, 1771, 1774) from the 3-letter abbreviation to the `yyyy-MM-dd` date string (`dateStr`), matching the snapshot format.
-
-Before: `dayKey: day.key`
-After: `dayKey: dateStr`
-
-This makes live and snapshot `dayKey` values use the same format, fixing all UI lookups.
-
-#### Step 2: Remove unstable `toLocaleString` date construction
+#### Step 1: Add a small delay before re-fetching after status change
 
 **File**: `src/pages/AgentDashboard.tsx`
 
-Replace the 4 occurrences of the unstable pattern with the existing `getTodayEST()` + `parseDateStringLocal()` utilities from `timezoneUtils.ts`:
+In `handleStatusChange`, after a successful status update, add a brief delay (500ms) before calling `loadDashboardData()` to give the database time to commit the event. This is the simplest fix for the race condition.
 
-- **Line 106-110** (selectedDate init): Use `parseDateStringLocal(getTodayEST())`
-- **Line 115-119** (selectedDay init): Use `parseDateStringLocal(getTodayEST())`
-- **Line 267-270** (isCurrentWeek check): Use `parseDateStringLocal(getTodayEST())`
-- **Line 454-465** (handleWeekChange): Use `parseDateStringLocal(getTodayEST())`
+Current (line ~496):
+```ts
+await loadDashboardData();
+```
 
-These utilities already exist and use `Intl.DateTimeFormat` which is stable across browsers.
+New:
+```ts
+await new Promise(resolve => setTimeout(resolve, 500));
+await loadDashboardData();
+```
 
-#### Step 3: Fix `todayAttendance` lookup to use `dayKey`
+#### Step 2: Enable realtime on `profile_events` and subscribe in the dashboard
+
+**Database migration**: Add `profile_events` to the realtime publication so we can listen for new events.
 
 **File**: `src/pages/AgentDashboard.tsx`
 
-Line 224-225 currently does:
-```ts
-const todayAttendance = weekAttendance.find(
-  (d) => format(d.date, 'yyyy-MM-dd') === todayStr
-);
-```
+Add a `useEffect` that subscribes to `profile_events` changes for the current `profileId`. When a new LOGIN or LOGOUT event is inserted, trigger `loadDashboardData()` to refresh the attendance table automatically.
 
-After Step 1, `dayKey` will be `yyyy-MM-dd`, so change to:
-```ts
-const todayAttendance = weekAttendance.find(
-  (d) => d.dayKey === todayStr
-);
-```
-
-Same fix for line 293-294:
-```ts
-const dayAttendance = weekAttendance.find((d) => d.dayKey === dayStr);
-```
-
-#### Step 4: Add admin-only debug card
-
-**File**: `src/pages/AgentDashboard.tsx`
-
-Add a collapsible debug card visible only to admins that shows:
-- Viewer's local timezone
-- `selectedDate` as toString() and as yyyy-MM-dd
-- `weekStart` / `weekEnd` as yyyy-MM-dd
-- `dataSource` (snapshot or live)
-- `selectedDay` as yyyy-MM-dd
-- First 7 attendance rows: dayKey, status, loginTime, hoursWorkedMinutes
-
-This is temporary -- will be removed once the fix is verified.
+This ensures:
+- If the user logs in from another tab/page, the dashboard updates
+- If a team lead views an agent's dashboard, it updates when the agent logs in
+- The Shift Schedule always reflects the latest status
 
 ### What This Does NOT Change
+- No changes to the attendance calculation logic
+- No changes to the date/timezone handling (the recent dayKey fix remains)
+- No changes to snapshot vs live logic
 
-- No backend/database changes required
-- No changes to snapshot logic or week boundary calculation
-- No new dependencies needed (existing `timezoneUtils.ts` utilities are sufficient)
-- `PortalClockContext` remains unchanged
-- Week anchoring (`ANCHOR_DATE`) remains unchanged
+### Technical Details
 
-### Verification
-
-After deploying, have the same three viewers (agent, team lead, admin) open the same agent's dashboard for the same week. The debug card will show whether all three see identical `weekStart`, `weekEnd`, `dataSource`, and attendance dayKeys.
+The realtime subscription will:
+- Listen for INSERT events on `profile_events` where `profile_id` matches
+- Filter for relevant event types (LOGIN, LOGOUT, OT_LOGIN, OT_LOGOUT)
+- Debounce re-fetches to avoid multiple rapid reloads
+- Clean up the subscription on unmount or when `profileId` changes
 
