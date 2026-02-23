@@ -90,9 +90,8 @@ Deno.serve(async (req) => {
 
     const baseQuery = `type:ticket status<solved created>=${startDate} created<=${endDate}`;
 
-    // Build all queries in parallel
     const promises: Promise<any>[] = [
-      // [0-3] Original channel queries
+      // [0-3] Total + channel counts
       countSearchResults(config, baseQuery),
       countSearchResults(config, `${baseQuery} tags:emails`),
       countSearchResults(config, `${baseQuery} tags:chat`),
@@ -104,29 +103,36 @@ Deno.serve(async (req) => {
       promises.push(countSearchResults(config, `type:ticket status:${status} created>=${startDate} created<=${endDate}`));
     }
 
-    // [8-11] Oldest ticket per status
-    for (const status of STATUS_KEYS) {
-      promises.push(findOldestTicket(config, `type:ticket status:${status}`));
-    }
-
-    // [12-23] Per-status per-channel counts (4 statuses × 3 channels)
+    // [8-19] Per-status per-channel counts (4×3)
     for (const status of STATUS_KEYS) {
       for (const tag of CHANNEL_TAGS) {
         promises.push(countSearchResults(config, `type:ticket status:${status} tags:${tag} created>=${startDate} created<=${endDate}`));
       }
     }
 
+    // [20-31] Per-status per-channel oldest tickets (4×3)
+    for (const status of STATUS_KEYS) {
+      for (const tag of CHANNEL_TAGS) {
+        promises.push(findOldestTicket(config, `type:ticket status:${status} tags:${tag}`));
+      }
+    }
+
     const results = await Promise.all(promises);
 
     const statuses: Record<string, any> = {};
-    STATUS_KEYS.forEach((status, i) => {
-      const channelBase = 12 + i * 3;
+    STATUS_KEYS.forEach((status, si) => {
+      const countBase = 8 + si * 3;
+      const oldestBase = 20 + si * 3;
+      const channels: Record<string, any> = {};
+      CHANNEL_NAMES.forEach((ch, ci) => {
+        channels[ch] = {
+          count: results[countBase + ci] as number,
+          oldest: results[oldestBase + ci] as OldestTicket | null,
+        };
+      });
       statuses[status] = {
-        count: results[4 + i] as number,
-        oldest: results[8 + i] as OldestTicket | null,
-        email: results[channelBase] as number,
-        chat: results[channelBase + 1] as number,
-        call: results[channelBase + 2] as number,
+        count: results[4 + si] as number,
+        channels,
       };
     });
 

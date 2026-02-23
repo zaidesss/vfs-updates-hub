@@ -18,12 +18,18 @@ interface OldestTicket {
   created_at: string;
 }
 
-interface StatusInfo {
+interface ChannelDetail {
   count: number;
   oldest: OldestTicket | null;
-  email: number;
-  chat: number;
-  call: number;
+}
+
+interface StatusInfo {
+  count: number;
+  channels: {
+    email: ChannelDetail;
+    chat: ChannelDetail;
+    call: ChannelDetail;
+  };
 }
 
 interface VolumeDemandResult {
@@ -236,13 +242,9 @@ function InstanceCard({
                       key={key}
                       label={statusLabel}
                       count={info.count}
-                      oldest={info.oldest}
+                      channels={info.channels}
                       colorClass={colorClass}
                       subdomain={subdomain}
-                      todayEST={todayEST}
-                      emailCount={info.email ?? 0}
-                      chatCount={info.chat ?? 0}
-                      callCount={info.call ?? 0}
                     />
                   );
                 })}
@@ -258,70 +260,65 @@ function InstanceCard({
 function StatusRow({
   label,
   count,
-  oldest,
+  channels,
   colorClass,
   subdomain,
-  todayEST,
-  emailCount,
-  chatCount,
-  callCount,
 }: {
   label: string;
   count: number;
-  oldest: OldestTicket | null;
+  channels: { email: ChannelDetail; chat: ChannelDetail; call: ChannelDetail };
   colorClass: string;
   subdomain: string;
-  todayEST: string;
-  emailCount: number;
-  chatCount: number;
-  callCount: number;
 }) {
-  const today = parseLocalDate(todayEST);
+  const channelEntries: { key: string; icon: React.ReactNode; detail: ChannelDetail; iconColor: string }[] = [
+    { key: 'email', icon: <Mail className="h-3 w-3" />, detail: channels?.email ?? { count: 0, oldest: null }, iconColor: 'text-primary' },
+    { key: 'chat', icon: <MessageSquare className="h-3 w-3" />, detail: channels?.chat ?? { count: 0, oldest: null }, iconColor: 'text-warning' },
+    { key: 'call', icon: <Phone className="h-3 w-3" />, detail: channels?.call ?? { count: 0, oldest: null }, iconColor: 'text-blue-500' },
+  ];
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-[100px]">
+    <div className="space-y-1.5">
+      {/* Status header */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <Circle className={cn('h-3 w-3 fill-current', colorClass)} />
           <span className="text-sm font-medium text-foreground">{label}</span>
         </div>
-        <div className="text-right flex-1">
-          <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
-          {oldest && (
-            <div className="text-xs text-muted-foreground mt-0.5">
-              <a
-                href={`https://${subdomain}.zendesk.com/agent/tickets/${oldest.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-primary hover:underline"
-              >
-                #{oldest.id}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              <span className="ml-1.5">
-                {format(new Date(oldest.created_at), 'MMM d, yyyy')}
-              </span>
-              <span className="ml-1 text-muted-foreground/70">
-                ({differenceInCalendarDays(today, new Date(oldest.created_at))}d ago)
-              </span>
-            </div>
-          )}
-        </div>
+        <span className="text-lg font-semibold text-foreground">{count.toLocaleString()}</span>
       </div>
-      {/* Channel sub-counts */}
-      <div className="flex items-center gap-3 pl-5 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Mail className="h-3 w-3 text-primary" />
-          {emailCount.toLocaleString()}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <MessageSquare className="h-3 w-3 text-warning" />
-          {chatCount.toLocaleString()}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Phone className="h-3 w-3 text-blue-500" />
-          {callCount.toLocaleString()}
-        </span>
+
+      {/* Channel columns */}
+      <div className="grid grid-cols-3 gap-2 pl-5">
+        {channelEntries.map(({ key, icon, detail, iconColor }) => (
+          <div key={key} className="space-y-0.5">
+            <div className={cn('flex items-center gap-1 text-xs font-medium', iconColor)}>
+              {icon}
+            </div>
+            {detail.oldest ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  {format(new Date(detail.oldest.created_at), 'MMM d, yyyy')}
+                </p>
+                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
+                <a
+                  href={`https://${subdomain}.zendesk.com/agent/tickets/${detail.oldest.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
+                >
+                  #{detail.oldest.id}
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">—</p>
+                <p className="text-sm font-semibold text-foreground">{detail.count.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">—</p>
+              </>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
