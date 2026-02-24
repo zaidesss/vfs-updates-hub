@@ -54,7 +54,7 @@ export interface CategorizedTeamMembers {
 }
 
 // Map position values to categories
-function categorizeByPosition(position: string | null): SupportCategory {
+function categorizeByPosition(position: string | null, fullName?: string): SupportCategory {
   if (!position) return 'other';
   
   const positionLower = position.toLowerCase().trim();
@@ -67,6 +67,7 @@ function categorizeByPosition(position: string | null): SupportCategory {
   if (positionLower === 'team lead') return 'teamLeads';
   if (positionLower === 'technical support') return 'techSupport';
   
+  console.warn(`[TeamStatus] Unknown position "${position}" for ${fullName || 'unknown'} — defaulting to "other"`);
   return 'other';
 }
 
@@ -95,7 +96,7 @@ function isWithinScheduleWindow(
   return false;
 }
 
-export async function fetchScheduledTeamMembers(): Promise<{
+export async function fetchScheduledTeamMembers(now?: Date): Promise<{
   categories: CategorizedTeamMembers;
   totalScheduled: number;
   totalOnline: number;
@@ -112,10 +113,10 @@ export async function fetchScheduledTeamMembers(): Promise<{
   };
 
   try {
-    // Get current EST day and time
-    const currentDayKey = getCurrentESTDayKey();
-    const currentTimeMinutes = getCurrentESTTimeMinutes();
-    const todayStr = getTodayEST();
+    // Get current EST day and time using injected clock (or fallback)
+    const currentDayKey = getCurrentESTDayKey(now);
+    const currentTimeMinutes = getCurrentESTTimeMinutes(now);
+    const todayStr = getTodayEST(now);
 
     // Fetch all active agent profiles (parallel queries)
     const [profilesResult, statusesResult, outagesResult] = await Promise.all([
@@ -289,7 +290,7 @@ export async function fetchScheduledTeamMembers(): Promise<{
     };
 
     allMembers.forEach(member => {
-      const category = categorizeByPosition(member.position);
+      const category = categorizeByPosition(member.position, member.fullName);
       categories[category].push(member);
     });
 

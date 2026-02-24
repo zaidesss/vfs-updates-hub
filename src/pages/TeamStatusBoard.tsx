@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
+import { usePortalClock } from '@/context/PortalClockContext';
 import { fetchScheduledTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
 import { StatusCard } from '@/components/team-status/StatusCard';
 import { ZendeskRealtimePanel } from '@/components/team-status/ZendeskRealtimePanel';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package } from 'lucide-react';
+import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package, Bug } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type SortOption = 'login' | 'name';
@@ -56,6 +57,7 @@ function CategorySection({ title, icon, members, showDashboardLink, sortBy }: Ca
 
 export default function TeamStatusBoard() {
   const { isAdmin, isHR, isSuperAdmin } = useAuth();
+  const { now } = usePortalClock();
   const isMobile = useIsMobile();
   
   const [categories, setCategories] = useState<CategorizedTeamMembers>({
@@ -72,6 +74,7 @@ export default function TeamStatusBoard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('login');
+  const [showDebug, setShowDebug] = useState(false);
 
   const canViewDashboards = isAdmin || isHR || isSuperAdmin;
 
@@ -79,17 +82,42 @@ export default function TeamStatusBoard() {
     setIsLoading(true);
     setError(null);
     
-    const result = await fetchScheduledTeamMembers();
-    
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setCategories(result.categories);
-      setTotalScheduled(result.totalScheduled);
-      setTotalOnline(result.totalOnline);
+    try {
+      const result = await fetchScheduledTeamMembers(now);
+      
+      if (!result) {
+        setError('No response from team status API');
+        console.error('[TeamStatus] fetchScheduledTeamMembers returned undefined');
+        return;
+      }
+      
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setCategories(result.categories);
+        setTotalScheduled(result.totalScheduled);
+        setTotalOnline(result.totalOnline);
+      }
+      
+      console.log('[TeamStatus] loadData result:', {
+        totalScheduled: result.totalScheduled,
+        totalOnline: result.totalOnline,
+        phone: result.categories.phoneSupport.length,
+        chat: result.categories.chatSupport.length,
+        email: result.categories.emailSupport.length,
+        hybrid: result.categories.hybridSupport.length,
+        leads: result.categories.teamLeads.length,
+        tech: result.categories.techSupport.length,
+        other: result.categories.other.length,
+        error: result.error,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(message);
+      console.error('[TeamStatus] loadData exception:', err);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -154,6 +182,33 @@ export default function TeamStatusBoard() {
 
         {/* Zendesk Real-Time Stats */}
         <ZendeskRealtimePanel />
+
+        {/* Admin Debug Panel (temporary) */}
+        {canViewDashboards && (
+          <div className="space-y-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+              className="text-xs text-muted-foreground"
+            >
+              <Bug className="h-3 w-3 mr-1" />
+              {showDebug ? 'Hide' : 'Show'} Debug Info
+            </Button>
+            {showDebug && (
+              <div className="rounded-lg border border-border bg-muted/50 p-4 text-xs font-mono space-y-1">
+                <p>totalScheduled: {totalScheduled} | totalOnline: {totalOnline}</p>
+                <p>phone: {categories.phoneSupport.length} | chat: {categories.chatSupport.length} | email: {categories.emailSupport.length}</p>
+                <p>hybrid: {categories.hybridSupport.length} | leads: {categories.teamLeads.length} | tech: {categories.techSupport.length} | other: {categories.other.length}</p>
+                <p>clock: {now.toLocaleTimeString()} EST</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-muted-foreground">Raw JSON</summary>
+                  <pre className="mt-1 max-h-48 overflow-auto text-[10px]">{JSON.stringify(categories, null, 2)}</pre>
+                </details>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Error State */}
         {error && (
