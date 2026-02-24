@@ -27,7 +27,7 @@ export type SupportType = typeof SUPPORT_TYPE_OPTIONS[number];
 export const UPWORK_CONTRACT_TYPE_OPTIONS = ['Hybrid', 'Emails', 'Chats'] as const;
 
 // Get defaults based on position
-export function getPositionDefaults(position: string | null): {
+export function getPositionDefaults(position: string | string[] | null): {
   supportType: string[];
   views: string[];
   ticketViewId: string | null;
@@ -36,7 +36,8 @@ export function getPositionDefaults(position: string | null): {
   showQuotaPhone: boolean;
   supportTypeEditable: boolean;
 } {
-  switch (position) {
+  const pos = Array.isArray(position) ? position[0] : position;
+  switch (pos) {
     case 'Hybrid Support':
       return {
         supportType: ['Email', 'Chat', 'Phone'],
@@ -112,7 +113,7 @@ export interface AgentProfile {
   home_address: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
-  position: string | null;
+  position: string[] | null;
   team_lead: string | null;
   clients: string | null;
   hourly_rate: number | null;
@@ -131,7 +132,7 @@ export interface AgentProfile {
   upwork_profile_url: string | null;
   upwork_username: string | null;
   upwork_contract_id: string | null;
-  upwork_contract_type: string | null;
+  upwork_contract_type: string[] | null;
   // Equipment
   headset_model: string | null;
   // Work setup (Super Admin only)
@@ -186,7 +187,7 @@ export interface AgentProfileInput {
   home_address?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
-  position?: string;
+  position?: string[];
   team_lead?: string;
   clients?: string;
   hourly_rate?: number | null;
@@ -205,7 +206,7 @@ export interface AgentProfileInput {
   upwork_profile_url?: string;
   upwork_username?: string;
   upwork_contract_id?: string;  // Added: Upwork Contract ID
-  upwork_contract_type?: string;  // Added: Upwork Contract Type (Hybrid/Emails/Chats)
+  upwork_contract_type?: string[];  // Added: Upwork Contract Type (Hybrid/Emails/Chats)
   // Equipment
   headset_model?: string;
   // Work setup (Super Admin only)

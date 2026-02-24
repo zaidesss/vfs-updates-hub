@@ -17,7 +17,7 @@ export interface AgentScheduleRow {
   email: string;
   agent_name: string | null;
   full_name: string | null;
-  position: string | null;
+  position: string[] | null;
   zendesk_instance: string | null;
   support_type: string[] | null;
   employment_status: string | null;
@@ -442,8 +442,9 @@ export type AgentGroup = {
 
 const POSITION_ORDER = ['Hybrid Support', 'Phone Support', 'Chat Support', 'Email Support'];
 
-function getPositionSortKey(position: string | null): number {
-  const idx = POSITION_ORDER.indexOf(position || '');
+function getPositionSortKey(position: string | string[] | null): number {
+  const pos = Array.isArray(position) ? position[0] : position;
+  const idx = POSITION_ORDER.indexOf(pos || '');
   return idx === -1 ? POSITION_ORDER.length : idx;
 }
 
@@ -456,7 +457,8 @@ export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
   const other: AgentScheduleRow[] = [];
 
   for (const agent of agents) {
-    const pos = agent.position || 'Unknown';
+    const posArr = agent.position || [];
+    const pos = Array.isArray(posArr) ? posArr[0] || 'Unknown' : posArr || 'Unknown';
     if (pos === 'Logistics') logistics.push(agent);
     else if (pos === 'Team Lead') teamLeads.push(agent);
     else if (pos === 'Technical Support') techSupport.push(agent);

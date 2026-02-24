@@ -214,7 +214,7 @@ export function IndividualAgentAnalytics() {
     }
 
     // Calculate quota
-    const pos = (profile.position || '').toLowerCase();
+    const pos = (Array.isArray(profile.position) ? profile.position.join(' ') : (profile.position || '')).toLowerCase();
     const quota = pos.includes('hybrid') 
       ? (profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0)
       : pos.includes('chat') 
@@ -374,7 +374,7 @@ export function IndividualAgentAnalytics() {
     const totalTickets = emailCount + chatCount + callCount;
 
     // Calculate quota
-    const pos = (profile.position || '').toLowerCase();
+    const pos = (Array.isArray(profile.position) ? profile.position.join(' ') : (profile.position || '')).toLowerCase();
     const dailyQuota = pos.includes('hybrid') 
       ? (profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0)
       : pos.includes('chat') 

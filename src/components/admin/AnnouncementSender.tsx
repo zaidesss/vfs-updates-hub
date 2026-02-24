@@ -92,7 +92,7 @@ export function AnnouncementSender() {
           const { count: c } = await supabase
             .from('agent_profiles')
             .select('*', { count: 'exact', head: true })
-            .eq('position', 'Team Lead');
+            .contains('position', ['Team Lead']);
           count = c || 0;
           break;
         }

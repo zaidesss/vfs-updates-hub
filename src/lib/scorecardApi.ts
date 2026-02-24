@@ -18,7 +18,7 @@ export interface AgentProfile {
   email: string;
   full_name: string | null;
   agent_name: string | null;
-  position: string | null;
+  position: string[] | null;
   employment_status: string | null;
   quota_email: number | null;
   quota_chat: number | null;
@@ -213,7 +213,7 @@ export async function fetchWeeklyScorecardDualRead(
             email: snapshot.agent_email,
             full_name: snapshot.agent_name,
             agent_name: snapshot.agent_name,
-            position: supportType,
+            position: [supportType],
             employment_status: null,
             quota_email: null,
             quota_chat: null,
@@ -261,12 +261,12 @@ export async function fetchEligibleAgents(supportType: string): Promise<AgentPro
     .from('agent_profiles')
     .select('id, email, full_name, agent_name, position, employment_status, quota_email, quota_chat, quota_phone, quota_ot_email, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
     .neq('employment_status', 'Terminated')
-    .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`)
+    .not('position', 'cs', `{"${EXCLUDED_POSITIONS.map(p => p).join('","')}"}`)
     .order('full_name');
     
   // Only filter by position if not 'all'
   if (supportType !== 'all') {
-    query = query.eq('position', supportType);
+    query = query.contains('position', [supportType]);
   }
 
   const { data, error } = await query;
@@ -582,7 +582,7 @@ export async function saveScorecard(
   const records = scorecards.map(sc => ({
     week_start: weekStart,
     week_end: weekEnd,
-    support_type: sc.agent.position || supportType, // Use agent's own position
+    support_type: Array.isArray(sc.agent.position) ? sc.agent.position[0] || supportType : sc.agent.position || supportType,
     agent_email: sc.agent.email.toLowerCase(),
     agent_name: sc.agent.full_name || sc.agent.agent_name,
     productivity: sc.productivity,
@@ -664,7 +664,7 @@ export async function fetchWeeklyScorecardRPC(
     const scorecards: AgentScorecard[] = [];
     
     for (const row of rpcData) {
-      const agentSupportType = row.agent_position || supportType;
+      const agentSupportType = (Array.isArray(row.agent_position) ? row.agent_position[0] : row.agent_position) || supportType;
       
       // Calculate scheduled days from day_off + schedules + overrides
       const agentOverrideDates = overrideDateMap.get(row.profile_id);
@@ -703,7 +703,7 @@ export async function fetchWeeklyScorecardRPC(
         email: row.agent_email,
         full_name: row.agent_name,
         agent_name: row.agent_name,
-        position: row.agent_position,
+        position: row.agent_position ? [row.agent_position] : null,
         employment_status: 'Active',
         quota_email: row.quota_email,
         quota_chat: row.quota_chat,
@@ -1027,7 +1027,7 @@ export async function fetchWeeklyScorecard(
 
     // Calculate ticket counts
     // Determine which support type to use for this agent's calculations
-    const agentSupportType = agent.position || supportType;
+    const agentSupportType = (Array.isArray(agent.position) ? agent.position[0] : agent.position) || supportType;
     
     const agentTickets = ticketLogs.filter(
       t => t.agent_email?.toLowerCase() === agentEmailLower
@@ -1240,7 +1240,7 @@ export async function triggerMetricsRefresh(
   const { data: agents, error: agentsError } = await supabase
     .from('agent_profiles')
     .select('email')
-    .eq('position', supportType)
+    .contains('position', [supportType])
     .neq('employment_status', 'Terminated')
     .not('zendesk_instance', 'is', null);
 

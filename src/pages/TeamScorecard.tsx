@@ -506,10 +506,11 @@ export default function TeamScorecard() {
   const showOtProductivity = isAllMode || supportType !== 'Logistics';
 
   // Get metric goal from DB config, with fallback to defaults
-  const getMetricGoal = (metricKey: string, agentPosition?: string | null): number => {
+  const getMetricGoal = (metricKey: string, agentPosition?: string | string[] | null): number => {
     // In 'all' mode, look up goal from agent's specific support type
     if (supportType === 'all' && agentPosition && allConfigs) {
-      const agentConfig = allConfigs[agentPosition];
+      const posKey = Array.isArray(agentPosition) ? agentPosition[0] : agentPosition;
+      const agentConfig = posKey ? allConfigs[posKey] : undefined;
       const configItem = agentConfig?.find(c => c.metric_key === metricKey);
       if (configItem?.goal) return configItem.goal;
     }
@@ -532,10 +533,10 @@ export default function TeamScorecard() {
   };
 
   // Check if metric applies to agent's support type
-  const metricApplies = (agentPosition: string | null, metricType: 'productivity' | 'callAht' | 'chatAht' | 'chatFrt' | 'qa' | 'revalida' | 'otProductivity' | 'orderEscalation'): boolean => {
+  const metricApplies = (agentPosition: string | string[] | null, metricType: 'productivity' | 'callAht' | 'chatAht' | 'chatFrt' | 'qa' | 'revalida' | 'otProductivity' | 'orderEscalation'): boolean => {
     if (!isAllMode) return true; // In specific mode, all shown columns apply
     
-    const pos = agentPosition || '';
+    const pos = Array.isArray(agentPosition) ? agentPosition[0] || '' : agentPosition || '';
     switch (metricType) {
       case 'productivity':
         return ['Hybrid Support', 'Email Support'].includes(pos);

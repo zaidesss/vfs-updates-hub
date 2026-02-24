@@ -91,7 +91,7 @@ export default function ManageProfilesPage() {
       home_address: profile?.home_address || '',
       emergency_contact_name: profile?.emergency_contact_name || '',
       emergency_contact_phone: profile?.emergency_contact_phone || '',
-      position: profile?.position || '',
+      position: profile?.position || [],
       team_lead: profile?.team_lead || '',
       clients: profile?.clients || '',
       hourly_rate: profile?.hourly_rate,

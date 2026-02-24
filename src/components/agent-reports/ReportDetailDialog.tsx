@@ -200,7 +200,7 @@ export function ReportDetailDialog({
         agent_name: report.agent_name,
         client_name: profile?.clients || 'Unknown',
         team_lead_name: profile?.team_lead || 'Unknown',
-        role: profile?.position || 'Unknown',
+        role: Array.isArray(profile?.position) ? profile.position[0] || 'Unknown' : profile?.position || 'Unknown',
         start_date: report.incident_date,
         start_time: startTime,
         end_time: endTime,

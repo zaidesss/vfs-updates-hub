@@ -45,7 +45,8 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
   
   const showSecondaryBadge = showOutageBadge && !isPendingOutage;
   
-  const positionStyle = member.position ? POSITION_BADGE[member.position] : null;
+  const posStr = Array.isArray(member.position) ? member.position[0] : member.position;
+  const positionStyle = posStr ? POSITION_BADGE[posStr] : null;
 
   return (
     <div className="relative overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -76,9 +77,9 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
               On {member.outageReason}
             </Badge>
           )}
-          {member.position && positionStyle && (
+          {posStr && positionStyle && (
             <Badge className={cn('font-medium', positionStyle.className)}>
-              {member.position}
+              {posStr}
             </Badge>
           )}
         </div>
