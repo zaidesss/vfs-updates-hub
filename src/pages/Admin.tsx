@@ -56,6 +56,7 @@ import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
 import { AnnouncementSender } from '@/components/admin/AnnouncementSender';
+import { BackfillManager } from '@/components/admin/BackfillManager';
 import { writeAuditLog } from '@/lib/auditLogApi';
 
 export default function Admin() {
@@ -1610,6 +1611,13 @@ export default function Admin() {
           description="This action cannot be undone. This will permanently delete the update and all associated acknowledgements and questions."
           itemName={updateToDelete ? `"${updateToDelete.title}"` : undefined}
         />
+
+        {/* Backfill Manager — SuperAdmin only */}
+        {isSuperAdmin && (
+          <div className="mt-8">
+            <BackfillManager />
+          </div>
+        )}
       </div>
     </Layout>
   );

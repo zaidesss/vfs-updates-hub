@@ -3330,6 +3330,92 @@ export type Database = {
         }
         Relationships: []
       }
+      zd_backfill_job_items: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: number
+          job_id: string
+          message: string | null
+          ticket_id: number
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: number
+          job_id: string
+          message?: string | null
+          ticket_id: number
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: number
+          job_id?: string
+          message?: string | null
+          ticket_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zd_backfill_job_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "zd_backfill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zd_backfill_jobs: {
+        Row: {
+          cursor_unix: number | null
+          dry_run: boolean | null
+          error: string | null
+          errors: number | null
+          finished_at: string | null
+          id: string
+          job_type: string
+          last_ticket_id: number | null
+          processed: number | null
+          skipped: number | null
+          started_at: string | null
+          status: string
+          updated: number | null
+          zendesk_instance_name: string
+        }
+        Insert: {
+          cursor_unix?: number | null
+          dry_run?: boolean | null
+          error?: string | null
+          errors?: number | null
+          finished_at?: string | null
+          id?: string
+          job_type: string
+          last_ticket_id?: number | null
+          processed?: number | null
+          skipped?: number | null
+          started_at?: string | null
+          status?: string
+          updated?: number | null
+          zendesk_instance_name: string
+        }
+        Update: {
+          cursor_unix?: number | null
+          dry_run?: boolean | null
+          error?: string | null
+          errors?: number | null
+          finished_at?: string | null
+          id?: string
+          job_type?: string
+          last_ticket_id?: number | null
+          processed?: number | null
+          skipped?: number | null
+          started_at?: string | null
+          status?: string
+          updated?: number | null
+          zendesk_instance_name?: string
+        }
+        Relationships: []
+      }
       zendesk_agent_metrics: {
         Row: {
           agent_email: string
