@@ -1532,8 +1532,8 @@ export function calculateAttendanceForWeek(
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
-    const isPast = isBefore(date, today);
-    const isToday = isEqual(date, today);
+    let isPast = isBefore(date, today);
+    let isToday = isEqual(date, today);
 
     // Check for coverage override for this day
     const override = overrideMap.get(dateStr);
@@ -1672,6 +1672,25 @@ export function calculateAttendanceForWeek(
 
     // 5. Find logout event for this date (with overnight shift awareness)
     const isOvernightShift = scheduleParsed && scheduleParsed.endMinutes < scheduleParsed.startMinutes;
+
+    // FIX: For overnight shifts (e.g. 10 PM - 4:30 AM), if the current EST time
+    // is between midnight and the shift end, the previous day's shift is still active.
+    // Treat it as "today" instead of "past" to avoid false No Logout / Absent OT.
+    if (isOvernightShift && isPast && !isToday) {
+      // Only apply to "yesterday" — the day immediately before today
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setHours(0, 0, 0, 0);
+      const isYesterday = isEqual(nextDay, today);
+      if (isYesterday) {
+        const currentESTMinutes = getCurrentESTTimeMinutes();
+        // If current time is before the shift's end time, the overnight shift is still running
+        if (currentESTMinutes < scheduleParsed.endMinutes) {
+          isPast = false;
+          isToday = true;
+        }
+      }
+    }
     // Find candidate logout on same day, then verify session pairing
     let candidateLogout = statusEvents.find((event) => {
       const eventDate = getESTDateFromTimestamp(event.created_at);
@@ -1729,8 +1748,29 @@ export function calculateAttendanceForWeek(
       let isEarlyOut = false;
       if (logoutForDay && scheduleParsed) {
         const logoutTimeMinutes = getTimeInESTMinutes(parseISO(logoutForDay.created_at));
-        // Early out if logged out before scheduled end time
-        isEarlyOut = logoutTimeMinutes < scheduleParsed.endMinutes;
+        if (isOvernightShift) {
+          // For overnight shifts (e.g. 10 PM - 4:30 AM, end = 270):
+          // Logout is early if it's before end AND it's in the post-midnight window (< endMinutes)
+          // OR if it's before midnight but too early (logged out during the first part of shift)
+          const loginTimeMinutes = getTimeInESTMinutes(loginTime);
+          // If logout is in the post-midnight portion, check against endMinutes
+          if (logoutTimeMinutes < scheduleParsed.endMinutes) {
+            // Logout before shift end in the AM portion — early out
+            isEarlyOut = true;
+          } else if (logoutTimeMinutes >= scheduleParsed.startMinutes) {
+            // Logout is in the PM portion (same night as login) — early out if they barely worked
+            // e.g. login 10 PM, logout 11 PM — that's early
+            isEarlyOut = true;
+          }
+          // If logoutTimeMinutes is between endMinutes and startMinutes, it's a normal logout
+          // (e.g. logout at 5 AM for a shift ending at 4:30 AM — not early)
+          if (logoutTimeMinutes >= scheduleParsed.endMinutes && logoutTimeMinutes < scheduleParsed.startMinutes) {
+            isEarlyOut = false;
+          }
+        } else {
+          // Normal shift: early out if logged out before scheduled end time
+          isEarlyOut = logoutTimeMinutes < scheduleParsed.endMinutes;
+        }
       }
 
       // Check for no logout (past day with login but no logout)

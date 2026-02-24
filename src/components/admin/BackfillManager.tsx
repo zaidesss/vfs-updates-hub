@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Progress } from '@/components/ui/progress';
 import { DatePicker, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { supabase } from '@/integrations/supabase/client';
-import { Play, Square, Loader2, RefreshCw, Database } from 'lucide-react';
+import { Play, Square, Loader2, RefreshCw, Database, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 
 interface BackfillJob {
@@ -246,6 +247,16 @@ export function BackfillManager() {
             </div>
           </div>
         </div>
+
+        {/* Navigation warning when running */}
+        {isRunning && (
+          <Alert variant="destructive" className="border-orange-500 bg-orange-50 text-orange-800 dark:bg-orange-950 dark:text-orange-200">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Backfill in progress</strong> — Do not navigate away from this page. The auto-chain will stop if you leave.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-3">
