@@ -1,0 +1,1 @@
+ALTER TABLE public.zd_backfill_jobs ADD COLUMN IF NOT EXISTS cursor_token TEXT;
