@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Progress } from '@/components/ui/progress';
 import { DatePicker, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { supabase } from '@/integrations/supabase/client';
-import { Play, Square, Loader2, RefreshCw, Database, AlertTriangle } from 'lucide-react';
+import { Play, Square, Loader2, RefreshCw, Database, AlertTriangle, RotateCw } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 
@@ -181,6 +181,48 @@ export function BackfillManager() {
     toast.info('Backfill stopped — will finish current batch');
   };
 
+  const resumeJob = async (job: BackfillJob) => {
+    setIsRunning(true);
+    chainRef.current = true;
+    abortRef.current = false;
+
+    setCurrentJob({ ...job, status: 'Running', finished_at: null });
+
+    try {
+      const result = await invokeBackfill({
+        mode: job.job_type,
+        start_time_unix: 0,
+        dry_run: job.dry_run,
+        job_id: job.id,
+        resume: true,
+      });
+
+      setCurrentJob(prev => prev ? {
+        ...prev,
+        status: result.status,
+        processed: result.processed,
+        updated: result.updated,
+        skipped: result.skipped,
+        errors: result.errors,
+        cursor_unix: result.cursor_unix,
+      } : prev);
+
+      if (result.has_more && chainRef.current && !abortRef.current) {
+        await autoChain(job.id, job.job_type, job.dry_run);
+      } else {
+        setIsRunning(false);
+        toast.success(`Backfill ${result.status}`, {
+          description: `Processed: ${result.processed}, Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors}`,
+        });
+      }
+    } catch (err: any) {
+      setIsRunning(false);
+      toast.error('Resume failed', { description: err.message });
+    }
+
+    loadJobs();
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       Running: 'default',
@@ -332,6 +374,7 @@ export function BackfillManager() {
                     <TableHead>Skipped</TableHead>
                     <TableHead>Errors</TableHead>
                     <TableHead>Dry Run</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -345,6 +388,14 @@ export function BackfillManager() {
                       <TableCell>{job.skipped}</TableCell>
                       <TableCell className={job.errors > 0 ? 'text-destructive' : ''}>{job.errors}</TableCell>
                       <TableCell>{job.dry_run ? 'Yes' : 'No'}</TableCell>
+                      <TableCell>
+                        {(job.status === 'Paused' || job.status === 'Running') && !isRunning && (
+                          <Button size="sm" variant="outline" onClick={() => resumeJob(job)}>
+                            <RotateCw className="h-3 w-3 mr-1" />
+                            Resume
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
