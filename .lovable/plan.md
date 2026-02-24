@@ -1,85 +1,67 @@
 
 
-## Fix Zendesk Realtime Panel: Replace Broken Messaging API + Align to Dashboard
+## Revised Plan: Use Support API for Messaging Stats
 
-### Problem Summary
+### Why the Previous Plan Won't Work
 
-The current edge function uses the **Sunshine Conversations API** to fetch messaging stats, but this API requires a `userId` parameter and cannot list all conversations globally. This is the wrong API for real-time aggregate stats. The correct API is the **Zendesk Real-Time Chat API** at `rtm.zopim.com`.
+Your Zendesk account uses **Messaging** (part of Zendesk Suite), not the standalone **Chat** product. The Real-Time Chat API at `rtm.zopim.com` requires a Chat OAuth token that can only be generated when the standalone Chat product is enabled. This is why you got the "Something went wrong" error.
 
-### What Needs to Change
+### New Approach
 
-#### Step 1: Get a Chat OAuth Access Token
+Instead of the Chat API, we will use the **Zendesk Support API** (which your existing `ZENDESK_API_TOKEN_ZD1` and `ZD2` tokens already support) to get messaging stats. This won't be a perfect 1:1 match to the Zendesk dashboard, but it will show meaningful live numbers.
 
-You will need a **Zendesk Chat OAuth access token** for each instance. Here is how to get one:
+#### What we will fetch
 
-1. Log in to your **Zendesk Admin Center**
-2. Go to **Apps and integrations** in the sidebar
-3. Select **APIs > Zendesk API**
-4. Click the **Chat API** tab (not Support API)
-5. Under **OAuth Clients**, click **Add OAuth Client**
-   - Give it a name like "Realtime Stats"
-   - Set redirect URL to `http://localhost`
-   - Save and note the **Client ID** and **Client Secret**
-6. Generate an access token using the token endpoint (I will provide you a helper or walk you through this)
-7. Repeat for ZD2 if it is a separate Chat account
+**Phone (Talk) -- unchanged:**
+- Agents Online, On Call, Calls in Queue, Callbacks in Queue (from Talk API, already working)
 
-I will prompt you for these tokens as new secrets:
-- `ZENDESK_CHAT_TOKEN_ZD1`
-- `ZENDESK_CHAT_TOKEN_ZD2`
+**Messaging -- new approach using Support API:**
+- **Active Conversations**: Count of open/pending tickets with channel = "messaging" (via Search API)
+- **Unassigned (In Queue)**: Count of open tickets with channel = "messaging" that have no assignee
+- **Assigned**: Active minus unassigned
 
-#### Step 2: Update the Edge Function
+This uses the Search API endpoint you already use elsewhere in the project (e.g., `fetch-volume-demand`).
 
-Replace the broken `fetchMessagingStats` function with calls to the Real-Time Chat API:
+#### Queries
 
-| Current (broken) | New (correct) |
-|---|---|
-| Sunshine Conversations `/v2/apps/{appId}/conversations` | Real-Time Chat API `rtm.zopim.com/stream/chats` and `/stream/agents` |
-| Requires userId -- cannot get global stats | Returns aggregate metrics: agents_online, active_chats, incoming_chats, waiting_time |
+For each ZD instance:
 
-The new function will call two endpoints:
-- `GET https://rtm.zopim.com/stream/chats` -- returns active_chats, incoming_chats (queue), waiting_time_avg, waiting_time_max
-- `GET https://rtm.zopim.com/stream/agents` -- returns agents_online count
+```text
+Active:     type:ticket status<solved channel:messaging
+In Queue:   type:ticket status:new channel:messaging
+```
 
-Authentication: `Authorization: Bearer {chat_oauth_token}`
+### Steps
 
-#### Step 3: Add Talk API Debug Logging (Temporary)
+**Step 1**: Update the edge function `fetch-zendesk-realtime/index.ts`:
+- Replace the broken `fetchMessagingStats` (Sunshine API) with Support API search queries
+- Remove all Sunshine API code and secret references
+- Add temporary debug logging for Talk API to investigate the 0-agent issue
 
-Add temporary logging to the Talk API call to verify what data is being returned, since it currently shows 0 even when your dashboard shows 1 agent online.
+**Step 2**: Update the TypeScript interface in `zendeskRealtimeApi.ts`:
+- Remove `assignees` array from `MessagingStats`
+- Keep `agentsOnline`, `activeConversations`, `conversationsInQueue`
 
-#### Step 4: Update the UI Panel
+**Step 3**: Update the UI panel `ZendeskRealtimePanel.tsx`:
+- Remove the per-assignee breakdown section
+- Update labels to match the new data (Active, In Queue, Assigned)
 
-Update the `ZendeskRealtimePanel` component to display the new metrics that align with your Zendesk dashboard:
+**Step 4**: Test and verify numbers appear
 
-**Phone section** (unchanged):
-- Agents Online, On Call, Calls in Queue, Callbacks in Queue
-
-**Messaging section** (updated to match dashboard):
-- Agents Online (from Chat API)
-- Active Conversations (active_chats)
-- In Queue (incoming_chats)
-- Avg Wait Time (waiting_time_avg, formatted as minutes)
-
-#### Step 5: Remove Sunshine Conversations Secrets (Cleanup)
-
-After confirming the new approach works, the 6 `SUNSHINE_*` secrets will no longer be needed for this feature.
+**Step 5**: Once confirmed working, remove the 6 `SUNSHINE_*` secrets (they are no longer needed)
 
 ### Technical Details
 
 **Files to modify:**
-- `supabase/functions/fetch-zendesk-realtime/index.ts` -- replace `fetchMessagingStats`, add Chat API calls, add Talk debug logging
-- `src/lib/zendeskRealtimeApi.ts` -- update `MessagingStats` interface to include wait time
-- `src/components/team-status/ZendeskRealtimePanel.tsx` -- update UI to show new metrics
+- `supabase/functions/fetch-zendesk-realtime/index.ts` -- replace messaging logic with Support API search
+- `src/lib/zendeskRealtimeApi.ts` -- simplify MessagingStats interface
+- `src/components/team-status/ZendeskRealtimePanel.tsx` -- update UI
 
-**New secrets needed:**
-- `ZENDESK_CHAT_TOKEN_ZD1`
-- `ZENDESK_CHAT_TOKEN_ZD2`
+**No new secrets needed** -- this approach uses the existing `ZENDESK_API_TOKEN_ZD1`, `ZENDESK_API_TOKEN_ZD2`, and `ZENDESK_ADMIN_EMAIL`.
 
-### Execution Order
+### Trade-offs
 
-1. I will first guide you through getting the Chat OAuth tokens
-2. Prompt you to enter them as secrets
-3. Update the edge function to use the correct API
-4. Update the UI panel
-5. Test and verify
-6. Remove debug logging once confirmed
+- Search API counts are near-real-time (may lag 1-2 minutes vs the Zendesk dashboard)
+- We cannot get "messaging agents online" count from the Support API -- we will show the active/queue breakdown instead
+- This approach is reliable and uses credentials you already have
 
