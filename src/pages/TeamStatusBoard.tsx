@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { fetchScheduledTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
 import { StatusCard } from '@/components/team-status/StatusCard';
+import { ZendeskRealtimePanel } from '@/components/team-status/ZendeskRealtimePanel';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
@@ -150,6 +151,9 @@ export default function TeamStatusBoard() {
            <PageGuideButton pageId="team-status" />
          </div>
        </div>
+
+        {/* Zendesk Real-Time Stats */}
+        <ZendeskRealtimePanel />
 
         {/* Error State */}
         {error && (
