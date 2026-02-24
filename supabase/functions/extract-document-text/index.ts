@@ -238,10 +238,14 @@ async function extractWithAI(
     );
   }
 
-  // Convert to base64 for the AI
-  const base64 = btoa(
-    String.fromCharCode(...new Uint8Array(buffer))
-  );
+  // Convert to base64 for the AI (chunked to avoid stack overflow)
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  const base64 = btoa(binary);
 
   const mimeType =
     fileType === "pdf"
