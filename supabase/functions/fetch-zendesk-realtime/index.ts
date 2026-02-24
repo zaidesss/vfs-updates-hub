@@ -74,7 +74,7 @@ async function fetchTalkStats(subdomain: string, token: string, email: string): 
 }
 
 async function fetchMessagingStats(
-  keyId: string, keySecret: string, appId: string
+  keyId: string, keySecret: string, appId: string, subdomain: string
 ): Promise<MessagingStats> {
   const auth = btoa(`${keyId}:${keySecret}`);
   const headers = {
@@ -82,13 +82,22 @@ async function fetchMessagingStats(
     'Content-Type': 'application/json',
   };
 
-  // Fetch open conversations
-  const url = `https://api.smooch.io/v2/apps/${appId}/conversations?filter[status]=open&page[size]=100`;
-  const res = await fetch(url, { headers });
+  // Try Zendesk-hosted Sunshine Conversations API first, fall back to smooch.io
+  const urls = [
+    `https://${subdomain}.zendesk.com/sc/v2/apps/${appId}/conversations?filter[status]=open&page[size]=100`,
+    `https://api.smooch.io/v2/apps/${appId}/conversations?filter[status]=open&page[size]=100`,
+  ];
 
-  if (!res.ok) {
+  let res: Response | null = null;
+  for (const url of urls) {
+    console.log(`Trying Sunshine URL: ${url}`);
+    res = await fetch(url, { headers });
+    if (res.ok) break;
     const errText = await res.text();
-    console.error(`Sunshine API failed for ${appId}: ${res.status} - ${errText}`);
+    console.error(`Sunshine API failed for ${url}: ${res.status} - ${errText}`);
+  }
+
+  if (!res || !res.ok) {
     return { agentsOnline: 0, activeConversations: 0, conversationsInQueue: 0, assignees: [] };
   }
 
@@ -136,24 +145,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const email = Deno.env.get('ZENDESK_ADMIN_EMAIL') || '';
-    const tokenZD1 = Deno.env.get('ZENDESK_API_TOKEN_ZD1') || '';
-    const tokenZD2 = Deno.env.get('ZENDESK_API_TOKEN_ZD2') || '';
+    const email = (Deno.env.get('ZENDESK_ADMIN_EMAIL') || '').trim();
+    const tokenZD1 = (Deno.env.get('ZENDESK_API_TOKEN_ZD1') || '').trim();
 
-    const sunshineKeyIdZD1 = Deno.env.get('SUNSHINE_KEY_ID_ZD1') || '';
-    const sunshineSecretZD1 = Deno.env.get('SUNSHINE_KEY_SECRET_ZD1') || '';
-    const sunshineAppIdZD1 = Deno.env.get('SUNSHINE_APP_ID_ZD1') || '';
+    const sunshineKeyIdZD1 = (Deno.env.get('SUNSHINE_KEY_ID_ZD1') || '').trim();
+    const sunshineSecretZD1 = (Deno.env.get('SUNSHINE_KEY_SECRET_ZD1') || '').trim();
+    const sunshineAppIdZD1 = (Deno.env.get('SUNSHINE_APP_ID_ZD1') || '').trim();
 
-    const sunshineKeyIdZD2 = Deno.env.get('SUNSHINE_KEY_ID_ZD2') || '';
-    const sunshineSecretZD2 = Deno.env.get('SUNSHINE_KEY_SECRET_ZD2') || '';
-    const sunshineAppIdZD2 = Deno.env.get('SUNSHINE_APP_ID_ZD2') || '';
+    const sunshineKeyIdZD2 = (Deno.env.get('SUNSHINE_KEY_ID_ZD2') || '').trim();
+    const sunshineSecretZD2 = (Deno.env.get('SUNSHINE_KEY_SECRET_ZD2') || '').trim();
+    const sunshineAppIdZD2 = (Deno.env.get('SUNSHINE_APP_ID_ZD2') || '').trim();
 
-    // Fetch all data in parallel
-    const [talkZD1, talkZD2, msgZD1, msgZD2] = await Promise.all([
+    // Debug: log key ID info (length + first/last 4 chars) to diagnose auth issues
+    console.log(`SUNSHINE_KEY_ID_ZD1: len=${sunshineKeyIdZD1.length}, start="${sunshineKeyIdZD1.slice(0, 4)}", end="${sunshineKeyIdZD1.slice(-4)}"`);
+    console.log(`SUNSHINE_KEY_ID_ZD2: len=${sunshineKeyIdZD2.length}, start="${sunshineKeyIdZD2.slice(0, 4)}", end="${sunshineKeyIdZD2.slice(-4)}"`);
+    console.log(`SUNSHINE_APP_ID_ZD1: "${sunshineAppIdZD1}"`);
+    console.log(`SUNSHINE_APP_ID_ZD2: "${sunshineAppIdZD2}"`);
+
+    // ZD2 does not have Talk — skip Talk API calls for ZD2
+    const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
+
+    // Fetch all data in parallel (Talk only for ZD1)
+    const [talkZD1, msgZD1, msgZD2] = await Promise.all([
       fetchTalkStats('customerserviceadvocates', tokenZD1, email),
-      fetchTalkStats('customerserviceadvocates2', tokenZD2, email),
-      fetchMessagingStats(sunshineKeyIdZD1, sunshineSecretZD1, sunshineAppIdZD1),
-      fetchMessagingStats(sunshineKeyIdZD2, sunshineSecretZD2, sunshineAppIdZD2),
+      fetchMessagingStats(sunshineKeyIdZD1, sunshineSecretZD1, sunshineAppIdZD1, 'customerserviceadvocates'),
+      fetchMessagingStats(sunshineKeyIdZD2, sunshineSecretZD2, sunshineAppIdZD2, 'customerserviceadvocates2'),
     ]);
 
     const result = {
