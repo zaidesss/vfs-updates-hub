@@ -156,12 +156,6 @@ Deno.serve(async (req) => {
     const sunshineSecretZD2 = (Deno.env.get('SUNSHINE_KEY_SECRET_ZD2') || '').trim();
     const sunshineAppIdZD2 = (Deno.env.get('SUNSHINE_APP_ID_ZD2') || '').trim();
 
-    // Debug: log key ID info (length + first/last 4 chars) to diagnose auth issues
-    console.log(`SUNSHINE_KEY_ID_ZD1: len=${sunshineKeyIdZD1.length}, start="${sunshineKeyIdZD1.slice(0, 4)}", end="${sunshineKeyIdZD1.slice(-4)}"`);
-    console.log(`SUNSHINE_KEY_ID_ZD2: len=${sunshineKeyIdZD2.length}, start="${sunshineKeyIdZD2.slice(0, 4)}", end="${sunshineKeyIdZD2.slice(-4)}"`);
-    console.log(`SUNSHINE_APP_ID_ZD1: "${sunshineAppIdZD1}"`);
-    console.log(`SUNSHINE_APP_ID_ZD2: "${sunshineAppIdZD2}"`);
-
     // ZD2 does not have Talk — skip Talk API calls for ZD2
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
