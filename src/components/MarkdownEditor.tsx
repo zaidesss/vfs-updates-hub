@@ -58,7 +58,82 @@ export function MarkdownEditor({
     }
   }, [value, onChange]);
 
-  // Clipboard paste handler for images
+  // Convert an HTML img src (base64 or blob) to an uploaded image URL
+  const uploadBase64Image = useCallback(async (src: string): Promise<string | null> => {
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+      const file = new File([blob], `pasted-image-${Date.now()}.${ext}`, { type: blob.type });
+      return await uploadImageFile(file);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Convert pasted HTML (e.g. from Word) to markdown with inline images
+  const htmlToMarkdownWithImages = useCallback(async (html: string): Promise<string> => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const results: string[] = [];
+
+    const processNode = async (node: Node): Promise<string> => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent || '';
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+      const el = node as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+
+      if (tag === 'img') {
+        const src = el.getAttribute('src');
+        if (src) {
+          const url = await uploadBase64Image(src);
+          if (url) return `\n\n![image](${url})\n\n`;
+        }
+        return '';
+      }
+
+      const childTexts: string[] = [];
+      for (const child of Array.from(el.childNodes)) {
+        childTexts.push(await processNode(child));
+      }
+      const inner = childTexts.join('');
+
+      if (tag === 'p' || tag === 'div') return inner.trim() ? `\n${inner.trim()}\n` : '';
+      if (tag === 'br') return '\n';
+      if (tag === 'strong' || tag === 'b') return `**${inner}**`;
+      if (tag === 'em' || tag === 'i') return `*${inner}*`;
+      if (tag === 'u') return inner;
+      if (tag === 'a') return `[${inner}](${el.getAttribute('href') || ''})`;
+      if (/^h[1-6]$/.test(tag)) {
+        const level = parseInt(tag[1]);
+        return `\n${'#'.repeat(level)} ${inner.trim()}\n`;
+      }
+      if (tag === 'li') return `- ${inner.trim()}`;
+      if (tag === 'ul' || tag === 'ol') return `\n${inner}\n`;
+      if (tag === 'table') {
+        // Basic table pass-through
+        return `\n${inner}\n`;
+      }
+      if (tag === 'tr') {
+        const cells = Array.from(el.querySelectorAll('td, th'));
+        const cellTexts = cells.map(c => (c as HTMLElement).textContent?.trim() || '');
+        return `| ${cellTexts.join(' | ')} |\n`;
+      }
+      if (tag === 'span') return inner;
+
+      return inner;
+    };
+
+    for (const child of Array.from(doc.body.childNodes)) {
+      results.push(await processNode(child));
+    }
+
+    return results.join('').replace(/\n{3,}/g, '\n\n').trim();
+  }, [uploadBase64Image]);
+
+  // Clipboard paste handler for images and rich content
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container) return;
@@ -66,6 +141,28 @@ export function MarkdownEditor({
     const handlePaste = async (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items || []);
       const imageItem = items.find(item => item.type.startsWith('image/'));
+      const htmlData = e.clipboardData?.getData('text/html') || '';
+
+      // Check if HTML contains embedded images (rich paste from Word, etc.)
+      if (htmlData && /<img\s/i.test(htmlData)) {
+        e.preventDefault();
+        setIsPasting(true);
+        try {
+          const markdown = await htmlToMarkdownWithImages(htmlData);
+          if (markdown) {
+            insertAtCursor(markdown);
+            toast({ title: 'Content pasted', description: 'Rich content with images converted to markdown.' });
+          }
+        } catch (err) {
+          console.error('Rich paste error:', err);
+          // Fallback to plain text
+          const plain = e.clipboardData?.getData('text/plain') || '';
+          if (plain) insertAtCursor(plain);
+        } finally {
+          setIsPasting(false);
+        }
+        return;
+      }
 
       // Check for pasted image URL text
       if (!imageItem) {
@@ -103,7 +200,7 @@ export function MarkdownEditor({
 
     container.addEventListener('paste', handlePaste);
     return () => container.removeEventListener('paste', handlePaste);
-  }, [insertAtCursor, toast]);
+  }, [insertAtCursor, toast, htmlToMarkdownWithImages]);
 
   // Parse content as Playbook JSON if possible
   const playbookData = useMemo<PlaybookArticle | null>(() => {
