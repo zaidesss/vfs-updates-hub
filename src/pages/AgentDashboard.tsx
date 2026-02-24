@@ -564,15 +564,48 @@ export default function AgentDashboard() {
     if (restartExceededNotifiedRef.current || !profile) return;
     restartExceededNotifiedRef.current = true;
     
+    const agentEmail = profile.email;
+    const agentName = profile.full_name || profile.agent_name || profile.email;
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
     try {
-      await supabase.functions.invoke('send-status-alert-notification', {
-        body: {
-          agentEmail: profile.email,
-          agentName: profile.full_name || profile.agent_name || profile.email,
-          alertType: 'EXCESSIVE_RESTART',
+      // Check for existing EXCESSIVE_RESTARTS report today
+      const { data: existingReport } = await supabase
+        .from('agent_reports')
+        .select('id')
+        .eq('agent_email', agentEmail.toLowerCase())
+        .eq('incident_date', todayStr)
+        .eq('incident_type', 'EXCESSIVE_RESTARTS')
+        .maybeSingle();
+
+      if (!existingReport) {
+        // Create report first — only notify if insert succeeds
+        const { error: insertError } = await supabase.from('agent_reports').insert({
+          agent_email: agentEmail.toLowerCase(),
+          agent_name: agentName,
+          profile_id: profile.id,
+          incident_date: todayStr,
+          incident_type: 'EXCESSIVE_RESTARTS',
+          severity: 'medium',
           details: { elapsedSeconds: 300 },
-        },
-      });
+          status: 'open',
+        });
+
+        if (insertError) {
+          console.error(`[COMPLIANCE] Failed to insert EXCESSIVE_RESTARTS report for ${agentEmail}:`, insertError.message);
+          return;
+        }
+
+        await supabase.functions.invoke('send-status-alert-notification', {
+          body: {
+            agentEmail,
+            agentName,
+            alertType: 'EXCESSIVE_RESTART',
+            details: { elapsedSeconds: 300 },
+          },
+        });
+      }
     } catch (err) {
       console.error('Failed to send restart alert:', err);
     }
@@ -625,8 +658,8 @@ export default function AgentDashboard() {
         const bioAllowanceSeconds = (bioAllowance ?? 4) * 60;
         const overageSeconds = Math.max(0, totalBioSeconds - bioAllowanceSeconds);
 
-        // Create report with full details
-        await supabase.from('agent_reports').insert({
+        // Create report with full details — only notify if insert succeeds
+        const { error: insertError } = await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
           agent_name: agentName,
           profile_id: profile.id,
@@ -641,7 +674,12 @@ export default function AgentDashboard() {
           status: 'open',
         });
 
-        // Send notifications (Slack, email, in-app) only when a new report is created
+        if (insertError) {
+          console.error(`[COMPLIANCE] Failed to insert BIO_OVERUSE report for ${agentEmail}:`, insertError.message);
+          return;
+        }
+
+        // Send notifications (Slack, email, in-app) only after successful insert
         await supabase.functions.invoke('send-status-alert-notification', {
           body: {
             agentEmail,

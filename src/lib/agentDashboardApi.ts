@@ -979,8 +979,8 @@ async function checkAndAlertLateLogin(
       if (!existingReport) {
         const severity = calculateTimeSeverity(lateByMinutes);
         
-        // Create agent_reports record
-        await supabase.from('agent_reports').insert({
+        // Create agent_reports record — only notify if insert succeeds
+        const { error: insertError } = await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
           agent_name: agentName,
           profile_id: profileId,
@@ -995,7 +995,12 @@ async function checkAndAlertLateLogin(
           status: 'open',
         });
 
-        // Send Slack alert
+        if (insertError) {
+          console.error(`[COMPLIANCE] Failed to insert LATE_LOGIN report for ${agentEmail}:`, insertError.message);
+          return;
+        }
+
+        // Send Slack alert only after successful insert
         await sendStatusAlertNotification(agentEmail, agentName, 'LATE_LOGIN', {
           lateByMinutes,
           severity,
@@ -1047,8 +1052,8 @@ async function checkAndAlertEarlyOut(
       if (!existingReport) {
         const severity = calculateTimeSeverity(earlyByMinutes);
         
-        // Create agent_reports record
-        await supabase.from('agent_reports').insert({
+        // Create agent_reports record — only notify if insert succeeds
+        const { error: insertError } = await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
           agent_name: agentName,
           profile_id: profileId,
@@ -1063,7 +1068,12 @@ async function checkAndAlertEarlyOut(
           status: 'open',
         });
 
-        // Send Slack alert
+        if (insertError) {
+          console.error(`[COMPLIANCE] Failed to insert EARLY_OUT report for ${agentEmail}:`, insertError.message);
+          return;
+        }
+
+        // Send Slack alert only after successful insert
         await sendStatusAlertNotification(agentEmail, agentName, 'EARLY_OUT', {
           earlyByMinutes,
           severity,
@@ -1153,8 +1163,8 @@ async function checkAndAlertOverbreak(
       if (!existingReport) {
         const severity = calculateTimeSeverity(overageMinutes);
         
-        // Create agent_reports record
-        await supabase.from('agent_reports').insert({
+        // Create agent_reports record — only notify if insert succeeds
+        const { error: insertError } = await supabase.from('agent_reports').insert({
           agent_email: agentEmail.toLowerCase(),
           agent_name: agentName,
           profile_id: profileId,
@@ -1170,7 +1180,12 @@ async function checkAndAlertOverbreak(
           status: 'open',
         });
 
-        // Send Slack alert
+        if (insertError) {
+          console.error(`[COMPLIANCE] Failed to insert OVERBREAK report for ${agentEmail}:`, insertError.message);
+          return;
+        }
+
+        // Send Slack alert only after successful insert
         await sendStatusAlertNotification(agentEmail, agentName, 'OVERBREAK', {
           overageMinutes,
           severity,
