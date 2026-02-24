@@ -1,56 +1,104 @@
 
 
-## Fix: Team Status Board Reliability + Timezone Safety
+## Plan: Backfill `email_counted` for Legacy Zendesk Tickets (ZD2 Only)
 
-### Root Cause
+### Clarified Requirements
 
-The Team Status Board can show empty data due to three issues:
+Based on your answers:
 
-1. **No try/catch** around `fetchScheduledTeamMembers()` in `TeamStatusBoard.tsx` -- any thrown exception silently fails and leaves the loading state stuck or shows no data
-2. **Browser timezone dependency** -- `fetchScheduledTeamMembers()` calls `getCurrentESTDayKey()`, `getCurrentESTTimeMinutes()`, and `getTodayEST()` without passing a `now` parameter, so each call independently creates `new Date()`. The `PortalClockContext` already provides a stable EST clock but is not used
-3. **Silent member dropping** -- if `categorizeByPosition()` returns an unrecognized value, members could theoretically be lost (though the current code defaults to `'other'`, there is no warning logged)
+1. **Exclude solved tickets** (only scan `new`, `open`, `pending` status tickets)
+2. **Process in batches** (~5 pages per edge function invocation to avoid timeout)
+3. **ZD2 only** -- skip ZD1 entirely in the backfill logic
+4. **SuperAdmin-only UI** in the Admin page
+5. **Auto-chain** -- after each batch completes, the UI automatically triggers the next batch until done
 
-### Implementation Steps (done one at a time)
+### Implementation Steps
 
-**Step 1: Update `TeamStatusBoard.tsx` -- Error handling + PortalClock integration**
+**Step 1: Database migration**
 
-- Import `usePortalClock` 
-- Wrap `fetchScheduledTeamMembers()` in `try/catch/finally`
-- Pass the portal clock's `now` Date to `fetchScheduledTeamMembers()`
-- Add `console.log` for the result to aid debugging
-- Add a temporary admin-only debug panel below `ZendeskRealtimePanel` showing `totalScheduled`, `totalOnline`, category counts, and raw JSON
+Create two tables:
+- `zd_backfill_jobs` -- tracks job state, cursor, counts
+- `zd_backfill_job_items` -- per-ticket audit trail
 
-**Step 2: Update `fetchScheduledTeamMembers()` in `src/lib/teamStatusApi.ts`**
+RLS: SuperAdmin-only access via `is_super_admin()`.
 
-- Add an optional `now?: Date` parameter to the function signature
-- Pass `now` to `getCurrentESTDayKey(now)`, `getCurrentESTTimeMinutes(now)`, and `getTodayEST(now)` (these utils already accept an optional `now`)
-- Add `console.warn` when `categorizeByPosition` returns `'other'` for a non-null, non-logistics position value
-- No changes to the categorization logic itself (it already defaults to `'other'`)
-- No database changes
+```sql
+create table if not exists zd_backfill_jobs (
+  id uuid primary key default gen_random_uuid(),
+  zendesk_instance_name text not null,
+  job_type text not null,
+  status text not null default 'Running',
+  started_at timestamptz default now(),
+  finished_at timestamptz,
+  cursor_unix bigint,
+  processed int default 0,
+  updated int default 0,
+  skipped int default 0,
+  errors int default 0,
+  last_ticket_id bigint,
+  error text,
+  dry_run boolean default false
+);
 
-**Step 3: Verify**
+create table if not exists zd_backfill_job_items (
+  id bigserial primary key,
+  job_id uuid not null references zd_backfill_jobs(id) on delete cascade,
+  ticket_id bigint not null,
+  action text not null,
+  message text,
+  created_at timestamptz default now(),
+  unique (job_id, ticket_id)
+);
+```
 
-- Confirm numbers appear on the board
-- Confirm the debug panel shows correct category counts
-- Confirm no interference with Coverage Board, Scorecards, or Ticket Logs
+Enable RLS with SuperAdmin-only policies.
 
-### Files Modified
+**Step 2: Edge function `zd-backfill-email-counted`**
 
-| File | Change |
+- POST handler accepting: `zendesk_instance_name` (hardcoded to ZD2), `mode`, `start_time_unix`, `max_pages` (default 5), `per_page` (default 100), `dry_run`, optional `job_id` + `resume`
+- Uses Zendesk Incremental Export Cursor API: `GET /api/v2/incremental/tickets/cursor.json?start_time={unix}&per_page=100`
+- For `email_only` mode: if `via.channel === "email"` and tags missing `email_counted`, PUT with `additional_tags: ["email_counted"]`
+- For `messaging_convert_optional` mode: if messaging + 2+ public agent replies, add `email_converted` + `email_counted`
+- Skips tickets with `status === "solved"` or `status === "closed"`
+- Rate limit: honor 429 `Retry-After`, exponential backoff on 5xx
+- Checkpoints cursor + counts after each page
+- Returns JSON summary with `job_id`, `status`, `processed`, `updated`, `skipped`, `errors`, `has_more`
+- Uses `ZENDESK_API_TOKEN_ZD2` + `ZENDESK_ADMIN_EMAIL` (already configured)
+
+**Step 3: Admin UI component `BackfillManager.tsx`**
+
+SuperAdmin-only section at the bottom of `Admin.tsx`:
+- Instance display: "ZD2 (customerserviceadvocateshelp)" -- no dropdown needed since ZD1 is excluded
+- Start date picker (converted to unix)
+- Mode selector: `email_only` / `messaging_convert_optional`
+- Dry run toggle
+- Run button -- starts a new job
+- **Auto-chain**: after each batch returns with `has_more: true`, automatically calls the function again with `resume: true` after a 2-second delay
+- Progress display: processed / updated / skipped / errors counts, live-updating
+- Stop button to cancel auto-chaining
+- Jobs history table from `zd_backfill_jobs`
+
+**Step 4: Register in `supabase/config.toml`**
+
+```toml
+[functions.zd-backfill-email-counted]
+verify_jwt = false
+```
+
+### Files Created/Modified
+
+| File | Action |
 |---|---|
-| `src/pages/TeamStatusBoard.tsx` | Add try/catch, usePortalClock, debug panel |
-| `src/lib/teamStatusApi.ts` | Accept optional `now` param, pass to timezone utils, add categorization warning |
+| Migration SQL | Create `zd_backfill_jobs` + `zd_backfill_job_items` with RLS |
+| `supabase/functions/zd-backfill-email-counted/index.ts` | New edge function |
+| `src/components/admin/BackfillManager.tsx` | New UI component |
+| `src/pages/Admin.tsx` | Import + render BackfillManager for SuperAdmins |
 
 ### What This Does NOT Touch
 
-- No database schema changes
-- No changes to `scheduleResolver.ts`, `timezoneUtils.ts`, `PortalClockContext.tsx`
-- No changes to Coverage Board, Ticket Logs, or Scorecard logic
-- No changes to the Zendesk realtime panel (separate concern, already updated)
-
-### Technical Details
-
-The `PortalClockContext` already provides a `now` Date that updates every second in EST. By passing this to `fetchScheduledTeamMembers`, all "is scheduled now?" checks use the same consistent clock rather than multiple independent `new Date()` calls that may differ by milliseconds or be affected by browser timezone quirks.
-
-The timezone utility functions (`getCurrentESTDayKey`, `getCurrentESTTimeMinutes`, `getTodayEST`) already accept an optional `now?: Date` parameter -- they just need to receive it.
+- No ZD1 interaction
+- No webhook logic
+- No ticket_logs or scorecard changes
+- No FRT/AHT computation
+- No Zendesk trigger creation
 
