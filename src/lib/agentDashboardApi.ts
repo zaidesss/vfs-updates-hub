@@ -89,6 +89,7 @@ export interface DashboardProfile {
   weekend_schedule: string | null;
   day_off: string[];
   upwork_contract_id: string | null;
+  upwork_contract_type: string | null;
   ot_enabled: boolean;
   mon_schedule: string | null;
   tue_schedule: string | null;
@@ -304,7 +305,7 @@ export async function fetchDashboardProfile(profileId: string, weekStart?: Date 
     // 1. Fetch identity AND upwork_contract_id, ot_enabled, position, quotas from agent_profiles (source of truth)
     const { data: profile, error: profileError } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, upwork_contract_id, ot_enabled, position, quota_email, quota_chat, quota_phone, quota_ot_email')
+      .select('id, email, full_name, upwork_contract_id, upwork_contract_type, ot_enabled, position, quota_email, quota_chat, quota_phone, quota_ot_email')
       .eq('id', profileId)
       .single();
 
@@ -366,6 +367,7 @@ export async function fetchDashboardProfile(profileId: string, weekStart?: Date 
       weekend_schedule: directory?.weekend_schedule || null,
       day_off: dayOffArray,
       upwork_contract_id: profile.upwork_contract_id || null,
+      upwork_contract_type: (profile as any).upwork_contract_type || null,
       ot_enabled: profile.ot_enabled || false,
       // For week-view display, still pull from directory (these are fallbacks for UI display)
       mon_schedule: directory?.mon_schedule || null,

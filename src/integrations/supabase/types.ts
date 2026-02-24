@@ -65,6 +65,7 @@ export type Database = {
           unpaid_break_hours: number | null
           updated_at: string
           upwork_contract_id: string | null
+          upwork_contract_type: string | null
           views: string[] | null
           wd_ticket_assign: string | null
           we_ticket_assign: string | null
@@ -107,6 +108,7 @@ export type Database = {
           unpaid_break_hours?: number | null
           updated_at?: string
           upwork_contract_id?: string | null
+          upwork_contract_type?: string | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           unpaid_break_hours?: number | null
           updated_at?: string
           upwork_contract_id?: string | null
+          upwork_contract_type?: string | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
@@ -251,6 +254,7 @@ export type Database = {
           tue_schedule: string | null
           updated_at: string | null
           upwork_contract_id: string | null
+          upwork_contract_type: string | null
           upwork_profile_url: string | null
           upwork_username: string | null
           views: string[] | null
@@ -316,6 +320,7 @@ export type Database = {
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
+          upwork_contract_type?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
@@ -381,6 +386,7 @@ export type Database = {
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
+          upwork_contract_type?: string | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null

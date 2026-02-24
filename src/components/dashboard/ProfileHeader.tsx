@@ -45,6 +45,12 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
       label: 'Daily Quota', 
       value: profile.quota ? `${profile.quota} tickets/day` : '-' 
     },
+    { 
+      icon: Monitor, 
+      label: 'Upwork Contract', 
+      value: profile.upwork_contract_type || '-',
+      badge: !!profile.upwork_contract_type
+    },
   ];
 
   return (
