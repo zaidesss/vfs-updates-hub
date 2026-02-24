@@ -1525,10 +1525,16 @@ export function calculateAttendanceForWeek(
 
     // Helper to calculate OT attendance for this day
     const calculateOTForDay = () => {
+      // If OT is disabled for this agent, skip all OT logic
+      if (!profile.ot_enabled) {
+        return { otSchedule: undefined };
+      }
+      
       // If there's a coverage override, OT schedule from override is not applicable
-      // (overrides replace the entire shift for that day)
+      // Use effective schedule resolver for OT (same pattern as regular schedule)
       const otScheduleKey = `${day.key}_ot_schedule` as keyof DashboardProfile;
-      const otSchedule = override ? undefined : (profile[otScheduleKey] as string | null);
+      const effectiveDayForOT = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === day.short);
+      const otSchedule = override ? undefined : (effectiveDayForOT?.otSchedule || (profile[otScheduleKey] as string | null));
       
       if (!allEvents) return { otSchedule: otSchedule || undefined };
       
