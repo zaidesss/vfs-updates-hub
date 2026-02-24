@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CapacitySettingsSection } from '@/components/admin/CapacitySettingsSection';
 
 const MINUTES_PER_HOUR = 60;
 
@@ -184,6 +185,9 @@ const CapacityPlanning = () => {
             <ZdInstanceFilter value={zdInstance} onChange={setZdInstance} />
           </div>
         </div>
+
+        {/* Capacity Planning Configuration */}
+        <CapacitySettingsSection />
 
         {/* Configuration Summary */}
         <Card className="border-muted">

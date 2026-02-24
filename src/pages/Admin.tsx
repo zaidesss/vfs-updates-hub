@@ -58,7 +58,7 @@ import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
 import { AnnouncementSender } from '@/components/admin/AnnouncementSender';
 import { BackfillManager } from '@/components/admin/BackfillManager';
 import { writeAuditLog } from '@/lib/auditLogApi';
-import { CapacitySettingsSection } from '@/components/admin/CapacitySettingsSection';
+
 
 export default function Admin() {
   const { isAdmin, isHR, isSuperAdmin, user } = useAuth();
@@ -1614,11 +1614,6 @@ export default function Admin() {
         />
 
         {/* Capacity Planning Settings — Admin only */}
-        {(isAdmin || isSuperAdmin) && (
-          <div className="mt-8">
-            <CapacitySettingsSection />
-          </div>
-        )}
 
         {/* Backfill Manager — SuperAdmin only */}
         {isSuperAdmin && (
