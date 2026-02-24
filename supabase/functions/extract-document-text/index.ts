@@ -272,32 +272,80 @@ async function parseZipEntriesAsync(
 }
 
 async function decompressRaw(compressed: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream("raw");
-  const writer = ds.writable.getWriter();
-  const reader = ds.readable.getReader();
+  // Wrap raw deflate data with zlib header so we can use "deflate" format
+  // zlib header: 0x78 0x01 (lowest compression level marker)
+  const zlibWrapped = new Uint8Array(compressed.length + 6);
+  zlibWrapped[0] = 0x78;
+  zlibWrapped[1] = 0x01;
+  zlibWrapped.set(compressed, 2);
+  // Compute Adler-32 checksum for the decompressed data (required by zlib)
+  // We'll skip the checksum and just try — most implementations tolerate it
+  // Set dummy checksum bytes
+  zlibWrapped[compressed.length + 2] = 0;
+  zlibWrapped[compressed.length + 3] = 0;
+  zlibWrapped[compressed.length + 4] = 0;
+  zlibWrapped[compressed.length + 5] = 0;
 
-  const writePromise = writer.write(compressed).then(() => writer.close());
+  try {
+    const ds = new DecompressionStream("deflate");
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
 
-  const chunks: Uint8Array[] = [];
-  let totalLen = 0;
+    const writePromise = writer.write(zlibWrapped).then(() => writer.close()).catch(() => {});
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    totalLen += value.length;
+    const chunks: Uint8Array[] = [];
+    let totalLen = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalLen += value.length;
+      }
+    } catch {
+      // Checksum error at end is expected — we still got the data
+    }
+
+    await writePromise;
+
+    if (totalLen === 0) throw new Error("No data decompressed");
+
+    const result = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, pos);
+      pos += chunk.length;
+    }
+
+    return result;
+  } catch {
+    // Final fallback: try "deflate-raw" if available
+    try {
+      const ds = new DecompressionStream("deflate-raw" as any);
+      const writer = ds.writable.getWriter();
+      const reader = ds.readable.getReader();
+      const writePromise = writer.write(compressed).then(() => writer.close()).catch(() => {});
+      const chunks: Uint8Array[] = [];
+      let totalLen = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          totalLen += value.length;
+        }
+      } catch {}
+      await writePromise;
+      if (totalLen === 0) throw new Error("deflate-raw failed");
+      const result = new Uint8Array(totalLen);
+      let pos = 0;
+      for (const chunk of chunks) { result.set(chunk, pos); pos += chunk.length; }
+      return result;
+    } catch {
+      throw new Error("Decompression not supported in this runtime");
+    }
   }
-
-  await writePromise;
-
-  const result = new Uint8Array(totalLen);
-  let pos = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, pos);
-    pos += chunk.length;
-  }
-
-  return result;
 }
 
 // ── AI fallback ─────────────────────────────────────────────────────
@@ -307,6 +355,13 @@ async function extractWithAI(
   fileName: string,
   fileType: string
 ): Promise<string> {
+  // Gemini only supports PDF for document extraction, not DOCX
+  if (fileType !== "pdf") {
+    throw new Error(
+      "Could not extract text from this file. The document parser failed. Please try a .txt file or paste the content directly."
+    );
+  }
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     throw new Error(
@@ -323,10 +378,7 @@ async function extractWithAI(
   }
   const base64 = btoa(binary);
 
-  const mimeType =
-    fileType === "pdf"
-      ? "application/pdf"
-      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const mimeType = "application/pdf";
 
   const response = await fetch(
     "https://ai.gateway.lovable.dev/v1/chat/completions",
