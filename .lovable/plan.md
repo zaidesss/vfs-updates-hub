@@ -1,115 +1,82 @@
 
 
-## Fix: Email Notifications Sent Without Incident Reports (RLS Violation)
+## Add Real-Time Zendesk Stats Panel to Team Status Board
 
-### Root Cause (Confirmed by Database Logs)
+### Overview
 
-The Postgres logs contain this error at the exact timestamp of Richelle's email:
+Add a live metrics panel at the top of the Team Status Board showing real-time Zendesk Talk (phone) and Messaging stats for both ZD1 and ZD2 instances, refreshing every 60 seconds. Visible to all users.
+
+### What the Panel Will Show
+
+**For each ZD instance (ZD1 and ZD2):**
+
+Phone (Talk) section:
+- Agents online (Talk)
+- Ongoing calls
+- Calls in queue
+- Callbacks in queue
+
+Messaging section:
+- Agents online (Messaging)
+- Active conversations per assignee (showing individual agent loads)
+- Conversations waiting in queue
+
+### Architecture
+
+A new edge function `fetch-zendesk-realtime` will be created. It calls two separate APIs:
+
+1. **Zendesk Talk Real-Time API** (uses existing `ZENDESK_API_TOKEN_ZD1/ZD2` + `ZENDESK_ADMIN_EMAIL`):
+   - `GET /api/v2/channels/voice/stats/agents_activity.json` -- agents online, on call
+   - `GET /api/v2/channels/voice/stats/current_queue_activity.json` -- calls waiting, callbacks
+
+2. **Sunshine Conversations API** (uses new secrets -- the credentials you just provided):
+   - `GET /v2/apps/{appId}/conversations?filter[status]=open` -- active/queued conversations
+   - Auth: Basic auth with `keyId:keySecret`
+   - This provides conversation status (open/pending) and assignee info to calculate per-assignee loads and queue depth
+
+### Secrets to Store (6 new secrets)
+
+| Secret Name | Value Source |
+|---|---|
+| `SUNSHINE_KEY_ID_ZD1` | `619bc1f7c0917400e9835ad7` |
+| `SUNSHINE_KEY_SECRET_ZD1` | `xBIq3udnyhIlRI8NYssF4DntmU5PuUNsovXy8qI5u6oQlBtsFyWZoNXcM3PRlHMwyMhgpumB59sRUbtgnST4Ag` |
+| `SUNSHINE_APP_ID_ZD1` | `app_699cf0e9c817149916f27a56` |
+| `SUNSHINE_KEY_ID_ZD2` | `67d337ed014b998308a349cc` |
+| `SUNSHINE_KEY_SECRET_ZD2` | `3t_JCunxkTs6GP3KiH6ee9AdqzMQdFsizby2EgVjTCTaxmDk4k5qa3UW8eQsEDqzx9H7PzNHQ_1qIxTrrsKW0A` |
+| `SUNSHINE_APP_ID_ZD2` | `app_699cf12476a169b5689c727c` |
+
+### Files to Create/Modify
+
+| File | Action | Purpose |
+|---|---|---|
+| `supabase/functions/fetch-zendesk-realtime/index.ts` | Create | Edge function that fetches Talk queue stats + Sunshine Conversations data for both instances |
+| `src/components/team-status/ZendeskRealtimePanel.tsx` | Create | UI component showing the stats cards at top of board |
+| `src/lib/zendeskRealtimeApi.ts` | Create | Client-side API to call the edge function with 60s auto-refresh |
+| `src/pages/TeamStatusBoard.tsx` | Modify | Insert the new panel above the category sections |
+| `supabase/config.toml` | Auto-updated | Add `verify_jwt = false` for new function |
+
+### Implementation Steps
+
+1. Store the 6 Sunshine Conversations secrets
+2. Create the `fetch-zendesk-realtime` edge function
+3. Create the client-side API hook with 60s polling
+4. Create the `ZendeskRealtimePanel` UI component
+5. Integrate the panel into `TeamStatusBoard.tsx`
+
+### UI Design
+
+The panel will sit between the header and the category sections, using a compact card-based layout similar to the screenshot:
 
 ```text
-ERROR: "new row violates row-level security policy for table 'agent_reports'"
++------------------------------------------+------------------------------------------+
+|  ZD1                                     |  ZD2                                     |
+|  PHONE          MESSAGING                |  PHONE          MESSAGING                |
+|  3 online       5 online                 |  2 online       3 online                 |
+|  1 ongoing      Agent A: 2 sessions      |  0 ongoing      Agent X: 1 session       |
+|  2 in queue     Agent B: 1 session       |  1 in queue     Agent Y: 2 sessions      |
+|  0 callbacks    3 waiting in queue       |  0 callbacks    1 waiting in queue       |
++------------------------------------------+------------------------------------------+
 ```
 
-**What happened step-by-step:**
-
-1. Richelle logged in at 6:58 PM EST on 2026-02-23
-2. The `checkAndAlertLateLogin` function detected she was 598 minutes late (her shift starts ~9 AM)
-3. It tried to INSERT a LATE_LOGIN report into `agent_reports`
-4. The INSERT was **blocked by RLS** because the INSERT policy only allows admin/HR/super_admin roles -- Richelle is a regular agent, so her JWT was rejected
-5. The code **did not check** the insert result for errors
-6. It proceeded to call `sendStatusAlertNotification`, which sent the email, Slack, and in-app notifications
-7. Result: email sent, no report created -- exactly what you saw
-
-### Why This Affects All Agents (Not Just Richelle)
-
-Every compliance check (LATE_LOGIN, EARLY_OUT, OVERBREAK) runs under the **agent's own browser session** (their JWT). Since agents don't have admin/HR roles, the INSERT always fails silently for them. Only reports created by admin-opened dashboards or the batch job (which uses the service role key) actually succeed.
-
-### Fix Plan (4 Parts)
-
----
-
-**Part 1: Gate notifications on successful insert**
-
-Update the following 3 functions in `src/lib/agentDashboardApi.ts`:
-
-- `checkAndAlertLateLogin` (line 983)
-- `checkAndAlertEarlyOut` (line 1051)
-- `checkAndAlertOverbreak` (line 1157)
-
-For each, capture the insert result and **only send notifications if the insert succeeded**:
-
-```typescript
-const { error: insertError } = await supabase.from('agent_reports').insert({...});
-if (insertError) {
-  console.error('Failed to insert report:', insertError.message);
-  return; // Do NOT send notifications
-}
-// Only now send the notification
-await sendStatusAlertNotification(...);
-```
-
----
-
-**Part 2: Fix RLS policy for agent_reports inserts**
-
-The current INSERT policy only allows admin/HR/super_admin. Since compliance checks run client-side under the agent's JWT, agents need INSERT permission for their **own** reports.
-
-Add a new RLS policy:
-
-```sql
-CREATE POLICY "Agents can insert own reports"
-ON public.agent_reports
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  agent_email = LOWER(auth.jwt() ->> 'email')
-);
-```
-
-This allows any authenticated user to insert a report **only** for themselves (matching `agent_email` to their JWT email). This is safe because:
-- Agents can only create reports against their own email
-- The report data (severity, details) is calculated server-side by the compliance functions
-- Admins/HR already have broader INSERT via the existing policy
-
----
-
-**Part 3: Audit EXCESSIVE_RESTART handler**
-
-The `handleRestartExceeded` callback in `AgentDashboard.tsx` (line 563) sends a notification **without creating a report at all**. This should be updated to:
-1. First create an `EXCESSIVE_RESTARTS` report in `agent_reports`
-2. Only send the notification if the insert succeeds
-3. Follow the same pattern as `BIO_OVERUSE` (which already creates a report before notifying)
-
----
-
-**Part 4: Add insert error logging**
-
-For all 5 compliance insert points (LATE_LOGIN, EARLY_OUT, OVERBREAK, BIO_OVERUSE, EXCESSIVE_RESTART), add explicit error logging so failed inserts are visible:
-
-```typescript
-const { error } = await supabase.from('agent_reports').insert({...});
-if (error) {
-  console.error(`[COMPLIANCE] Failed to insert ${incidentType} report for ${agentEmail}:`, error.message);
-  return;
-}
-```
-
----
-
-### Files Changed
-
-| File | Changes |
-|------|---------|
-| `src/lib/agentDashboardApi.ts` | Gate notifications on insert success for LATE_LOGIN, EARLY_OUT, OVERBREAK; add error logging |
-| `src/pages/AgentDashboard.tsx` | Update EXCESSIVE_RESTART to create report before notifying; add error logging to BIO_OVERUSE |
-| Database migration | Add RLS policy allowing agents to insert their own reports |
-
-### Implementation Order
-
-We will do this step by step:
-1. First: Add the RLS policy (database migration)
-2. Second: Fix `checkAndAlertLateLogin` with insert error gating
-3. Third: Fix `checkAndAlertEarlyOut` and `checkAndAlertOverbreak`
-4. Fourth: Fix `handleRestartExceeded` in AgentDashboard.tsx
-5. Fifth: Verify all insert points have error logging
+Each instance gets a card with two sub-columns (Phone and Messaging). The messaging section shows per-assignee conversation counts and queue depth.
 
