@@ -1,5 +1,3 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -12,16 +10,9 @@ interface TalkStats {
   callbacksInQueue: number;
 }
 
-interface ConversationAssignee {
-  name: string;
-  count: number;
-}
-
 interface MessagingStats {
-  agentsOnline: number;
   activeConversations: number;
   conversationsInQueue: number;
-  assignees: ConversationAssignee[];
 }
 
 interface InstanceStats {
@@ -29,21 +20,28 @@ interface InstanceStats {
   messaging: MessagingStats;
 }
 
-// ZD1 = customerserviceadvocates, ZD2 = customerserviceadvocates2
-const ZD_CONFIGS = [
-  { key: 'ZD1', subdomain: 'customerserviceadvocates' },
-  { key: 'ZD2', subdomain: 'customerserviceadvocates2' },
-];
+interface ZendeskConfig {
+  subdomain: string;
+  token: string;
+  email: string;
+}
 
-async function fetchTalkStats(subdomain: string, token: string, email: string): Promise<TalkStats> {
+function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig {
+  const token = (Deno.env.get(instance === 'ZD1' ? 'ZENDESK_API_TOKEN_ZD1' : 'ZENDESK_API_TOKEN_ZD2') || '').trim();
+  const email = (Deno.env.get('ZENDESK_ADMIN_EMAIL') || '').trim();
+  const subdomain = instance === 'ZD1' ? 'customerserviceadvocates' : 'customerserviceadvocateshelp';
+  return { subdomain, token, email };
+}
+
+async function fetchTalkStats(config: ZendeskConfig): Promise<TalkStats> {
   const headers = {
-    'Authorization': `Basic ${btoa(`${email}/token:${token}`)}`,
+    'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
     'Content-Type': 'application/json',
   };
 
   const [agentsRes, queueRes] = await Promise.all([
-    fetch(`https://${subdomain}.zendesk.com/api/v2/channels/voice/stats/agents_activity.json`, { headers }),
-    fetch(`https://${subdomain}.zendesk.com/api/v2/channels/voice/stats/current_queue_activity.json`, { headers }),
+    fetch(`https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/agents_activity.json`, { headers }),
+    fetch(`https://${config.subdomain}.zendesk.com/api/v2/channels/voice/stats/current_queue_activity.json`, { headers }),
   ]);
 
   let agentsOnline = 0;
@@ -51,11 +49,23 @@ async function fetchTalkStats(subdomain: string, token: string, email: string): 
   if (agentsRes.ok) {
     const data = await agentsRes.json();
     const agents = data.agents_activity || [];
+    // DEBUG: Log raw agent data to investigate 0-online issue
+    console.log(`[Talk DEBUG ${config.subdomain}] Total agents in response: ${agents.length}`);
+    if (agents.length > 0) {
+      const statuses = agents.map((a: any) => ({
+        name: a.agent_name || a.name,
+        available: a.available,
+        via: a.via,
+        call_status: a.call_status,
+        forwarding_number: a.forwarding_number,
+      }));
+      console.log(`[Talk DEBUG ${config.subdomain}] Agent statuses:`, JSON.stringify(statuses));
+    }
     agentsOnline = agents.filter((a: any) => a.available === true || a.via === 'phone').length;
     ongoingCalls = agents.filter((a: any) => a.via === 'phone' && a.call_status === 'on_call').length;
   } else {
-    console.error(`Talk agents_activity failed for ${subdomain}: ${agentsRes.status}`);
-    await agentsRes.text(); // consume body
+    console.error(`Talk agents_activity failed for ${config.subdomain}: ${agentsRes.status}`);
+    await agentsRes.text();
   }
 
   let callsInQueue = 0;
@@ -66,76 +76,41 @@ async function fetchTalkStats(subdomain: string, token: string, email: string): 
     callsInQueue = queue.calls_waiting || 0;
     callbacksInQueue = queue.callbacks_waiting || 0;
   } else {
-    console.error(`Talk queue failed for ${subdomain}: ${queueRes.status}`);
+    console.error(`Talk queue failed for ${config.subdomain}: ${queueRes.status}`);
     await queueRes.text();
   }
 
   return { agentsOnline, ongoingCalls, callsInQueue, callbacksInQueue };
 }
 
-async function fetchMessagingStats(
-  keyId: string, keySecret: string, appId: string, subdomain: string
-): Promise<MessagingStats> {
-  const auth = btoa(`${keyId}:${keySecret}`);
-  const headers = {
-    'Authorization': `Basic ${auth}`,
-    'Content-Type': 'application/json',
-  };
-
-  // Try Zendesk-hosted Sunshine Conversations API first, fall back to smooch.io
-  const urls = [
-    `https://${subdomain}.zendesk.com/sc/v2/apps/${appId}/conversations?filter[status]=open&page[size]=100`,
-    `https://api.smooch.io/v2/apps/${appId}/conversations?filter[status]=open&page[size]=100`,
-  ];
-
-  let res: Response | null = null;
-  for (const url of urls) {
-    console.log(`Trying Sunshine URL: ${url}`);
-    res = await fetch(url, { headers });
-    if (res.ok) break;
+async function searchCount(config: ZendeskConfig, query: string): Promise<number> {
+  const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=1&page=1`;
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
     const errText = await res.text();
-    console.error(`Sunshine API failed for ${url}: ${res.status} - ${errText}`);
+    console.error(`Search failed for ${config.subdomain}: ${res.status} - ${errText}`);
+    return 0;
   }
-
-  if (!res || !res.ok) {
-    return { agentsOnline: 0, activeConversations: 0, conversationsInQueue: 0, assignees: [] };
-  }
-
   const data = await res.json();
-  const conversations = data.conversations || [];
+  return data.count ?? 0;
+}
 
-  // Count per assignee and unassigned (queue)
-  const assigneeMap = new Map<string, number>();
-  let unassigned = 0;
+async function fetchMessagingStats(config: ZendeskConfig): Promise<MessagingStats> {
+  const [active, inQueue] = await Promise.all([
+    searchCount(config, 'type:ticket status<solved channel:messaging'),
+    searchCount(config, 'type:ticket status:new channel:messaging'),
+  ]);
 
-  for (const conv of conversations) {
-    // Check for assignee in participants or metadata
-    const assignee = conv.metadata?.assignee || conv.metadata?.agent_name;
-    if (assignee) {
-      assigneeMap.set(assignee, (assigneeMap.get(assignee) || 0) + 1);
-    } else {
-      // Check participants for agent type
-      const agentParticipant = (conv.participants || []).find(
-        (p: any) => p.userExternalId && p.userExternalId !== 'system'
-      );
-      if (agentParticipant) {
-        const name = agentParticipant.userExternalId || 'Unknown';
-        assigneeMap.set(name, (assigneeMap.get(name) || 0) + 1);
-      } else {
-        unassigned++;
-      }
-    }
-  }
-
-  const assignees: ConversationAssignee[] = Array.from(assigneeMap.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
+  console.log(`[Messaging ${config.subdomain}] active=${active}, inQueue=${inQueue}`);
 
   return {
-    agentsOnline: assigneeMap.size,
-    activeConversations: conversations.length,
-    conversationsInQueue: unassigned,
-    assignees,
+    activeConversations: active,
+    conversationsInQueue: inQueue,
   };
 }
 
@@ -145,25 +120,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const email = (Deno.env.get('ZENDESK_ADMIN_EMAIL') || '').trim();
-    const tokenZD1 = (Deno.env.get('ZENDESK_API_TOKEN_ZD1') || '').trim();
+    const configZD1 = getZdConfig('ZD1');
+    const configZD2 = getZdConfig('ZD2');
 
-    const sunshineKeyIdZD1 = (Deno.env.get('SUNSHINE_KEY_ID_ZD1') || '').trim();
-    const sunshineSecretZD1 = (Deno.env.get('SUNSHINE_KEY_SECRET_ZD1') || '').trim();
-    const sunshineAppIdZD1 = (Deno.env.get('SUNSHINE_APP_ID_ZD1') || '').trim();
-
-    const sunshineKeyIdZD2 = (Deno.env.get('SUNSHINE_KEY_ID_ZD2') || '').trim();
-    const sunshineSecretZD2 = (Deno.env.get('SUNSHINE_KEY_SECRET_ZD2') || '').trim();
-    const sunshineAppIdZD2 = (Deno.env.get('SUNSHINE_APP_ID_ZD2') || '').trim();
-
-    // ZD2 does not have Talk — skip Talk API calls for ZD2
+    // ZD2 does not have Talk
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
-    // Fetch all data in parallel (Talk only for ZD1)
     const [talkZD1, msgZD1, msgZD2] = await Promise.all([
-      fetchTalkStats('customerserviceadvocates', tokenZD1, email),
-      fetchMessagingStats(sunshineKeyIdZD1, sunshineSecretZD1, sunshineAppIdZD1, 'customerserviceadvocates'),
-      fetchMessagingStats(sunshineKeyIdZD2, sunshineSecretZD2, sunshineAppIdZD2, 'customerserviceadvocates2'),
+      fetchTalkStats(configZD1),
+      fetchMessagingStats(configZD1),
+      fetchMessagingStats(configZD2),
     ]);
 
     const result = {

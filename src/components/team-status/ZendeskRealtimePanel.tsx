@@ -1,7 +1,7 @@
 import { useZendeskRealtime, InstanceStats } from '@/lib/zendeskRealtimeApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Phone, MessageSquare, RefreshCw, AlertCircle, Users, PhoneCall, PhoneIncoming, Headphones } from 'lucide-react';
+import { Phone, MessageSquare, RefreshCw, AlertCircle, Users, PhoneCall, PhoneIncoming, Headphones, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -22,6 +22,7 @@ function StatItem({ icon, label, value, variant }: {
 }
 
 function InstanceCard({ label, stats }: { label: string; stats: InstanceStats }) {
+  const assigned = Math.max(0, stats.messaging.activeConversations - stats.messaging.conversationsInQueue);
   return (
     <Card className="flex-1 min-w-[280px]">
       <CardContent className="p-4">
@@ -45,21 +46,9 @@ function InstanceCard({ label, stats }: { label: string; stats: InstanceStats })
               <MessageSquare className="h-3.5 w-3.5 text-cyan-500" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Messaging</span>
             </div>
-            <StatItem icon={<Users className="h-3.5 w-3.5" />} label="Online" value={stats.messaging.agentsOnline} />
             <StatItem icon={<MessageSquare className="h-3.5 w-3.5" />} label="Active" value={stats.messaging.activeConversations} />
+            <StatItem icon={<UserCheck className="h-3.5 w-3.5" />} label="Assigned" value={assigned} />
             <StatItem icon={<PhoneIncoming className="h-3.5 w-3.5" />} label="In queue" value={stats.messaging.conversationsInQueue} variant="warning" />
-
-            {/* Per-assignee breakdown */}
-            {stats.messaging.assignees.length > 0 && (
-              <div className="pt-1 border-t border-border space-y-1">
-                {stats.messaging.assignees.map((a) => (
-                  <div key={a.name} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground truncate max-w-[100px]">{a.name}</span>
-                    <span className="font-medium text-foreground tabular-nums">{a.count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </CardContent>

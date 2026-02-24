@@ -1,11 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect, useCallback } from 'react';
 
-export interface ConversationAssignee {
-  name: string;
-  count: number;
-}
-
 export interface TalkStats {
   agentsOnline: number;
   ongoingCalls: number;
@@ -14,10 +9,8 @@ export interface TalkStats {
 }
 
 export interface MessagingStats {
-  agentsOnline: number;
   activeConversations: number;
   conversationsInQueue: number;
-  assignees: ConversationAssignee[];
 }
 
 export interface InstanceStats {
