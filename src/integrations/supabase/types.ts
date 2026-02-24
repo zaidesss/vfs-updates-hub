@@ -3367,6 +3367,7 @@ export type Database = {
       }
       zd_backfill_jobs: {
         Row: {
+          cursor_token: string | null
           cursor_unix: number | null
           dry_run: boolean | null
           error: string | null
@@ -3383,6 +3384,7 @@ export type Database = {
           zendesk_instance_name: string
         }
         Insert: {
+          cursor_token?: string | null
           cursor_unix?: number | null
           dry_run?: boolean | null
           error?: string | null
@@ -3399,6 +3401,7 @@ export type Database = {
           zendesk_instance_name: string
         }
         Update: {
+          cursor_token?: string | null
           cursor_unix?: number | null
           dry_run?: boolean | null
           error?: string | null
