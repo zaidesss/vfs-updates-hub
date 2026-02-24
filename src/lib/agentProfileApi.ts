@@ -23,6 +23,9 @@ export type PositionType = typeof POSITION_OPTIONS[number];
 export const SUPPORT_TYPE_OPTIONS = ['Email', 'Chat', 'Phone'] as const;
 export type SupportType = typeof SUPPORT_TYPE_OPTIONS[number];
 
+// Upwork contract type options
+export const UPWORK_CONTRACT_TYPE_OPTIONS = ['Hybrid', 'Emails', 'Chats'] as const;
+
 // Get defaults based on position
 export function getPositionDefaults(position: string | null): {
   supportType: string[];
@@ -128,6 +131,7 @@ export interface AgentProfile {
   upwork_profile_url: string | null;
   upwork_username: string | null;
   upwork_contract_id: string | null;
+  upwork_contract_type: string | null;
   // Equipment
   headset_model: string | null;
   // Work setup (Super Admin only)
@@ -201,6 +205,7 @@ export interface AgentProfileInput {
   upwork_profile_url?: string;
   upwork_username?: string;
   upwork_contract_id?: string;  // Added: Upwork Contract ID
+  upwork_contract_type?: string;  // Added: Upwork Contract Type (Hybrid/Emails/Chats)
   // Equipment
   headset_model?: string;
   // Work setup (Super Admin only)
@@ -387,6 +392,7 @@ async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
     sun_ot_schedule: input.sun_ot_schedule || null,
     day_off: input.day_off || [],
     upwork_contract_id: input.upwork_contract_id || null,  // Synced but removed from Master Directory display
+    upwork_contract_type: input.upwork_contract_type || null,
     // Computed summary fields for Master Directory display
     weekday_schedule: input.mon_schedule || null,
     weekend_schedule: input.sat_schedule || null,

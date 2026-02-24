@@ -14,6 +14,7 @@ import {
   AgentProfileInput, 
   POSITION_OPTIONS, 
   SUPPORT_TYPE_OPTIONS,
+  UPWORK_CONTRACT_TYPE_OPTIONS,
   getPositionDefaults,
   canEditSchedules 
 } from '@/lib/agentProfileApi';
@@ -402,6 +403,32 @@ export function WorkConfigurationSection({
             disabled={!canEdit}
             className={!canEdit ? 'bg-muted' : ''}
           />
+        </div>
+
+        {/* Upwork Contract Type */}
+        <div className="space-y-2">
+          <Label>Upwork Contract</Label>
+          {canEdit ? (
+            <Select
+              value={profile.upwork_contract_type || ''}
+              onValueChange={(value) => onInputChange('upwork_contract_type', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select contract type" />
+              </SelectTrigger>
+              <SelectContent>
+                {UPWORK_CONTRACT_TYPE_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={profile.upwork_contract_type || ''}
+              disabled
+              className="bg-muted"
+            />
+          )}
         </div>
 
         {/* Zendesk User ID */}
