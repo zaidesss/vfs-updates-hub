@@ -1,42 +1,85 @@
 
 
-## Fix Swapped Sunshine Conversations Secrets
+## Fix Zendesk Realtime Panel: Replace Broken Messaging API + Align to Dashboard
 
-### Problem Identified
-From the edge function logs, the **App ID** and **Key ID** values are stored in the wrong secrets:
-- `SUNSHINE_KEY_ID_ZD1` currently holds `619b...5ad7` (this is actually the App ID)
-- `SUNSHINE_APP_ID_ZD1` currently holds `app_699cf0e9c817149916f27a56` (this is actually the Key ID)
+### Problem Summary
 
-The same swap likely happened for ZD2.
+The current edge function uses the **Sunshine Conversations API** to fetch messaging stats, but this API requires a `userId` parameter and cannot list all conversations globally. This is the wrong API for real-time aggregate stats. The correct API is the **Zendesk Real-Time Chat API** at `rtm.zopim.com`.
 
-### What Needs to Happen
+### What Needs to Change
 
-**Re-enter all 6 Sunshine secrets** with the correct mapping. Here is exactly what goes where, matching the labels on your Zendesk **Admin Center > Apps & Integrations > Conversations API > API Keys** page:
+#### Step 1: Get a Chat OAuth Access Token
 
-#### ZD1 (customerserviceadvocates)
+You will need a **Zendesk Chat OAuth access token** for each instance. Here is how to get one:
 
-| Secret to update | Zendesk label to copy from |
+1. Log in to your **Zendesk Admin Center**
+2. Go to **Apps and integrations** in the sidebar
+3. Select **APIs > Zendesk API**
+4. Click the **Chat API** tab (not Support API)
+5. Under **OAuth Clients**, click **Add OAuth Client**
+   - Give it a name like "Realtime Stats"
+   - Set redirect URL to `http://localhost`
+   - Save and note the **Client ID** and **Client Secret**
+6. Generate an access token using the token endpoint (I will provide you a helper or walk you through this)
+7. Repeat for ZD2 if it is a separate Chat account
+
+I will prompt you for these tokens as new secrets:
+- `ZENDESK_CHAT_TOKEN_ZD1`
+- `ZENDESK_CHAT_TOKEN_ZD2`
+
+#### Step 2: Update the Edge Function
+
+Replace the broken `fetchMessagingStats` function with calls to the Real-Time Chat API:
+
+| Current (broken) | New (correct) |
 |---|---|
-| `SUNSHINE_APP_ID_ZD1` | **App ID** -- the long hex string (e.g. `619bc1f7c0917400e9835ad7`) |
-| `SUNSHINE_KEY_ID_ZD1` | **Key ID** -- starts with `app_` (e.g. `app_699cf0e9c817149916f27a56`) |
-| `SUNSHINE_KEY_SECRET_ZD1` | **Secret key** -- the masked value starting with `xBIq...` |
+| Sunshine Conversations `/v2/apps/{appId}/conversations` | Real-Time Chat API `rtm.zopim.com/stream/chats` and `/stream/agents` |
+| Requires userId -- cannot get global stats | Returns aggregate metrics: agents_online, active_chats, incoming_chats, waiting_time |
 
-#### ZD2 (customerserviceadvocates2)
+The new function will call two endpoints:
+- `GET https://rtm.zopim.com/stream/chats` -- returns active_chats, incoming_chats (queue), waiting_time_avg, waiting_time_max
+- `GET https://rtm.zopim.com/stream/agents` -- returns agents_online count
 
-| Secret to update | Zendesk label to copy from |
-|---|---|
-| `SUNSHINE_APP_ID_ZD2` | **App ID** from ZD2's API Keys page |
-| `SUNSHINE_KEY_ID_ZD2` | **Key ID** from ZD2's API Keys page |
-| `SUNSHINE_KEY_SECRET_ZD2` | **Secret key** from ZD2's API Keys page |
+Authentication: `Authorization: Bearer {chat_oauth_token}`
 
-### Steps
+#### Step 3: Add Talk API Debug Logging (Temporary)
 
-**Step 1**: Use the add_secret tool to prompt you for each of the 6 secrets listed above, one batch at a time.
+Add temporary logging to the Talk API call to verify what data is being returned, since it currently shows 0 even when your dashboard shows 1 agent online.
 
-**Step 2**: After you enter them, deploy the edge function and test it to verify data comes through.
+#### Step 4: Update the UI Panel
 
-**Step 3**: If successful, remove the debug logging from the edge function.
+Update the `ZendeskRealtimePanel` component to display the new metrics that align with your Zendesk dashboard:
 
-### No Code Changes Needed
-The edge function code is already correct. The only issue is the swapped secret values.
+**Phone section** (unchanged):
+- Agents Online, On Call, Calls in Queue, Callbacks in Queue
+
+**Messaging section** (updated to match dashboard):
+- Agents Online (from Chat API)
+- Active Conversations (active_chats)
+- In Queue (incoming_chats)
+- Avg Wait Time (waiting_time_avg, formatted as minutes)
+
+#### Step 5: Remove Sunshine Conversations Secrets (Cleanup)
+
+After confirming the new approach works, the 6 `SUNSHINE_*` secrets will no longer be needed for this feature.
+
+### Technical Details
+
+**Files to modify:**
+- `supabase/functions/fetch-zendesk-realtime/index.ts` -- replace `fetchMessagingStats`, add Chat API calls, add Talk debug logging
+- `src/lib/zendeskRealtimeApi.ts` -- update `MessagingStats` interface to include wait time
+- `src/components/team-status/ZendeskRealtimePanel.tsx` -- update UI to show new metrics
+
+**New secrets needed:**
+- `ZENDESK_CHAT_TOKEN_ZD1`
+- `ZENDESK_CHAT_TOKEN_ZD2`
+
+### Execution Order
+
+1. I will first guide you through getting the Chat OAuth tokens
+2. Prompt you to enter them as secrets
+3. Update the edge function to use the correct API
+4. Update the UI panel
+5. Test and verify
+6. Remove debug logging once confirmed
 
