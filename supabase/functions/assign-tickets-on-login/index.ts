@@ -122,14 +122,34 @@ async function processTicketAssignment(
     return { success: true, skipped: true, reason: `No tickets configured for ${isWeekend ? "weekend" : "weekday"}` };
   }
 
-  // Step 5: Determine View based on support_type
-  const viewConfig = await getViewConfig(supabase, agentConfig.zendesk_instance, agentConfig.support_type);
-  if (!viewConfig || !viewConfig.is_enabled || !viewConfig.view_id || viewConfig.view_id === "PENDING_VIEW_ID") {
-    await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, null, null, ticketCount, 0, [], "skipped", "View not configured or disabled");
-    return { success: true, skipped: true, reason: "Ticket assignment view not configured" };
+  // Step 5: Determine View — prefer per-agent view_id, fall back to support_type pattern
+  let viewId: string;
+  let viewName: string | null;
+
+  const agentViewId = await getAgentViewId(supabase, email);
+
+  if (agentViewId) {
+    // Agent has a specific view configured — look up the name
+    const viewConfig = await getViewConfigById(supabase, agentViewId);
+    if (viewConfig && viewConfig.is_enabled) {
+      viewId = viewConfig.view_id;
+      viewName = viewConfig.view_name;
+    } else {
+      await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, agentViewId, null, ticketCount, 0, [], "skipped", "Agent's configured view is disabled or not found");
+      return { success: true, skipped: true, reason: "Agent's configured view is disabled" };
+    }
+  } else {
+    // Fallback: auto-determine by support_type_pattern
+    const viewConfig = await getViewConfig(supabase, agentConfig.zendesk_instance, agentConfig.support_type);
+    if (!viewConfig || !viewConfig.is_enabled || !viewConfig.view_id || viewConfig.view_id === "PENDING_VIEW_ID") {
+      await logAssignment(supabase, email, agentConfig.full_name, agentConfig.zendesk_instance, null, null, ticketCount, 0, [], "skipped", "View not configured or disabled");
+      return { success: true, skipped: true, reason: "Ticket assignment view not configured" };
+    }
+    viewId = viewConfig.view_id;
+    viewName = viewConfig.view_name;
   }
 
-  const { view_id: viewId, view_name: viewName } = viewConfig;
+  
 
   // Step 6: Check agent_tag
   if (!agentConfig.agent_tag) {
@@ -251,6 +271,34 @@ async function fetchAgentConfig(supabase: any, email: string): Promise<AgentConf
     wd_ticket_assign: directory?.wd_ticket_assign || null,
     we_ticket_assign: directory?.we_ticket_assign || null,
   };
+}
+
+async function getAgentViewId(supabase: any, email: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("agent_directory")
+    .select("ticket_assignment_view_id")
+    .eq("email", email)
+    .maybeSingle();
+
+  return data?.ticket_assignment_view_id || null;
+}
+
+async function getViewConfigById(
+  supabase: any,
+  viewId: string
+): Promise<{ view_id: string; view_name: string; is_enabled: boolean } | null> {
+  const { data, error } = await supabase
+    .from("ticket_assignment_view_config")
+    .select("view_id, view_name, is_enabled")
+    .eq("view_id", viewId)
+    .single();
+
+  if (error || !data) {
+    console.log("View config not found for view_id", viewId);
+    return null;
+  }
+
+  return data;
 }
 
 async function getViewConfig(
