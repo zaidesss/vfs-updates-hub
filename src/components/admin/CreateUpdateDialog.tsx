@@ -156,6 +156,7 @@ export function CreateUpdateDialog({
               <MarkdownEditor
                 value={newUpdate.body}
                 onChange={(value) => setNewUpdate(prev => ({ ...prev, body: value }))}
+                onExtractText={(text) => setNewUpdate(prev => ({ ...prev, body: prev.body ? prev.body + '\n\n' + text : text }))}
                 placeholder="Paste your update here, then click 'AI Format' to make it look nice. After that, click 'Preview' to see how it will look."
                 minHeight={300}
               />
