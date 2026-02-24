@@ -664,22 +664,32 @@ function ProfilesGrid({
         {selectedUser && editData ? (
           <>
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden"
-                  onClick={() => setSelectedUser(null)}
-                >
-                  <ChevronLeft className="h-5 w-5" />
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="lg:hidden"
+                    onClick={() => setSelectedUser(null)}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle>{editData.full_name || 'Agent'}</CardTitle>
+                    <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
+                  </div>
+                </div>
+                <Button onClick={handleSave} disabled={isSaving} size="sm">
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1" />
+                  )}
+                  Save
                 </Button>
-                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <CardTitle>{editData.full_name || 'Agent'}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
-                </div>
               </div>
             </CardHeader>
             <CardContent>
