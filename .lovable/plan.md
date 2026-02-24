@@ -1,28 +1,39 @@
 
 
-## Plan: Add Resume Button for Paused Backfill Jobs
+## Fix: Backfill Cursor Not Advancing
 
-### Problem
-The job history table shows paused jobs but there's no way to resume them. The edge function already supports `resume: true` with a `job_id`, but the UI doesn't expose this.
+### Root Cause
+The Zendesk Incremental **Cursor** API returns `after_url` containing a `cursor=<opaque_token>`, NOT `start_time=<unix>`. The regex on line 243 (`/start_time=(\d+)/`) never matches, so `cursorUnix` stays frozen. Every batch re-fetches the same first page of tickets.
 
-### Other Considerations
-1. **Should completed jobs be visually distinct from paused ones?** Currently both just show a badge. Paused jobs are the only ones that should be resumable.
-2. **Should there be a cancel/delete option for old jobs?** Right now the history just accumulates.
+This explains:
+- 22,500 processed but 0 updated (same ~500 tickets scanned 45 times)
+- `cursor_unix` stuck at `1757376000` in every response
 
-### Implementation
+### Fix Details
 
-Add a "Resume" button in each job history row for jobs with `status === 'Paused'` or `status === 'Running'` (stuck jobs). Clicking it will:
-- Set `isRunning = true`
-- Call `invokeBackfill` with `resume: true` and the job's `job_id`, `job_type`, and `dry_run`
-- Auto-chain from there
+**File: `supabase/functions/zd-backfill-email-counted/index.ts`**
+
+1. Add a `cursor_token` field to track the opaque cursor string (stored alongside `cursor_unix` in the DB).
+2. On resume, use `cursor_token` to build the `after_url` instead of `start_time`.
+3. After each page, save `data.after_cursor` (the opaque token) and the full `after_url`.
+4. Remove the broken regex extraction.
+
+**Database: `zd_backfill_jobs` table**
+
+Add a `cursor_token` TEXT column to store the opaque cursor string.
 
 ### Changes
 
-| File | Change |
+| File/Resource | Change |
 |---|---|
-| `src/components/admin/BackfillManager.tsx` | Add "Actions" column to job history table with a Resume button for paused jobs. Add `resumeJob()` function that calls `invokeBackfill` with `resume: true` and starts auto-chaining. |
+| Database migration | Add `cursor_token TEXT` column to `zd_backfill_jobs` |
+| `supabase/functions/zd-backfill-email-counted/index.ts` | Use `data.after_cursor` / `data.after_url` for pagination instead of regex. Store/resume from `cursor_token`. |
 
-### What This Does NOT Touch
-- Edge function (already supports resume)
-- Database schema (no changes needed)
+### What This Fixes
+- Cursor will actually advance through tickets
+- Job will reach the ~5k non-solved/closed email tickets that need tagging
+- Resume will continue from the correct position
+
+### Recommendation
+After deploying, the existing jobs (with stuck cursors) should be abandoned. Start a fresh backfill job — it will now correctly page through all 27k tickets and tag the ~5k that qualify.
 
