@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
     // Resume or create job
     let currentJobId = job_id;
     let cursorUnix = start_time_unix;
+    let cursorToken: string | null = null;
     let processed = 0;
     let updated = 0;
     let skipped = 0;
@@ -81,6 +82,7 @@ Deno.serve(async (req) => {
       }
 
       cursorUnix = existingJob.cursor_unix || start_time_unix;
+      cursorToken = existingJob.cursor_token;
       processed = existingJob.processed || 0;
       updated = existingJob.updated || 0;
       skipped = existingJob.skipped || 0;
@@ -116,7 +118,9 @@ Deno.serve(async (req) => {
     }
 
     // Incremental export cursor loop
-    let afterUrl = `https://${subdomain}.zendesk.com/api/v2/incremental/tickets/cursor.json?start_time=${cursorUnix}&per_page=${per_page}`;
+    let afterUrl = cursorToken 
+      ? `https://${subdomain}.zendesk.com/api/v2/incremental/tickets/cursor.json?cursor=${cursorToken}&per_page=${per_page}`
+      : `https://${subdomain}.zendesk.com/api/v2/incremental/tickets/cursor.json?start_time=${cursorUnix}&per_page=${per_page}`;
     let pagesProcessed = 0;
     let hasMore = true;
     const userRoleCache = new Map<number, string>();
@@ -239,10 +243,9 @@ Deno.serve(async (req) => {
       // Extract cursor for next page
       if (data.after_url) {
         afterUrl = data.after_url;
-        // Extract unix from cursor URL for checkpoint
-        const cursorMatch = data.after_url.match(/start_time=(\d+)/);
-        if (cursorMatch) {
-          cursorUnix = parseInt(cursorMatch[1]);
+        // Store the opaque cursor token
+        if (data.after_cursor) {
+          cursorToken = data.after_cursor;
         }
       }
 
@@ -251,6 +254,7 @@ Deno.serve(async (req) => {
         .from("zd_backfill_jobs")
         .update({
           cursor_unix: cursorUnix,
+          cursor_token: cursorToken,
           processed,
           updated,
           skipped,
@@ -270,6 +274,7 @@ Deno.serve(async (req) => {
         status: finalStatus,
         finished_at: hasMore ? null : new Date().toISOString(),
         cursor_unix: cursorUnix,
+        cursor_token: cursorToken,
         processed,
         updated,
         skipped,
@@ -288,6 +293,7 @@ Deno.serve(async (req) => {
         errors,
         has_more: hasMore,
         cursor_unix: cursorUnix,
+        cursor_token: cursorToken,
         dry_run,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
