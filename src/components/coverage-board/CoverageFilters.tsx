@@ -54,7 +54,7 @@ const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export function applyFilters(agents: AgentScheduleRow[], filters: CoverageFilterState): AgentScheduleRow[] {
   return agents.filter(agent => {
     if (filters.zdInstance && agent.zendesk_instance !== filters.zdInstance) return false;
-    if (filters.positions.length > 0 && !filters.positions.includes(agent.position || '')) return false;
+    if (filters.positions.length > 0 && !filters.positions.some(p => (agent.position || []).includes(p))) return false;
     if (filters.agentNames.length > 0) {
       const name = agent.full_name || agent.agent_name || agent.email;
       if (!filters.agentNames.includes(name)) return false;

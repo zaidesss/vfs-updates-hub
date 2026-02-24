@@ -871,7 +871,7 @@ export default function AgentDashboard() {
 
         {/* Daily Work Tracker */}
         <DailyWorkTracker 
-          position={profile.position}
+          position={Array.isArray(profile.position) ? profile.position[0] || null : profile.position}
           quotaEmail={profile.quota_email}
           quotaChat={profile.quota_chat}
           quotaPhone={profile.quota_phone}

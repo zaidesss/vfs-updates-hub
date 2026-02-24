@@ -30,7 +30,7 @@ export interface TeamMemberStatus {
   profileId: string;
   email: string;
   fullName: string;
-  position: string | null;
+  position: string[] | null;
   currentStatus: ProfileStatus;
   statusSince: string;
   shiftSchedule: string | null;
@@ -54,10 +54,11 @@ export interface CategorizedTeamMembers {
 }
 
 // Map position values to categories
-function categorizeByPosition(position: string | null, fullName?: string): SupportCategory {
-  if (!position) return 'other';
+function categorizeByPosition(position: string | string[] | null, fullName?: string): SupportCategory {
+  const pos = Array.isArray(position) ? position[0] : position;
+  if (!pos) return 'other';
   
-  const positionLower = position.toLowerCase().trim();
+  const positionLower = pos.toLowerCase().trim();
   
   if (positionLower === 'phone support') return 'phoneSupport';
   if (positionLower === 'chat support') return 'chatSupport';
@@ -67,7 +68,7 @@ function categorizeByPosition(position: string | null, fullName?: string): Suppo
   if (positionLower === 'team lead') return 'teamLeads';
   if (positionLower === 'technical support') return 'techSupport';
   
-  console.warn(`[TeamStatus] Unknown position "${position}" for ${fullName || 'unknown'} — defaulting to "other"`);
+  console.warn(`[TeamStatus] Unknown position "${pos}" for ${fullName || 'unknown'} — defaulting to "other"`);
   return 'other';
 }
 

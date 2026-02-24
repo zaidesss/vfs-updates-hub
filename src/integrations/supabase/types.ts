@@ -65,7 +65,7 @@ export type Database = {
           unpaid_break_hours: number | null
           updated_at: string
           upwork_contract_id: string | null
-          upwork_contract_type: string | null
+          upwork_contract_type: string[] | null
           views: string[] | null
           wd_ticket_assign: string | null
           we_ticket_assign: string | null
@@ -108,7 +108,7 @@ export type Database = {
           unpaid_break_hours?: number | null
           updated_at?: string
           upwork_contract_id?: string | null
-          upwork_contract_type?: string | null
+          upwork_contract_type?: string[] | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
@@ -151,7 +151,7 @@ export type Database = {
           unpaid_break_hours?: number | null
           updated_at?: string
           upwork_contract_id?: string | null
-          upwork_contract_type?: string | null
+          upwork_contract_type?: string[] | null
           views?: string[] | null
           wd_ticket_assign?: string | null
           we_ticket_assign?: string | null
@@ -230,7 +230,7 @@ export type Database = {
           ot_enabled: boolean | null
           payment_frequency: string | null
           phone_number: string | null
-          position: string | null
+          position: string[] | null
           primary_internet_provider: string | null
           primary_internet_speed: string | null
           quota_chat: number | null
@@ -254,7 +254,7 @@ export type Database = {
           tue_schedule: string | null
           updated_at: string | null
           upwork_contract_id: string | null
-          upwork_contract_type: string | null
+          upwork_contract_type: string[] | null
           upwork_profile_url: string | null
           upwork_username: string | null
           views: string[] | null
@@ -296,7 +296,7 @@ export type Database = {
           ot_enabled?: boolean | null
           payment_frequency?: string | null
           phone_number?: string | null
-          position?: string | null
+          position?: string[] | null
           primary_internet_provider?: string | null
           primary_internet_speed?: string | null
           quota_chat?: number | null
@@ -320,7 +320,7 @@ export type Database = {
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
-          upwork_contract_type?: string | null
+          upwork_contract_type?: string[] | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
@@ -362,7 +362,7 @@ export type Database = {
           ot_enabled?: boolean | null
           payment_frequency?: string | null
           phone_number?: string | null
-          position?: string | null
+          position?: string[] | null
           primary_internet_provider?: string | null
           primary_internet_speed?: string | null
           quota_chat?: number | null
@@ -386,7 +386,7 @@ export type Database = {
           tue_schedule?: string | null
           updated_at?: string | null
           upwork_contract_id?: string | null
-          upwork_contract_type?: string | null
+          upwork_contract_type?: string[] | null
           upwork_profile_url?: string | null
           upwork_username?: string | null
           views?: string[] | null
@@ -3593,7 +3593,7 @@ export type Database = {
           id: string | null
           mon_ot_schedule: string | null
           mon_schedule: string | null
-          position: string | null
+          position: string[] | null
           sat_ot_schedule: string | null
           sat_schedule: string | null
           sun_ot_schedule: string | null
@@ -3619,7 +3619,7 @@ export type Database = {
           id?: string | null
           mon_ot_schedule?: string | null
           mon_schedule?: string | null
-          position?: string | null
+          position?: string[] | null
           sat_ot_schedule?: string | null
           sat_schedule?: string | null
           sun_ot_schedule?: string | null
@@ -3645,7 +3645,7 @@ export type Database = {
           id?: string | null
           mon_ot_schedule?: string | null
           mon_schedule?: string | null
-          position?: string | null
+          position?: string[] | null
           sat_ot_schedule?: string | null
           sat_schedule?: string | null
           sun_ot_schedule?: string | null

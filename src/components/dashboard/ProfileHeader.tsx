@@ -48,8 +48,10 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
     { 
       icon: Monitor, 
       label: 'Upwork Contract', 
-      value: profile.upwork_contract_type || '-',
-      badge: !!profile.upwork_contract_type
+      value: Array.isArray(profile.upwork_contract_type) && profile.upwork_contract_type.length > 0 
+        ? profile.upwork_contract_type.join(', ') 
+        : '-',
+      badge: Array.isArray(profile.upwork_contract_type) && profile.upwork_contract_type.length > 0
     },
   ];
 

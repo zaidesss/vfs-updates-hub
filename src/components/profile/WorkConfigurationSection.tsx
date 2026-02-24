@@ -139,16 +139,17 @@ export function WorkConfigurationSection({
   // Check if a day is selected as day off
   const isDayOff = (day: string) => (profile.day_off || []).includes(day);
 
-  // Handle position change - auto-populate dependent fields
-  const handlePositionChange = (position: string) => {
-    const defaults = getPositionDefaults(position);
+  // Handle position change - auto-populate dependent fields (uses first position for defaults)
+  const handlePositionChange = (positions: string[]) => {
+    const defaults = getPositionDefaults(positions);
     
-    onInputChange('position', position);
+    onInputChange('position', positions);
     onInputChange('views', defaults.views);
     onInputChange('ticket_assignment_view_id', defaults.ticketViewId);
     
     // For non-Hybrid, set fixed support type
-    if (position !== 'Hybrid Support') {
+    const firstPos = positions[0];
+    if (firstPos !== 'Hybrid Support') {
       onInputChange('support_type', defaults.supportType);
     }
     
@@ -157,7 +158,27 @@ export function WorkConfigurationSection({
     if (!defaults.showQuotaChat) onInputChange('quota_chat', null);
     if (!defaults.showQuotaPhone) onInputChange('quota_phone', null);
     
-    onPositionChange?.(position);
+    onPositionChange?.(positions[0] || '');
+  };
+
+  // Handle position toggle for checkbox multi-select
+  const handlePositionToggle = (pos: string, checked: boolean) => {
+    const currentPositions = profile.position || [];
+    if (checked) {
+      handlePositionChange([...currentPositions, pos]);
+    } else {
+      handlePositionChange(currentPositions.filter(p => p !== pos));
+    }
+  };
+
+  // Handle upwork contract type toggle for checkbox multi-select
+  const handleContractTypeToggle = (type: string, checked: boolean) => {
+    const currentTypes = profile.upwork_contract_type || [];
+    if (checked) {
+      onInputChange('upwork_contract_type', [...currentTypes, type]);
+    } else {
+      onInputChange('upwork_contract_type', currentTypes.filter(t => t !== type));
+    }
   };
 
   // Handle Monday schedule change - auto-populate Tue-Fri (only if not day off)
@@ -280,24 +301,51 @@ export function WorkConfigurationSection({
         requestedBy={user?.name || user?.email || ''}
       />
 
-      {/* Position Dropdown */}
+      {/* Upwork Contract Type - Checkboxes */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Position / Role</Label>
-          <Select
-            value={profile.position || ''}
-            onValueChange={handlePositionChange}
+          <Label>Upwork Contract</Label>
+          <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[40px] items-center">
+            {UPWORK_CONTRACT_TYPE_OPTIONS.map((type) => (
+              <label key={type} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={(profile.upwork_contract_type || []).includes(type)}
+                  onCheckedChange={(checked) => handleContractTypeToggle(type, !!checked)}
+                  disabled={!canEdit}
+                />
+                <span className="text-sm">{type}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Upwork Contract ID */}
+        <div className="space-y-2">
+          <Label>Upwork Contract ID</Label>
+          <Input
+            value={profile.upwork_contract_id || ''}
+            onChange={(e) => onInputChange('upwork_contract_id', e.target.value)}
+            placeholder="Enter contract ID"
             disabled={!canEdit}
-          >
-            <SelectTrigger className={!canEdit ? 'bg-muted' : ''}>
-              <SelectValue placeholder="Select position" />
-            </SelectTrigger>
-            <SelectContent>
-              {POSITION_OPTIONS.map((pos) => (
-                <SelectItem key={pos} value={pos}>{pos}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className={!canEdit ? 'bg-muted' : ''}
+          />
+        </div>
+
+        {/* Position / Role - Checkboxes */}
+        <div className="space-y-2">
+          <Label>Position / Role</Label>
+          <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[40px] items-center">
+            {POSITION_OPTIONS.map((pos) => (
+              <label key={pos} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={(profile.position || []).includes(pos)}
+                  onCheckedChange={(checked) => handlePositionToggle(pos, !!checked)}
+                  disabled={!canEdit}
+                />
+                <span className="text-sm">{pos}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -393,43 +441,6 @@ export function WorkConfigurationSection({
           </div>
         </div>
 
-        {/* Upwork Contract ID */}
-        <div className="space-y-2">
-          <Label>Upwork Contract ID</Label>
-          <Input
-            value={profile.upwork_contract_id || ''}
-            onChange={(e) => onInputChange('upwork_contract_id', e.target.value)}
-            placeholder="Enter contract ID"
-            disabled={!canEdit}
-            className={!canEdit ? 'bg-muted' : ''}
-          />
-        </div>
-
-        {/* Upwork Contract Type */}
-        <div className="space-y-2">
-          <Label>Upwork Contract</Label>
-          {canEdit ? (
-            <Select
-              value={profile.upwork_contract_type || ''}
-              onValueChange={(value) => onInputChange('upwork_contract_type', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select contract type" />
-              </SelectTrigger>
-              <SelectContent>
-                {UPWORK_CONTRACT_TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={profile.upwork_contract_type || ''}
-              disabled
-              className="bg-muted"
-            />
-          )}
-        </div>
 
         {/* Zendesk User ID */}
         <div className="space-y-2">

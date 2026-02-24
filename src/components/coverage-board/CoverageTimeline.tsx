@@ -469,7 +469,7 @@ function AgentRow({
             agentName={displayName}
             startLabel={block.startLabel}
             endLabel={block.endLabel}
-            supportType={agent.position || undefined}
+            supportType={Array.isArray(agent.position) ? agent.position[0] || undefined : agent.position || undefined}
             isOverridden={block.isOverridden}
             outageReason={block.outageReason}
             hasConflict={block.hasConflict}
