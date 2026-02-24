@@ -1,78 +1,49 @@
 
 
-## Fix: Shift Schedule Always Showing "Pending"
+## Fix: OT Scheduled Badge Showing Despite OT Being Disabled
 
 ### Root Cause
 
-The `ShiftScheduleTable` component matches attendance rows using `day.key` (short names like `'mon'`, `'tue'`), but the `dayKey` property in each `DayAttendance` object is actually a full date string like `'2026-02-23'`. This means `attendance.find((a) => a.dayKey === day.key)` **never finds a match**, so every row displays "Pending" -- even when the data is correct.
+The `calculateOTForDay` function in `agentDashboardApi.ts` (line 1527) reads per-day OT schedule fields (e.g., `mon_ot_schedule`) directly from the profile/directory data **without checking the `ot_enabled` flag**. So even when an agent has `ot_enabled: false`, the old OT schedule strings are still present in `agent_directory`, causing the Shift Schedule table to display "OT Scheduled" badges.
 
-The Weekly Summary and Today's Activity cards are unaffected because they use `allEvents` directly (filtered by date), not the attendance row-matching logic.
+### Related Issues to Fix Together
 
-### Fix Plan (4 parts, all selected)
+1. **Primary bug**: `calculateOTForDay` ignores `ot_enabled` -- should return no OT data when OT is disabled
+2. **Effective schedule not used for OT**: The function reads OT from profile fields directly instead of using `effectiveWeekSchedules` (the resolver), which could cause stale OT schedules on overridden weeks
+3. **Directory sync gap**: When `ot_enabled` is toggled off on the profile, the per-day OT fields in `agent_directory` may not be cleared, leaving stale data
 
----
+### Fix (Single Step)
 
-### 1. Row Key Fix (ShiftScheduleTable.tsx)
+**File**: `src/lib/agentDashboardApi.ts` -- `calculateOTForDay` function (around line 1527)
 
-Change the attendance lookup to match by the actual date string instead of the short day key.
-
-**File**: `src/components/dashboard/ShiftScheduleTable.tsx`
-
-Currently (line 252):
-```typescript
-const dayAttendance = attendance.find((a) => a.dayKey === day.key);
-```
-
-**Fix**: Compute the actual date for each row from `weekStart + offset`, format it as `yyyy-MM-dd`, and match against `dayKey`:
+Add an early return at the top of `calculateOTForDay` when `profile.ot_enabled` is `false`:
 
 ```typescript
-const dayDate = new Date(weekStart);
-dayDate.setDate(weekStart.getDate() + index);
-const y = dayDate.getFullYear();
-const m = String(dayDate.getMonth() + 1).padStart(2, '0');
-const d = String(dayDate.getDate()).padStart(2, '0');
-const dateStr = `${y}-${m}-${d}`;
-const dayAttendance = attendance.find((a) => a.dayKey === dateStr);
+const calculateOTForDay = () => {
+  // If OT is disabled for this agent, skip all OT logic
+  if (!profile.ot_enabled) {
+    return { otSchedule: undefined };
+  }
+  // ... rest of existing logic
+};
 ```
 
-This is the primary fix that resolves the "always Pending" bug.
+Additionally, update the OT schedule lookup to prefer `effectiveWeekSchedules` (the resolver) over raw profile fields, matching how regular schedules already work (line 1626-1642):
 
----
+```typescript
+// Use effective schedule resolver for OT (same pattern as regular schedule)
+const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === day.short);
+const otSchedule = override ? undefined : (effectiveDay?.otSchedule || (profile[otScheduleKey] as string | null));
+```
 
-### 2. Fallback Mapping Safety
+This ensures:
+- OT badges never appear when `ot_enabled` is false
+- OT schedule respects coverage overrides and schedule assignments (not just raw profile data)
+- No impact on snapshots (they store their own `ot_schedule` value at snapshot time)
+- No impact on scorecard (it queries the effective schedule RPC directly)
+- No impact on coverage board (it reads schedules independently)
 
-Add a secondary fallback: if no match is found by date string, also try matching by the short day name (converted from the `DayAttendance.date` object). This protects against future regressions where `dayKey` format might change.
+### Verification
 
-This will be implemented in the same lookup logic as part 1 -- a simple `||` fallback.
-
----
-
-### 3. Admin Debug Aid
-
-Update the existing Debug card (visible to admins only) to also show per-row `dayKey` values from the attendance array, so mismatches are immediately visible during troubleshooting.
-
-**File**: `src/pages/AgentDashboard.tsx` (Debug card section)
-
-Add a small section listing the `dayKey` values from the `attendance` state alongside the expected date strings for the current week.
-
----
-
-### 4. Refresh Fallback (30-second polling)
-
-Add a 30-second interval that re-fetches dashboard data as a safety net in case the realtime subscription misses events.
-
-**File**: `src/pages/AgentDashboard.tsx`
-
-Add a `useEffect` with `setInterval` that calls `loadDashboardData()` every 30 seconds, but only for the current week. Clean up on unmount or week change.
-
----
-
-### Technical Summary
-
-| Part | File | Change |
-|------|------|--------|
-| Row key fix | `ShiftScheduleTable.tsx` | Match attendance by date string, not day name |
-| Fallback | `ShiftScheduleTable.tsx` | Secondary match by day-of-week from Date object |
-| Debug aid | `AgentDashboard.tsx` | Show dayKey mapping in admin debug card |
-| Refresh | `AgentDashboard.tsx` | 30s polling interval as realtime backup |
+After this fix, Malcom's dashboard should no longer show any "OT Scheduled" badge since his `ot_enabled` is `false`.
 
