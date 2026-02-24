@@ -15,6 +15,7 @@ export interface DirectoryEntry {
   agent_tag: string | null;
   views: string[];
   ticket_assignment_enabled: boolean;  // Editable toggle in Master Directory
+  ticket_assignment_view_id: string | null;  // Which view to pull tickets from
   weekday_schedule: string | null;
   weekday_total_hours: number;
   wd_ticket_assign: string | null;
@@ -46,6 +47,14 @@ export interface DirectoryEntry {
   sun_schedule: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ViewConfigOption {
+  id: string;
+  view_id: string;
+  view_name: string;
+  zendesk_instance: string;
+  is_enabled: boolean;
 }
 
 export interface DirectoryHistoryEntry {
@@ -130,6 +139,27 @@ export async function fetchAllDropdownOptions(): Promise<{
     view_options: views,
     day_off_options: dayOff,
   };
+}
+
+// Fetch ticket assignment view config options for dropdown
+export async function fetchViewConfigOptions(): Promise<ViewConfigOption[]> {
+  try {
+    const { data, error } = await supabase
+      .from('ticket_assignment_view_config')
+      .select('id, view_id, view_name, zendesk_instance, is_enabled')
+      .eq('is_enabled', true)
+      .order('view_name');
+    
+    if (error || !data) {
+      console.error('Error fetching view config options:', error);
+      return [];
+    }
+    
+    return data as ViewConfigOption[];
+  } catch (err) {
+    console.error('Error fetching view config options:', err);
+    return [];
+  }
 }
 
 export function validateScheduleFormat(schedule: string | null): boolean {
@@ -378,7 +408,8 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         agent_name: dirEntry?.agent_name || null,
         agent_tag: dirEntry?.agent_tag || null,
         views: dirEntry?.views || [],
-        ticket_assignment_enabled: profile.ticket_assignment_enabled || false,  // From agent_profiles
+        ticket_assignment_enabled: profile.ticket_assignment_enabled || false,
+        ticket_assignment_view_id: dirEntry?.ticket_assignment_view_id || null,
         weekday_schedule: dirEntry?.weekday_schedule || null,
         weekday_total_hours: dirEntry?.weekday_total_hours || 0,
         wd_ticket_assign: dirEntry?.wd_ticket_assign || null,
@@ -445,6 +476,7 @@ export async function bulkSaveEntries(
         // Only WD/WE Ticket Assign and ticket_assignment_enabled are editable in Master Directory
         wd_ticket_assign: entry.wd_ticket_assign,
         we_ticket_assign: entry.we_ticket_assign,
+        ticket_assignment_view_id: entry.ticket_assignment_view_id,
         // Synced from Bios (read-only in Master Directory, but need to be saved)
         zendesk_instance: entry.zendesk_instance,
         support_account: entry.support_account,
@@ -535,6 +567,7 @@ const fieldsToTrack = [
     'sat_schedule',
     'sun_schedule',
     'ticket_assignment_enabled',
+    'ticket_assignment_view_id',
   ] as const;
   
   const changes: Record<string, { old: any; new: any }> = {};

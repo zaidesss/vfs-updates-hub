@@ -28,7 +28,9 @@ import { Save, Search, ExternalLink, RefreshCw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DirectoryEntry,
+  ViewConfigOption,
   fetchAllDirectoryEntries,
+  fetchViewConfigOptions,
   bulkSaveEntries,
   syncAllProfilesToDirectory,
 } from '@/lib/masterDirectoryApi';
@@ -48,6 +50,7 @@ export default function MasterDirectory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
+  const [viewConfigs, setViewConfigs] = useState<ViewConfigOption[]>([]);
   
   // Filter states
   const [teamLeadFilter, setTeamLeadFilter] = useState('all');
@@ -70,17 +73,21 @@ export default function MasterDirectory() {
 
   const loadData = async () => {
     setIsLoading(true);
-    const { data, error } = await fetchAllDirectoryEntries();
-    if (error) {
+    const [directoryResult, configs] = await Promise.all([
+      fetchAllDirectoryEntries(),
+      fetchViewConfigOptions(),
+    ]);
+    if (directoryResult.error) {
       toast({
         title: 'Error',
-        description: error,
+        description: directoryResult.error,
         variant: 'destructive',
       });
-    } else if (data) {
-      setOriginalData(data);
-      setEditedData(JSON.parse(JSON.stringify(data)));
+    } else if (directoryResult.data) {
+      setOriginalData(directoryResult.data);
+      setEditedData(JSON.parse(JSON.stringify(directoryResult.data)));
     }
+    setViewConfigs(configs);
     setIsLoading(false);
   };
 
@@ -396,6 +403,7 @@ export default function MasterDirectory() {
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Views</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Ticket Assignment</TableHead>
+                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Assignment View</TableHead>
                   <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
                   <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">WD Hours</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WD Ticket Assign</TableHead>
@@ -484,6 +492,33 @@ export default function MasterDirectory() {
                               {isZD2orNull ? 'ZD2' : (entry.ticket_assignment_enabled ? 'On' : 'Off')}
                             </span>
                           </div>
+                        );
+                      })()}
+                    </TableCell>
+                    
+                    {/* Assignment View Dropdown - EDITABLE */}
+                    <TableCell>
+                      {(() => {
+                        const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
+                        const isDisabled = isZD2orNull || !entry.ticket_assignment_enabled;
+                        const availableViews = viewConfigs.filter(v => v.zendesk_instance === entry.zendesk_instance);
+                        
+                        return (
+                          <Select
+                            value={entry.ticket_assignment_view_id || 'none'}
+                            onValueChange={(val) => updateField(entry.email, 'ticket_assignment_view_id', val === 'none' ? null : val)}
+                            disabled={isDisabled}
+                          >
+                            <SelectTrigger className={cn("h-8 w-[140px]", isDisabled && "opacity-50 cursor-not-allowed bg-muted")}>
+                              <SelectValue placeholder="Auto" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover border-border z-50">
+                              <SelectItem value="none">Auto (by type)</SelectItem>
+                              {availableViews.map((vc) => (
+                                <SelectItem key={vc.view_id} value={vc.view_id}>{vc.view_name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         );
                       })()}
                     </TableCell>
