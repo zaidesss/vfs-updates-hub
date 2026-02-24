@@ -8,13 +8,13 @@ export interface RateHistoryEntry {
 
 // Position dropdown options
 export const POSITION_OPTIONS = [
-  'Hybrid Support',
+  'Hybrid',
   'Team Lead',
   'Logistics',
-  'Email Support',
-  'Chat Support',
-  'Phone Support',
-  'Technical Support',
+  'Email',
+  'Chat',
+  'Phone',
+  'Technical',
 ] as const;
 
 export type PositionType = typeof POSITION_OPTIONS[number];
@@ -38,6 +38,7 @@ export function getPositionDefaults(position: string | string[] | null): {
 } {
   const pos = Array.isArray(position) ? position[0] : position;
   switch (pos) {
+    case 'Hybrid':
     case 'Hybrid Support':
       return {
         supportType: ['Email', 'Chat', 'Phone'],
@@ -48,6 +49,7 @@ export function getPositionDefaults(position: string | string[] | null): {
         showQuotaPhone: true,
         supportTypeEditable: true,
       };
+    case 'Email':
     case 'Email Support':
       return {
         supportType: ['Email'],
@@ -58,6 +60,7 @@ export function getPositionDefaults(position: string | string[] | null): {
         showQuotaPhone: false,
         supportTypeEditable: false,
       };
+    case 'Chat':
     case 'Chat Support':
       return {
         supportType: ['Chat'],
@@ -68,6 +71,7 @@ export function getPositionDefaults(position: string | string[] | null): {
         showQuotaPhone: false,
         supportTypeEditable: false,
       };
+    case 'Phone':
     case 'Phone Support':
       return {
         supportType: ['Phone'],
@@ -80,6 +84,7 @@ export function getPositionDefaults(position: string | string[] | null): {
       };
     case 'Team Lead':
     case 'Logistics':
+    case 'Technical':
     case 'Technical Support':
       return {
         supportType: ['Email'],
