@@ -26,20 +26,60 @@ interface ComparisonResponse {
   weeks: WeekResult[];
 }
 
-function useVolumeComparison(zdInstance: 'ZD1' | 'ZD2', weeks: { startDate: string; endDate: string; label: string }[]) {
-  return useQuery({
-    queryKey: ['volume-comparison', zdInstance, weeks],
+function useVolumeComparisonSplit(zdInstance: 'ZD1' | 'ZD2', allWeeks: { startDate: string; endDate: string; label: string }[]) {
+  const historicalWeeks = useMemo(() => allWeeks.slice(0, -1), [allWeeks]);
+  const currentWeek = useMemo(() => allWeeks.slice(-1), [allWeeks]);
+
+  const historical = useQuery({
+    queryKey: ['volume-comparison-hist', zdInstance, historicalWeeks],
     queryFn: async (): Promise<ComparisonResponse> => {
       const { data, error } = await supabase.functions.invoke('fetch-volume-comparison', {
-        body: { zdInstance, weeks },
+        body: { zdInstance, weeks: historicalWeeks },
       });
       if (error) throw error;
       return data as ComparisonResponse;
     },
-    staleTime: 10 * 60 * 1000,
+    staleTime: Infinity, // Completed weeks don't change
     retry: 1,
-    enabled: weeks.length > 0,
+    enabled: historicalWeeks.length > 0,
   });
+
+  const current = useQuery({
+    queryKey: ['volume-comparison-current', zdInstance, currentWeek],
+    queryFn: async (): Promise<ComparisonResponse> => {
+      const { data, error } = await supabase.functions.invoke('fetch-volume-comparison', {
+        body: { zdInstance, weeks: currentWeek },
+      });
+      if (error) throw error;
+      return data as ComparisonResponse;
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 60 * 60 * 1000, // Auto-refresh every hour
+    retry: 1,
+    enabled: currentWeek.length > 0,
+  });
+
+  // Merge both results
+  const merged: ComparisonResponse | null = useMemo(() => {
+    if (!historical.data && !current.data) return null;
+    return {
+      zdInstance,
+      weeks: [
+        ...(historical.data?.weeks ?? []),
+        ...(current.data?.weeks ?? []),
+      ],
+    };
+  }, [historical.data, current.data, zdInstance]);
+
+  return {
+    data: merged,
+    isLoading: historical.isLoading || current.isLoading,
+    isError: historical.isError || current.isError,
+    error: (historical.error || current.error) as Error | null,
+    isRefetching: historical.isRefetching || current.isRefetching,
+    refetch: () => { historical.refetch(); current.refetch(); },
+    lastUpdated: current.dataUpdatedAt,
+  };
 }
 
 function buildWeekRanges(todayEST: string) {
@@ -101,6 +141,7 @@ function ComparisonCard({
   error: Error | null;
   onRefresh: () => void;
   isRefetching: boolean;
+  lastUpdated?: number;
 }) {
   const channels = [
     { key: 'email' as const, label: 'Email', icon: <Mail className="h-4 w-4" />, colorClass: 'text-primary' },
@@ -198,8 +239,8 @@ const FourWeekComparison = () => {
   const { todayEST } = usePortalClock();
   const weeks = useMemo(() => buildWeekRanges(todayEST), [todayEST]);
 
-  const zd1 = useVolumeComparison('ZD1', weeks);
-  const zd2 = useVolumeComparison('ZD2', weeks);
+  const zd1 = useVolumeComparisonSplit('ZD1', weeks);
+  const zd2 = useVolumeComparisonSplit('ZD2', weeks);
 
   return (
     <Layout>
@@ -210,7 +251,7 @@ const FourWeekComparison = () => {
             4-Week Comparison
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Total tickets created per channel — last 4 completed weeks + current week
+            Total tickets created per channel — last 4 completed weeks + current week (auto-refreshes hourly)
           </p>
         </div>
 
@@ -224,6 +265,7 @@ const FourWeekComparison = () => {
             error={zd1.error as Error | null}
             onRefresh={() => zd1.refetch()}
             isRefetching={zd1.isRefetching}
+            lastUpdated={zd1.lastUpdated}
           />
           <ComparisonCard
             label="ZD2"
@@ -234,6 +276,7 @@ const FourWeekComparison = () => {
             error={zd2.error as Error | null}
             onRefresh={() => zd2.refetch()}
             isRefetching={zd2.isRefetching}
+            lastUpdated={zd2.lastUpdated}
           />
         </div>
       </div>
