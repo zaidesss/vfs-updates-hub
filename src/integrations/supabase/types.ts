@@ -742,6 +742,60 @@ export type Database = {
         }
         Relationships: []
       }
+      capacity_settings: {
+        Row: {
+          after_hours_threshold: number
+          agent_hours_per_day: number
+          alert_email: string
+          business_hours_end: string
+          business_hours_start: string
+          client_allocated_hours: number
+          created_at: string
+          id: string
+          number_of_agents: number
+          target_response_time_minutes: number
+          timezone: string
+          updated_at: string
+          utilization_alert_threshold: number
+          working_days: number[]
+          working_days_per_week: number
+        }
+        Insert: {
+          after_hours_threshold?: number
+          agent_hours_per_day?: number
+          alert_email?: string
+          business_hours_end?: string
+          business_hours_start?: string
+          client_allocated_hours?: number
+          created_at?: string
+          id?: string
+          number_of_agents?: number
+          target_response_time_minutes?: number
+          timezone?: string
+          updated_at?: string
+          utilization_alert_threshold?: number
+          working_days?: number[]
+          working_days_per_week?: number
+        }
+        Update: {
+          after_hours_threshold?: number
+          agent_hours_per_day?: number
+          alert_email?: string
+          business_hours_end?: string
+          business_hours_start?: string
+          client_allocated_hours?: number
+          created_at?: string
+          id?: string
+          number_of_agents?: number
+          target_response_time_minutes?: number
+          timezone?: string
+          updated_at?: string
+          utilization_alert_threshold?: number
+          working_days?: number[]
+          working_days_per_week?: number
+        }
+        Relationships: []
+      }
       coverage_override_logs: {
         Row: {
           agent_id: string
