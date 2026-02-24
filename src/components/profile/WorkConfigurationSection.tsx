@@ -147,9 +147,10 @@ export function WorkConfigurationSection({
     onInputChange('views', defaults.views);
     onInputChange('ticket_assignment_view_id', defaults.ticketViewId);
     
-    // For non-Hybrid, set fixed support type
+    // For non-multi-position agents, set fixed support type
     const firstPos = positions[0];
-    if (firstPos !== 'Hybrid Support') {
+    const isMultiPosition = positions.length >= 3 && ['Email', 'Chat', 'Phone'].every(p => positions.includes(p));
+    if (!isMultiPosition) {
       onInputChange('support_type', defaults.supportType);
     }
     

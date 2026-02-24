@@ -8,7 +8,6 @@ export interface RateHistoryEntry {
 
 // Position dropdown options
 export const POSITION_OPTIONS = [
-  'Hybrid',
   'Team Lead',
   'Logistics',
   'Email',
