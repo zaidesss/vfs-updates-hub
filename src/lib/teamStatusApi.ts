@@ -60,13 +60,13 @@ function categorizeByPosition(position: string | string[] | null, fullName?: str
   
   const positionLower = pos.toLowerCase().trim();
   
-  if (positionLower === 'phone support') return 'phoneSupport';
-  if (positionLower === 'chat support') return 'chatSupport';
-  if (positionLower === 'email support') return 'emailSupport';
+  if (positionLower === 'phone' || positionLower === 'phone support') return 'phoneSupport';
+  if (positionLower === 'chat' || positionLower === 'chat support') return 'chatSupport';
+  if (positionLower === 'email' || positionLower === 'email support') return 'emailSupport';
   if (positionLower === 'logistics') return 'other';
-  if (positionLower === 'hybrid support') return 'hybridSupport';
+  if (positionLower === 'hybrid' || positionLower === 'hybrid support') return 'hybridSupport';
   if (positionLower === 'team lead') return 'teamLeads';
-  if (positionLower === 'technical support') return 'techSupport';
+  if (positionLower === 'technical' || positionLower === 'technical support') return 'techSupport';
   
   console.warn(`[TeamStatus] Unknown position "${pos}" for ${fullName || 'unknown'} — defaulting to "other"`);
   return 'other';
