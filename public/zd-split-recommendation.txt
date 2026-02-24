@@ -1,0 +1,130 @@
+ZD1/ZD2 Agent Split Recommendation
+=====================================
+Generated: February 24, 2026
+
+CURRENT STATE
+- ZD1: 27 agents | ZD2: 2 agents (Nikki Ignacio, Reza Joy Docto)
+- ZD2 has 2,529 unresolved chats with only 6/day throughput — critically understaffed
+
+VOLUME SUMMARY
+| Metric           | ZD1           | ZD2           |
+|------------------|---------------|---------------|
+| Total Unresolved | 19,402        | 5,335         |
+| Email backlog    | 18,707 (41/d) | 2,395 (5/d)   |
+| Chat backlog     | 47 (0/d)      | 2,529 (6/d)   |
+| Call backlog     | 64 (0/d)      | 0              |
+
+=====================================
+AGENT HOURS SUMMARY (29 Support Agents)
+=====================================
+
+MORNING SHIFT (8AM-3:30PM)
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| Ashley Nerviol               | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Bryan Santiago               | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Catherine Jane Plaza         | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Dwight Laurence Añora        | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Jazmin Cjay Ochoa            | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Kent Michael Cerbeto         | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| *Kimberly Lacaden            | 8:00AM-2:30PM  | Mon,Tue,Fri,Sat,Sun | 30h     | —   | ZD1        |
+| Lawrence Karl M. Prieto      | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Lorenz Philip Malanog        | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| *Lorraine Velarte            | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Mahipos, Maryll Kate C.      | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| *Princess Infinity F. Medina | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Russell Kent I. Quieta       | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+| Sheena Jane Camposo          | 9:00AM-3:30PM  | Mon-Fri          | 30h        | —   | ZD1        |
+
+MID-DAY SHIFT (10AM-7:30PM)
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| Biah Mae Divinagracia        | 10AM-7:30PM    | 5d + OT          | 55h        | Yes | ZD1        |
+| Ellen Eugenio                | 10AM-7:30PM    | 5d + OT          | 50h        | Yes | ZD1        |
+| Jennifer Katigbak            | 10AM-7:30PM    | 5d + OT          | 55h        | Yes | ZD1        |
+| Richelle Cayabyab            | 9AM-6:30PM     | 5d + OT          | 55h        | Yes | ZD1        |
+
+AFTERNOON SHIFT
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| *Pauline Carbajosa           | 12PM-7:30PM    | Tue-Sat          | 35h        | —   | ZD1        |
+
+FULL-DAY SHIFT
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| Desiree Cataytay             | 6AM-5:30PM     | 4d + OT          | 54h        | Yes | ZD1        |
+| Stephen Martinez             | 9AM-8:30PM     | 4d + OT          | 49h        | Yes | ZD1        |
+
+EVENING SHIFT
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| Jannah Bugayong              | 3PM-12:30AM    | 5d + OT          | 55h        | Yes | ZD1        |
+| *Trisha Nicolle Arancillo    | 5PM-12:30AM    | Tue-Sat          | 35h        | —   | ZD1        |
+
+NIGHT SHIFT
+| Agent                        | Schedule       | Days Working     | Net Hrs/wk | OT  | Current ZD |
+|------------------------------|----------------|------------------|------------|-----|------------|
+| Erika Rhea V. Santiago       | 7PM-6:30AM     | 4d + OT          | 54h        | Yes | ZD1        |
+| Precious Mae Gagarra         | 10PM-4:30AM    | 5d + OT          | 35h        | Yes | ZD1        |
+| Ruth Gajo                    | 5PM-2:30AM     | 5d + OT          | 55h        | Yes | ZD1        |
+| Will Angeline Reyes          | 8PM-3:30AM     | 5d + OT          | 40h        | Yes | ZD1        |
+
+ALREADY ON ZD2
+| Agent                        | Schedule           | Days Working | Net Hrs/wk | OT  |
+|------------------------------|--------------------|--------------|------------|-----|
+| Nikki Ignacio                | 7AM-1:30PM + OT    | Mon-Fri      | 40h        | Yes |
+| Reza Joy Docto               | 3PM-12:30AM + OT   | Mon-Fri      | 55h        | Yes |
+
+* = Recommended to move to ZD2
+
+=====================================
+RECOMMENDATION: Move 5 Agents to ZD2
+Final Split: 22 ZD1 / 7 ZD2
+=====================================
+
+AGENTS TO MOVE TO ZD2
+| Agent                        | Shift          | Why                                              |
+|------------------------------|----------------|--------------------------------------------------|
+| Kimberly Lacaden             | 8AM-2:30PM     | Morning overlap with Nikki + weekend coverage     |
+| Lorraine Velarte             | 9AM-3:30PM     | Additional morning density                        |
+| Princess Infinity F. Medina  | 9AM-3:30PM     | Additional morning density                        |
+| Pauline Carbajosa            | 12PM-7:30PM    | Fills critical midday gap + weekend coverage      |
+| Trisha Nicolle Arancillo     | 5PM-12:30AM    | Evening overlap with Reza + weekend coverage      |
+
+=====================================
+ZD2 COVERAGE MAP (After Split)
+=====================================
+
+| Time Window (EST) | # Agents | Names                                    |
+|-------------------|----------|------------------------------------------|
+| 7AM - 8AM         | 1        | Nikki                                    |
+| 8AM - 9AM         | 2        | Nikki, Kimberly                          |
+| 9AM - 1:30PM      | 4        | Nikki, Kimberly, Lorraine, Princess      |
+| 1:30PM - 2:30PM   | 3        | Kimberly, Lorraine, Princess             |
+| 2:30PM - 3:30PM   | 4        | Nikki(OT), Lorraine, Princess, Pauline   |
+| 3:30PM - 5PM      | 2        | Nikki(OT->4:30), Pauline -> Pauline+Reza |
+| 5PM - 7:30PM      | 3        | Pauline, Reza, Trisha                    |
+| 7:30PM - 12:30AM  | 2        | Reza, Trisha                             |
+| 12:30AM - 3:30AM  | 1        | Reza (OT)                                |
+
+=====================================
+IMPACT ON ZD1
+=====================================
+
+- Morning shift: 14 → 11 agents (still strong)
+- All heavy-hitters remain: Biah (55h), Desiree (54h), Erika (54h),
+  Jennifer (55h), Richelle (55h), Ruth (55h), Stephen (49h)
+- ZD1 retains ~938h/week capacity
+- ZD2 gains ~255h/week (~3,060 tickets/week at 5min/ticket)
+
+=====================================
+WHY THESE 5?
+=====================================
+
+1. SHIFT DIVERSITY — Covers 8AM to 12:30AM on ZD2 with 2-4 agents at peak times
+2. WEEKEND COVERAGE — Kimberly (Sat/Sun), Pauline (Sat), Trisha (Sat) ensure
+   ZD2 isn't dead on weekends
+3. MINIMAL ZD1 IMPACT — All 5 are from the 30h/week group (no OT), preserving
+   ZD1's heavy-hour agents
+4. VOLUME RATIO — 22/7 split (~76%/24%) matches the volume ratio
+   (ZD1: 19.4K / ZD2: 5.3K = ~78%/22%)
