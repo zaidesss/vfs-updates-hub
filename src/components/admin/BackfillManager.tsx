@@ -1,0 +1,347 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
+import { DatePicker, formatDisplayDateTime } from '@/components/ui/date-picker';
+import { supabase } from '@/integrations/supabase/client';
+import { Play, Square, Loader2, RefreshCw, Database } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface BackfillJob {
+  id: string;
+  zendesk_instance_name: string;
+  job_type: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  cursor_unix: number | null;
+  processed: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  last_ticket_id: number | null;
+  error: string | null;
+  dry_run: boolean;
+}
+
+export function BackfillManager() {
+  const [mode, setMode] = useState<'email_only' | 'messaging_convert_optional'>('email_only');
+  const [startDate, setStartDate] = useState('');
+  const [dryRun, setDryRun] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentJob, setCurrentJob] = useState<BackfillJob | null>(null);
+  const [jobs, setJobs] = useState<BackfillJob[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const chainRef = useRef(false);
+  const abortRef = useRef(false);
+
+  const loadJobs = useCallback(async () => {
+    setIsLoadingJobs(true);
+    const { data, error } = await supabase
+      .from('zd_backfill_jobs')
+      .select('*')
+      .order('started_at', { ascending: false })
+      .limit(20);
+    setIsLoadingJobs(false);
+
+    if (!error && data) {
+      setJobs(data as unknown as BackfillJob[]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  const invokeBackfill = async (params: {
+    mode: string;
+    start_time_unix: number;
+    dry_run: boolean;
+    job_id?: string;
+    resume?: boolean;
+  }) => {
+    const { data, error } = await supabase.functions.invoke('zd-backfill-email-counted', {
+      body: {
+        zendesk_instance_name: 'customerserviceadvocateshelp',
+        max_pages: 5,
+        per_page: 100,
+        ...params,
+      },
+    });
+
+    if (error) throw new Error(error.message || 'Function invocation failed');
+    return data;
+  };
+
+  const startBackfill = async () => {
+    if (!startDate) {
+      toast.error('Please select a start date');
+      return;
+    }
+
+    const startUnix = Math.floor(new Date(startDate).getTime() / 1000);
+    setIsRunning(true);
+    chainRef.current = true;
+    abortRef.current = false;
+
+    try {
+      const result = await invokeBackfill({
+        mode,
+        start_time_unix: startUnix,
+        dry_run: dryRun,
+      });
+
+      setCurrentJob(prev => ({
+        ...(prev || {} as BackfillJob),
+        id: result.job_id,
+        status: result.status,
+        processed: result.processed,
+        updated: result.updated,
+        skipped: result.skipped,
+        errors: result.errors,
+        dry_run: dryRun,
+        job_type: mode,
+        zendesk_instance_name: 'customerserviceadvocateshelp',
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        cursor_unix: result.cursor_unix,
+        last_ticket_id: null,
+        error: null,
+      }));
+
+      // Auto-chain
+      if (result.has_more && chainRef.current && !abortRef.current) {
+        await autoChain(result.job_id, mode, dryRun);
+      } else {
+        setIsRunning(false);
+        toast.success(`Backfill ${result.status}`, {
+          description: `Processed: ${result.processed}, Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors}`,
+        });
+      }
+    } catch (err: any) {
+      setIsRunning(false);
+      toast.error('Backfill failed', { description: err.message });
+    }
+
+    loadJobs();
+  };
+
+  const autoChain = async (jobId: string, jobMode: string, jobDryRun: boolean) => {
+    while (chainRef.current && !abortRef.current) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (abortRef.current) break;
+
+      try {
+        const result = await invokeBackfill({
+          mode: jobMode,
+          start_time_unix: 0, // ignored on resume
+          dry_run: jobDryRun,
+          job_id: jobId,
+          resume: true,
+        });
+
+        setCurrentJob(prev => prev ? {
+          ...prev,
+          status: result.status,
+          processed: result.processed,
+          updated: result.updated,
+          skipped: result.skipped,
+          errors: result.errors,
+          cursor_unix: result.cursor_unix,
+        } : prev);
+
+        if (!result.has_more) {
+          setIsRunning(false);
+          chainRef.current = false;
+          toast.success(`Backfill ${result.status}`, {
+            description: `Processed: ${result.processed}, Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors}`,
+          });
+          break;
+        }
+      } catch (err: any) {
+        setIsRunning(false);
+        chainRef.current = false;
+        toast.error('Backfill batch failed', { description: err.message });
+        break;
+      }
+    }
+    loadJobs();
+  };
+
+  const stopChain = () => {
+    abortRef.current = true;
+    chainRef.current = false;
+    setIsRunning(false);
+    toast.info('Backfill stopped — will finish current batch');
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+      Running: 'default',
+      Paused: 'secondary',
+      Completed: 'outline',
+      Error: 'destructive',
+      Cancelled: 'destructive',
+    };
+    return <Badge variant={variants[status] || 'secondary'}>{status}</Badge>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Database className="h-5 w-5" />
+          Backfill email_counted Tags (ZD2)
+        </CardTitle>
+        <CardDescription>
+          Tag legacy Zendesk tickets so Trigger 4 works correctly. ZD2 (customerserviceadvocateshelp) only. Excludes solved/closed tickets.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Configuration */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label>Instance</Label>
+            <div className="text-sm text-muted-foreground border rounded-md p-2 bg-muted">
+              ZD2 — customerserviceadvocateshelp
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Start Date</Label>
+            <DatePicker
+              value={startDate}
+              onChange={setStartDate}
+              placeholder="Scan tickets from..."
+              maxYear={2026}
+              minYear={2020}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Mode</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email_only">Email Only</SelectItem>
+                <SelectItem value="messaging_convert_optional">Messaging Convert</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dry Run</Label>
+            <div className="flex items-center gap-2 pt-1">
+              <Switch checked={dryRun} onCheckedChange={setDryRun} />
+              <span className="text-sm text-muted-foreground">
+                {dryRun ? 'Preview only' : 'Live — will tag tickets'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-3">
+          {!isRunning ? (
+            <Button onClick={startBackfill} disabled={!startDate}>
+              <Play className="h-4 w-4 mr-2" />
+              Start Backfill
+            </Button>
+          ) : (
+            <Button variant="destructive" onClick={stopChain}>
+              <Square className="h-4 w-4 mr-2" />
+              Stop Auto-Chain
+            </Button>
+          )}
+          <Button variant="outline" onClick={loadJobs} disabled={isLoadingJobs}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        {/* Live progress */}
+        {currentJob && isRunning && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="font-medium">Running batch...</span>
+                {currentJob.dry_run && <Badge variant="outline">DRY RUN</Badge>}
+              </div>
+              <div className="grid grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Processed</span>
+                  <p className="font-semibold text-lg">{currentJob.processed}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Updated</span>
+                  <p className="font-semibold text-lg text-green-600">{currentJob.updated}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Skipped</span>
+                  <p className="font-semibold text-lg">{currentJob.skipped}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Errors</span>
+                  <p className="font-semibold text-lg text-destructive">{currentJob.errors}</p>
+                </div>
+              </div>
+              {currentJob.processed > 0 && (
+                <Progress
+                  value={((currentJob.updated + currentJob.skipped) / currentJob.processed) * 100}
+                  className="h-2"
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Jobs history */}
+        <div>
+          <h4 className="font-medium mb-2">Job History</h4>
+          {jobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No backfill jobs yet.</p>
+          ) : (
+            <div className="border rounded-md overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Started</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Processed</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead>Skipped</TableHead>
+                    <TableHead>Errors</TableHead>
+                    <TableHead>Dry Run</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {jobs.map((job) => (
+                    <TableRow key={job.id}>
+                      <TableCell className="text-xs">{formatDisplayDateTime(job.started_at)}</TableCell>
+                      <TableCell className="text-xs">{job.job_type}</TableCell>
+                      <TableCell>{getStatusBadge(job.status)}</TableCell>
+                      <TableCell>{job.processed}</TableCell>
+                      <TableCell className="text-green-600">{job.updated}</TableCell>
+                      <TableCell>{job.skipped}</TableCell>
+                      <TableCell className={job.errors > 0 ? 'text-destructive' : ''}>{job.errors}</TableCell>
+                      <TableCell>{job.dry_run ? 'Yes' : 'No'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
