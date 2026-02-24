@@ -18,6 +18,7 @@ interface MarkdownEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: number;
+  onExtractText?: (text: string) => void;
 }
 
 export function MarkdownEditor({ 
@@ -26,6 +27,7 @@ export function MarkdownEditor({
   placeholder = "Write your article content here...\n\nSupports **markdown** formatting:\n- # Heading 1\n- ## Heading 2\n- **bold** and *italic*\n- Lists, tables, code blocks\n- > Blockquotes for messaging templates",
   className,
   minHeight = 400,
+  onExtractText,
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [isFormatting, setIsFormatting] = useState(false);
@@ -238,6 +240,7 @@ export function MarkdownEditor({
             />
             <FileAttachmentButton
               onInsert={insertAtCursor}
+              onExtractText={onExtractText}
               disabled={isFormatting || pendingApproval}
             />
             <RehostImagesButton
