@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,47 +51,31 @@ serve(async (req) => {
   }
 });
 
-/**
- * Extract text from PDF using pdf-parse-like approach.
- * We use a simple text-layer extraction approach.
- */
+// ── PDF extraction ──────────────────────────────────────────────────
+
 async function extractPdfText(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
-
-  // Simple PDF text extraction: find text between BT/ET blocks and decode
-  // For production-quality extraction, we use the AI gateway as a fallback
   const rawText = extractPdfTextSimple(bytes);
 
-  if (rawText.trim().length > 50) {
-    return rawText;
-  }
+  if (rawText.trim().length > 50) return rawText;
 
-  // Fallback: use AI to extract text from base64-encoded PDF
   return await extractWithAI(buffer, file.name, "pdf");
 }
 
-/**
- * Simple PDF text extractor - handles basic text-layer PDFs
- */
 function extractPdfTextSimple(bytes: Uint8Array): string {
   const text = new TextDecoder("latin1").decode(bytes);
   const textBlocks: string[] = [];
 
-  // Extract text from stream objects
   const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
   let match;
-
   while ((match = streamRegex.exec(text)) !== null) {
     const streamContent = match[1];
-    // Look for text showing operators: Tj, TJ, '
     const tjRegex = /\(([^)]*)\)\s*Tj/g;
     let tjMatch;
     while ((tjMatch = tjRegex.exec(streamContent)) !== null) {
       textBlocks.push(tjMatch[1]);
     }
-
-    // TJ array operator
     const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
     let tjArrayMatch;
     while ((tjArrayMatch = tjArrayRegex.exec(streamContent)) !== null) {
@@ -106,60 +91,133 @@ function extractPdfTextSimple(bytes: Uint8Array): string {
 
   return textBlocks
     .map((b) =>
-      b
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "\r")
-        .replace(/\\t/g, "\t")
-        .replace(/\\\(/g, "(")
-        .replace(/\\\)/g, ")")
-        .replace(/\\\\/g, "\\")
+      b.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t")
+        .replace(/\\\(/g, "(").replace(/\\\)/g, ")").replace(/\\\\/g, "\\")
     )
     .join("\n");
 }
 
-/**
- * Extract text from DOCX (Office Open XML).
- * DOCX = ZIP containing XML. We extract word/document.xml and pull text nodes.
- */
+// ── DOCX extraction with images ─────────────────────────────────────
+
 async function extractDocxText(file: File): Promise<string> {
   try {
     const buffer = await file.arrayBuffer();
+    const zipEntries = await parseZipEntriesAsync(new Uint8Array(buffer));
 
-    // DOCX is a ZIP file. We need to find word/document.xml inside it.
-    const zipEntries = parseZipEntries(new Uint8Array(buffer));
-    const docEntry = zipEntries.find(
-      (e) => e.name === "word/document.xml"
-    );
+    // Find key XML files
+    const docEntry = zipEntries.find((e) => e.name === "word/document.xml");
+    const relsEntry = zipEntries.find((e) => e.name === "word/_rels/document.xml.rels");
 
     if (!docEntry) {
-      // Fallback to AI extraction
       return await extractWithAI(buffer, file.name, "docx");
     }
 
     const xmlText = new TextDecoder().decode(docEntry.data);
+    const relsText = relsEntry ? new TextDecoder().decode(relsEntry.data) : "";
 
-    // Extract text content from XML, preserving paragraph breaks
+    // Build relationship map (rId -> target path)
+    const relMap = new Map<string, string>();
+    if (relsText) {
+      const relRegex = /<Relationship[^>]+Id="([^"]+)"[^>]+Target="([^"]+)"[^>]*\/>/g;
+      let relMatch;
+      while ((relMatch = relRegex.exec(relsText)) !== null) {
+        relMap.set(relMatch[1], relMatch[2]);
+      }
+    }
+
+    // Find image entries in ZIP
+    const imageEntries = zipEntries.filter((e) => e.name.startsWith("word/media/"));
+
+    // Upload images to storage and build path -> URL map
+    const imageUrlMap = new Map<string, string>();
+    if (imageEntries.length > 0) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      for (const entry of imageEntries) {
+        const relPath = entry.name.replace("word/", "");
+        const ext = entry.name.split(".").pop()?.toLowerCase() || "png";
+        const mimeMap: Record<string, string> = {
+          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+          gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
+          tiff: "image/tiff", emf: "image/emf", wmf: "image/wmf",
+        };
+        const mime = mimeMap[ext] || "application/octet-stream";
+
+        // Skip non-web-displayable formats
+        if (!["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) continue;
+
+        const storagePath = `docx-extract/${Date.now()}-${entry.name.split("/").pop()}`;
+        const { data, error } = await supabase.storage
+          .from("article-attachments")
+          .upload(storagePath, entry.data, { contentType: mime, upsert: false });
+
+        if (!error && data) {
+          const { data: urlData } = supabase.storage
+            .from("article-attachments")
+            .getPublicUrl(data.path);
+          imageUrlMap.set(relPath, urlData.publicUrl);
+        }
+      }
+    }
+
+    // Parse document.xml — extract text with inline images
     const paragraphs: string[] = [];
     const pRegex = /<w:p[\s>][\s\S]*?<\/w:p>/g;
     let pMatch;
 
     while ((pMatch = pRegex.exec(xmlText)) !== null) {
       const pContent = pMatch[0];
-      const texts: string[] = [];
-      const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-      let tMatch;
-      while ((tMatch = tRegex.exec(pContent)) !== null) {
-        texts.push(tMatch[1]);
+      const parts: string[] = [];
+
+      // Process runs and drawings in order
+      const elementRegex = /<w:r[\s>][\s\S]*?<\/w:r>|<w:drawing>[\s\S]*?<\/w:drawing>/g;
+      let elemMatch;
+
+      while ((elemMatch = elementRegex.exec(pContent)) !== null) {
+        const elem = elemMatch[0];
+
+        if (elem.startsWith("<w:drawing>") || elem.includes("<w:drawing>")) {
+          // Extract image reference
+          const embedMatch = elem.match(/r:embed="([^"]+)"/);
+          if (embedMatch) {
+            const rId = embedMatch[1];
+            const target = relMap.get(rId);
+            if (target) {
+              const url = imageUrlMap.get(target);
+              if (url) {
+                const imgName = target.split("/").pop() || "image";
+                parts.push(`\n\n![${imgName}](${url})\n\n`);
+              }
+            }
+          }
+        } else {
+          // Extract text from run
+          const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+          let tMatch;
+          while ((tMatch = tRegex.exec(elem)) !== null) {
+            parts.push(tMatch[1]);
+          }
+        }
       }
-      if (texts.length) {
-        paragraphs.push(texts.join(""));
+
+      // Also check for standalone text nodes not in runs
+      if (parts.length === 0) {
+        const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+        let tMatch;
+        while ((tMatch = tRegex.exec(pContent)) !== null) {
+          parts.push(tMatch[1]);
+        }
+      }
+
+      if (parts.length) {
+        paragraphs.push(parts.join(""));
       }
     }
 
     const result = paragraphs.join("\n");
-    if (result.trim().length > 20) {
-      return result;
-    }
+    if (result.trim().length > 20) return result;
 
     return await extractWithAI(buffer, file.name, "docx");
   } catch (e) {
@@ -169,24 +227,21 @@ async function extractDocxText(file: File): Promise<string> {
   }
 }
 
-/**
- * Minimal ZIP parser for DOCX extraction.
- * Handles stored (no compression) and deflated entries.
- */
-function parseZipEntries(
+// ── Async ZIP parser with DecompressionStream ───────────────────────
+
+async function parseZipEntriesAsync(
   data: Uint8Array
-): { name: string; data: Uint8Array }[] {
+): Promise<{ name: string; data: Uint8Array }[]> {
   const entries: { name: string; data: Uint8Array }[] = [];
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let offset = 0;
 
   while (offset < data.length - 4) {
     const sig = view.getUint32(offset, true);
-    if (sig !== 0x04034b50) break; // Local file header signature
+    if (sig !== 0x04034b50) break;
 
     const compressionMethod = view.getUint16(offset + 8, true);
     const compressedSize = view.getUint32(offset + 18, true);
-    const uncompressedSize = view.getUint32(offset + 22, true);
     const fileNameLen = view.getUint16(offset + 26, true);
     const extraLen = view.getUint16(offset + 28, true);
 
@@ -197,24 +252,17 @@ function parseZipEntries(
     const rawData = data.slice(dataStart, dataStart + compressedSize);
 
     if (compressionMethod === 0) {
-      // Stored
       entries.push({ name, data: rawData });
     } else if (compressionMethod === 8) {
-      // Deflated - use DecompressionStream
       try {
-        // Deno supports DecompressionStream
-        const ds = new DecompressionStream("raw");
-        const writer = ds.writable.getWriter();
-        const reader = ds.readable.getReader();
-
-        // We'll collect asynchronously but since we need sync here,
-        // store promise and handle later. For simplicity, skip compressed
-        // and rely on AI fallback for compressed DOCX.
-        // Actually, let's try a sync approach using Deno's built-in.
-        entries.push({ name, data: rawData }); // Will attempt XML parse, may fail
-      } catch {
+        const decompressed = await decompressRaw(rawData);
+        entries.push({ name, data: decompressed });
+      } catch (e) {
+        console.warn(`Failed to decompress ${name}:`, e);
         entries.push({ name, data: rawData });
       }
+    } else {
+      entries.push({ name, data: rawData });
     }
 
     offset = dataStart + compressedSize;
@@ -223,9 +271,37 @@ function parseZipEntries(
   return entries;
 }
 
-/**
- * Use Lovable AI to extract text from a document when simple parsing fails.
- */
+async function decompressRaw(compressed: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream("raw");
+  const writer = ds.writable.getWriter();
+  const reader = ds.readable.getReader();
+
+  const writePromise = writer.write(compressed).then(() => writer.close());
+
+  const chunks: Uint8Array[] = [];
+  let totalLen = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLen += value.length;
+  }
+
+  await writePromise;
+
+  const result = new Uint8Array(totalLen);
+  let pos = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, pos);
+    pos += chunk.length;
+  }
+
+  return result;
+}
+
+// ── AI fallback ─────────────────────────────────────────────────────
+
 async function extractWithAI(
   buffer: ArrayBuffer,
   fileName: string,
@@ -238,7 +314,7 @@ async function extractWithAI(
     );
   }
 
-  // Convert to base64 for the AI (chunked to avoid stack overflow)
+  // Convert to base64 in chunks to avoid stack overflow
   const bytes = new Uint8Array(buffer);
   let binary = "";
   const chunkSize = 8192;
