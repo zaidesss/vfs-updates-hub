@@ -36,6 +36,7 @@ export interface AgentScheduleRow {
   fri_ot_schedule: string | null;
   sat_ot_schedule: string | null;
   sun_ot_schedule: string | null;
+  ot_enabled: boolean | null;
 }
 
 export interface CoverageOverride {
@@ -237,8 +238,8 @@ export function getEffectiveBlocks(
     }
   }
 
-  // OT
-  if (otSchedule && otSchedule.toLowerCase() !== 'day off') {
+  // OT - only show if ot_enabled is true
+  if (agent.ot_enabled && otSchedule && otSchedule.toLowerCase() !== 'day off') {
     const otRange = parseScheduleRange(otSchedule);
     if (otRange) {
       const segments = splitOvernight(otRange.start, otRange.end, dayOffset);
@@ -306,7 +307,7 @@ function splitOvernight(startHour: number, endHour: number, dayOffset: number): 
 export async function fetchAgentSchedules(): Promise<AgentScheduleRow[]> {
   const { data, error } = await supabase
     .from('agent_profiles_team_status')
-    .select('id, email, agent_name, full_name, position, zendesk_instance, support_type, employment_status, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
+    .select('id, email, agent_name, full_name, position, zendesk_instance, support_type, employment_status, day_off, ot_enabled, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
     .neq('employment_status', 'Terminated')
     .order('full_name');
 
