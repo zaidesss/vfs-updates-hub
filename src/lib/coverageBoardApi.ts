@@ -440,7 +440,7 @@ export type AgentGroup = {
   subGroups: AgentSubGroup[];
 };
 
-const POSITION_ORDER = ['Hybrid Support', 'Phone Support', 'Chat Support', 'Email Support'];
+const POSITION_ORDER = ['Hybrid', 'Email + Phone', 'Email + Chat', 'Phone', 'Chat', 'Email'];
 
 function getPositionSortKey(position: string | string[] | null): number {
   const pos = Array.isArray(position) ? position[0] : position;
@@ -461,7 +461,7 @@ export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
     const pos = Array.isArray(posArr) ? posArr[0] || 'Unknown' : posArr || 'Unknown';
     if (pos === 'Logistics') logistics.push(agent);
     else if (pos === 'Team Lead') teamLeads.push(agent);
-    else if (pos === 'Technical Support') techSupport.push(agent);
+    else if (pos === 'Technical') techSupport.push(agent);
     else if (agent.zendesk_instance === 'ZD1') {
       if (!zd1Subs.has(pos)) zd1Subs.set(pos, []);
       zd1Subs.get(pos)!.push(agent);
@@ -488,7 +488,7 @@ export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
 
   if (logistics.length > 0) groups.push({ label: 'Logistics', subGroups: [{ subLabel: 'Logistics Team', agents: logistics }] });
   if (teamLeads.length > 0) groups.push({ label: 'Team Lead', subGroups: [{ subLabel: 'Team Leads', agents: teamLeads }] });
-  if (techSupport.length > 0) groups.push({ label: 'Technical Support', subGroups: [{ subLabel: 'Technical Team', agents: techSupport }] });
+  if (techSupport.length > 0) groups.push({ label: 'Technical', subGroups: [{ subLabel: 'Technical Team', agents: techSupport }] });
   if (other.length > 0) groups.push({ label: 'Other', subGroups: [{ subLabel: 'Uncategorized', agents: other }] });
 
   return groups;
