@@ -22,12 +22,14 @@ const STATUS_DISPLAY: Record<ProfileStatus, { label: string; className: string }
 const OUTAGE_BADGE_CLASS = 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400';
 
 const POSITION_BADGE: Record<string, { className: string }> = {
-  'Phone Support': { className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  'Chat Support': { className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400' },
-  'Email Support': { className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  'Hybrid Support': { className: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400' },
+  'Phone': { className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+  'Chat': { className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  'Email': { className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  'Email + Chat': { className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
+  'Email + Phone': { className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  'Hybrid': { className: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400' },
   'Team Lead': { className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
-  'Technical Support': { className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
+  'Technical': { className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
 };
 
 export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
