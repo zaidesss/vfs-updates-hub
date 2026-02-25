@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/gmail-sender.ts";
 
+const QA_ALWAYS_NOTIFY = 'dzaydee06@gmail.com'; // Juno - always receives QA emails
+
+const dedupe = (...emails: (string | null | undefined)[]): string[] =>
+  [...new Set(emails.filter(Boolean).map(e => e!.toLowerCase()))];
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -117,11 +122,13 @@ const handler = async (req: Request): Promise<Response> => {
       `;
 
       // Send to agent with team lead in CC (if exists)
+      const toRecipients = dedupe(evaluation.agent_email, QA_ALWAYS_NOTIFY);
+      const ccRecipients = teamLeadEmail && !toRecipients.includes(teamLeadEmail.toLowerCase())
+        ? [teamLeadEmail] : undefined;
+
       const emailResult = await sendEmail({
-        to: [evaluation.agent_email],
-        cc: teamLeadEmail && teamLeadEmail !== evaluation.agent_email 
-          ? [teamLeadEmail] 
-          : undefined,
+        to: toRecipients,
+        cc: ccRecipients,
         subject,
         html: htmlContent,
       });
@@ -188,9 +195,13 @@ const handler = async (req: Request): Promise<Response> => {
       `;
 
       // Send to team lead with agent in CC (if team lead exists)
+      const ackTo = dedupe(teamLeadEmail || evaluation.agent_email, QA_ALWAYS_NOTIFY);
+      const ackCc = teamLeadEmail && !ackTo.includes(evaluation.agent_email.toLowerCase())
+        ? [evaluation.agent_email] : undefined;
+
       const emailResult = await sendEmail({
-        to: teamLeadEmail ? [teamLeadEmail] : [evaluation.agent_email],
-        cc: teamLeadEmail ? [evaluation.agent_email] : undefined,
+        to: ackTo,
+        cc: ackCc,
         subject,
         html: htmlContent,
       });
@@ -248,11 +259,13 @@ const handler = async (req: Request): Promise<Response> => {
       `;
 
       // Send to agent with team lead in CC
+      const updTo = dedupe(evaluation.agent_email, QA_ALWAYS_NOTIFY);
+      const updCc = teamLeadEmail && !updTo.includes(teamLeadEmail.toLowerCase())
+        ? [teamLeadEmail] : undefined;
+
       const emailResult = await sendEmail({
-        to: [evaluation.agent_email],
-        cc: teamLeadEmail && teamLeadEmail !== evaluation.agent_email 
-          ? [teamLeadEmail] 
-          : undefined,
+        to: updTo,
+        cc: updCc,
         subject,
         html: htmlContent,
       });
