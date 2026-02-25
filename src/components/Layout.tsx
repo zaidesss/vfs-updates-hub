@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap, Sparkles, TrendingUp, Gauge, Briefcase, MessageSquare, GitCompare, Target, Bot, Brain
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap, Sparkles, TrendingUp, Gauge, Briefcase, MessageSquare, GitCompare, Target, Bot
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -180,7 +180,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/operations/reports/contact-reasons', label: 'Contact Reasons', icon: MessageSquare },
         { href: '/operations/reports/comparison', label: '4-Week Comparison', icon: GitCompare },
         { href: '/operations/reports/capacity', label: 'Capacity Planning', icon: Target },
-        { href: '/operations/reports/brain', label: 'Brain', icon: Brain },
+        
         { href: '/operations/ai/recommendations', label: 'AI Recommendations', icon: Bot },
       ],
     });
