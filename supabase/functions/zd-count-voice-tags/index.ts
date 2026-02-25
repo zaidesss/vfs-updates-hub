@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { zdInstance, date } = await req.json();
+    const { zdInstance, date, tag } = await req.json();
+    const effectiveTag = tag || 'voice';
 
     if (!zdInstance || !date) {
       return new Response(
@@ -55,6 +56,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    const validTags = ['voice', 'emails', 'chat'];
+    if (!validTags.includes(effectiveTag)) {
+      return new Response(
+        JSON.stringify({ error: `tag must be one of: ${validTags.join(', ')}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const config = getZdConfig(zdInstance);
 
     if (!config.token || !config.email) {
@@ -65,15 +74,15 @@ Deno.serve(async (req) => {
     }
 
     // Query with NO status filter → includes solved + closed
-    const query = `type:ticket tags:voice created:${date}`;
+    const query = `type:ticket tags:${effectiveTag} created:${date}`;
     console.log(`[zd-count-voice-tags] ${zdInstance} query: "${query}"`);
 
-    const totalVoiceTagged = await searchCount(config, query);
+    const totalTagged = await searchCount(config, query);
 
-    console.log(`[zd-count-voice-tags] ${zdInstance} ${date} → ${totalVoiceTagged} voice-tagged tickets`);
+    console.log(`[zd-count-voice-tags] ${zdInstance} ${date} tag=${effectiveTag} → ${totalTagged} tickets`);
 
     return new Response(
-      JSON.stringify({ zdInstance, date, totalVoiceTagged }),
+      JSON.stringify({ zdInstance, date, tag: effectiveTag, totalTagged }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
