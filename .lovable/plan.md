@@ -1,77 +1,181 @@
 
 
-## Analysis and Plan
+## Position Array Migration: Complete Fix Plan
 
-### Critical Data Issue Found: Duplicate Position Values
+### Summary
 
-While reviewing the fields, I discovered a **major data integrity problem**. The position arrays for nearly all agents contain **both old and new values** duplicated. For example, Ashley Nerviol has:
+The `position` column changed from a single string (e.g., `"Email Support"`) to a `text[]` array (e.g., `["Email"]`). All "Support" suffixes removed. "Hybrid" eliminated — agents with multiple roles just have `["Email", "Chat", "Phone"]`.
 
+### Scorecard Config Mapping (per your confirmation)
+
+| Agent Position Array | Config Key | Weight Source |
+|---|---|---|
+| `["Email"]` | `Email` | Email weights |
+| `["Email", "Chat"]` | `Email + Chat` | Chat weights |
+| `["Email", "Phone"]` | `Email + Phone` | Phone weights |
+| `["Email", "Chat", "Phone"]` | `Hybrid` | Hybrid weights |
+| `["Logistics"]` | `Logistics` | Logistics weights |
+
+### Execution Steps (one at a time, step by step)
+
+---
+
+**Step 1: Database — Rename `scorecard_config` support_type values**
+
+Update existing rows:
+- `"Email Support"` → `"Email"`
+- `"Chat Support"` → `"Chat"` (kept for reference, though no agent will be pure Chat)
+- `"Phone Support"` → `"Phone"` (kept for reference)
+- `"Hybrid Support"` → `"Hybrid"`
+
+Insert two new config entries by cloning:
+- `"Email + Chat"` — clone from `"Chat Support"` (now `"Chat"`) weights
+- `"Email + Phone"` — clone from `"Phone Support"` (now `"Phone"`) weights
+
+---
+
+**Step 2: Database — Migrate `saved_scorecards` and `weekly_scorecard_snapshots` historical data**
+
+Update `support_type` in both tables:
+- `"Email Support"` → `"Email"`
+- `"Chat Support"` → `"Chat"`
+- `"Phone Support"` → `"Phone"`
+- `"Hybrid Support"` → `"Hybrid"`
+
+---
+
+**Step 3: Database — Rewrite `get_weekly_scorecard_data` RPC**
+
+Update the `eligible_agents` CTE:
+- Replace `ap.position NOT IN ('Team Lead', 'Technical Support')` with `NOT ap.position && ARRAY['Team Lead','Technical']`
+- Replace the position filter to use a helper function that resolves the position array to a config key, then filters by that key
+- Return a resolved `agent_position` string (the config key) instead of the raw array
+
+Position-to-config-key logic in SQL:
 ```text
-["Email Support", "Chat Support", "Phone Support", "Email", "Chat", "Phone"]
+IF position @> ARRAY['Email','Chat','Phone'] → 'Hybrid'
+ELIF position @> ARRAY['Email','Chat']       → 'Email + Chat'
+ELIF position @> ARRAY['Email','Phone']      → 'Email + Phone'
+ELIF 'Email' = ANY(position)                 → 'Email'
+ELIF 'Chat' = ANY(position)                  → 'Chat'
+ELIF 'Phone' = ANY(position)                 → 'Phone'
+ELIF 'Logistics' = ANY(position)             → 'Logistics'
+ELSE 'Email'
 ```
 
-This happened because when we added the new shortened names via checkboxes, the old "X Support" values were never cleaned up. This affects **all 29 agents** and will cause incorrect behavior in:
-- Team Status Board categorization (falls through to first match, may pick wrong one)
-- Scorecard position filtering
-- EOD/Weekly analytics exclusion logic
-- Position defaults auto-population
+---
 
-### Items 1-12 Summary
+**Step 4: Edge Function — Fix `generate-eod-analytics`**
 
-| # | Field | Current State |
-|---|-------|--------------|
-| 1 | Position / Role | Duplicated values (bug above). Also: you want "Hybrid" removed from options. |
-| 2 | Total Hours (Weekly) | Calculates correctly from schedule data |
-| 3 | Weekday hours | Derived from Mon-Fri schedules |
-| 4 | Weekend: 0.0h | Correct for agents with Sat/Sun as Day Off (no weekend schedule) |
-| 5 | OT | Reflects ot_enabled + OT schedule hours |
-| 6 | Break Deduction | Calculated per working day |
-| 7 | Day Off | Working correctly (checkbox toggles) |
-| 8 | Weekday Schedule | Monday auto-populates Tue-Fri |
-| 9 | Weekend Schedule | Saturday auto-populates Sunday |
-| 10 | Break Schedule | Single field, applied to all working days |
-| 11 | OT Schedule Enabled | Toggle switch |
-| 12 | Weekday OT Schedule | Monday OT auto-populates Tue-Fri OT |
+- `EXCLUDED_POSITIONS` → `['Team Lead', 'Technical']`
+- `TICKET_EXCLUDED_POSITIONS` → `['Team Lead', 'Technical', 'Logistics']`
+- Replace `.not('position', 'in', ...)` with `.not('position', 'ov', '{"Team Lead","Technical"}')` (overlap operator)
+- Replace `TICKET_EXCLUDED_POSITIONS.includes(p.position || '')` with `(p.position || []).some(pos => TICKET_EXCLUDED_POSITIONS.includes(pos))`
+- Replace quota logic (`pos.includes('hybrid')`) with array element checks:
+  ```text
+  const posArr = p.position || [];
+  const hasEmail = posArr.includes('Email');
+  const hasChat = posArr.includes('Chat');
+  const hasPhone = posArr.includes('Phone');
+  // Hybrid = all three; Email+Chat = hasEmail && hasChat && !hasPhone; etc.
+  ```
 
-### Plan Step 1: Fix Position Data
+---
 
-**Database migration** to:
-1. Remove "Hybrid" from `POSITION_OPTIONS` in code
-2. Clean up all duplicate position values in the database (strip old "X Support" suffixed versions, keep only new shortened names)
-3. Update `categorizeByPosition` in `teamStatusApi.ts` and `get_weekly_scorecard_data` to handle the new values
-4. Update the `handlePositionToggle` check for Hybrid (line 152 in WorkConfigurationSection still references `'Hybrid Support'`)
+**Step 5: Edge Function — Fix `generate-weekly-analytics`**
 
-### Plan Step 2: ZD1 vs ZD2 Agent Split Recommendation
+Same fixes as Step 4 — identical broken patterns.
 
-**Current state:** 27 agents on ZD1, 2 on ZD2 (Nikki Ignacio, Reza Joy Docto)
+---
 
-**Volume & Demand analysis from your screenshot:**
+**Step 6: Edge Function — Fix `generate-agent-reports`**
 
-| Metric | ZD1 | ZD2 |
-|--------|-----|-----|
-| Total Unresolved | 19,402 | 5,335 |
-| Email backlog | 18,707 (41/d avg) | 2,395 (5/d avg) |
-| Chat backlog | 47 (0/d) | 2,529 (6/d avg) |
-| Call backlog | 64 (0/d) | 0 |
+- Change `AgentProfile.position` type from `string | null` to `string[] | null`
+- Rewrite `calculateExpectedQuota()` to use array checks
+- Rewrite `isEmailSupport()` to check `posArr.includes('Email') && !posArr.includes('Chat') && !posArr.includes('Phone')`
 
-**Key observations:**
-- ZD2 has a **massive chat backlog** (2,529) with only ~6/day throughput — this is severely understaffed
-- ZD1 email backlog is enormous (18,707) but has decent daily throughput (41/d)
-- ZD1 chat and call volumes are near zero — agents are primarily doing email
-- ZD2 has no calls at all
+---
 
-**Before I can recommend a specific split**, I need to understand a few things — I will ask these as follow-up questions after you approve the plan direction.
+**Step 7: Client — Update `src/lib/scorecardApi.ts`**
 
-Questions I need answered to finalize the split:
-- What is each agent's **primary skill/preference** — are some agents better at chat vs email?
-- Do you want to **balance headcount** (e.g., 20 ZD1 / 9 ZD2) or **balance by volume ratio**?
-- Should the ZD2 agents primarily handle **chat** (since that's the biggest gap), or a mix?
-- Are there shift coverage considerations — ZD2 needs agents during specific hours?
-- Should agents with "Emails" upwork contract stay on ZD1, and "Hybrid" contracts be candidates for ZD2?
+- `SUPPORT_TYPES` → `['Hybrid', 'Email + Phone', 'Email + Chat', 'Phone', 'Chat', 'Email', 'Logistics']`
+- `EXCLUDED_POSITIONS` → `['Team Lead', 'Technical']`
+- Fix `fetchEligibleAgents()` filter for array column
+- Update `getWeeklyQuota()` switch cases from old names to new
+- Update `productivityCount` switch in `fetchWeeklyScorecardRPC()` from old names to new
+- Update `agentSupportType` derivation to use position-array-to-config-key mapping
+- Fix `saveScorecard()` support_type resolution
 
-### Implementation Steps (after discussion)
+---
 
-1. Run database migration to clean position data and remove "Hybrid" option
-2. Update frontend code to remove "Hybrid" from POSITION_OPTIONS and fix the `'Hybrid Support'` reference
-3. After you decide the split, bulk-update `zendesk_instance` for the selected agents
+**Step 8: Client — Update `src/pages/TeamScorecard.tsx`**
+
+- Line 245: `'Hybrid Support'` → `'Hybrid'`
+- Lines 499-506: Update column visibility checks to new names
+- Lines 536-558: Update `metricApplies()` to new names
+
+---
+
+**Step 9: Client — Fix `src/components/dashboard/DailyWorkTracker.tsx`**
+
+Position is now an array. Update `getVisibleTicketTypes()`:
+- Replace string-based checks (`pos.includes('support')`) with array element checks
+- `showEmail` = always true for support agents
+- `showChat` = `posArr.includes('Chat')` or quota_chat > 0
+- `showCall` = `posArr.includes('Phone')` or quota_phone > 0
+
+---
+
+**Step 10: Client — Update `ShiftBlock.tsx` POSITION_COLORS**
+
+Rename keys:
+- `'Hybrid Support'` → `'Hybrid'`
+- `'Email Support'` → `'Email'`
+- `'Phone Support'` → `'Phone'`
+- `'Chat Support'` → `'Chat'`
+
+---
+
+**Step 11: Client — Update `StatusCard.tsx` POSITION_BADGE**
+
+Rename keys:
+- `'Technical Support'` → `'Technical'`
+- `'Hybrid Support'` → `'Hybrid'`
+- `'Email Support'` → `'Email'`
+- `'Phone Support'` → `'Phone'`
+- `'Chat Support'` → `'Chat'`
+
+---
+
+**Step 12: Client — Update `coverageBoardApi.ts`**
+
+- `POSITION_ORDER` → `['Hybrid', 'Phone', 'Chat', 'Email']`
+- Line 464: `'Technical Support'` → `'Technical'`
+- Line 491: `'Technical Support'` label → `'Technical'`
+
+---
+
+**Step 13: Documentation updates**
+
+Update user guide and demo tour references to use new position names.
+
+---
+
+### Position-to-Config-Key Resolution (shared logic)
+
+This function will be consistent across all edge functions and frontend:
+
+```text
+function resolveConfigKey(positionArray: string[]): string {
+  const has = (r: string) => positionArray.includes(r);
+  if (has('Email') && has('Chat') && has('Phone')) return 'Hybrid';
+  if (has('Email') && has('Chat'))                 return 'Email + Chat';
+  if (has('Email') && has('Phone'))                return 'Email + Phone';
+  if (has('Email'))                                return 'Email';
+  if (has('Chat'))                                 return 'Chat';
+  if (has('Phone'))                                return 'Phone';
+  if (has('Logistics'))                            return 'Logistics';
+  return 'Email'; // fallback
+}
+```
 
