@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { 
   AgentProfileInput, 
   POSITION_OPTIONS, 
-  SUPPORT_TYPE_OPTIONS,
   UPWORK_CONTRACT_TYPE_OPTIONS,
   getPositionDefaults,
   canEditSchedules 
@@ -139,20 +138,12 @@ export function WorkConfigurationSection({
   // Check if a day is selected as day off
   const isDayOff = (day: string) => (profile.day_off || []).includes(day);
 
-  // Handle position change - auto-populate dependent fields (uses first position for defaults)
+  // Handle position change - auto-populate dependent fields
   const handlePositionChange = (positions: string[]) => {
     const defaults = getPositionDefaults(positions);
     
     onInputChange('position', positions);
-    onInputChange('views', defaults.views);
     onInputChange('ticket_assignment_view_id', defaults.ticketViewId);
-    
-    // For non-multi-position agents, set fixed support type
-    const firstPos = positions[0];
-    const isMultiPosition = positions.length >= 3 && ['Email', 'Chat', 'Phone'].every(p => positions.includes(p));
-    if (!isMultiPosition) {
-      onInputChange('support_type', defaults.supportType);
-    }
     
     // Clear quotas for positions that don't need them
     if (!defaults.showQuotaEmail) onInputChange('quota_email', null);
@@ -235,15 +226,7 @@ export function WorkConfigurationSection({
     }
   };
 
-  // Handle support type toggle for Hybrid
-  const handleSupportTypeToggle = (type: string, checked: boolean) => {
-    const currentTypes = profile.support_type || [];
-    if (checked) {
-      onInputChange('support_type', [...currentTypes, type]);
-    } else {
-      onInputChange('support_type', currentTypes.filter(t => t !== type));
-    }
-  };
+  // (Support type toggle removed - now derived from position)
 
   // Compute agent_tag from agent_name
   const handleAgentNameChange = (value: string) => {
@@ -407,40 +390,6 @@ export function WorkConfigurationSection({
           </Select>
         </div>
 
-        {/* Support Type - conditional rendering */}
-        <div className="space-y-2">
-          <Label>Support Type</Label>
-          {positionDefaults.supportTypeEditable ? (
-            <div className="flex flex-wrap gap-2 p-2 border rounded-md">
-              {SUPPORT_TYPE_OPTIONS.map((type) => (
-                <label key={type} className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={(profile.support_type || []).includes(type)}
-                    onCheckedChange={(checked) => handleSupportTypeToggle(type, !!checked)}
-                    disabled={!canEdit}
-                  />
-                  <span className="text-sm">{type}</span>
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-center h-10">
-              {(profile.support_type || positionDefaults.supportType).map((type) => (
-                <Badge key={type} variant="secondary" className="mr-1">{type}</Badge>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Views - read-only based on position */}
-        <div className="space-y-2">
-          <Label>Views</Label>
-          <div className="flex items-center h-10">
-            {(profile.views || positionDefaults.views).map((view) => (
-              <Badge key={view} variant="outline" className="mr-1">{view}</Badge>
-            ))}
-          </div>
-        </div>
 
 
         {/* Zendesk User ID */}

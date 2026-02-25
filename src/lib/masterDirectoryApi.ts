@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 
 export interface DirectoryEntry {
   id: string;           // agent_directory.id (for save operations)
@@ -13,7 +14,7 @@ export interface DirectoryEntry {
   support_type: string | null;
   agent_name: string | null;
   agent_tag: string | null;
-  views: string[];
+  
   ticket_assignment_enabled: boolean;  // Editable toggle in Master Directory
   ticket_assignment_view_id: string | null;  // Which view to pull tickets from
   weekday_schedule: string | null;
@@ -407,7 +408,7 @@ export async function fetchAllDirectoryEntries(): Promise<{ data: DirectoryEntry
         support_type: dirEntry?.support_type || null,
         agent_name: dirEntry?.agent_name || null,
         agent_tag: dirEntry?.agent_tag || null,
-        views: dirEntry?.views || [],
+        
         ticket_assignment_enabled: profile.ticket_assignment_enabled || false,
         ticket_assignment_view_id: dirEntry?.ticket_assignment_view_id || null,
         weekday_schedule: dirEntry?.weekday_schedule || null,
@@ -483,7 +484,7 @@ export async function bulkSaveEntries(
         support_type: entry.support_type,
         agent_name: entry.agent_name,
         agent_tag: entry.agent_tag,
-        views: entry.views,
+        
         weekday_schedule: entry.weekday_schedule,
         weekday_total_hours: hours.weekday_total_hours,
         weekend_schedule: entry.weekend_schedule,
@@ -549,7 +550,7 @@ const fieldsToTrack = [
     'support_type',
     'agent_name',
     'agent_tag',
-    'views',
+    
     'weekday_schedule',
     'wd_ticket_assign',
     'weekend_schedule',
@@ -619,7 +620,7 @@ export async function syncAllProfilesToDirectory(): Promise<{
     // Fetch all profiles with work configuration data
     const { data: profiles, error: profilesError } = await supabase
       .from('agent_profiles')
-      .select('email, agent_name, agent_tag, zendesk_instance, support_account, support_type, views, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule, day_off, upwork_contract_id, ticket_assignment_view_id, ticket_assignment_enabled');
+      .select('email, agent_name, agent_tag, position, zendesk_instance, support_account, quota_email, quota_chat, quota_phone, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, break_schedule, weekday_ot_schedule, weekend_ot_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule, day_off, upwork_contract_id, ticket_assignment_view_id, ticket_assignment_enabled');
     
     if (profilesError) {
       return { success: false, synced: 0, error: profilesError.message };
@@ -640,8 +641,7 @@ export async function syncAllProfilesToDirectory(): Promise<{
         agent_tag: profile.agent_tag || null,
         zendesk_instance: profile.zendesk_instance || null,
         support_account: profile.support_account || null,
-        support_type: Array.isArray(profile.support_type) ? profile.support_type.join(', ') : null,
-        views: profile.views || [],
+        support_type: resolvePositionCategory(profile.position),
         quota: quota || null,
         mon_schedule: profile.mon_schedule || null,
         tue_schedule: profile.tue_schedule || null,

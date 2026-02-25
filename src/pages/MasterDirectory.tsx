@@ -34,6 +34,7 @@ import {
   bulkSaveEntries,
   syncAllProfilesToDirectory,
 } from '@/lib/masterDirectoryApi';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Tooltip,
@@ -55,7 +56,7 @@ export default function MasterDirectory() {
   // Filter states
   const [teamLeadFilter, setTeamLeadFilter] = useState('all');
   const [zdInstanceFilter, setZdInstanceFilter] = useState('all');
-  const [supportTypeFilter, setSupportTypeFilter] = useState('all');
+  const [positionFilter, setPositionFilter] = useState('all');
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -97,9 +98,10 @@ export default function MasterDirectory() {
     
     const teamLeads = [...new Set(activeEntries.map(e => e.team_lead).filter(Boolean))].sort() as string[];
     const zdInstances = [...new Set(activeEntries.map(e => e.zendesk_instance).filter(Boolean))].sort() as string[];
-    const supportTypes = [...new Set(activeEntries.map(e => e.support_type).filter(Boolean))].sort() as string[];
+    // Derive position categories from the position field stored in directory entries
+    const positionCategories = [...new Set(activeEntries.map(e => e.position).filter(Boolean))].sort() as string[];
     
-    return { teamLeads, zdInstances, supportTypes };
+    return { teamLeads, zdInstances, positionCategories };
   }, [editedData]);
 
   // Filter entries based on search and exclude terminated profiles
@@ -116,8 +118,8 @@ export default function MasterDirectory() {
     if (zdInstanceFilter !== 'all') {
       result = result.filter(entry => entry.zendesk_instance === zdInstanceFilter);
     }
-    if (supportTypeFilter !== 'all') {
-      result = result.filter(entry => entry.support_type === supportTypeFilter);
+    if (positionFilter !== 'all') {
+      result = result.filter(entry => entry.position === positionFilter);
     }
     
     // Apply search filter
@@ -131,19 +133,19 @@ export default function MasterDirectory() {
     }
     
     return result;
-  }, [editedData, searchQuery, teamLeadFilter, zdInstanceFilter, supportTypeFilter]);
+  }, [editedData, searchQuery, teamLeadFilter, zdInstanceFilter, positionFilter]);
 
   // Reset filters handler
   const resetFilters = () => {
     setTeamLeadFilter('all');
     setZdInstanceFilter('all');
-    setSupportTypeFilter('all');
+    setPositionFilter('all');
     setSearchQuery('');
   };
 
   const hasActiveFilters = teamLeadFilter !== 'all' || 
                            zdInstanceFilter !== 'all' || 
-                           supportTypeFilter !== 'all' || 
+                           positionFilter !== 'all' || 
                            searchQuery.trim() !== '';
 
   // Update a single field for an entry (only for editable fields)
@@ -350,15 +352,15 @@ export default function MasterDirectory() {
             </SelectContent>
           </Select>
           
-          {/* Support Type Filter */}
-          <Select value={supportTypeFilter} onValueChange={setSupportTypeFilter}>
+          {/* Position Filter */}
+          <Select value={positionFilter} onValueChange={setPositionFilter}>
             <SelectTrigger className="w-[150px] bg-background border-border">
-              <SelectValue placeholder="Support Type" />
+              <SelectValue placeholder="Position" />
             </SelectTrigger>
             <SelectContent className="bg-popover border-border z-50">
-              <SelectItem value="all">All Types</SelectItem>
-              {filterOptions.supportTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
+              <SelectItem value="all">All Positions</SelectItem>
+              {filterOptions.positionCategories.map((pos) => (
+                <SelectItem key={pos} value={pos}>{pos}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -401,7 +403,7 @@ export default function MasterDirectory() {
                   <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Quota</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Views</TableHead>
+                  
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Ticket Assignment</TableHead>
                   <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Assignment View</TableHead>
                   <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
@@ -446,19 +448,6 @@ export default function MasterDirectory() {
                     <TableCell className="text-muted-foreground text-center">{entry.quota ?? '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_tag || '-'}</TableCell>
-                    
-                    {/* Views - read-only badges */}
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {(entry.views || []).length > 0 ? (
-                          entry.views.map((view) => (
-                            <Badge key={view} variant="outline" className="text-xs">{view}</Badge>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </div>
-                    </TableCell>
                     
                     {/* Ticket Assignment Toggle - EDITABLE (disabled for ZD2) */}
                     <TableCell>

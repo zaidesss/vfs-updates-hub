@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
 import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
 
@@ -359,7 +360,7 @@ export async function fetchDashboardProfile(profileId: string, weekStart?: Date 
       agent_name: directory?.agent_name || profile.full_name,
       zendesk_instance: directory?.zendesk_instance || null,
       support_account: directory?.support_account || null,
-      support_type: directory?.support_type || null,
+      support_type: resolvePositionCategory(profile.position),
       ticket_assignment_view_id: directory?.ticket_assignment_view_id || null,
       break_schedule: effectiveBreakSchedule,
       quota: directory?.quota || null,

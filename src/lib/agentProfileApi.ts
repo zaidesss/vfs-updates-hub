@@ -27,82 +27,85 @@ export const UPWORK_CONTRACT_TYPE_OPTIONS = ['Hybrid', 'Emails', 'Chats'] as con
 
 // Get defaults based on position
 export function getPositionDefaults(position: string | string[] | null): {
-  supportType: string[];
-  views: string[];
   ticketViewId: string | null;
   showQuotaEmail: boolean;
   showQuotaChat: boolean;
   showQuotaPhone: boolean;
-  supportTypeEditable: boolean;
 } {
-  const pos = Array.isArray(position) ? position[0] : position;
+  // Resolve multi-position arrays first
+  const arr = Array.isArray(position) ? position : position ? [position] : [];
+  const has = (r: string) => arr.includes(r);
+
+  // Multi-position: Email+Chat+Phone (Hybrid)
+  if (has('Email') && has('Chat') && has('Phone')) {
+    return {
+      ticketViewId: '50553259977753',
+      showQuotaEmail: true,
+      showQuotaChat: true,
+      showQuotaPhone: true,
+    };
+  }
+  // Email+Chat combo
+  if (has('Email') && has('Chat')) {
+    return {
+      ticketViewId: '50553259977753',
+      showQuotaEmail: true,
+      showQuotaChat: true,
+      showQuotaPhone: false,
+    };
+  }
+  // Email+Phone combo
+  if (has('Email') && has('Phone')) {
+    return {
+      ticketViewId: '50553259977753',
+      showQuotaEmail: true,
+      showQuotaChat: false,
+      showQuotaPhone: true,
+    };
+  }
+
+  const pos = arr[0] || null;
   switch (pos) {
-    case 'Hybrid':
-    case 'Hybrid Support':
-      return {
-        supportType: ['Email', 'Chat', 'Phone'],
-        views: ['All'],
-        ticketViewId: '50553259977753',
-        showQuotaEmail: true,
-        showQuotaChat: true,
-        showQuotaPhone: true,
-        supportTypeEditable: true,
-      };
     case 'Email':
     case 'Email Support':
       return {
-        supportType: ['Email'],
-        views: ['Open'],
         ticketViewId: '50553259977753',
         showQuotaEmail: true,
         showQuotaChat: false,
         showQuotaPhone: false,
-        supportTypeEditable: false,
       };
     case 'Chat':
     case 'Chat Support':
       return {
-        supportType: ['Chat'],
-        views: ['New'],
         ticketViewId: '48622289457049',
         showQuotaEmail: true,
         showQuotaChat: true,
         showQuotaPhone: false,
-        supportTypeEditable: false,
       };
     case 'Phone':
     case 'Phone Support':
       return {
-        supportType: ['Phone'],
-        views: ['New'],
         ticketViewId: '48622289457049',
         showQuotaEmail: true,
         showQuotaChat: false,
         showQuotaPhone: true,
-        supportTypeEditable: false,
       };
     case 'Team Lead':
     case 'Logistics':
     case 'Technical':
     case 'Technical Support':
       return {
-        supportType: ['Email'],
-        views: ['All'],
         ticketViewId: null,
         showQuotaEmail: false,
         showQuotaChat: false,
         showQuotaPhone: false,
-        supportTypeEditable: false,
       };
     default:
       return {
-        supportType: [],
-        views: [],
         ticketViewId: null,
         showQuotaEmail: false,
         showQuotaChat: false,
         showQuotaPhone: false,
-        supportTypeEditable: false,
       };
   }
 }

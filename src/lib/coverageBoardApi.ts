@@ -442,9 +442,11 @@ export type AgentGroup = {
 
 const POSITION_ORDER = ['Hybrid', 'Email + Phone', 'Email + Chat', 'Phone', 'Chat', 'Email'];
 
+import { resolvePositionCategory } from '@/lib/positionUtils';
+
 function getPositionSortKey(position: string | string[] | null): number {
-  const pos = Array.isArray(position) ? position[0] : position;
-  const idx = POSITION_ORDER.indexOf(pos || '');
+  const resolved = resolvePositionCategory(position);
+  const idx = POSITION_ORDER.indexOf(resolved);
   return idx === -1 ? POSITION_ORDER.length : idx;
 }
 
@@ -457,8 +459,7 @@ export function groupAgents(agents: AgentScheduleRow[]): AgentGroup[] {
   const other: AgentScheduleRow[] = [];
 
   for (const agent of agents) {
-    const posArr = agent.position || [];
-    const pos = Array.isArray(posArr) ? posArr[0] || 'Unknown' : posArr || 'Unknown';
+    const pos = resolvePositionCategory(agent.position);
     if (pos === 'Logistics') logistics.push(agent);
     else if (pos === 'Team Lead') teamLeads.push(agent);
     else if (pos === 'Technical') techSupport.push(agent);
