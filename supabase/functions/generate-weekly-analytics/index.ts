@@ -7,9 +7,9 @@ const corsHeaders = {
 };
 
 // Positions to exclude from all team analytics
-const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support'];
+const EXCLUDED_POSITIONS = ['Team Lead', 'Technical'];
 // Positions to exclude from ticket counts and quota only
-const TICKET_EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support', 'Logistics'];
+const TICKET_EXCLUDED_POSITIONS = ['Team Lead', 'Technical', 'Logistics'];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -57,14 +57,15 @@ Deno.serve(async (req) => {
     const { data: profiles } = await supabase
       .from("agent_profiles")
       .select("id, email, full_name, position, quota_email, quota_chat, quota_phone")
-      .not('position', 'in', `(${EXCLUDED_POSITIONS.map(p => `"${p}"`).join(',')})`);
+      .not('position', 'ov', '{"Team Lead","Technical"}');
     
     if (!profiles?.length) return new Response(JSON.stringify({ success: true, message: "No profiles" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     // Build set of emails for ticket-excluded positions (Logistics agents)
     const ticketExcludedEmails = new Set<string>();
     profiles.forEach(p => {
-      if (TICKET_EXCLUDED_POSITIONS.includes(p.position || '')) {
+      const posArr: string[] = p.position || [];
+      if (posArr.some(pos => TICKET_EXCLUDED_POSITIONS.includes(pos))) {
         ticketExcludedEmails.add(p.email.toLowerCase());
       }
     });
@@ -119,7 +120,7 @@ Deno.serve(async (req) => {
     const parseSched = (s: string) => { const p = s.split("-"); if (p.length !== 2) return null; const st = parseTime(p[0]), en = parseTime(p[1]); return st !== null && en !== null ? { st, en } : null; };
     const dayKeys = ["sun_schedule", "mon_schedule", "tue_schedule", "wed_schedule", "thu_schedule", "fri_schedule", "sat_schedule"];
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const getQuota = (p: any) => { const pos = (p.position || "").toLowerCase(); const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0; return pos.includes("hybrid") ? qe + qc + qp : pos.includes("chat") ? qe + qc : pos.includes("phone") ? qe + qp : qe; };
+    const getQuota = (p: any) => { const posArr: string[] = p.position || []; const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0; const hasEmail = posArr.includes('Email'), hasChat = posArr.includes('Chat'), hasPhone = posArr.includes('Phone'); if (hasEmail && hasChat && hasPhone) return qe + qc + qp; if (hasEmail && hasChat) return qe + qc; if (hasEmail && hasPhone) return qe + qp; return qe; };
 
     // Aggregate tickets (exclude Logistics/Team Lead/Technical Support)
     let totalEmail = 0, totalChat = 0, totalCall = 0;
@@ -211,13 +212,14 @@ Deno.serve(async (req) => {
     // Calculate quota metrics for the week (exclude Logistics)
     for (const p of profiles) {
       if (ticketExcludedEmails.has(p.email.toLowerCase())) continue;
-      const pos = (p.position || "").toLowerCase();
+      const posArr: string[] = p.position || [];
       const qe = p.quota_email || 0, qc = p.quota_chat || 0, qp = p.quota_phone || 0;
+      const hasEmail = posArr.includes('Email'), hasChat = posArr.includes('Chat'), hasPhone = posArr.includes('Phone');
       
       let agentQuotaEmail = 0, agentQuotaChat = 0, agentQuotaCall = 0;
-      if (pos.includes("hybrid")) { agentQuotaEmail = qe; agentQuotaChat = qc; agentQuotaCall = qp; }
-      else if (pos.includes("chat")) { agentQuotaEmail = qe; agentQuotaChat = qc; }
-      else if (pos.includes("phone")) { agentQuotaEmail = qe; agentQuotaCall = qp; }
+      if (hasEmail && hasChat && hasPhone) { agentQuotaEmail = qe; agentQuotaChat = qc; agentQuotaCall = qp; }
+      else if (hasEmail && hasChat) { agentQuotaEmail = qe; agentQuotaChat = qc; }
+      else if (hasEmail && hasPhone) { agentQuotaEmail = qe; agentQuotaCall = qp; }
       else { agentQuotaEmail = qe; }
 
       const totalAgentQuota = agentQuotaEmail + agentQuotaChat + agentQuotaCall;
