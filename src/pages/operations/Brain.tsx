@@ -7,7 +7,6 @@ import { ChevronLeft, ChevronRight, Brain as BrainIcon, Loader2 } from 'lucide-r
 import { format, addDays, endOfWeek, subWeeks, addWeeks } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { toZonedTime } from 'date-fns-tz';
 
 function getWeekDays(weekStart: Date) {
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -18,28 +17,22 @@ function useVoiceCounts(weekStart: Date) {
   const startDate = format(days[0], 'yyyy-MM-dd');
   const endDate = format(days[6], 'yyyy-MM-dd');
 
-  // Query using EST day boundaries
   const startUTC = new Date(`${startDate}T00:00:00-05:00`).toISOString();
   const endUTC = new Date(`${endDate}T23:59:59.999-05:00`).toISOString();
 
   return useQuery({
     queryKey: ['brain-voice-counts', startDate, endDate],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('ticket_logs')
-        .select('timestamp')
-        .ilike('ticket_type', 'call')
-        .eq('zd_instance', 'customerserviceadvocates')
-        .gte('timestamp', startUTC)
-        .lte('timestamp', endUTC);
+      const { data, error } = await supabase.rpc('get_brain_voice_counts', {
+        p_start_ts: startUTC,
+        p_end_ts: endUTC,
+      });
 
       if (error) throw error;
 
       const counts: Record<string, number> = {};
       for (const row of data || []) {
-        const estDate = toZonedTime(new Date(row.timestamp), 'America/New_York');
-        const key = format(estDate, 'yyyy-MM-dd');
-        counts[key] = (counts[key] || 0) + 1;
+        counts[row.log_date] = Number(row.voice_count);
       }
       return counts;
     },
