@@ -8,7 +8,7 @@ export const TEAM_STATUS_STEPS: TourStep[] = [
   },
   {
     title: 'Status Categories',
-    content: 'Team members are grouped by support type: Phone, Chat, Email, Hybrid, Team Leads, and Technical Support.',
+    content: 'Team members are grouped by support type: Phone, Chat, Email, Hybrid, Email + Chat, Email + Phone, Team Leads, and Technical.',
     target: '[data-tour="status-sections"]',
     position: 'bottom',
   },

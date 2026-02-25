@@ -40,17 +40,19 @@ export function TeamStatusSection() {
         <QuickTable
           headers={['Category', 'Icon', 'Badge Color', 'Mapped Position Values']}
           rows={[
-            ['Phone Support', '📞 Phone', 'Purple', '"Phone Support"'],
-            ['Chat Support', '💬 MessageSquare', 'Cyan', '"Chat Support"'],
-            ['Email Support', '✉️ Mail', 'Orange', '"Email Support", "Logistics"'],
-            ['Hybrid Support', '🔀 Shuffle', 'Pink', '"Hybrid Support"'],
+            ['Phone', '📞 Phone', 'Purple', '"Phone"'],
+            ['Chat', '💬 MessageSquare', 'Cyan', '"Chat"'],
+            ['Email', '✉️ Mail', 'Orange', '"Email"'],
+            ['Hybrid', '🔀 Shuffle', 'Pink', 'Position array contains Email + Chat + Phone'],
+            ['Email + Chat', '✉️💬', 'Teal', 'Position array contains Email + Chat'],
+            ['Email + Phone', '✉️📞', 'Rose', 'Position array contains Email + Phone'],
             ['Team Leads', '🛡️ Shield', 'Indigo', '"Team Lead"'],
-            ['Technical Support', '🛡️ Wrench', 'Teal', '"Technical Support"'],
-            ['Logistics', '📦 Package', 'Amber', 'Any position not mapped above'],
+            ['Technical', '🛡️ Wrench', 'Teal', '"Technical"'],
+            ['Logistics', '📦 Package', 'Amber', '"Logistics"'],
           ]}
         />
-        <CalloutBox variant="tip" title="Logistics agents in Email Support">
-          Agents with the position "Logistics" are grouped under the <strong>Email Support</strong> category on the board. Their individual cards still display "Logistics" as their position badge. The catch-all "Logistics" category at the bottom captures any remaining unmapped positions.
+        <CalloutBox variant="tip" title="Position is now an array">
+          Agents can have multiple position roles (e.g., ["Email", "Chat"]). The system resolves this to a display category like "Email + Chat" or "Hybrid" (all three). Logistics agents have their own dedicated group.
         </CalloutBox>
       </GuideSection>
 
@@ -58,8 +60,8 @@ export function TeamStatusSection() {
       <GuideSection letter="D" color="bg-teal-600" title="Board Layout">
         <h4 className="font-semibold text-sm mb-2">Desktop (two-column)</h4>
         <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 mb-3">
-          <li><strong>Left column (wider):</strong> Phone Support, Chat Support, Email Support, Hybrid Support, Logistics</li>
-          <li><strong>Right column (narrower):</strong> Team Leads, Technical Support, and the Live Activity Feed below them</li>
+          <li><strong>Left column (wider):</strong> Phone, Chat, Email, Hybrid, Email + Chat, Email + Phone, Logistics</li>
+          <li><strong>Right column (narrower):</strong> Team Leads, Technical, and the Live Activity Feed below them</li>
         </ul>
 
         <h4 className="font-semibold text-sm mb-2">Mobile (single column)</h4>
@@ -78,7 +80,7 @@ export function TeamStatusSection() {
           rows={[
             ['Agent Name', 'Full name, displayed prominently at the top of the card.'],
             ['Status Badge', 'Color-coded badge showing the agent\'s current state (see table below).'],
-            ['Position Badge', 'Color matches the category grouping (e.g., purple for Phone Support).'],
+            ['Position Badge', 'Color matches the category grouping (e.g., purple for Phone).'],
             ['Shift Schedule', 'Today\'s shift time range. If OT is scheduled, appended as "+OT: X:XX–X:XX".'],
             ['Break Schedule', 'The agent\'s configured break window.'],
             ['Dashboard Link (↗)', 'Visible to Admin/HR/Super Admin only. Opens the agent\'s individual dashboard.'],
@@ -157,7 +159,7 @@ export function TeamStatusSection() {
         <QuickTable
           headers={['Property', 'Value']}
           rows={[
-            ['Location', 'Right column, below Team Leads and Technical Support (desktop)'],
+            ['Location', 'Right column, below Team Leads and Technical (desktop)'],
             ['Time Window', 'Today only — no historical entries'],
             ['Max Items', '15 most recent status changes'],
             ['Container', 'Fixed 400px scrollable area'],

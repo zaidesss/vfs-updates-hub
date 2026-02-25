@@ -95,7 +95,7 @@ export function UpdatedMyBioSection() {
         <QuickTable
           headers={['Field', 'What It Controls', 'Who Can Edit']}
           rows={[
-            ['Position / Role', 'Determines your default Views, Support Type, Ticket Assignment View ID, and which Quota fields are shown. Options: Hybrid Support, Email Support, Chat Support, Phone Support, Team Lead, Logistics, Technical Support.', 'Admin, Super Admin'],
+            ['Position / Role', 'Now a multi-select array. Determines your default Views, Support Type, Ticket Assignment View ID, and which Quota fields are shown. Options: Email, Chat, Phone, Team Lead, Logistics, Technical. Agents with multiple roles (e.g., Email + Chat) are automatically resolved.', 'Admin, Super Admin'],
             ['Agent Name', 'The display name used in reports, Team Status Board cards, and ticket matching. Auto-defaults from your first name.', 'Admin, Super Admin'],
             ['Agent Tag', 'Auto-computed lowercase of Agent Name. Used internally to match Zendesk ticket data to your profile. READ-ONLY — cannot be manually edited by anyone.', 'System (auto-computed)'],
             ['Zendesk Instance', 'Determines which Zendesk environment (ZD1 or ZD2) your tickets come from. Controls which Ticket Logs data you see.', 'Admin, Super Admin'],
