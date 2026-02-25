@@ -48,14 +48,14 @@ function getVisibleTicketTypes(
 ): { showEmail: boolean; showChat: boolean; showCall: boolean } {
   const pos = (position || '').toLowerCase();
   
-  // Email is always shown for support roles
-  const showEmail = pos.includes('support') || pos.includes('hybrid') || pos === '';
+  // Email is always shown for support agents
+  const showEmail = ['email', 'hybrid', 'email + chat', 'email + phone'].includes(pos) || pos === '';
   
-  // Chat: show if Chat Support, Hybrid Support, or if quota_chat is set
-  const showChat = pos.includes('chat') || pos.includes('hybrid') || (quotaChat !== null && quotaChat > 0);
+  // Chat: show if position includes Chat role, or if quota_chat is set
+  const showChat = ['chat', 'hybrid', 'email + chat'].includes(pos) || (quotaChat !== null && quotaChat > 0);
   
-  // Call: show if Phone Support, Hybrid Support, or if quota_phone is set
-  const showCall = pos.includes('phone') || pos.includes('hybrid') || (quotaPhone !== null && quotaPhone > 0);
+  // Call: show if position includes Phone role, or if quota_phone is set
+  const showCall = ['phone', 'hybrid', 'email + phone'].includes(pos) || (quotaPhone !== null && quotaPhone > 0);
   
   return { showEmail, showChat, showCall };
 }
