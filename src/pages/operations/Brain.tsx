@@ -29,7 +29,7 @@ function useVoiceCounts(weekStart: Date) {
         .from('ticket_logs')
         .select('timestamp')
         .ilike('ticket_type', 'call')
-        .eq('zd_instance', 'ZD1')
+        .eq('zd_instance', 'customerserviceadvocates')
         .gte('timestamp', startUTC)
         .lte('timestamp', endUTC);
 
