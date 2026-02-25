@@ -163,3 +163,6 @@ verify_jwt = false
 
 [functions.extract-document-text]
 verify_jwt = false
+
+[functions.zd-count-voice-tags]
+verify_jwt = false
