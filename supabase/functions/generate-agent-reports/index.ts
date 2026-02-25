@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
       // Updated: Only trigger if 3+ hours past scheduled shift end AND still not logged out
       // ========================
       const loginEvents = profileEvents.filter(e => e.event_type === 'LOGIN');
-      const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT' && e.event_type !== 'OT_LOGOUT' && e.event_type !== 'SYSTEM_AUTO_LOGOUT');
+      const logoutEvents = profileEvents.filter(e => e.event_type === 'LOGOUT' && e.triggered_by !== 'SYSTEM_AUTO_LOGOUT');
 
       // Session-pairing: filter logouts to only those AFTER the last login
       // This prevents "logout bleed" where a previous session's logout masks a missing logout

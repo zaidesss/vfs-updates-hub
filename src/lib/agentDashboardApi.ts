@@ -1697,7 +1697,7 @@ export function calculateAttendanceForWeek(
     // Find candidate logout on same day, then verify session pairing
     let candidateLogout = statusEvents.find((event) => {
       const eventDate = getESTDateFromTimestamp(event.created_at);
-      return eventDate === dateStr && event.event_type === 'LOGOUT';
+      return eventDate === dateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
     });
     // Discard if logout belongs to previous day's session (bleed)
     if (candidateLogout && loginForDay) {
@@ -1719,7 +1719,7 @@ export function calculateAttendanceForWeek(
       const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
       const nextDayCandidate = statusEvents.find((event) => {
         const eventDate = getESTDateFromTimestamp(event.created_at);
-        return eventDate === nextDateStr && event.event_type === 'LOGOUT';
+        return eventDate === nextDateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
       });
       // Verify next-day logout is after the login (same session)
       if (nextDayCandidate && new Date(nextDayCandidate.created_at) > new Date(loginForDay.created_at)) {
