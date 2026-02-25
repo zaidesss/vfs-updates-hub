@@ -198,7 +198,7 @@ export function AgentReportsSection() {
           ]}
         />
         <CalloutBox variant="info" title="Team-Wide Exclusions">
-          EOD and EOW team analytics <strong>exclude</strong> agents in Team Lead, Technical Support, and Logistics positions to maintain core agent performance accuracy.
+          EOD and EOW team analytics <strong>exclude</strong> agents in Team Lead, Technical, and Logistics positions to maintain core agent performance accuracy.
         </CalloutBox>
       </GuideSection>
 

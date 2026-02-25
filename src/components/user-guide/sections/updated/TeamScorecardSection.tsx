@@ -42,7 +42,7 @@ export function TeamScorecardSection() {
           Performance metrics and their weights vary by support type. Each tab displays agents matching that position.
         </p>
 
-        <h4 className="font-semibold text-sm mb-2">Email Support</h4>
+        <h4 className="font-semibold text-sm mb-2">Email</h4>
         <QuickTable
           headers={['Metric', 'Weight', 'Goal', 'Source']}
           rows={[
@@ -53,7 +53,7 @@ export function TeamScorecardSection() {
           ]}
         />
 
-        <h4 className="font-semibold text-sm mt-4 mb-2">Hybrid Support</h4>
+        <h4 className="font-semibold text-sm mt-4 mb-2">Hybrid</h4>
         <QuickTable
           headers={['Metric', 'Weight', 'Goal', 'Source']}
           rows={[
@@ -75,7 +75,7 @@ export function TeamScorecardSection() {
             ['Reliability', '30%', '98%', 'Calculated from leave requests'],
           ]}
         />
-        <GuideImagePlaceholder description="Scorecard table for Email Support showing Productivity, QA, Revalida, Reliability columns and final weighted score" />
+        <GuideImagePlaceholder description="Scorecard table for Email showing Productivity, QA, Revalida, Reliability columns and final weighted score" />
       </GuideSection>
 
       {/* D. Metric Details */}

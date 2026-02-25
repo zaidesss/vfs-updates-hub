@@ -242,7 +242,7 @@ export default function TeamStatusBoard() {
             {hasSupportAgents && (
               <div className="space-y-6">
                 <CategorySection
-                  title="Phone Support"
+                  title="Phone"
                   icon={<Phone className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
                   members={categories.phoneSupport}
                   showDashboardLink={canViewDashboards}
@@ -250,7 +250,7 @@ export default function TeamStatusBoard() {
                 />
                 
                 <CategorySection
-                  title="Chat Support"
+                  title="Chat"
                   icon={<MessageSquare className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />}
                   members={categories.chatSupport}
                   showDashboardLink={canViewDashboards}
@@ -258,7 +258,7 @@ export default function TeamStatusBoard() {
                 />
                 
                 <CategorySection
-                  title="Email Support"
+                  title="Email"
                   icon={<Mail className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
                   members={categories.emailSupport}
                   showDashboardLink={canViewDashboards}
@@ -266,7 +266,7 @@ export default function TeamStatusBoard() {
                 />
                 
                 <CategorySection
-                  title="Hybrid Support"
+                  title="Hybrid"
                   icon={<Shuffle className="h-5 w-5 text-pink-600 dark:text-pink-400" />}
                   members={categories.hybridSupport}
                   showDashboardLink={canViewDashboards}
@@ -295,7 +295,7 @@ export default function TeamStatusBoard() {
                 />
                 
                 <CategorySection
-                  title="Technical Support"
+                  title="Technical"
                   icon={<Shield className="h-5 w-5 text-teal-600 dark:text-teal-400" />}
                   members={categories.techSupport}
                   showDashboardLink={canViewDashboards}
