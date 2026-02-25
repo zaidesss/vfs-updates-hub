@@ -1,56 +1,73 @@
 
 
-## Plan: Add Juno and Team Lead as Recipients on All QA Evaluation Emails
+## Root Cause Analysis
 
-### Problem
-Currently, QA evaluation emails are sent only to the agent (with team lead in CC). The requirement is that **all** QA evaluation emails should go to:
-1. **Juno** (`dzaydee06@gmail.com`) — always
-2. **The Agent** being evaluated
-3. **The Agent's Team Lead** (if exists and not terminated)
+There are **two bugs** causing this issue:
 
-### Current Behavior vs. New Behavior
+### What happened to Malcom
 
-| Notification Type | Current Recipients | New Recipients |
-|---|---|---|
-| `new_evaluation` (Send to Agent) | To: Agent, CC: Team Lead | To: Agent + Juno, CC: Team Lead |
-| `acknowledgment` | To: Team Lead (or Agent), CC: Agent | To: Team Lead + Juno, CC: Agent |
-| `evaluation_updated` | To: Agent, CC: Team Lead | To: Agent + Juno, CC: Team Lead |
+1. **Tuesday**: Malcom logged in at 9:05 AM EST. He did not log out at the end of his shift.
+2. **Wednesday**: Dashboard correctly showed Tuesday as "No Logout" because no LOGOUT event existed for Tuesday.
+3. **Wednesday 6:40 PM**: Malcom clicked the Logout button (which was still showing because the UI hadn't reset). The **stale session handler** (line 523-630 in `agentDashboardApi.ts`) detected the previous-day status and inserted a `SYSTEM_AUTO_LOGOUT` event backdated to 11:59:59 PM EST Tuesday.
+4. **After refresh**: The attendance calculation found this SYSTEM_AUTO_LOGOUT as a valid "logout" for Tuesday. Combined with the schedule being treated as overnight ("9:00 PM-5:00 PM"), a logout at 11:59 PM was calculated as "Early Out" (within the PM portion after shift start of an overnight schedule).
 
-### Considerations Before Proceeding
+### Bug 1: Client-side attendance treats SYSTEM_AUTO_LOGOUT as a real logout
 
-1. **Should Juno's email be hardcoded or configurable?** Currently the approvers list in `src/lib/approvers.ts` already has Juno's email. We can reference it conceptually but since edge functions can't import from `src/`, we'd hardcode it in the edge function (same pattern as other notification functions). Alternatively, we could look up users with a specific role.
+In `src/lib/agentDashboardApi.ts` lines 1698-1701 and 1720-1722, the candidate logout search does not exclude events where `triggered_by === 'SYSTEM_AUTO_LOGOUT'`. When a SYSTEM_AUTO_LOGOUT exists, the day should still show "No Logout" because the agent never actually logged out.
 
-2. **What if Juno is the evaluator?** Should she still receive the email? (I'll assume yes — she should always be in the loop.)
+### Bug 2: Server-side report generation has a broken filter
 
-3. **What if Juno is the agent's team lead?** We should de-duplicate so she doesn't get the same email twice.
-
-4. **Acknowledgment emails** — currently sent to team lead (or agent if no team lead). Should Juno be added here too? Based on your request ("all QA evaluations"), yes.
-
-### Changes
-
-**File: `supabase/functions/send-qa-notification/index.ts`**
-
-For all three notification types (`new_evaluation`, `acknowledgment`, `evaluation_updated`):
-- Add `dzaydee06@gmail.com` (Juno) as a constant recipient
-- Build the `to` array by combining the existing recipients + Juno
-- De-duplicate to avoid sending the same email twice to the same person
-- Keep the existing CC logic for team lead where applicable
-
-Specifically:
-- **Line 120-127** (`new_evaluation`): Change `to: [evaluation.agent_email]` → `to: [agent, juno]` (de-duped), keep team lead in CC
-- **Line 191-196** (`acknowledgment`): Change `to: [teamLeadEmail]` → `to: [teamLead, juno]` (de-duped), keep agent in CC
-- **Line 251-258** (`evaluation_updated`): Change `to: [evaluation.agent_email]` → `to: [agent, juno]` (de-duped), keep team lead in CC
-
-### Technical Detail
-Add a constant at the top of the edge function:
+In `supabase/functions/generate-agent-reports/index.ts` line 302:
 ```typescript
-const QA_ALWAYS_NOTIFY = 'dzaydee06@gmail.com'; // Juno
+const logoutEvents = profileEvents.filter(e => 
+  e.event_type === 'LOGOUT' && e.event_type !== 'OT_LOGOUT' && e.event_type !== 'SYSTEM_AUTO_LOGOUT'
+);
+```
+The conditions `e.event_type !== 'OT_LOGOUT'` and `e.event_type !== 'SYSTEM_AUTO_LOGOUT'` are always true when `e.event_type === 'LOGOUT'`. The SYSTEM_AUTO_LOGOUT events have `event_type: 'LOGOUT'` and `triggered_by: 'SYSTEM_AUTO_LOGOUT'` -- so the filter should check `triggered_by`, not `event_type`.
+
+### Additional consideration: EARLY_OUT report creation on stale LOGOUT
+
+When the stale session handler (lines 566-629) runs, it returns early at line 629 without reaching the `checkAndAlertEarlyOut` call at line 755. So no EARLY_OUT agent report is created by the real-time handler -- the problem is purely in the attendance display. However, the nightly `generate-agent-reports` cron WOULD incorrectly find the SYSTEM_AUTO_LOGOUT as a real logout (due to Bug 2) and could create a false EARLY_OUT report later.
+
+---
+
+## Fix Plan
+
+### Step 1: Fix client-side attendance calculation
+
+**File: `src/lib/agentDashboardApi.ts`**
+
+At line 1698-1701, add `triggered_by` filter to exclude SYSTEM_AUTO_LOGOUT:
+```typescript
+let candidateLogout = statusEvents.find((event) => {
+  const eventDate = getESTDateFromTimestamp(event.created_at);
+  return eventDate === dateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
+});
 ```
 
-Then for each email send, build a de-duplicated recipient list:
+At line 1720-1722, same filter for overnight shift next-day search:
 ```typescript
-const toRecipients = [...new Set([evaluation.agent_email, QA_ALWAYS_NOTIFY].map(e => e.toLowerCase()))];
+const nextDayCandidate = statusEvents.find((event) => {
+  const eventDate = getESTDateFromTimestamp(event.created_at);
+  return eventDate === nextDateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
+});
 ```
 
-No database changes needed. Only the edge function file is modified.
+### Step 2: Fix server-side report generation filter
+
+**File: `supabase/functions/generate-agent-reports/index.ts`**
+
+At line 302, fix the filter to check `triggered_by` instead of `event_type`:
+```typescript
+const logoutEvents = profileEvents.filter(e => 
+  e.event_type === 'LOGOUT' && e.triggered_by !== 'SYSTEM_AUTO_LOGOUT'
+);
+```
+
+This also removes the redundant `e.event_type !== 'OT_LOGOUT'` check (which was always true).
+
+### Result after fix
+- Days where the only "logout" is a SYSTEM_AUTO_LOGOUT will correctly show **"No Logout"** instead of "Early Out"
+- The nightly compliance cron will not create false EARLY_OUT reports for auto-logged-out sessions
+- Real logouts by the agent will continue to work normally
 
