@@ -47,8 +47,7 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
   
   const showSecondaryBadge = showOutageBadge && !isPendingOutage;
   
-  const posStr = Array.isArray(member.position) ? member.position[0] : member.position;
-  const positionStyle = posStr ? POSITION_BADGE[posStr] : null;
+  const posArr = Array.isArray(member.position) ? member.position : member.position ? [member.position] : [];
 
   return (
     <div className="relative overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -79,11 +78,14 @@ export function StatusCard({ member, showDashboardLink }: StatusCardProps) {
               On {member.outageReason}
             </Badge>
           )}
-          {posStr && positionStyle && (
-            <Badge className={cn('font-medium', positionStyle.className)}>
-              {posStr}
-            </Badge>
-          )}
+          {posArr.map((pos) => {
+            const style = POSITION_BADGE[pos];
+            return style ? (
+              <Badge key={pos} className={cn('font-medium', style.className)}>
+                {pos}
+              </Badge>
+            ) : null;
+          })}
         </div>
 
         {/* Shift Schedule */}

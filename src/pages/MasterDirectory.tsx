@@ -399,7 +399,7 @@ export default function MasterDirectory() {
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Team Lead</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Zendesk Instance</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Account</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Type</TableHead>
+                  
                   <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Quota</TableHead>
                   <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
                   <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
@@ -444,7 +444,7 @@ export default function MasterDirectory() {
                     <TableCell className="text-muted-foreground">{entry.team_lead || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.zendesk_instance || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.support_account || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{entry.support_type || '-'}</TableCell>
+                    
                     <TableCell className="text-muted-foreground text-center">{entry.quota ?? '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_tag || '-'}</TableCell>
