@@ -105,20 +105,14 @@ export const SUPPORT_TYPES = [
 
 export const EXCLUDED_POSITIONS = ['Team Lead', 'Technical'];
 
+import { resolvePositionCategory } from '@/lib/positionUtils';
+
 /**
- * Resolve a position array to a scorecard config key
+ * Resolve a position array to a scorecard config key.
+ * Re-exported from positionUtils for backward compatibility.
  */
 export function resolveConfigKey(positionArray: string[] | null): string {
-  if (!positionArray || positionArray.length === 0) return 'Email';
-  const has = (r: string) => positionArray.includes(r);
-  if (has('Email') && has('Chat') && has('Phone')) return 'Hybrid';
-  if (has('Email') && has('Chat')) return 'Email + Chat';
-  if (has('Email') && has('Phone')) return 'Email + Phone';
-  if (has('Email')) return 'Email';
-  if (has('Chat')) return 'Chat';
-  if (has('Phone')) return 'Phone';
-  if (has('Logistics')) return 'Logistics';
-  return 'Email';
+  return resolvePositionCategory(positionArray);
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

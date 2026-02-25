@@ -53,23 +53,27 @@ export interface CategorizedTeamMembers {
   other: TeamMemberStatus[];
 }
 
-// Map position values to categories
+import { resolvePositionCategory } from '@/lib/positionUtils';
+
+// Map position values to categories using the shared resolver
 function categorizeByPosition(position: string | string[] | null, fullName?: string): SupportCategory {
-  const pos = Array.isArray(position) ? position[0] : position;
-  if (!pos) return 'other';
+  const resolved = resolvePositionCategory(position);
   
-  const positionLower = pos.toLowerCase().trim();
-  
-  if (positionLower === 'phone' || positionLower === 'phone support') return 'phoneSupport';
-  if (positionLower === 'chat' || positionLower === 'chat support') return 'chatSupport';
-  if (positionLower === 'email' || positionLower === 'email support') return 'emailSupport';
-  if (positionLower === 'logistics') return 'other';
-  if (positionLower === 'hybrid' || positionLower === 'hybrid support') return 'hybridSupport';
-  if (positionLower === 'team lead') return 'teamLeads';
-  if (positionLower === 'technical' || positionLower === 'technical support') return 'techSupport';
-  
-  console.warn(`[TeamStatus] Unknown position "${pos}" for ${fullName || 'unknown'} — defaulting to "other"`);
-  return 'other';
+  switch (resolved) {
+    case 'Phone': return 'phoneSupport';
+    case 'Chat': return 'chatSupport';
+    case 'Email': return 'emailSupport';
+    case 'Hybrid':
+    case 'Email + Chat':
+    case 'Email + Phone':
+      return 'hybridSupport';
+    case 'Team Lead': return 'teamLeads';
+    case 'Technical': return 'techSupport';
+    case 'Logistics': return 'other';
+    default:
+      console.warn(`[TeamStatus] Unknown resolved position "${resolved}" for ${fullName || 'unknown'} — defaulting to "other"`);
+      return 'other';
+  }
 }
 
 
