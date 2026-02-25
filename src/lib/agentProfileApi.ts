@@ -431,6 +431,19 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     support_type: input.support_type || [],
     views: input.views || [],
     day_off: input.day_off || [],
+    // Clear OT schedule fields when OT is disabled
+    ...(sanitizedInput.ot_enabled === false ? {
+      mon_ot_schedule: null,
+      tue_ot_schedule: null,
+      wed_ot_schedule: null,
+      thu_ot_schedule: null,
+      fri_ot_schedule: null,
+      sat_ot_schedule: null,
+      sun_ot_schedule: null,
+      weekday_ot_schedule: null,
+      weekend_ot_schedule: null,
+      quota_ot_email: null,
+    } : {}),
   };
 
   // First check if profile exists
