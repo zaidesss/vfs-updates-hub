@@ -94,14 +94,32 @@ export interface ZendeskAgentMetrics {
 
 // Constants
 export const SUPPORT_TYPES = [
-  'Hybrid Support',
-  'Phone Support',
-  'Chat Support',
-  'Email Support',
+  'Hybrid',
+  'Email + Phone',
+  'Email + Chat',
+  'Phone',
+  'Chat',
+  'Email',
   'Logistics'
 ] as const;
 
-export const EXCLUDED_POSITIONS = ['Team Lead', 'Technical Support'];
+export const EXCLUDED_POSITIONS = ['Team Lead', 'Technical'];
+
+/**
+ * Resolve a position array to a scorecard config key
+ */
+export function resolveConfigKey(positionArray: string[] | null): string {
+  if (!positionArray || positionArray.length === 0) return 'Email';
+  const has = (r: string) => positionArray.includes(r);
+  if (has('Email') && has('Chat') && has('Phone')) return 'Hybrid';
+  if (has('Email') && has('Chat')) return 'Email + Chat';
+  if (has('Email') && has('Phone')) return 'Email + Phone';
+  if (has('Email')) return 'Email';
+  if (has('Chat')) return 'Chat';
+  if (has('Phone')) return 'Phone';
+  if (has('Logistics')) return 'Logistics';
+  return 'Email';
+}
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -261,17 +279,20 @@ export async function fetchEligibleAgents(supportType: string): Promise<AgentPro
     .from('agent_profiles')
     .select('id, email, full_name, agent_name, position, employment_status, quota_email, quota_chat, quota_phone, quota_ot_email, day_off, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule')
     .neq('employment_status', 'Terminated')
-    .not('position', 'cs', `{"${EXCLUDED_POSITIONS.map(p => p).join('","')}"}`)
+    .not('position', 'ov', '{"Team Lead","Technical"}')
     .order('full_name');
-    
-  // Only filter by position if not 'all'
-  if (supportType !== 'all') {
-    query = query.contains('position', [supportType]);
-  }
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []) as AgentProfile[];
+  
+  let agents = (data || []) as AgentProfile[];
+  
+  // Filter by resolved config key if not 'all'
+  if (supportType !== 'all') {
+    agents = agents.filter(a => resolveConfigKey(a.position) === supportType);
+  }
+  
+  return agents;
 }
 
 // Coverage override type for schedule adjustments
@@ -468,13 +489,17 @@ export function countDaysWithLogin(
 // Get weekly quota based on support type
 export function getWeeklyQuota(profile: AgentProfile, supportType: string, workingDays: number): number {
   switch (supportType) {
-    case 'Email Support':
+    case 'Email':
       return (profile.quota_email || 0) * workingDays;
-    case 'Chat Support':
+    case 'Chat':
       return (profile.quota_chat || 0) * workingDays;
-    case 'Phone Support':
+    case 'Phone':
       return (profile.quota_phone || 0) * workingDays;
-    case 'Hybrid Support':
+    case 'Email + Chat':
+      return ((profile.quota_email || 0) + (profile.quota_chat || 0)) * workingDays;
+    case 'Email + Phone':
+      return ((profile.quota_email || 0) + (profile.quota_phone || 0)) * workingDays;
+    case 'Hybrid':
       return ((profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0)) * workingDays;
     default:
       return 0;
@@ -582,7 +607,7 @@ export async function saveScorecard(
   const records = scorecards.map(sc => ({
     week_start: weekStart,
     week_end: weekEnd,
-    support_type: Array.isArray(sc.agent.position) ? sc.agent.position[0] || supportType : sc.agent.position || supportType,
+    support_type: resolveConfigKey(sc.agent.position),
     agent_email: sc.agent.email.toLowerCase(),
     agent_name: sc.agent.full_name || sc.agent.agent_name,
     productivity: sc.productivity,
@@ -664,7 +689,7 @@ export async function fetchWeeklyScorecardRPC(
     const scorecards: AgentScorecard[] = [];
     
     for (const row of rpcData) {
-      const agentSupportType = (Array.isArray(row.agent_position) ? row.agent_position[0] : row.agent_position) || supportType;
+      const agentSupportType = row.agent_position || supportType;
       
       // Calculate scheduled days from day_off + schedules + overrides
       const agentOverrideDates = overrideDateMap.get(row.profile_id);
@@ -683,16 +708,22 @@ export async function fetchWeeklyScorecardRPC(
       // Calculate productivity based on support type
       let productivityCount = 0;
       switch (agentSupportType) {
-        case 'Email Support':
+        case 'Email':
           productivityCount = row.email_count;
           break;
-        case 'Chat Support':
+        case 'Chat':
           productivityCount = row.chat_count;
           break;
-        case 'Phone Support':
+        case 'Phone':
           productivityCount = row.call_count;
           break;
-        case 'Hybrid Support':
+        case 'Email + Chat':
+          productivityCount = row.email_count + row.chat_count;
+          break;
+        case 'Email + Phone':
+          productivityCount = row.email_count + row.call_count;
+          break;
+        case 'Hybrid':
           productivityCount = row.email_count + row.chat_count + row.call_count;
           break;
       }
@@ -1027,7 +1058,7 @@ export async function fetchWeeklyScorecard(
 
     // Calculate ticket counts
     // Determine which support type to use for this agent's calculations
-    const agentSupportType = (Array.isArray(agent.position) ? agent.position[0] : agent.position) || supportType;
+    const agentSupportType = resolveConfigKey(agent.position);
     
     const agentTickets = ticketLogs.filter(
       t => t.agent_email?.toLowerCase() === agentEmailLower
@@ -1038,16 +1069,22 @@ export async function fetchWeeklyScorecard(
     
     let productivityCount = 0;
     switch (agentSupportType) {
-      case 'Email Support':
+      case 'Email':
         productivityCount = emailCount;
         break;
-      case 'Chat Support':
+      case 'Chat':
         productivityCount = chatCount;
         break;
-      case 'Phone Support':
+      case 'Phone':
         productivityCount = callCount;
         break;
-      case 'Hybrid Support':
+      case 'Email + Chat':
+        productivityCount = emailCount + chatCount;
+        break;
+      case 'Email + Phone':
+        productivityCount = emailCount + callCount;
+        break;
+      case 'Hybrid':
         productivityCount = emailCount + chatCount + callCount;
         break;
     }
@@ -1237,10 +1274,9 @@ export async function triggerMetricsRefresh(
   supportType: string
 ): Promise<{ success: boolean; processed?: number; error?: string }> {
   // Fetch agent emails for this support type
-  const { data: agents, error: agentsError } = await supabase
+  const { data: allAgents, error: agentsError } = await supabase
     .from('agent_profiles')
-    .select('email')
-    .contains('position', [supportType])
+    .select('email, position')
     .neq('employment_status', 'Terminated')
     .not('zendesk_instance', 'is', null);
 
@@ -1248,7 +1284,9 @@ export async function triggerMetricsRefresh(
     return { success: false, error: agentsError.message };
   }
 
-  const agentEmails = (agents || []).map(a => a.email);
+  // Filter by resolved config key
+  const agents = (allAgents || []).filter(a => resolveConfigKey(a.position) === supportType);
+  const agentEmails = agents.map(a => a.email);
   if (agentEmails.length === 0) {
     return { success: true, processed: 0 };
   }
