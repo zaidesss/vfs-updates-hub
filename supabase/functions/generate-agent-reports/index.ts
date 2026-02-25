@@ -20,7 +20,7 @@ interface AgentProfile {
   id: string;
   email: string;
   full_name: string | null;
-  position: string | null;
+  position: string[] | null;
   upwork_contract_id: string | null;
   quota_email: number | null;
   quota_chat: number | null;
@@ -64,29 +64,28 @@ function parseScheduleRange(scheduleTime: string): { startMinutes: number; endMi
  * Calculate expected quota based on agent's position
  */
 function calculateExpectedQuota(profile: AgentProfile): number {
-  const position = profile.position?.toLowerCase() || '';
+  const posArr = profile.position || [];
   const quotaEmail = profile.quota_email || 0;
   const quotaChat = profile.quota_chat || 0;
   const quotaPhone = profile.quota_phone || 0;
 
-  if (position.includes('hybrid')) {
-    return quotaEmail + quotaChat + quotaPhone;
-  } else if (position.includes('chat')) {
-    return quotaEmail + quotaChat;
-  } else if (position.includes('phone')) {
-    return quotaEmail + quotaPhone;
-  } else if (position.includes('email')) {
-    return quotaEmail;
-  }
-  return 0; // No quota for Team Lead, Logistics, Technical Support, etc.
+  const hasEmail = posArr.includes('Email');
+  const hasChat = posArr.includes('Chat');
+  const hasPhone = posArr.includes('Phone');
+
+  if (hasEmail && hasChat && hasPhone) return quotaEmail + quotaChat + quotaPhone;
+  if (hasEmail && hasChat) return quotaEmail + quotaChat;
+  if (hasEmail && hasPhone) return quotaEmail + quotaPhone;
+  if (hasEmail) return quotaEmail;
+  return 0; // No quota for Team Lead, Logistics, Technical, etc.
 }
 
 /**
  * Check if agent is Email Support (for HIGH_GAP violation)
  */
 function isEmailSupport(profile: AgentProfile): boolean {
-  const position = profile.position?.toLowerCase() || '';
-  return position === 'email support';
+  const posArr = profile.position || [];
+  return posArr.includes('Email') && !posArr.includes('Chat') && !posArr.includes('Phone');
 }
 
 /**
