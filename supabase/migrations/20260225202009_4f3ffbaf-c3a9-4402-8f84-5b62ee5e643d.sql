@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.get_brain_voice_counts(timestamp with time zone, timestamp with time zone);

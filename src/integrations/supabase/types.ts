@@ -3763,13 +3763,6 @@ export type Database = {
               zendesk_instance: string
             }[]
           }
-      get_brain_voice_counts: {
-        Args: { p_end_ts: string; p_start_ts: string }
-        Returns: {
-          log_date: string
-          voice_count: number
-        }[]
-      }
       get_effective_schedule: {
         Args: { p_agent_id: string; p_target_date: string }
         Returns: {
