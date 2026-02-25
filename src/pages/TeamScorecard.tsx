@@ -242,8 +242,8 @@ export default function TeamScorecard() {
 
   // Fetch config for column visibility (for specific support type)
   const { data: config, data: configData } = useQuery({
-    queryKey: ['scorecard-config', supportType === 'all' ? 'Hybrid Support' : supportType],
-    queryFn: () => fetchScorecardConfig(supportType === 'all' ? 'Hybrid Support' : supportType),
+    queryKey: ['scorecard-config', supportType === 'all' ? 'Hybrid' : supportType],
+    queryFn: () => fetchScorecardConfig(supportType === 'all' ? 'Hybrid' : supportType),
     staleTime: 10 * 60 * 1000,
   });
   
@@ -496,11 +496,11 @@ export default function TeamScorecard() {
   // In "all" mode, show all possible columns
   const isAllMode = supportType === 'all';
   const showTypeColumn = isAllMode;
-  const showProductivity = isAllMode || ['Hybrid Support', 'Email Support'].includes(supportType);
-  const showOrderEscalation = isAllMode || supportType === 'Logistics'; // New for Logistics
-  const showCallAht = isAllMode || ['Hybrid Support', 'Phone Support'].includes(supportType);
-  const showChatAht = isAllMode || ['Hybrid Support', 'Chat Support'].includes(supportType);
-  const showChatFrt = isAllMode || ['Hybrid Support', 'Chat Support'].includes(supportType);
+  const showProductivity = isAllMode || ['Hybrid', 'Email + Phone', 'Email + Chat', 'Email'].includes(supportType);
+  const showOrderEscalation = isAllMode || supportType === 'Logistics';
+  const showCallAht = isAllMode || ['Hybrid', 'Email + Phone', 'Phone'].includes(supportType);
+  const showChatAht = isAllMode || ['Hybrid', 'Email + Chat', 'Chat'].includes(supportType);
+  const showChatFrt = isAllMode || ['Hybrid', 'Email + Chat', 'Chat'].includes(supportType);
   const showQA = true; // Now enabled for all including Logistics
   const showRevalida = true; // Now enabled for all including Logistics
   const showOtProductivity = isAllMode || supportType !== 'Logistics';
@@ -536,20 +536,21 @@ export default function TeamScorecard() {
   const metricApplies = (agentPosition: string | string[] | null, metricType: 'productivity' | 'callAht' | 'chatAht' | 'chatFrt' | 'qa' | 'revalida' | 'otProductivity' | 'orderEscalation'): boolean => {
     if (!isAllMode) return true; // In specific mode, all shown columns apply
     
+    // pos here is the resolved config key (e.g. 'Hybrid', 'Email + Chat', 'Email')
     const pos = Array.isArray(agentPosition) ? agentPosition[0] || '' : agentPosition || '';
     switch (metricType) {
       case 'productivity':
-        return ['Hybrid Support', 'Email Support'].includes(pos);
+        return ['Hybrid', 'Email + Phone', 'Email + Chat', 'Email'].includes(pos);
       case 'orderEscalation':
         return pos === 'Logistics';
       case 'callAht':
-        return ['Hybrid Support', 'Phone Support'].includes(pos);
+        return ['Hybrid', 'Email + Phone', 'Phone'].includes(pos);
       case 'chatAht':
       case 'chatFrt':
-        return ['Hybrid Support', 'Chat Support'].includes(pos);
+        return ['Hybrid', 'Email + Chat', 'Chat'].includes(pos);
       case 'qa':
       case 'revalida':
-        return true; // Now applies to all including Logistics
+        return true;
       case 'otProductivity':
         return pos !== 'Logistics';
       default:
