@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { getESTDayBoundaries } from '@/lib/timezoneUtils';
 
 // Parse a YYYY-MM-DD string without timezone shift
 // This prevents the browser from interpreting the date as UTC and shifting it
@@ -147,7 +148,8 @@ export async function fetchTicketLogs(
   // Default to rolling 2-week window if no date filter
   if (!filters?.startDate && !filters?.endDate) {
     const dateRange = getRollingTwoWeekRange();
-    query = query.gte('timestamp', `${dateRange.startDate}T00:00:00.000Z`);
+    const { start: rangeStart } = getESTDayBoundaries(dateRange.startDate);
+    query = query.gte('timestamp', rangeStart);
   }
 
   if (filters?.startDate) {
