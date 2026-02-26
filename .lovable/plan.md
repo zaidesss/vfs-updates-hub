@@ -1,40 +1,84 @@
 
 
-## Analysis: Agent Reports Conflicts and False Report Risks
+## Plan: Apply New Shift Schedules (Data-Only, No Code Changes)
 
-I've audited all three systems that generate/manage agent reports:
-1. **`generate-agent-reports`** (daily batch, runs for yesterday)
-2. **`auto-logout-stale-sessions`** (cron, every 15 min)
-3. **`checkAndCleanupStaleSession`** (client-side, on dashboard mount)
+The existing schedule resolution system already supports this perfectly. The `get_effective_schedule` RPC resolves:
+1. **coverage_overrides** (date-specific) -- highest priority
+2. **agent_schedule_assignments** (effective-dated weekly) -- mid priority
+3. **agent_profiles** (fallback) -- lowest priority
 
-### Issues Found
+**No base functions or code need to change.** This is purely a data operation.
 
-**1. No terminated agent filter (FALSE REPORTS)**
-`generate-agent-reports` fetches ALL `agent_profiles` without filtering `employment_status != 'Terminated'`. Terminated agents with scheduled shifts would generate false NCNS, QUOTA_NOT_MET, and other reports.
+---
 
-**2. QUOTA_NOT_MET uses base profile quotas instead of effective quotas**
-Line 690 calls `calculateExpectedQuota(profile)` using base profile fields. It ignores the effective quotas already resolved from `get_effective_schedule` (which accounts for coverage overrides and schedule assignments). This produces false quota reports when overrides modify quotas.
+### Step 1: Coverage Overrides for This Week (Thu Feb 26 - Sun Mar 1)
 
-**3. Three NO_LOGOUT producers — no conflict but redundant Slack alerts**
-The cron, client cleanup, and daily batch all check for duplicates before inserting. No duplicate reports. However, the client-side cleanup and the cron both send separate Slack/alert notifications even though the report deduplication prevents doubles. A stale session could trigger an alert from the client and then the cron tries again (finds duplicate, but the cron doesn't send alerts, so this is fine). No action needed here.
+Insert `coverage_overrides` rows (type: `regular`) for each agent for Thu/Fri/Sat/Sun **only on their working days** (skip their day-off days). Also insert `ot` type overrides for agents with OT schedules, and update break schedules via the regular override's `break_schedule` field.
 
-**4. LATE_LOGIN OT grace period not implemented**
-Memory references a 30-minute grace for back-to-back shifts, but the code has no such logic. If an agent's previous OT session bleeds into their next regular shift start, they'd be falsely flagged for LATE_LOGIN.
+This immediately takes effect for today and the rest of this week without touching any base data.
 
-**5. EARLY_OUT and TIME_NOT_MET correctly exclude SYSTEM_AUTO_LOGOUT**
-Already handled at line 302. No issue here.
+**~30 agents x up to 4 days = ~80-120 override rows** (minus day-off days).
 
-### Plan (Step-by-Step)
+### Step 2: Schedule Assignments for Next Week Onward (Mar 2, 2026+)
 
-**Step 1: Filter terminated agents**
-Add `employment_status` to the profile query and skip terminated agents in the main loop.
+Upsert `agent_schedule_assignments` with `effective_week_start = '2026-03-02'` for each agent. This sets the uniform schedule (same time every working day), break, OT, and preserves existing `day_off` arrays. Since the RPC picks the most recent assignment where `effective_week_start <= target_week`, this covers all future weeks automatically.
 
-**Step 2: Use effective quotas for QUOTA_NOT_MET**
-Replace `calculateExpectedQuota(profile)` with the effective quotas from the already-resolved `effectiveRow` (`effective_quota_email`, `effective_quota_chat`, `effective_quota_phone`).
+### Step 3: Update Agent Profiles (Base Fallback)
 
-**Step 3: Add LATE_LOGIN OT grace period (30 min)**
-Before flagging LATE_LOGIN, check if the agent has an OT_LOGOUT event within 30 minutes before their regular shift start. If so, extend the grace period by 30 minutes.
+Update each agent's `agent_profiles` row with the new per-day schedules, break, and OT fields. This ensures the fallback layer is also current. Day offs remain unchanged.
 
-**Step 4: Skip Team Lead / Technical positions from quota checks**
-Ensure non-ticket-handling roles are excluded from QUOTA_NOT_MET and HIGH_GAP checks (currently `calculateExpectedQuota` returns 0 for them, but adding an explicit skip is safer).
+---
+
+### Schedule Data from Image
+
+| Agent | Schedule | Break | OT |
+|-------|----------|-------|-----|
+| Malcom Joseph Vincent Salmero | 9:00 AM-5:30 PM | 12:00 PM-12:30 PM | -- |
+| Ashley Nicole Nerviol | 9:00 AM-3:30 PM | 11:30 AM-12:00 PM | -- |
+| Biah Mae Divinagracia | 9:00 AM-5:30 PM | 12:30 PM-01:00 PM | 7:00 AM-9:00 AM |
+| Desiree Cataytay | 9:00 AM-5:30 PM | 12:30 PM-01:00 PM | -- |
+| Dwight Lawrence Anora | 9:00 AM-3:30 PM | 11:30 AM-12:00 PM | -- |
+| Ellen Eugenio | 9:00 AM-5:30 PM | 01:30 PM-02:00 PM | 5:30 PM-7:30 PM |
+| Erika Rhea Santiago | 9:00 AM-5:30 PM | 12:30 PM-01:00 PM | -- |
+| Jannah Bugayong | 9:00 AM-5:30 PM | 01:30 PM-02:00 PM | 5:30 PM-7:30 PM |
+| Jasmin Ochoa | 9:00 AM-3:30 PM | 12:00 PM-12:30 PM | -- |
+| Jennifer Katigbak | 9:00 AM-5:30 PM | 01:00 PM-01:30 PM | -- |
+| Kimberly Lacaden | 9:00 AM-3:30 PM | 12:30 PM-01:00 PM | -- |
+| Lorraine Velarte | 9:00 AM-3:30 PM | 12:00 PM-12:30 PM | -- |
+| Pauline Desabilla | 9:00 AM-4:30 PM | 01:00 PM-01:30 PM | -- |
+| Precious Mae Falcis Gagarra | 9:00 AM-3:30 PM | 11:30 AM-12:00 PM | 3:30 PM-5:30 PM |
+| Princess Infinity Medina | 9:00 AM-3:30 PM | 12:00 PM-12:30 PM | -- |
+| Richelle Cayabyab | 9:00 AM-5:30 PM | 01:00 PM-01:30 PM | 7:00 AM-9:00 AM |
+| Russell Kent Quieta | 9:00 AM-3:30 PM | 12:30 PM-01:00 PM | -- |
+| Ruth Gajo | 9:00 AM-5:30 PM | 01:00 PM-01:30 PM | 7:00 AM-9:00 AM |
+| Stephen Martinez | 9:00 AM-5:30 PM | 01:30 PM-02:00 PM | -- |
+| Trisha Nicole Arancillo | 9:00 AM-4:30 PM | 12:30 PM-01:00 PM | -- |
+| Will Angeline Reyes | 9:00 AM-4:30 PM | 12:00 PM-12:30 PM | 4:30 PM-6:30 PM |
+| Bryan Santiago | 9:00 AM-3:30 PM | 12:00 PM-12:30 PM | -- |
+| Catherine Jane Plaza | 9:00 AM-3:30 PM | 12:30 PM-01:00 PM | -- |
+| Kent Michael Cerbeto | 9:00 AM-3:30 PM | 01:00 PM-01:30 PM | -- |
+| Lawrence Karl Prieto | 9:00 AM-3:30 PM | 12:30 PM-01:00 PM | -- |
+| Lorenz Philip Malanog | 9:00 AM-3:30 PM | 12:00 PM-12:30 PM | -- |
+| Maryll Kate C. Mahipos | 9:00 AM-3:30 PM | 12:30 PM-01:00 PM | -- |
+| Nikki Ignacio | 9:00 AM-5:30 PM | 12:30 PM-01:00 PM | 7:00 AM-9:00 AM |
+| Rezajoy Docto | 9:00 AM-5:30 PM | 12:00 PM-12:30 PM | 5:30 PM-7:30 PM |
+| Sheena Jane Camposo | 9:00 AM-3:30 PM | 01:00 PM-01:30 PM | -- |
+| Louella Trangia | 9:00 AM-5:00 PM | (keep current) | -- |
+| Jesse Argao | 9:00 AM-5:00 PM | (keep current) | -- |
+| Lauro Ednalaga | 9:00 AM-5:00 PM | (keep current) | -- |
+| Juno Dianne Garciano | 9:00 AM-5:00 PM | (keep current) | -- |
+| Jaeran Sanchez | 9:00 AM-5:00 PM | (keep current) | -- |
+| Meryl Jean Esguerra Iman | 9:00 AM-5:00 PM | (keep current) | -- |
+| Kristin Joann Argao | 9:00 AM-5:00 PM | (keep current) | -- |
+
+### Execution Plan
+
+I will execute this step-by-step:
+1. First, query all agent IDs and current day_off arrays
+2. Insert coverage overrides for Thu-Sun this week (step 1)
+3. Upsert schedule assignments for next Monday (step 2)
+4. Update agent_profiles base schedules (step 3)
+5. Verify by querying `get_effective_schedule` for a sample agent
+
+All done via data insert/update operations. Zero code file changes.
 
