@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolvePositionCategory } from '@/lib/positionUtils';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
-import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
+import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal, getESTDayBoundaries } from '@/lib/timezoneUtils';
 
 /**
  * Determine if a week should be read from snapshots (older than 2 weeks) or live tables
@@ -1100,8 +1100,7 @@ async function checkAndAlertOverbreak(
     const maxAllowedMinutes = allowedMinutes + graceMinutes;
 
     // Get all break events for today
-    const startOfDay = `${todayStr}T00:00:00.000Z`;
-    const endOfDay = `${todayStr}T23:59:59.999Z`;
+    const { start: startOfDay, end: endOfDay } = getESTDayBoundaries(todayStr);
 
     const { data: breakEvents } = await supabase
       .from('profile_events')
@@ -1951,8 +1950,8 @@ export async function getWeekTicketCountByType(
 ): Promise<{ data: TicketCountByType; error: string | null }> {
   try {
     // Format dates to ISO strings for timezone-aware query
-    const startStr = format(startDate, 'yyyy-MM-dd') + 'T00:00:00.000Z';
-    const endStr = format(endDate, 'yyyy-MM-dd') + 'T23:59:59.999Z';
+    const startStr = getESTDayBoundaries(format(startDate, 'yyyy-MM-dd')).start;
+    const endStr = getESTDayBoundaries(format(endDate, 'yyyy-MM-dd')).end;
 
     // Fetch all tickets for the date range (includes is_ot flag)
     const { data, error } = await supabase
@@ -2152,8 +2151,7 @@ export async function getDayPortalHours(
 ): Promise<{ data: { hours: number | null; loginTime: string | null }; error: string | null }> {
   try {
     const dateStr = format(date, 'yyyy-MM-dd');
-    const startOfDay = dateStr + 'T00:00:00.000Z';
-    const endOfDay = dateStr + 'T23:59:59.999Z';
+    const { start: startOfDay, end: endOfDay } = getESTDayBoundaries(dateStr);
 
     // Fetch login/logout events for this specific day
     const { data, error } = await supabase
