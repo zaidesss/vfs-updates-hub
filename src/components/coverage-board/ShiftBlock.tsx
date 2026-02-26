@@ -25,10 +25,6 @@ interface ShiftBlockProps {
 
 export const POSITION_COLORS: Record<string, string> = {
   'Hybrid': 'bg-blue-500/80 border-blue-600',
-  'Email': 'bg-emerald-500/80 border-emerald-600',
-  'Email + Chat': 'bg-teal-500/80 border-teal-600',
-  'Email + Phone': 'bg-amber-500/80 border-amber-600',
-  'Phone': 'bg-orange-500/80 border-orange-600',
   'Chat': 'bg-cyan-500/80 border-cyan-600',
   'Logistics': 'bg-indigo-500/80 border-indigo-600',
 };

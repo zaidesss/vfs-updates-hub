@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { ShiftBlock, POSITION_COLORS, decimalToTimeLabel, parseTimeToDecimal as parseTimeToDecimalLocal, parseScheduleRange } from './ShiftBlock';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 import { MainGroupHeader, SubGroupHeader } from './GroupHeader';
 import {
   HOURS_PER_DAY,
@@ -469,7 +470,7 @@ function AgentRow({
             agentName={displayName}
             startLabel={block.startLabel}
             endLabel={block.endLabel}
-            supportType={Array.isArray(agent.position) ? agent.position[0] || undefined : agent.position || undefined}
+            supportType={resolvePositionCategory(agent.position)}
             isOverridden={block.isOverridden}
             outageReason={block.outageReason}
             hasConflict={block.hasConflict}
