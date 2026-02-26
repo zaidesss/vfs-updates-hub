@@ -20,14 +20,14 @@ export function resolvePositionCategory(positionArray: string[] | string | null)
   const has = (r: string) => arr.includes(r);
 
   if (has('Email') && has('Chat') && has('Phone')) return 'Hybrid';
-  if (has('Email') && has('Chat')) return 'Email + Chat';
-  if (has('Email') && has('Phone')) return 'Email + Phone';
-  if (has('Email')) return 'Email';
+  if (has('Email') && has('Chat')) return 'Chat';
+  if (has('Email') && has('Phone')) return 'Hybrid';
+  if (has('Email')) return 'Chat';
   if (has('Chat')) return 'Chat';
-  if (has('Phone')) return 'Phone';
+  if (has('Phone')) return 'Hybrid';
   if (has('Logistics')) return 'Logistics';
   if (has('Team Lead')) return 'Team Lead';
   if (has('Technical')) return 'Technical';
 
-  return 'Email';
+  return 'Chat';
 }
