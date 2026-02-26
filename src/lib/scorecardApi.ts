@@ -151,7 +151,8 @@ interface ScorecardRPCResult {
 // Determine if a week should read from snapshots
 // Returns: 'snapshot' | 'live' | 'unavailable'
 function getDataSourceForWeek(weekStart: Date): 'snapshot' | 'live' | 'unavailable' {
-  const now = new Date();
+  // Use EST time instead of browser UTC
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const weekStartTime = weekStart.getTime();
   const nowTime = now.getTime();
   
