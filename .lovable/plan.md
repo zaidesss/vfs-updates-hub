@@ -1,40 +1,61 @@
 
 
-## Root Cause
+## Issues Found
 
-There are **two bugs** in the live data path:
+### Issue 1: OT Productivity Column Never Renders Actual Values (TeamScorecard.tsx)
+**Root cause**: Lines 1153-1162 in `TeamScorecard.tsx` hardcode the OT Prod cell to always show `-`. The `scorecard.otProductivity` value is calculated correctly by the RPC but the UI never displays it.
 
-1. **OT Productivity is hardcoded to `null`** -- Line 1138 of `scorecardApi.ts` explicitly sets `otProductivity: null` with a comment "Legacy path - OT productivity not computed here." The `fetchWeeklyScorecardDualRead` function calls the legacy `fetchWeeklyScorecard` for current/recent weeks, which never computes OT productivity.
-
-2. **Productivity includes OT tickets** -- The legacy ticket query (line 918-922) fetches all `ticket_logs` without selecting or filtering the `is_ot` column. This means OT email tickets are counted as regular email tickets, inflating regular productivity while OT productivity remains null.
-
-The **RPC-based path** (`fetchWeeklyScorecardRPC`) already handles both correctly -- the `get_weekly_scorecard_data` RPC separates `email_count` (excluding OT) from `ot_email_count`, and the RPC path computes OT productivity using the schedule resolver. But the UI never calls it.
-
-## Fix
-
-**File**: `src/lib/scorecardApi.ts`
-
-### Change 1: Switch live data path to use the RPC function
-
-In `fetchWeeklyScorecardDualRead` (line 248-249), replace the call to the legacy `fetchWeeklyScorecard` with `fetchWeeklyScorecardRPC`, which already has correct OT separation and OT productivity calculation.
-
-```typescript
-// Before:
-return fetchWeeklyScorecard(weekStart, weekEnd, supportType);
-
-// After:
-const result = await fetchWeeklyScorecardRPC(weekStart, weekEnd, supportType);
-return result.data;
+```text
+Current code (lines 1156-1158):
+  <div className="px-2 py-1 rounded bg-muted/30">
+    <span className="text-muted-foreground">-</span>   ← always shows dash
+  </div>
 ```
 
-This single change fixes both issues because:
-- The RPC separates regular email tickets from OT tickets at the database level
-- The RPC path already computes OT productivity using effective schedules and `quota_ot_email`
-- The RPC path falls back to the legacy function automatically if the RPC call fails
+**Fix**: Replace the hardcoded dash with actual rendering of `scorecard.otProductivity`, using the same pattern as the Productivity column (color-coded percentage with count display).
 
-### Other considerations
+### Issue 2: Productivity Column Possibly Null
+**Root cause**: If the previous code change (switching to RPC) hasn't fully deployed, the legacy path still sets `otProductivity: null` and may miscalculate productivity by mixing OT tickets. After verifying the RPC switch is live, productivity should display correctly. However, there's also a secondary concern: the `position` field stored as `['Hybrid']` (single-element array of the resolved key) rather than the original `['Chat', 'Email', 'Phone']` means the UI column shows `ChatEmailPhone` as the type badge correctly.
 
-- **No database changes needed** -- the RPC already has the correct logic from our previous updates.
-- **Performance improvement** -- the RPC consolidates 10+ parallel queries into a single database call, so this is actually faster.
-- **The legacy `fetchWeeklyScorecard` function** can remain as a fallback (the RPC path already falls back to it on error), but it will still have the OT bug if used. We could optionally fix it too for safety, but the RPC path should handle all cases.
+### Issue 3: Coverage Board Save Dialog Shows Wrong Day (SaveConfirmationDialog.tsx)
+**Root cause**: Line 60 uses `new Date(dateStr)` where `dateStr` is `'2026-02-27'`. JavaScript's `new Date('2026-02-27')` creates a UTC midnight date. When `format()` renders it using the browser's local timezone (EST = UTC-5), midnight UTC becomes Feb 26 7:00 PM — showing **Thursday** instead of **Friday**.
+
+**Fix**: Use `parseISO` from date-fns instead of `new Date()`. `parseISO` treats date-only strings as local dates, avoiding the timezone shift.
+
+### Additional Considerations
+- **Should the OT Prod column also be editable** like Call AHT/Chat AHT? Currently it's display-only. If OT Productivity should be manually overridable, it would need the `EditableMetricCell` wrapper.
+- **Should OT Productivity be included in the scorecard_config for Hybrid/Chat types** so it contributes to the Final Score? Currently there's no `ot_productivity` row in `scorecard_config` for any support type, meaning it's displayed but not weighted.
+
+---
+
+## Implementation Plan
+
+### Step 1: Fix OT Productivity display in TeamScorecard.tsx
+**File**: `src/pages/TeamScorecard.tsx` (lines 1153-1162)
+
+Replace the hardcoded dash with proper rendering:
+```tsx
+{showOtProductivity && (
+  <TableCell className="text-center">
+    {metricApplies(scorecard.agent.position, 'otProductivity') ? (
+      <div className={`px-2 py-1 rounded ${getScoreBgColor(scorecard.otProductivity, getMetricGoal('ot_productivity'))}`}>
+        <span className={getScoreColor(scorecard.otProductivity, getMetricGoal('ot_productivity'))}>
+          {scorecard.otProductivity !== null ? formatScore(scorecard.otProductivity) : '-'}
+        </span>
+      </div>
+    ) : (
+      <span className="text-muted-foreground">-</span>
+    )}
+  </TableCell>
+)}
+```
+
+Also ensure `getMetricGoal` handles `ot_productivity` — it should fall back to 100 (same as regular productivity).
+
+### Step 2: Fix Coverage Board date display in SaveConfirmationDialog.tsx
+**File**: `src/components/coverage-board/SaveConfirmationDialog.tsx`
+
+- Add `import { parseISO } from 'date-fns'`
+- Line 60: Change `date: new Date(dateStr)` to `date: parseISO(dateStr)`
+- Line 65: Change `new Date(a.dateStr).getTime()` to `parseISO(a.dateStr).getTime()`
 
