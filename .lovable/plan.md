@@ -1,61 +1,50 @@
 
 
-## Issues Found
+## Diagnosis
 
-### Issue 1: OT Productivity Column Never Renders Actual Values (TeamScorecard.tsx)
-**Root cause**: Lines 1153-1162 in `TeamScorecard.tsx` hardcode the OT Prod cell to always show `-`. The `scorecard.otProductivity` value is calculated correctly by the RPC but the UI never displays it.
+### Root Cause: OT Productivity Still Empty
 
-```text
-Current code (lines 1156-1158):
-  <div className="px-2 py-1 rounded bg-muted/30">
-    <span className="text-muted-foreground">-</span>   ← always shows dash
-  </div>
+The `get_weekly_scorecard_data` RPC is **failing silently** every time it's called. The error:
+
+```
+operator does not exist: date = text
 ```
 
-**Fix**: Replace the hardcoded dash with actual rendering of `scorecard.otProductivity`, using the same pattern as the Productivity column (color-coded percentage with count display).
+This happens because the RPC converts `p_week_start`/`p_week_end` to TEXT strings (`v_week_start_str`), then compares them against:
+- `zendesk_agent_metrics.week_start` — which is a **DATE** column
+- `zendesk_agent_metrics.week_end` — which is a **DATE** column  
+- `saved_scorecards.week_start` — which is a **DATE** column
+- `saved_scorecards.week_end` — which is a **DATE** column
 
-### Issue 2: Productivity Column Possibly Null
-**Root cause**: If the previous code change (switching to RPC) hasn't fully deployed, the legacy path still sets `otProductivity: null` and may miscalculate productivity by mixing OT tickets. After verifying the RPC switch is live, productivity should display correctly. However, there's also a secondary concern: the `position` field stored as `['Hybrid']` (single-element array of the resolved key) rather than the original `['Chat', 'Email', 'Phone']` means the UI column shows `ChatEmailPhone` as the type badge correctly.
+PostgreSQL does not implicitly cast DATE = TEXT, so the entire RPC throws an error. The code catches this error and silently falls back to the legacy `fetchWeeklyScorecard` function, which hardcodes `otProductivity: null`. This is why the OT productivity column has shown a dash every single time — the RPC fix we made was never actually executing.
 
-### Issue 3: Coverage Board Save Dialog Shows Wrong Day (SaveConfirmationDialog.tsx)
-**Root cause**: Line 60 uses `new Date(dateStr)` where `dateStr` is `'2026-02-27'`. JavaScript's `new Date('2026-02-27')` creates a UTC midnight date. When `format()` renders it using the browser's local timezone (EST = UTC-5), midnight UTC becomes Feb 26 7:00 PM — showing **Thursday** instead of **Friday**.
+**Richelle has 89 OT tickets this week and a quota of 29/day — the data exists, the RPC just never runs.**
 
-**Fix**: Use `parseISO` from date-fns instead of `new Date()`. `parseISO` treats date-only strings as local dates, avoiding the timezone shift.
+### Root Cause: UTC Timezone Usage
 
-### Additional Considerations
-- **Should the OT Prod column also be editable** like Call AHT/Chat AHT? Currently it's display-only. If OT Productivity should be manually overridable, it would need the `EditableMetricCell` wrapper.
-- **Should OT Productivity be included in the scorecard_config for Hybrid/Chat types** so it contributes to the Final Score? Currently there's no `ot_productivity` row in `scorecard_config` for any support type, meaning it's displayed but not weighted.
+The `getDataSourceForWeek` function in `scorecardApi.ts` uses `new Date()` (browser UTC time) instead of the PortalClock EST time. While this particular usage is a relative comparison (within 2 weeks) and unlikely to cause visible bugs, it violates the EST-only policy.
 
 ---
 
-## Implementation Plan
+## Fix Plan
 
-### Step 1: Fix OT Productivity display in TeamScorecard.tsx
-**File**: `src/pages/TeamScorecard.tsx` (lines 1153-1162)
+### Step 1: Fix the RPC type mismatch (database migration)
 
-Replace the hardcoded dash with proper rendering:
-```tsx
-{showOtProductivity && (
-  <TableCell className="text-center">
-    {metricApplies(scorecard.agent.position, 'otProductivity') ? (
-      <div className={`px-2 py-1 rounded ${getScoreBgColor(scorecard.otProductivity, getMetricGoal('ot_productivity'))}`}>
-        <span className={getScoreColor(scorecard.otProductivity, getMetricGoal('ot_productivity'))}>
-          {scorecard.otProductivity !== null ? formatScore(scorecard.otProductivity) : '-'}
-        </span>
-      </div>
-    ) : (
-      <span className="text-muted-foreground">-</span>
-    )}
-  </TableCell>
-)}
+Update the `get_weekly_scorecard_data` function to cast `v_week_start_str` and `v_week_end_str` back to DATE when comparing against DATE columns:
+
+```sql
+-- In zendesk_metrics CTE:
+WHERE zm.week_start = v_week_start_str::date
+  AND zm.week_end = v_week_end_str::date
+
+-- In saved_status CTE:
+WHERE ss.week_start = v_week_start_str::date
+  AND ss.week_end = v_week_end_str::date
 ```
 
-Also ensure `getMetricGoal` handles `ot_productivity` — it should fall back to 100 (same as regular productivity).
+Alternatively (and cleaner): remove the TEXT conversion entirely and just use `p_week_start` / `p_week_end` directly since they're already DATE type. This eliminates the TEXT intermediary.
 
-### Step 2: Fix Coverage Board date display in SaveConfirmationDialog.tsx
-**File**: `src/components/coverage-board/SaveConfirmationDialog.tsx`
+### Step 2: Replace `new Date()` with EST-aware time in `scorecardApi.ts`
 
-- Add `import { parseISO } from 'date-fns'`
-- Line 60: Change `date: new Date(dateStr)` to `date: parseISO(dateStr)`
-- Line 65: Change `new Date(a.dateStr).getTime()` to `parseISO(a.dateStr).getTime()`
+In `getDataSourceForWeek` (line 154), replace `new Date()` with an EST-derived date using the `getTodayEST` utility, or accept the portal clock's `now` as a parameter. Since this is a utility function (not a hook), we'll use `Intl.DateTimeFormat` directly for EST.
 
