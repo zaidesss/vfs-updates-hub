@@ -1,50 +1,83 @@
 
 
-## Diagnosis
+## Analysis
 
-### Root Cause: OT Productivity Still Empty
-
-The `get_weekly_scorecard_data` RPC is **failing silently** every time it's called. The error:
-
-```
-operator does not exist: date = text
-```
-
-This happens because the RPC converts `p_week_start`/`p_week_end` to TEXT strings (`v_week_start_str`), then compares them against:
-- `zendesk_agent_metrics.week_start` — which is a **DATE** column
-- `zendesk_agent_metrics.week_end` — which is a **DATE** column  
-- `saved_scorecards.week_start` — which is a **DATE** column
-- `saved_scorecards.week_end` — which is a **DATE** column
-
-PostgreSQL does not implicitly cast DATE = TEXT, so the entire RPC throws an error. The code catches this error and silently falls back to the legacy `fetchWeeklyScorecard` function, which hardcodes `otProductivity: null`. This is why the OT productivity column has shown a dash every single time — the RPC fix we made was never actually executing.
-
-**Richelle has 89 OT tickets this week and a quota of 29/day — the data exists, the RPC just never runs.**
-
-### Root Cause: UTC Timezone Usage
-
-The `getDataSourceForWeek` function in `scorecardApi.ts` uses `new Date()` (browser UTC time) instead of the PortalClock EST time. While this particular usage is a relative comparison (within 2 weeks) and unlikely to cause visible bugs, it violates the EST-only policy.
+I identified **four issues** — two reported by you, and two additional related problems found during the audit.
 
 ---
 
-## Fix Plan
-
-### Step 1: Fix the RPC type mismatch (database migration)
-
-Update the `get_weekly_scorecard_data` function to cast `v_week_start_str` and `v_week_end_str` back to DATE when comparing against DATE columns:
-
-```sql
--- In zendesk_metrics CTE:
-WHERE zm.week_start = v_week_start_str::date
-  AND zm.week_end = v_week_end_str::date
-
--- In saved_status CTE:
-WHERE ss.week_start = v_week_start_str::date
-  AND ss.week_end = v_week_end_str::date
+### Issue 1: Coverage Board overrides not reflected in Dashboard logout dialog
+**Root cause:** In `AgentDashboard.tsx` line 865, the `shiftSchedule` passed to `StatusButtons` → `LogoutConfirmDialog` is read directly from the profile object:
+```typescript
+shiftSchedule={profile[`${currentDayKey}_schedule` as keyof DashboardProfile] as string | null}
 ```
+This reads the **base profile schedule** (e.g., ending at 5:00 PM), completely ignoring coverage board overrides. The logout dialog therefore shows the wrong shift end time and incorrectly marks you as "within your logout window" instead of "Early Out."
 
-Alternatively (and cleaner): remove the TEXT conversion entirely and just use `p_week_start` / `p_week_end` directly since they're already DATE type. This eliminates the TEXT intermediary.
+**Fix:** Replace with the effective schedule from the already-fetched `effectiveWeekSchedules` state. Look up today's date in that array and use `effectiveDay.schedule` instead of the raw profile field.
 
-### Step 2: Replace `new Date()` with EST-aware time in `scorecardApi.ts`
+---
 
-In `getDataSourceForWeek` (line 154), replace `new Date()` with an EST-derived date using the `getTodayEST` utility, or accept the portal clock's `now` as a parameter. Since this is a utility function (not a hook), we'll use `Intl.DateTimeFormat` directly for EST.
+### Issue 2: Activity log shows wrong date (Feb 24 instead of Feb 25)
+**Root cause:** In `CoverageActivityLog.tsx` line 135:
+```typescript
+format(new Date(log.date), 'MMM dd, yyyy')
+```
+`log.date` is a `yyyy-MM-dd` string like `"2026-02-25"`. JavaScript's `new Date("2026-02-25")` parses this as **UTC midnight**, which converts to **Feb 24 at 7:00 PM EST** — rolling the displayed date back by one day.
+
+**Fix:** Use `parseISO` from date-fns (which also parses as UTC midnight but when used with `format` treats it as a local date without timezone conversion), or manually parse the date string to avoid the timezone shift. The standard pattern used elsewhere in this codebase is `parseDateStringLocal` from `timezoneUtils`.
+
+---
+
+### Issue 3: Dashboard bio allowance calculation ignores overrides
+**Root cause:** In `AgentDashboard.tsx` lines 63-88, `calculateBioAllowanceFromSchedule` reads from `profile[dayMap[today]]` — the raw profile schedule. If a coverage override changes the shift length for today, the bio allowance (5 min for 5+ hour shifts, 2.5 min for shorter) could be wrong.
+
+Note: The **backend** `calculateBioAllowanceForProfile` (called on LOGIN) already uses the schedule resolver. This frontend function is only a UI fallback. However, for consistency, it should also use the effective schedule.
+
+**Fix:** Update `calculateBioAllowanceFromSchedule` to accept the effective schedule string directly instead of looking it up from the profile.
+
+---
+
+### Issue 4: ShiftScheduleTable profile fallback ignores overrides
+**Root cause:** In `ShiftScheduleTable.tsx` line 202, there's a fallback that reads `profile[dayKey_schedule]` when effective schedules aren't available. This is already a secondary path (the primary path uses effective schedules), so this is low-risk but should be noted.
+
+**No code change needed** — the effective schedules are always loaded before the table renders.
+
+---
+
+## Implementation Plan
+
+### Step 1: Fix Dashboard logout dialog schedule (AgentDashboard.tsx)
+Replace line 865 to derive `shiftSchedule` from `effectiveWeekSchedules` (already in state):
+```typescript
+// Find today's effective schedule from the resolver
+const todayEffective = effectiveWeekSchedules.find(d => d.dayDate === currentDayKey_date);
+shiftSchedule={todayEffective?.schedule || profile[`${currentDayKey}_schedule`...]}
+```
+This requires matching by today's date string (`getTodayEST()`) against `effectiveWeekSchedules[].dayDate`.
+
+### Step 2: Fix Activity Log date parsing (CoverageActivityLog.tsx)
+Replace line 135:
+```typescript
+// Before (timezone-shifted):
+format(new Date(log.date), 'MMM dd, yyyy')
+
+// After (timezone-safe):
+format(parseISO(log.date), 'MMM dd, yyyy')
+```
+Import `parseISO` from `date-fns`. The `parseISO` + `format` combo treats the date as a local calendar date without UTC shifting.
+
+### Step 3: Fix bio allowance frontend calculation (AgentDashboard.tsx)
+Update `calculateBioAllowanceFromSchedule` to accept an optional effective schedule string parameter. When available, use it instead of the profile-based lookup. Pass the effective schedule from `effectiveWeekSchedules` at the call site.
+
+---
+
+## Scope Clarification
+
+The following systems **already correctly use** the schedule resolver and do NOT need changes:
+- `checkAndAlertEarlyOut` (backend early-out detection) — uses `getEffectiveScheduleForDate`
+- `calculateAttendanceForWeek` (attendance table) — uses overrides + effective schedules
+- `calculateBioAllowanceForProfile` (backend bio init on LOGIN) — uses schedule resolver
+- Stale login/logout detection — uses `getEffectiveScheduleForDate`
+
+The issues are purely **frontend display** (logout dialog, bio fallback) and **date formatting** (activity log).
 
