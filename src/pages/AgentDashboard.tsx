@@ -21,6 +21,7 @@ import { DailyWorkTracker } from '@/components/dashboard/DailyWorkTracker';
 import { DailyEventSummary } from '@/components/dashboard/DailyEventSummary';
 import { WeeklySummaryCard } from '@/components/dashboard/WeeklySummaryCard';
 import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelector';
+import { NewTicketsCounter } from '@/components/dashboard/NewTicketsCounter';
 
 import {
   fetchDashboardProfile,
@@ -814,6 +815,9 @@ export default function AgentDashboard() {
             </Card>
           </Collapsible>
         )}
+
+        {/* New Tickets Counter */}
+        <NewTicketsCounter />
 
         {/* Profile Header */}
         <ProfileHeader profile={profile} />
