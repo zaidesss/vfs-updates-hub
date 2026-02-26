@@ -889,12 +889,21 @@ function ProfilesGrid({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       <div className="space-y-2">
                         <Label>Team Lead</Label>
-                        <Input
-                          value={editData.team_lead}
-                          onChange={(e) => handleInputChange('team_lead', e.target.value)}
+                        <Select
+                          value={editData.team_lead || ''}
+                          onValueChange={(val) => handleInputChange('team_lead', val === '__none__' ? '' : val)}
                           disabled={!canEditWorkInfo}
-                          className={!canEditWorkInfo ? 'bg-muted' : ''}
-                        />
+                        >
+                          <SelectTrigger className={!canEditWorkInfo ? 'bg-muted' : ''}>
+                            <SelectValue placeholder="Select team lead" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None</SelectItem>
+                            {getUniqueTeamLeads().map((lead) => (
+                              <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Client(s)</Label>
