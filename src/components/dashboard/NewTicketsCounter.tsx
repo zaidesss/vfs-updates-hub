@@ -1,3 +1,4 @@
+import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -5,7 +6,7 @@ import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail } fro
 import { useZendeskRealtime } from '@/lib/zendeskRealtimeApi';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
-function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading }: {
+function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading, emphasized }: {
   icon: React.ReactNode;
   label: string;
   total: number;
@@ -13,6 +14,7 @@ function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading }: {
   zd2: number;
   variant: 'destructive' | 'default' | 'success';
   isLoading: boolean;
+  emphasized?: boolean;
 }) {
   const colorClass = variant === 'destructive'
     ? 'text-destructive'
@@ -21,16 +23,16 @@ function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading }: {
       : 'text-foreground';
 
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className={`flex items-center justify-between gap-4 ${emphasized ? 'bg-destructive/10 rounded-lg p-3 -mx-1' : ''}`}>
       <div className="flex items-center gap-3">
-        <span className={colorClass}>{icon}</span>
-        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+        <span className={colorClass}>{React.cloneElement(icon as React.ReactElement, { className: emphasized ? 'h-6 w-6' : 'h-4 w-4' })}</span>
+        <span className={emphasized ? 'text-base font-semibold text-destructive' : 'text-sm font-medium text-muted-foreground'}>{label}</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className={`text-2xl font-extrabold tabular-nums ${colorClass}`}>
+        <span className={`${emphasized ? 'text-4xl' : 'text-2xl'} font-extrabold tabular-nums ${colorClass}`}>
           {isLoading ? '—' : total.toLocaleString()}
         </span>
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <span className={`${emphasized ? 'text-sm' : 'text-xs'} text-muted-foreground whitespace-nowrap`}>
           ({isLoading ? '—' : `ZD1: ${zd1.toLocaleString()} / ZD2: ${zd2.toLocaleString()}`})
         </span>
       </div>
@@ -129,6 +131,7 @@ export function NewTicketsCounter() {
             zd2={awaitingZd2}
             variant="destructive"
             isLoading={isLoading}
+            emphasized
           />
           <div className="border-t border-border/50" />
           <MetricRow
