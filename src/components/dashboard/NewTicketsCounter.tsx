@@ -1,8 +1,9 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, AlertTriangle, Ticket } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Ticket, Info } from 'lucide-react';
 import { useZendeskRealtime } from '@/lib/zendeskRealtimeApi';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 export function NewTicketsCounter() {
   const { data, isLoading, error, refresh } = useZendeskRealtime();
@@ -49,9 +50,21 @@ export function NewTicketsCounter() {
                 <span className="text-4xl font-extrabold tracking-tight text-destructive tabular-nums">
                   {isLoading ? '—' : total.toLocaleString()}
                 </span>
-                <span className="text-lg font-semibold text-foreground">
-                  New Tickets
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-foreground">
+                    New Tickets as of Today
+                  </span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto text-sm" side="top">
+                      Ticket counting started on <strong>February 26, 2026</strong>.
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
               <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                 <span>ZD1: <strong className="text-foreground">{isLoading ? '—' : zd1Count.toLocaleString()}</strong></span>
