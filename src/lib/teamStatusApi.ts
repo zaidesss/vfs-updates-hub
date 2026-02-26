@@ -1,7 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
 import { 
-  getCurrentESTTimeMinutes, 
-  getTodayEST,
   parseScheduleRange,
   isTimeInScheduleRange,
 } from './timezoneUtils';
@@ -99,7 +97,7 @@ function isWithinScheduleWindow(
   return false;
 }
 
-export async function fetchScheduledTeamMembers(now?: Date): Promise<{
+export async function fetchScheduledTeamMembers(todayEST: string, currentTimeMinutes: number): Promise<{
   categories: CategorizedTeamMembers;
   totalScheduled: number;
   totalOnline: number;
@@ -116,8 +114,7 @@ export async function fetchScheduledTeamMembers(now?: Date): Promise<{
   };
 
   try {
-    const currentTimeMinutes = getCurrentESTTimeMinutes(now);
-    const todayStr = getTodayEST(now);
+    const todayStr = todayEST;
 
     // Single bulk query for all schedules + parallel status/outage queries
     const [schedulesResult, statusesResult, outagesResult] = await Promise.all([
@@ -288,7 +285,15 @@ export async function fetchLoggedInTeamMembers(): Promise<{
   totalOnline: number;
   error: string | null;
 }> {
-  const result = await fetchScheduledTeamMembers();
+  // Compute EST values inline for legacy callers
+  const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const year = estNow.getFullYear();
+  const month = String(estNow.getMonth() + 1).padStart(2, '0');
+  const day = String(estNow.getDate()).padStart(2, '0');
+  const todayEST = `${year}-${month}-${day}`;
+  const currentTimeMinutes = estNow.getHours() * 60 + estNow.getMinutes();
+  
+  const result = await fetchScheduledTeamMembers(todayEST, currentTimeMinutes);
   return {
     categories: result.categories,
     totalOnline: result.totalOnline,
