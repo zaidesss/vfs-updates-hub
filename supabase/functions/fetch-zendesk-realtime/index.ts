@@ -126,15 +126,17 @@ Deno.serve(async (req) => {
     // ZD2 does not have Talk
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
-    const [talkZD1, msgZD1, msgZD2] = await Promise.all([
+    const [talkZD1, msgZD1, msgZD2, newTicketsZD1, newTicketsZD2] = await Promise.all([
       fetchTalkStats(configZD1),
       fetchMessagingStats(configZD1),
       fetchMessagingStats(configZD2),
+      searchCount(configZD1, 'type:ticket status:new created>=2026-02-26'),
+      searchCount(configZD2, 'type:ticket status:new created>=2026-02-26'),
     ]);
 
     const result = {
-      zd1: { talk: talkZD1, messaging: msgZD1 },
-      zd2: { talk: talkZD2, messaging: msgZD2 },
+      zd1: { talk: talkZD1, messaging: msgZD1, newTickets: newTicketsZD1 },
+      zd2: { talk: talkZD2, messaging: msgZD2, newTickets: newTicketsZD2 },
       fetchedAt: new Date().toISOString(),
     };
 

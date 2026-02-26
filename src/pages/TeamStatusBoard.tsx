@@ -6,6 +6,7 @@ import { fetchScheduledTeamMembers, CategorizedTeamMembers, TeamMemberStatus } f
 import { StatusCard } from '@/components/team-status/StatusCard';
 import { ZendeskRealtimePanel } from '@/components/team-status/ZendeskRealtimePanel';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
+import { NewTicketsCounter } from '@/components/dashboard/NewTicketsCounter';
 import { Button } from '@/components/ui/button';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package, Bug } from 'lucide-react';
@@ -179,6 +180,9 @@ export default function TeamStatusBoard() {
            <PageGuideButton pageId="team-status" />
          </div>
        </div>
+
+        {/* New Tickets Counter */}
+        <NewTicketsCounter />
 
         {/* Zendesk Real-Time Stats */}
         <ZendeskRealtimePanel />

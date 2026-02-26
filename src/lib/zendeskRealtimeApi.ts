@@ -16,6 +16,7 @@ export interface MessagingStats {
 export interface InstanceStats {
   talk: TalkStats;
   messaging: MessagingStats;
+  newTickets: number;
 }
 
 export interface ZendeskRealtimeData {
