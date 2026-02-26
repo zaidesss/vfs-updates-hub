@@ -60,20 +60,22 @@ import {
  * Calculate bio allowance based on shift duration
  * 8+ hours = 4 mins, less = 2 mins
  */
-function calculateBioAllowanceFromSchedule(profile: DashboardProfile): number {
-  const dayMap: Record<number, keyof DashboardProfile> = {
-    0: 'sun_schedule',
-    1: 'mon_schedule',
-    2: 'tue_schedule',
-    3: 'wed_schedule',
-    4: 'thu_schedule',
-    5: 'fri_schedule',
-    6: 'sat_schedule',
-  };
-  
-  const today = new Date().getDay();
-  const scheduleKey = dayMap[today];
-  const schedule = profile[scheduleKey] as string | null;
+function calculateBioAllowanceFromSchedule(effectiveSchedule?: string | null, profile?: DashboardProfile): number {
+  // Prefer the effective schedule (which includes coverage board overrides)
+  const schedule = effectiveSchedule ?? (() => {
+    if (!profile) return null;
+    const dayMap: Record<number, keyof DashboardProfile> = {
+      0: 'sun_schedule',
+      1: 'mon_schedule',
+      2: 'tue_schedule',
+      3: 'wed_schedule',
+      4: 'thu_schedule',
+      5: 'fri_schedule',
+      6: 'sat_schedule',
+    };
+    const today = new Date().getDay();
+    return profile[dayMap[today]] as string | null;
+  })();
   
   if (!schedule) return 150; // Default 2 mins 30 secs (150 seconds)
   
@@ -852,19 +854,25 @@ export default function AgentDashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               <StatusIndicator status={status} since={statusSince} />
-              <StatusButtons
-                currentStatus={status}
-                isLoading={isUpdating}
-                onStatusChange={handleStatusChange}
-                statusSince={statusSince}
-                bioTimeRemaining={bioTimeRemaining}
-                bioAllowance={bioAllowance ?? (profile ? calculateBioAllowanceFromSchedule(profile) : null)}
-                onRestartExceeded={handleRestartExceeded}
-                onBioExceeded={handleBioExceeded}
-                otEnabled={profile.ot_enabled}
-                shiftSchedule={profile[`${currentDayKey}_schedule` as keyof DashboardProfile] as string | null}
-                breakSchedule={profile.break_schedule}
-              />
+              {(() => {
+                const todayEffective = effectiveWeekSchedules.find(d => d.dayDate === getTodayEST());
+                const effectiveShiftSchedule = todayEffective?.schedule || profile[`${currentDayKey}_schedule` as keyof DashboardProfile] as string | null;
+                return (
+                  <StatusButtons
+                    currentStatus={status}
+                    isLoading={isUpdating}
+                    onStatusChange={handleStatusChange}
+                    statusSince={statusSince}
+                    bioTimeRemaining={bioTimeRemaining}
+                    bioAllowance={bioAllowance ?? calculateBioAllowanceFromSchedule(effectiveShiftSchedule, profile)}
+                    onRestartExceeded={handleRestartExceeded}
+                    onBioExceeded={handleBioExceeded}
+                    otEnabled={profile.ot_enabled}
+                    shiftSchedule={effectiveShiftSchedule}
+                    breakSchedule={profile.break_schedule}
+                  />
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
