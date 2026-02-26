@@ -156,9 +156,13 @@ async function computeScorecardSnapshot(
 
   // Schedule analysis
   let scheduledDays = 0;
+  let otScheduledDays = 0;
   for (const s of schedules) {
     if (!s.is_day_off && s.effective_schedule && s.effective_schedule !== "Day Off") {
       scheduledDays++;
+    }
+    if (s.effective_ot_schedule && s.effective_ot_schedule !== "" && s.effective_ot_schedule !== "Day Off") {
+      otScheduledDays++;
     }
   }
 
@@ -168,6 +172,13 @@ async function computeScorecardSnapshot(
 
   const revalidaScore = revalidaData.length > 0 ? revalidaData[0].final_percent : null;
 
+  // Calculate OT productivity percentage
+  let otProductivityPercent: number | null = null;
+  if (otEmailCount > 0 && agent.quota_ot_email && agent.quota_ot_email > 0 && otScheduledDays > 0) {
+    const weeklyOtQuota = agent.quota_ot_email * otScheduledDays;
+    otProductivityPercent = weeklyOtQuota > 0 ? (otEmailCount / weeklyOtQuota) * 100 : null;
+  }
+
   const scorecardSnapshot = {
     agent_email: agent.email,
     agent_id: agent.id,
@@ -176,7 +187,7 @@ async function computeScorecardSnapshot(
     week_end: weekEndStr,
     support_type: agent.position,
     productivity_count: emailCount + chatCount + callCount,
-    ot_productivity: otEmailCount,
+    ot_productivity: otProductivityPercent,
     qa: qaAverage,
     revalida: revalidaScore,
     call_aht_seconds: zendeskMetrics?.call_aht_seconds || null,
