@@ -23,6 +23,7 @@ interface WeeklySummaryCardProps {
   weekStart: Date;
   weekEnd: Date;
   otEnabled?: boolean;
+  liveOtTickets?: number;
   className?: string;
 }
 
@@ -34,7 +35,7 @@ interface SummaryMetric {
   subtext?: string;
 }
 
-export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekEnd, otEnabled, className }: WeeklySummaryCardProps) {
+export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekEnd, otEnabled, liveOtTickets, className }: WeeklySummaryCardProps) {
 
   // Calculate metrics
   const workingDays = attendance.filter(
@@ -142,10 +143,12 @@ export function WeeklySummaryCard({ attendance, allEvents = [], weekStart, weekE
   }
 
   // Add OT Tickets if OT is enabled or there are OT tickets
-  const totalOtTickets = attendance.reduce(
+  const snapshotOtTickets = attendance.reduce(
     (sum, a) => sum + (a.otTicketCount || 0),
     0
   );
+  // Use live OT tickets if provided (for current/recent weeks), otherwise fall back to snapshots
+  const totalOtTickets = liveOtTickets !== undefined ? liveOtTickets : snapshotOtTickets;
   if (otEnabled || totalOtTickets > 0) {
     metrics.push({
       label: 'OT Tickets',

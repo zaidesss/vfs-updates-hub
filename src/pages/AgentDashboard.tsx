@@ -129,6 +129,7 @@ export default function AgentDashboard() {
   const [ticketCounts, setTicketCounts] = useState<TicketCountByType>({ email: 0, chat: 0, call: 0, total: 0, otEmail: 0 });
   const [avgGapSeconds, setAvgGapSeconds] = useState<number | null>(null);
   const [isRefreshingTracker, setIsRefreshingTracker] = useState(false);
+  const [weeklyOtTickets, setWeeklyOtTickets] = useState<number | undefined>(undefined);
   
   // Upwork integration state
   const [portalHours, setPortalHours] = useState<number | null>(null);
@@ -278,18 +279,25 @@ export default function AgentDashboard() {
       if (tag) {
         setAgentTag(tag);
         
-        // Fetch per-type ticket breakdown for the selected day
-        const ticketResult = await getDayTicketCountByType(tag, defaultDay);
+        // Fetch per-type ticket breakdown for the selected day + weekly OT tickets in parallel
+        const [ticketResult, gapResult, portalResult, weekTicketResult] = await Promise.all([
+          getDayTicketCountByType(tag, defaultDay),
+          getDayAvgGapData(tag, defaultDay),
+          getDayPortalHours(profileId, defaultDay),
+          dataSource === 'live' ? getWeekTicketCountByType(tag, weekStart, weekEnd) : Promise.resolve(null),
+        ]);
+        
         setTicketCounts(ticketResult.data);
-        
-        // Fetch avg gap for the selected day
-        const gapResult = await getDayAvgGapData(tag, defaultDay);
         setAvgGapSeconds(gapResult.data.avgGapSeconds);
-        
-        // Fetch portal hours for the selected day
-        const portalResult = await getDayPortalHours(profileId, defaultDay);
         setPortalHours(portalResult.data.hours);
         setPortalLoginTime(portalResult.data.loginTime);
+        
+        // Set weekly OT tickets for live weeks
+        if (weekTicketResult) {
+          setWeeklyOtTickets(weekTicketResult.data.otEmail);
+        } else {
+          setWeeklyOtTickets(undefined); // Fall back to snapshot data in WeeklySummaryCard
+        }
       } else {
         // No tag, get portal hours from the attendance for the selected day
         const dayStr = format(defaultDay, 'yyyy-MM-dd');
@@ -518,8 +526,10 @@ export default function AgentDashboard() {
     if (!isCurrentWeek) return; // Only poll for the current week
 
     const interval = setInterval(() => {
+      // Skip polling if page is not visible
+      if (document.hidden) return;
       loadDashboardData();
-    }, 30_000);
+    }, 60_000);
 
     return () => clearInterval(interval);
   }, [profileId, weekStart, loadDashboardData]);
@@ -825,7 +835,7 @@ export default function AgentDashboard() {
         <NewTicketsCounter />
 
         {/* Profile Header */}
-        <ProfileHeader profile={profile} />
+        <ProfileHeader profile={profile} effectiveWeekSchedules={effectiveWeekSchedules} />
 
         {/* Shift Schedule with Attendance and Week Selector */}
         <ShiftScheduleTable 
@@ -849,6 +859,7 @@ export default function AgentDashboard() {
           weekStart={weekStart}
           weekEnd={weekEnd}
           otEnabled={!!profile.ot_enabled}
+          liveOtTickets={weeklyOtTickets}
         />
 
         {/* Today's Activity + Status Control - side by side on larger screens */}
