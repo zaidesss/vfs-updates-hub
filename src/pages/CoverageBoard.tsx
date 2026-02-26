@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { format, addDays, startOfWeek } from 'date-fns';
+import { format, addDays, startOfWeek, getDay } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { DashboardWeekSelector } from '@/components/dashboard/DashboardWeekSelector';
@@ -172,19 +172,30 @@ export default function CoverageBoard() {
              previous_value: undefined,
            });
            
-           // Insert log entry
-           const agent = agents.find(a => a.id === pending.agent_id);
-           if (agent) {
-             await insertOverrideLog({
-               agent_id: pending.agent_id,
-               agent_name: agent.full_name || agent.agent_name || agent.email,
-               date: pending.date,
-               override_type: overrideType,
-               previous_value: null,
-               new_value: `${pending.override_start} - ${pending.override_end}`,
-               changed_by: user?.email || '',
-             });
-           }
+            // Insert log entry with base schedule as previous_value
+            const agent = agents.find(a => a.id === pending.agent_id);
+            if (agent) {
+              const pendingDate = new Date(pending.date + 'T00:00:00');
+              const dayIndex = getDay(pendingDate);
+              const schedMap: Record<number, string | null> = {
+                0: agent.sun_schedule, 1: agent.mon_schedule, 2: agent.tue_schedule,
+                3: agent.wed_schedule, 4: agent.thu_schedule, 5: agent.fri_schedule,
+                6: agent.sat_schedule,
+              };
+              const DAY_SHORTS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              const isDayOff = agent.day_off?.some(d => d.substring(0,3).toLowerCase() === DAY_SHORTS[dayIndex].toLowerCase());
+              const baseSchedule = isDayOff ? 'Day Off' : (schedMap[dayIndex] || 'No Schedule');
+
+              await insertOverrideLog({
+                agent_id: pending.agent_id,
+                agent_name: agent.full_name || agent.agent_name || agent.email,
+                date: pending.date,
+                override_type: overrideType,
+                previous_value: baseSchedule,
+                new_value: `${pending.override_start} - ${pending.override_end}`,
+                changed_by: user?.email || '',
+              });
+            }
          }
        }
 
