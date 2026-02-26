@@ -16,7 +16,7 @@ import { normalizeNameForStorage } from '@/lib/stringUtils';
 import { fetchMyProfile, upsertProfile, AgentProfile, AgentProfileInput, RateHistoryEntry, calculateDaysEmployed, getFirstName, getPositionDefaults } from '@/lib/agentProfileApi';
 import { writeAuditLog } from '@/lib/auditLogApi';
 import { validateScheduleFormat, validateOTScheduleConflict } from '@/lib/masterDirectoryApi';
-import { getAgentInfoByEmail } from '@/lib/agentDirectory';
+import { getAgentInfoByEmail, getUniqueTeamLeads } from '@/lib/agentDirectory';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { ProfileChangeRequestDialog } from '@/components/profile/ProfileChangeRequestDialog';
 import { WorkConfigurationSection } from '@/components/profile/WorkConfigurationSection';
@@ -792,14 +792,21 @@ export default function AgentProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="team_lead">Team Lead</Label>
-                  <Input
-                    id="team_lead"
-                    value={profile.team_lead}
-                    onChange={(e) => handleInputChange('team_lead', e.target.value)}
-                    placeholder="Name of your team lead"
+                  <Select
+                    value={profile.team_lead || ''}
+                    onValueChange={(val) => handleInputChange('team_lead', val === '__none__' ? '' : val)}
                     disabled={!isAdmin}
-                    className={!isAdmin ? 'bg-muted' : ''}
-                  />
+                  >
+                    <SelectTrigger className={!isAdmin ? 'bg-muted' : ''}>
+                      <SelectValue placeholder="Select team lead" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {getUniqueTeamLeads().map((lead) => (
+                        <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 
                 <div className="space-y-2">
