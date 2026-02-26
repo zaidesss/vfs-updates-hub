@@ -480,7 +480,7 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
 
   // Sync to agent_directory for Master Directory visibility
   try {
-    await syncProfileToDirectory(input);
+    await syncProfileToDirectory(dbInput as AgentProfileInput);
   } catch (syncError) {
     console.error('Failed to sync profile to directory:', syncError);
   }

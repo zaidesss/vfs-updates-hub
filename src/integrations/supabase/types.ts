@@ -3593,6 +3593,7 @@ export type Database = {
           id: string | null
           mon_ot_schedule: string | null
           mon_schedule: string | null
+          ot_enabled: boolean | null
           position: string[] | null
           sat_ot_schedule: string | null
           sat_schedule: string | null
@@ -3619,6 +3620,7 @@ export type Database = {
           id?: string | null
           mon_ot_schedule?: string | null
           mon_schedule?: string | null
+          ot_enabled?: boolean | null
           position?: string[] | null
           sat_ot_schedule?: string | null
           sat_schedule?: string | null
@@ -3645,6 +3647,7 @@ export type Database = {
           id?: string | null
           mon_ot_schedule?: string | null
           mon_schedule?: string | null
+          ot_enabled?: boolean | null
           position?: string[] | null
           sat_ot_schedule?: string | null
           sat_schedule?: string | null
