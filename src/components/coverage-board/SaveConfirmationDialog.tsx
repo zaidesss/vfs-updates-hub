@@ -8,10 +8,29 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, getDay } from 'date-fns';
 import { useState } from 'react';
 import type { PendingOverride } from './OverrideEditor';
 import type { AgentScheduleRow } from '@/lib/coverageBoardApi';
+
+/** Look up the agent's base schedule for a given date */
+function getBaseScheduleForDate(agent: AgentScheduleRow, date: Date): string {
+  const dayIndex = getDay(date); // 0=Sun..6=Sat
+  const scheduleMap: Record<number, string | null> = {
+    0: agent.sun_schedule,
+    1: agent.mon_schedule,
+    2: agent.tue_schedule,
+    3: agent.wed_schedule,
+    4: agent.thu_schedule,
+    5: agent.fri_schedule,
+    6: agent.sat_schedule,
+  };
+  const DAY_SHORTS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayShort = DAY_SHORTS[dayIndex];
+  const isDayOff = agent.day_off?.some(d => d.substring(0, 3).toLowerCase() === dayShort.toLowerCase());
+  if (isDayOff) return 'Day Off';
+  return scheduleMap[dayIndex] || 'No Schedule';
+}
 
 interface SaveConfirmationDialogProps {
   open: boolean;
@@ -113,7 +132,12 @@ export function SaveConfirmationDialog({
                         return (
                           <TableRow key={key}>
                             <TableCell className="font-medium text-xs">{typeLabel}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {(() => {
+                                const agent = agents.find(a => a.id === change.agentId);
+                                return agent ? getBaseScheduleForDate(agent, change.date) : '—';
+                              })()}
+                            </TableCell>
                             <TableCell className="text-xs">
                               {override.override_start} – {override.override_end}
                             </TableCell>
