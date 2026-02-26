@@ -687,7 +687,7 @@ export async function fetchWeeklyScorecardRPC(
       
       // Calculate scheduled days from day_off + schedules + overrides
       const agentOverrideDates = overrideDateMap.get(row.profile_id);
-      const scheduledDays = await calculateScheduledDaysFromRPC(row, row.profile_id, weekStart, weekEnd, agentOverrideDates);
+      const { scheduledDays, otScheduledDays } = await calculateScheduledDaysFromRPC(row, row.profile_id, weekStart, weekEnd, agentOverrideDates);
       
       // New reliability calculation: 100% - (unplanned_outage_days × 1%)
       // Planned Leave = no deduction, all other outage reasons = 1% deduction per day
@@ -747,14 +747,10 @@ export async function fetchWeeklyScorecardRPC(
       const weeklyQuota = getWeeklyQuota(agentProfile, agentSupportType, adjustedScheduledDays);
       const productivity = weeklyQuota > 0 ? (productivityCount / weeklyQuota) * 100 : null;
 
-      // Calculate OT productivity: (OT Email Count / (quota_ot_email × days with OT work)) × 100
-      // For now, we use days_with_login as an approximation for OT days worked
-      // TODO: Track actual OT days separately if needed
+      // Calculate OT productivity: (OT Email Count / (quota_ot_email × OT scheduled days)) × 100
       let otProductivity: number | null = null;
-      if (row.ot_email_count > 0 && row.quota_ot_email && row.quota_ot_email > 0) {
-        // Use days_with_login as approximation for OT days worked
-        const otDaysWorked = row.days_with_login > 0 ? row.days_with_login : 1;
-        const weeklyOtQuota = row.quota_ot_email * otDaysWorked;
+      if (row.ot_email_count > 0 && row.quota_ot_email && row.quota_ot_email > 0 && otScheduledDays > 0) {
+        const weeklyOtQuota = row.quota_ot_email * otScheduledDays;
         otProductivity = weeklyOtQuota > 0 ? (row.ot_email_count / weeklyOtQuota) * 100 : null;
       }
 
@@ -849,12 +845,13 @@ async function calculateScheduledDaysFromRPC(
   weekStart: Date,
   weekEnd: Date,
   overrideDates?: Set<string>
-): Promise<number> {
+): Promise<{ scheduledDays: number; otScheduledDays: number }> {
   try {
     // Use scheduleResolver to get effective schedules for the week
     const effectiveSchedules = await getEffectiveSchedulesForWeek(agentId, weekStart);
     
     let scheduledDays = 0;
+    let otScheduledDays = 0;
     
     for (const daySchedule of effectiveSchedules) {
       // If there's a coverage override for this day, it counts as scheduled
@@ -867,9 +864,14 @@ async function calculateScheduledDaysFromRPC(
       if (!daySchedule.isDayOff && daySchedule.schedule && daySchedule.schedule !== 'Day Off') {
         scheduledDays++;
       }
+      
+      // Count OT scheduled days separately
+      if (daySchedule.otSchedule && daySchedule.otSchedule !== '' && daySchedule.otSchedule !== 'Day Off') {
+        otScheduledDays++;
+      }
     }
     
-    return scheduledDays;
+    return { scheduledDays, otScheduledDays };
   } catch (error) {
     console.error('Failed to get effective schedules for RPC row, falling back to row data:', error);
     // Fallback to legacy logic using RPC row data
@@ -904,7 +906,7 @@ async function calculateScheduledDaysFromRPC(
       }
     }
 
-    return scheduledDays;
+    return { scheduledDays, otScheduledDays: 0 };
   }
 }
 
@@ -1161,7 +1163,7 @@ export async function fetchWeeklyScorecard(
       qa,
       revalida: revalidaMap.get(agentEmailLower) ?? null,
       reliability,
-      otProductivity: null, // Placeholder
+      otProductivity: null, // Legacy path - OT productivity not computed here
       orderEscalation: zendesk?.order_escalation ?? null,
       finalScore: isOnLeave ? null : finalScore,
       isOnLeave,
