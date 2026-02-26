@@ -1,73 +1,54 @@
 
 
-## Root Cause Analysis
+## Fix Plan: OT Productivity Calculation
 
-There are **two bugs** causing this issue:
+### Root Cause
+OT Productivity uses `days_with_login` (total login days, e.g. 5) as the OT days denominator, when the agent may only have OT scheduled on 2 days. This inflates the weekly OT quota and makes OT productivity appear much lower than it should be.
 
-### What happened to Malcom
+**Example**: Agent has `quota_ot_email = 10`, logged in 5 days, but OT scheduled only on 2 days.
+- Current: `otTickets / (10 × 5) = otTickets / 50` (wrong)
+- Fixed: `otTickets / (10 × 2) = otTickets / 20` (correct)
 
-1. **Tuesday**: Malcom logged in at 9:05 AM EST. He did not log out at the end of his shift.
-2. **Wednesday**: Dashboard correctly showed Tuesday as "No Logout" because no LOGOUT event existed for Tuesday.
-3. **Wednesday 6:40 PM**: Malcom clicked the Logout button (which was still showing because the UI hadn't reset). The **stale session handler** (line 523-630 in `agentDashboardApi.ts`) detected the previous-day status and inserted a `SYSTEM_AUTO_LOGOUT` event backdated to 11:59:59 PM EST Tuesday.
-4. **After refresh**: The attendance calculation found this SYSTEM_AUTO_LOGOUT as a valid "logout" for Tuesday. Combined with the schedule being treated as overnight ("9:00 PM-5:00 PM"), a logout at 11:59 PM was calculated as "Early Out" (within the PM portion after shift start of an overnight schedule).
+### QA Clarification
+The QA score in the Scorecard is already the **average percentage** across all QA evaluations for that week (`AVG(qe.percentage)`). If an agent has 5 QAs, the displayed value is the mean of all 5 scores. No change needed.
 
-### Bug 1: Client-side attendance treats SYSTEM_AUTO_LOGOUT as a real logout
-
-In `src/lib/agentDashboardApi.ts` lines 1698-1701 and 1720-1722, the candidate logout search does not exclude events where `triggered_by === 'SYSTEM_AUTO_LOGOUT'`. When a SYSTEM_AUTO_LOGOUT exists, the day should still show "No Logout" because the agent never actually logged out.
-
-### Bug 2: Server-side report generation has a broken filter
-
-In `supabase/functions/generate-agent-reports/index.ts` line 302:
-```typescript
-const logoutEvents = profileEvents.filter(e => 
-  e.event_type === 'LOGOUT' && e.event_type !== 'OT_LOGOUT' && e.event_type !== 'SYSTEM_AUTO_LOGOUT'
-);
-```
-The conditions `e.event_type !== 'OT_LOGOUT'` and `e.event_type !== 'SYSTEM_AUTO_LOGOUT'` are always true when `e.event_type === 'LOGOUT'`. The SYSTEM_AUTO_LOGOUT events have `event_type: 'LOGOUT'` and `triggered_by: 'SYSTEM_AUTO_LOGOUT'` -- so the filter should check `triggered_by`, not `event_type`.
-
-### Additional consideration: EARLY_OUT report creation on stale LOGOUT
-
-When the stale session handler (lines 566-629) runs, it returns early at line 629 without reaching the `checkAndAlertEarlyOut` call at line 755. So no EARLY_OUT agent report is created by the real-time handler -- the problem is purely in the attendance display. However, the nightly `generate-agent-reports` cron WOULD incorrectly find the SYSTEM_AUTO_LOGOUT as a real logout (due to Bug 2) and could create a false EARLY_OUT report later.
+### Productivity Per-Day
+Not needed in UI per your selection. The existing weekly aggregate stays as-is.
 
 ---
 
-## Fix Plan
+### Step 1: Update `calculateScheduledDaysFromRPC` to also return OT scheduled days
 
-### Step 1: Fix client-side attendance calculation
+**File: `src/lib/scorecardApi.ts`**
 
-**File: `src/lib/agentDashboardApi.ts`**
+Change the return type from `number` to `{ scheduledDays: number; otScheduledDays: number }`. Inside the loop (line 859-870), also count days where `daySchedule.otSchedule` exists and is not null/empty/"Day Off".
 
-At line 1698-1701, add `triggered_by` filter to exclude SYSTEM_AUTO_LOGOUT:
+Update the caller at line 690 to destructure both values.
+
+### Step 2: Use `otScheduledDays` in OT Productivity formula
+
+**File: `src/lib/scorecardApi.ts`** (lines 753-758)
+
+Replace:
 ```typescript
-let candidateLogout = statusEvents.find((event) => {
-  const eventDate = getESTDateFromTimestamp(event.created_at);
-  return eventDate === dateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
-});
+const otDaysWorked = row.days_with_login > 0 ? row.days_with_login : 1;
+const weeklyOtQuota = row.quota_ot_email * otDaysWorked;
+```
+With:
+```typescript
+const weeklyOtQuota = row.quota_ot_email * otScheduledDays;
 ```
 
-At line 1720-1722, same filter for overnight shift next-day search:
-```typescript
-const nextDayCandidate = statusEvents.find((event) => {
-  const eventDate = getESTDateFromTimestamp(event.created_at);
-  return eventDate === nextDateStr && event.event_type === 'LOGOUT' && event.triggered_by !== 'SYSTEM_AUTO_LOGOUT';
-});
-```
+### Step 3: Apply same fix in legacy `fetchWeeklyScorecard` path
 
-### Step 2: Fix server-side report generation filter
+The legacy path (around line 1089) has a similar OT calculation. Apply the same fix there for consistency, using the effective schedules to count OT days.
 
-**File: `supabase/functions/generate-agent-reports/index.ts`**
+### Step 4: Apply same fix in `compute-weekly-snapshots` edge function
 
-At line 302, fix the filter to check `triggered_by` instead of `event_type`:
-```typescript
-const logoutEvents = profileEvents.filter(e => 
-  e.event_type === 'LOGOUT' && e.triggered_by !== 'SYSTEM_AUTO_LOGOUT'
-);
-```
+The snapshot function (`supabase/functions/compute-weekly-snapshots/index.ts`) stores `ot_productivity` but currently has no OT day counting. Since it already calls `get_effective_schedules_for_week`, we can count OT days from the returned schedules and use that for the snapshot's OT productivity field.
 
-This also removes the redundant `e.event_type !== 'OT_LOGOUT'` check (which was always true).
-
-### Result after fix
-- Days where the only "logout" is a SYSTEM_AUTO_LOGOUT will correctly show **"No Logout"** instead of "Early Out"
-- The nightly compliance cron will not create false EARLY_OUT reports for auto-logged-out sessions
-- Real logouts by the agent will continue to work normally
+### Result
+- OT Productivity will correctly reflect `otTicketCount / (quotaPerDay × actualOtScheduledDays)`
+- Historical snapshots will also compute correctly going forward
+- No UI changes needed
 
