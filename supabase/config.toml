@@ -166,3 +166,6 @@ verify_jwt = false
 
 [functions.zd-count-voice-tags]
 verify_jwt = false
+
+[functions.auto-logout-stale-sessions]
+verify_jwt = false
