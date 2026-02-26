@@ -1,54 +1,107 @@
 
 
-## Fix Plan: OT Productivity Calculation
+## Verification: OT Productivity
 
-### Root Cause
-OT Productivity uses `days_with_login` (total login days, e.g. 5) as the OT days denominator, when the agent may only have OT scheduled on 2 days. This inflates the weekly OT quota and makes OT productivity appear much lower than it should be.
+**Richelle (laraine.lopez@gmail.com)** has:
+- 115 OT tickets this week
+- `quota_ot_email = 29`
+- OT scheduled on Mon, Tue, Wed, Thu, Sun = **5 OT days**
+- Expected OT Prod = `115 / (29 × 5) = 115 / 145 = 79.3%`
 
-**Example**: Agent has `quota_ot_email = 10`, logged in 5 days, but OT scheduled only on 2 days.
-- Current: `otTickets / (10 × 5) = otTickets / 50` (wrong)
-- Fixed: `otTickets / (10 × 2) = otTickets / 20` (correct)
+Other agents with OT tickets: Bia (108), Nikki (94, but quota_ot_email is NULL so OT prod will be null), Ruth (87), Jannah (74), Will (70), Lhen (59), Hannah (44), Iman (12).
 
-### QA Clarification
-The QA score in the Scorecard is already the **average percentage** across all QA evaluations for that week (`AVG(qe.percentage)`). If an agent has 5 QAs, the displayed value is the mean of all 5 scores. No change needed.
-
-### Productivity Per-Day
-Not needed in UI per your selection. The existing weekly aggregate stays as-is.
+The OT calculation fix from the previous step is correctly using `otScheduledDays`. This should now reflect properly for agents with both `quota_ot_email` set AND OT schedules defined. Nikki has `quota_ot_email = null` so her OT prod won't compute.
 
 ---
 
-### Step 1: Update `calculateScheduledDaysFromRPC` to also return OT scheduled days
+## Pre-existing Bug: Productivity Goal in Final Score
 
-**File: `src/lib/scorecardApi.ts`**
+The current `calculateMetricScore` receives productivity as a **percentage** (0-100) but the config goals are set to raw weekly ticket counts (e.g., 715 for Email, 257.6 for Hybrid). This means:
+- `calculateMetricScore(100%, 715, 'productivity')` = `(100/715) × 100 = 14%` -- clearly wrong
 
-Change the return type from `number` to `{ scheduledDays: number; otScheduledDays: number }`. Inside the loop (line 859-870), also count days where `daySchedule.otSchedule` exists and is not null/empty/"Day Off".
+**Fix**: Set productivity goal to `100` in the config, so 100% of quota = 100% score.
 
-Update the caller at line 690 to destructure both values.
+---
 
-### Step 2: Use `otScheduledDays` in OT Productivity formula
+## Plan
 
-**File: `src/lib/scorecardApi.ts`** (lines 753-758)
+### Step 1: Update position resolution
 
-Replace:
+**Files**: `src/lib/positionUtils.ts`, `get_weekly_scorecard_data` RPC (database migration)
+
+- Map `[Email, Chat]` → `"Chat"` instead of `"Email + Chat"`
+- Remove `"Email + Phone"`, `"Email + Chat"` as separate categories
+- Only 3 active categories: **Hybrid**, **Chat**, **Logistics**
+- Update the RPC's CASE expression to match
+
+### Step 2: Update SUPPORT_TYPES constant
+
+**File**: `src/lib/scorecardApi.ts`
+
+Change from 7 types to 3:
 ```typescript
-const otDaysWorked = row.days_with_login > 0 ? row.days_with_login : 1;
-const weeklyOtQuota = row.quota_ot_email * otDaysWorked;
-```
-With:
-```typescript
-const weeklyOtQuota = row.quota_ot_email * otScheduledDays;
+export const SUPPORT_TYPES = ['Hybrid', 'Chat', 'Logistics'] as const;
 ```
 
-### Step 3: Apply same fix in legacy `fetchWeeklyScorecard` path
+### Step 3: Update `getWeeklyQuota` function
 
-The legacy path (around line 1089) has a similar OT calculation. Apply the same fix there for consistency, using the effective schedules to count OT days.
+**File**: `src/lib/scorecardApi.ts`
 
-### Step 4: Apply same fix in `compute-weekly-snapshots` edge function
+- `"Chat"` case should sum `quota_email + quota_chat` (since Chat = Email + Chat tickets)
+- Remove Email, Phone, Email + Phone, Email + Chat cases
 
-The snapshot function (`supabase/functions/compute-weekly-snapshots/index.ts`) stores `ot_productivity` but currently has no OT day counting. Since it already calls `get_effective_schedules_for_week`, we can count OT days from the returned schedules and use that for the snapshot's OT productivity field.
+### Step 4: Update productivity count switch
 
-### Result
-- OT Productivity will correctly reflect `otTicketCount / (quotaPerDay × actualOtScheduledDays)`
-- Historical snapshots will also compute correctly going forward
-- No UI changes needed
+**File**: `src/lib/scorecardApi.ts`
+
+- `"Chat"` case: `productivityCount = email_count + chat_count`
+- Remove old Email, Phone, Email + Phone, Email + Chat cases
+
+### Step 5: Update `scorecard_config` database data
+
+Delete all rows for support types: `Email`, `Phone`, `Email + Phone`, `Email + Chat`.
+
+Update **Chat** config to match the image:
+
+| Metric | Weight | Goal | Display Order |
+|--------|--------|------|---------------|
+| productivity | 25% | 100 | 1 |
+| chat_aht | 10% | 420 | 2 |
+| chat_frt | 10% | 20 | 3 |
+| qa | 20% | 96 | 4 |
+| revalida | 5% | 95 | 5 |
+| reliability | 30% | 98 | 6 |
+
+Update **Hybrid** config:
+
+| Metric | Weight | Goal | Display Order |
+|--------|--------|------|---------------|
+| productivity | 15% | 100 | 1 |
+| call_aht | 10% | 240 | 2 |
+| chat_aht | 10% | 420 | 3 |
+| chat_frt | 10% | 20 | 4 |
+| qa | 20% | 96 | 5 |
+| revalida | 5% | 95 | 6 |
+| reliability | 30% | 98 | 7 |
+
+Update **Logistics** productivity goal to `100` as well (same bug fix).
+
+### Step 6: Update compute-weekly-snapshots edge function
+
+Ensure the snapshot function uses the updated position resolution (Chat instead of Email + Chat).
+
+### Step 7: Update TeamScorecard UI default goals
+
+**File**: `src/pages/TeamScorecard.tsx`
+
+Update `DEFAULT_METRIC_GOALS` to match new values (call_aht: 240, chat_aht: 420, chat_frt: 20).
+
+---
+
+## Other considerations
+
+- **Saved scorecards**: Historical saved_scorecards records with `support_type = 'Email + Chat'` won't match the new `'Chat'` key. These would need a data migration to rename them if you want old snapshots to load correctly.
+- **weekly_scorecard_snapshots**: Same concern -- old snapshots may have `support_type = 'Email + Chat'`.
+- **User Guide**: The TeamScorecardSection guide content references Email, Hybrid, and Logistics metrics that need updating.
+- **Agent Reports / EOD Analytics**: These use position resolution too -- updating `positionUtils.ts` will cascade to those views.
 
