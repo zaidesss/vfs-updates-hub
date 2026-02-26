@@ -1,63 +1,22 @@
 
 
-## Investigation Results
+## Root Cause Found: Double Timezone Conversion
 
-### Root Cause: 42 Sequential RPC Calls Failing Silently
+The `PortalClockContext` creates `now` by parsing an EST-formatted string back into a Date: `new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))`. This produces a Date whose `.getHours()` returns EST hours, but whose internal UTC timestamp is wrong.
 
-The Team Status Board makes **42 individual sequential `get_effective_schedule` RPC calls** — one per agent. The schedule resolver (`scheduleResolver.ts`) silently treats any RPC failure as `isDayOff: true`:
+When `TeamStatusBoard` passes this `now` to `fetchScheduledTeamMembers(now)`, the function calls `getCurrentESTTimeMinutes(now)` which applies EST conversion **again** using `Intl.DateTimeFormat`. For users in the Philippines (UTC+8), this double-conversion shifts the time by ~13 hours, making it appear as ~3:53 AM EST instead of ~4:53 PM EST. Since no agents are scheduled at 3:53 AM, the board shows 0.
 
-```typescript
-// scheduleResolver.ts line 65-78
-if (error || !data || data.length === 0) {
-  return {
-    isDayOff: true,  // ← silent failure = agent is skipped
-    ...
-  };
-}
-```
+**Example**: Real EST time = 4:53 PM (1013 min). After double conversion = 3:53 AM (233 min). All agents with 9 AM-5:30 PM schedules get filtered out.
 
-When these calls fail (network congestion, PostgREST connection pool saturation, intermittent timeouts), every failed agent is silently marked as "day off" and filtered out. If enough fail, the board shows 0.
+The same bug affects `getTodayEST(now)` — it could produce the wrong date entirely, sending the wrong `p_date` to the RPC.
 
-**Database verification confirms the data is correct** — all 42 agents have valid schedules, the RPCs return correct results, and there are zero DB errors in logs. The problem is purely the client-side architecture of making 42 individual HTTP requests.
+## Fix
 
-### When This Broke
+### Step 1: Update `TeamStatusBoard.tsx`
+- Pass the pre-computed `todayEST` and `currentTimeMinutes` from `usePortalClock()` instead of `now`
 
-This was introduced when the schedule resolver (`scheduleResolver.ts`) replaced direct schedule reads from `agent_profiles`. Before the resolver, the board read schedules from the profile columns directly (no per-agent RPC calls). After the resolver, every agent requires a separate `get_effective_schedule` RPC call, creating a fragile N+1 query pattern.
-
-## Fix: Single Bulk RPC
-
-Replace 42+ individual calls with **one database function** that resolves schedules for all agents in a single call.
-
-### Step 1: Create `get_team_status_data(p_date date)` RPC
-
-A SECURITY DEFINER function that:
-- Fetches all non-terminated agent profiles
-- Resolves each agent's effective schedule (overrides > assignments > profile fallback) in SQL
-- Returns: id, email, full_name, position, break_schedule, effective_schedule, effective_ot_schedule, is_day_off
-
-This replicates the `get_effective_schedule` logic inline using JOINs instead of per-row function calls.
-
-### Step 2: Update `teamStatusApi.ts`
-
-- Remove the for-loop that calls `getEffectiveScheduleForDate` per agent
-- Replace with single `supabase.rpc('get_team_status_data', { p_date: todayStr })`
-- Filter by `is_day_off = false` and `isWithinScheduleWindow` check on the returned rows
-- Keep existing status/outage queries as-is (they're already parallel)
-
-### Step 3: Add SELECT policy on `profile_status` for all authenticated users
-
-This table only contains `profile_id`, `current_status`, `status_since` — no sensitive data. Currently non-admin users can only see their own status, causing all other agents to show as LOGGED_OUT.
-
-### Step 4: Create `get_team_outages_today(p_date date)` RPC
-
-SECURITY DEFINER function returning only the fields needed for outage badges (`agent_email`, `outage_reason`, `start_date`, `end_date`, `start_time`, `end_time`, `status`), avoiding exposing all `leave_requests` columns.
-
-### Technical Details: Bulk Schedule Resolution SQL
-
-The new function will resolve schedules using this precedence (same as `get_effective_schedule`):
-1. `coverage_overrides` for the target date (typed: regular, ot, dayoff)
-2. `agent_schedule_assignments` with `effective_week_start <= target_week` (most recent)
-3. `agent_profiles` base columns (fallback)
-
-Uses LEFT JOINs and COALESCE to resolve in a single pass rather than per-row function calls.
+### Step 2: Update `fetchScheduledTeamMembers` in `teamStatusApi.ts`
+- Change the function signature to accept `{ todayEST: string, currentTimeMinutes: number }` instead of `now?: Date`
+- Remove calls to `getCurrentESTTimeMinutes(now)` and `getTodayEST(now)` — use the passed values directly
+- This eliminates the double timezone conversion entirely
 
