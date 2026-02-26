@@ -3824,6 +3824,31 @@ export type Database = {
       }
       get_profile_id_by_email: { Args: { p_email: string }; Returns: string }
       get_super_admin_count: { Args: never; Returns: number }
+      get_team_outages_today: {
+        Args: { p_date: string }
+        Returns: {
+          agent_email: string
+          end_date: string
+          end_time: string
+          outage_reason: string
+          start_date: string
+          start_time: string
+          status: string
+        }[]
+      }
+      get_team_status_data: {
+        Args: { p_date: string }
+        Returns: {
+          break_schedule: string
+          effective_ot_schedule: string
+          effective_schedule: string
+          email: string
+          full_name: string
+          id: string
+          is_day_off: boolean
+          position: string[]
+        }[]
+      }
       get_team_status_profiles: {
         Args: never
         Returns: {

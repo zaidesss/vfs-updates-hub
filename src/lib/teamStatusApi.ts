@@ -1,12 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import { 
-  getCurrentESTDayKey, 
   getCurrentESTTimeMinutes, 
   getTodayEST,
   parseScheduleRange,
   isTimeInScheduleRange,
 } from './timezoneUtils';
-import { getEffectiveScheduleForDate } from './scheduleResolver';
 
 export type ProfileStatus = 
   | 'LOGGED_IN' 
@@ -118,42 +116,28 @@ export async function fetchScheduledTeamMembers(now?: Date): Promise<{
   };
 
   try {
-    // Get current EST day and time using injected clock (or fallback)
-    const currentDayKey = getCurrentESTDayKey(now);
     const currentTimeMinutes = getCurrentESTTimeMinutes(now);
     const todayStr = getTodayEST(now);
 
-    // Fetch all active agent profiles (parallel queries)
-    const [profilesResult, statusesResult, outagesResult] = await Promise.all([
-      // Fetch all active profiles
-      supabase.rpc('get_team_status_profiles') as any,
-      
-      // Fetch all profile statuses
-      supabase
-        .from('profile_status')
-        .select('profile_id, current_status, status_since'),
-      
-      // Fetch approved outages covering today
-      supabase
-        .from('leave_requests')
-        .select('agent_email, outage_reason, start_date, end_date, start_time, end_time, status')
-        .in('status', ['approved', 'pending', 'for_review'])
-        .lte('start_date', todayStr)
-        .gte('end_date', todayStr),
+    // Single bulk query for all schedules + parallel status/outage queries
+    const [schedulesResult, statusesResult, outagesResult] = await Promise.all([
+      supabase.rpc('get_team_status_data', { p_date: todayStr }) as any,
+      supabase.from('profile_status').select('profile_id, current_status, status_since'),
+      supabase.rpc('get_team_outages_today', { p_date: todayStr }) as any,
     ]);
 
-    if (profilesResult.error) {
-      console.error('Error fetching agent_profiles:', profilesResult.error);
-      return { categories: emptyCategories, totalScheduled: 0, totalOnline: 0, error: profilesResult.error.message };
+    if (schedulesResult.error) {
+      console.error('Error fetching team status data:', schedulesResult.error);
+      return { categories: emptyCategories, totalScheduled: 0, totalOnline: 0, error: schedulesResult.error.message };
     }
 
-    const profiles = profilesResult.data || [];
+    const profiles = schedulesResult.data || [];
     const statuses = statusesResult.data || [];
     const outages = outagesResult.data || [];
 
     // Create lookup maps
     const statusMap = new Map<string, { current_status: string; status_since: string }>();
-    statuses.forEach(s => {
+    statuses.forEach((s: any) => {
       statusMap.set(s.profile_id, {
         current_status: s.current_status,
         status_since: s.status_since,
@@ -161,7 +145,7 @@ export async function fetchScheduledTeamMembers(now?: Date): Promise<{
     });
 
     const outageMap = new Map<string, { outage_reason: string; start_date: string; end_date: string; start_time?: string; end_time?: string; status: string }>();
-    outages.forEach(o => {
+    outages.forEach((o: any) => {
       if (o.agent_email) {
         outageMap.set(o.agent_email.toLowerCase(), {
           outage_reason: o.outage_reason,
@@ -174,22 +158,18 @@ export async function fetchScheduledTeamMembers(now?: Date): Promise<{
       }
     });
 
-    // Process each profile for schedule-based visibility
+    // Process each profile - schedules already resolved by the RPC
     const allMembers: TeamMemberStatus[] = [];
     let onlineCount = 0;
 
     for (const profile of profiles) {
       const email = (profile.email || '').toLowerCase();
       
-      // Use schedule resolver to get effective schedule for today
-      const effectiveSchedule = await getEffectiveScheduleForDate(profile.id, todayStr);
-      
-      // Check if scheduled within current time window
-      const schedule = effectiveSchedule.schedule;
-      const otSchedule = effectiveSchedule.otSchedule;
+      const schedule = profile.effective_schedule;
+      const otSchedule = profile.effective_ot_schedule;
       
       // Skip if day off
-      if (effectiveSchedule.isDayOff) {
+      if (profile.is_day_off) {
         continue;
       }
       
