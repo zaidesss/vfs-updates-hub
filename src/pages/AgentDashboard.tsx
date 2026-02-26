@@ -28,6 +28,7 @@ import {
   fetchAgentDashboardRPC,
   getProfileStatus,
   updateProfileStatus,
+  checkAndCleanupStaleSession,
   getApprovedLeavesForWeek,
   getWeekLoginEvents,
   getWeekAllEvents,
@@ -147,6 +148,10 @@ export default function AgentDashboard() {
     setError(null);
 
     try {
+      // Proactively check for stale sessions before loading dashboard data
+      // This ensures the status buttons are reset if 5+ hours past shift end
+      await checkAndCleanupStaleSession(profileId);
+      
       // Fetch profile (full fields) and RPC data (status/metrics) in parallel
       // This reduces 4+ queries to 2 queries
       const [profileResult, rpcResult, statusResult] = await Promise.all([
