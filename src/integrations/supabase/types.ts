@@ -3578,6 +3578,30 @@ export type Database = {
         }
         Relationships: []
       }
+      zendesk_user_ids: {
+        Row: {
+          created_at: string
+          id: string
+          support_account: string
+          zd_instance: string
+          zendesk_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          support_account: string
+          zd_instance: string
+          zendesk_user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          support_account?: string
+          zd_instance?: string
+          zendesk_user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       agent_profiles_team_status: {
