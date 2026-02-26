@@ -1,31 +1,73 @@
 
 
-## Plan: Fix Missing NCNS Data and Investigate Batch Gap
+## Plan: Fix OT Day-Off Logic, Team Lead Dropdown, and Zendesk User ID Lookup Table
 
-### Root Cause
-The batch job `generate-agent-reports` ran on 02-25 for 02-24 but produced zero NCNS reports for any agent that day. Edge function logs have rotated, so the exact error is unknown. The schedule data for Jazmin on 02-24 resolves correctly (9:00 AM-5:00 PM, not a day off), and there are no leave requests covering that date.
+### Issue 1: OT Schedules Incorrectly Set on Day-Off Days
 
-### Step 1: Insert Missing NCNS Report for 02-24
-Use the database insert tool to add the missing NCNS and QUOTA_NOT_MET reports for Jazmin on Tuesday 02-24.
+**Root Cause**: When a day is toggled as "Day Off" in `handleDayOffToggle` (WorkConfigurationSection.tsx line 207), only the regular schedule is cleared -- the OT schedule for that day is NOT cleared. Additionally, the OT schedule inputs are never disabled for day-off days, so users can freely enter OT on days off.
 
-```sql
-INSERT INTO agent_reports (agent_email, agent_name, profile_id, incident_date, incident_type, severity, details, status)
-VALUES
-  ('ochoajazmincjay@gmail.com', 'Jazmin Cjay Ochoa', 'a48fb450-d947-4908-9e4f-f4ba36870aa6', '2026-02-24', 'NCNS', 'critical',
-   '{"scheduledShift":"9:00 AM-5:00 PM","message":"Agent was scheduled but did not log in and has no outage request"}'::jsonb, 'open'),
-  ('ochoajazmincjay@gmail.com', 'Jazmin Cjay Ochoa', 'a48fb450-d947-4908-9e4f-f4ba36870aa6', '2026-02-24', 'QUOTA_NOT_MET', 'high',
-   '{"expectedQuota":35,"actualTotal":0,"shortfall":35,"position":["Chat","Email"]}'::jsonb, 'open');
+**Affected Agents** (9 out of 11 OT-enabled agents have OT on their day-off days):
+| Agent | Day Off | OT on Day Off |
+|---|---|---|
+| Richelle | Fri, Sat | Fri OT, Sat OT |
+| Biah | Thu, Fri | Thu OT, Fri OT |
+| Ellen | Thu, Fri | Thu OT, Fri OT |
+| Jannah | Fri, Sat | Fri OT, Sat OT |
+| Joy | Sat, Sun | Sat OT, Sun OT |
+| Nikki | Sat, Sun | Sat OT, Sun OT |
+| Precious | Mon, Tue | Mon OT, Tue OT |
+| Ruth | Wed, Thu | Wed OT, Thu OT |
+| Will | Fri, Sat | Fri OT, Sat OT |
+
+Only Malcom and Erika are correct (they already have empty OT on day-off days).
+
+**Fix (3 parts)**:
+1. **Database**: Run UPDATE to null out OT schedules on day-off days for all 9 affected agents.
+2. **UI**: In `WorkConfigurationSection.tsx`, disable OT inputs for day-off days (same pattern as regular schedule inputs). Also clear OT schedule when a day is toggled to day-off in `handleDayOffToggle`.
+3. **Auto-populate logic**: The Monday OT auto-populate (`handleMondayOTChange`) currently blindly copies to Tue-Fri. It should skip day-off days. Same for Saturday OT auto-populate.
+
+### Issue 2: Team Lead Field as Dropdown
+
+**Current**: Plain text `<Input>` in both `ManageProfiles.tsx` (line 892) and `AgentProfile.tsx` (line 795).
+
+**Fix**: Replace with a `<Select>` dropdown populated from the list of agents with `position @> ARRAY['Team Lead']`. The current Team Leads are:
+- Cherry Ann B. Bayrante
+- Jaeran Sanchez
+- Juno Dianne Garciano
+- Kristin Joann Argao
+- Meryl Jean Esguerra Iman
+
+Will query team leads dynamically from `agent_profiles` where position includes "Team Lead".
+
+### Issue 3: Zendesk User ID Lookup Table
+
+**Current**: `zendesk_user_id` is a manual text field on each agent profile.
+
+**Proposed**: Create a `zendesk_user_ids` table that maps Support Account numbers to Zendesk User IDs per ZD instance. When an agent's Support Account and Zendesk Instance are set, auto-populate the Zendesk User ID from this lookup table.
+
+**New table schema**:
+```
+zendesk_user_ids
+- id (uuid, PK)
+- zd_instance (text, not null) -- 'ZD1' or 'ZD2'
+- support_account (text, not null) -- '1' through '17'
+- zendesk_user_id (text, not null)
+- UNIQUE(zd_instance, support_account)
 ```
 
-### Step 2: Check for Other Agents Missing NCNS on 02-24
-Query all agents who were scheduled on 02-24, had no login events, and no NCNS report, to see if this was a batch-wide issue. If others are also missing, we'll backfill those too.
+**Seed data** (from the uploaded images):
+- ZD1: 17 rows (accounts 1-17 with their numeric IDs)
+- ZD2: 7 rows (accounts 1-7 with their numeric IDs)
 
-### Step 3: Investigate Batch Job Resilience
-Review the `generate-agent-reports` edge function for error handling around the NCNS section (lines 800-853). The per-agent error handling may not be catching RPC failures for `get_effective_schedule`, causing the entire agent loop iteration to silently fail. If confirmed, add a try-catch around each agent's processing to prevent one failure from blocking others.
+**UI change**: When `zendesk_instance` or `support_account` changes in WorkConfigurationSection, auto-lookup and populate `zendesk_user_id` from the table. The field becomes read-only (auto-populated).
 
-### Technical Details
-- The batch runs via pg_cron (job 3) at `0 5 * * *` (5:00 AM UTC daily)
-- It processes "yesterday" by default
-- The NCNS check (line 800) requires: `loginEvents.length === 0 && parsedSchedule` AND no outage request
-- Today (02-26) will be processed by tomorrow's batch run automatically
+---
+
+### Implementation Order (step by step as requested)
+
+**Step 1**: Fix OT day-off data -- database UPDATE to null out incorrect OT schedules + UI fix to disable OT inputs on day-off days and clear OT when toggling day off.
+
+**Step 2**: Convert Team Lead field to dropdown in both ManageProfiles and AgentProfile pages.
+
+**Step 3**: Create `zendesk_user_ids` table, seed it with the data from images, and wire up auto-populate in WorkConfigurationSection.
 
