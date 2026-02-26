@@ -42,26 +42,30 @@ export function TeamScorecardSection() {
           Performance metrics and their weights vary by support type. Each tab displays agents matching that position.
         </p>
 
-        <h4 className="font-semibold text-sm mb-2">Email</h4>
+        <h4 className="font-semibold text-sm mb-2">Chat (Email + Chat agents)</h4>
         <QuickTable
           headers={['Metric', 'Weight', 'Goal', 'Source']}
           rows={[
-            ['Productivity (Emails)', '35%', '715 tickets/week', 'Ticket Logs (excludes OT tickets)'],
-            ['QA Score', '30%', '100%', 'QA Evaluations (matched by work_week_start)'],
+            ['Productivity', '25%', '100% of quota', 'Ticket Logs (email + chat tickets, excludes OT)'],
+            ['Chat AHT', '10%', '420s (7min)', 'Zendesk agent_work_time or requester_wait_time fallback'],
+            ['Chat FRT', '10%', '20s', 'Assignment-to-first-reply delta'],
+            ['QA Score', '20%', '96%', 'QA Evaluations (matched by work_week_start)'],
             ['Revalida', '5%', '95%', 'Latest graded attempt in the week'],
             ['Reliability', '30%', '98%', 'Calculated from leave requests'],
           ]}
         />
 
-        <h4 className="font-semibold text-sm mt-4 mb-2">Hybrid</h4>
+        <h4 className="font-semibold text-sm mt-4 mb-2">Hybrid (Email + Chat + Phone agents)</h4>
         <QuickTable
           headers={['Metric', 'Weight', 'Goal', 'Source']}
           rows={[
-            ['Call AHT', '—', '420s', 'Zendesk Talk API (avg call leg duration)'],
-            ['Chat AHT', '—', '600s', 'Zendesk agent_work_time or requester_wait_time fallback'],
-            ['Chat FRT', '—', '30s', 'Assignment-to-first-reply delta'],
-            ['QA Score', '30%', '100%', 'QA Evaluations'],
-            ['Reliability', '—', '100%', 'Calculated from leave requests'],
+            ['Productivity', '15%', '100% of quota', 'Ticket Logs (email + chat + call tickets, excludes OT)'],
+            ['Call AHT', '10%', '240s (4min)', 'Zendesk Talk API (avg call leg duration)'],
+            ['Chat AHT', '10%', '420s (7min)', 'Zendesk agent_work_time or requester_wait_time fallback'],
+            ['Chat FRT', '10%', '20s', 'Assignment-to-first-reply delta'],
+            ['QA Score', '20%', '96%', 'QA Evaluations'],
+            ['Revalida', '5%', '95%', 'Latest graded attempt'],
+            ['Reliability', '30%', '98%', 'Calculated from leave requests'],
           ]}
         />
 
@@ -69,8 +73,8 @@ export function TeamScorecardSection() {
         <QuickTable
           headers={['Metric', 'Weight', 'Goal', 'Source']}
           rows={[
-            ['Order Escalation & Intervention', '35%', 'Manual %', 'Admin enters percentage manually'],
-            ['QA Score', '30%', '100%', 'QA Evaluations'],
+            ['Productivity', '35%', '100% of quota', 'Ticket Logs'],
+            ['QA Score', '30%', '96%', 'QA Evaluations'],
             ['Revalida', '5%', '95%', 'Latest graded attempt'],
             ['Reliability', '30%', '98%', 'Calculated from leave requests'],
           ]}
