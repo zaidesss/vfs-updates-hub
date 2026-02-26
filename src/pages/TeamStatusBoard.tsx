@@ -58,7 +58,7 @@ function CategorySection({ title, icon, members, showDashboardLink, sortBy }: Ca
 
 export default function TeamStatusBoard() {
   const { isAdmin, isHR, isSuperAdmin } = useAuth();
-  const { now } = usePortalClock();
+  const { now, todayEST, currentTimeMinutes } = usePortalClock();
   const isMobile = useIsMobile();
   
   const [categories, setCategories] = useState<CategorizedTeamMembers>({
@@ -84,7 +84,7 @@ export default function TeamStatusBoard() {
     setError(null);
     
     try {
-      const result = await fetchScheduledTeamMembers(now);
+      const result = await fetchScheduledTeamMembers(todayEST, currentTimeMinutes);
       
       if (!result) {
         setError('No response from team status API');
