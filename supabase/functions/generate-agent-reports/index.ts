@@ -264,6 +264,7 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const profile of profiles as AgentProfile[]) {
+     try {
       const agentName = profile.full_name || profile.email;
       const profileEvents = (allEvents as ProfileEvent[] || []).filter(e => e.profile_id === profile.id);
 
@@ -851,6 +852,10 @@ Deno.serve(async (req) => {
           }
         }
       }
+     } catch (agentErr) {
+       console.error(`Error processing agent ${profile.email}:`, agentErr);
+       // Continue to next agent instead of breaking the entire batch
+     }
     }
 
     // Insert all reports
