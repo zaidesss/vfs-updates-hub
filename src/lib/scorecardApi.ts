@@ -245,8 +245,9 @@ export async function fetchWeeklyScorecardDualRead(
     return [];
   }
   
-  // Live data path
-  return fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+  // Live data path - use RPC for correct OT separation and OT productivity
+  const result = await fetchWeeklyScorecardRPC(weekStart, weekEnd, supportType);
+  return result.data;
 }
 
 // Fetch scorecard configuration for a support type
