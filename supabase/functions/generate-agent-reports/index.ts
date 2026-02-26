@@ -25,6 +25,7 @@ interface AgentProfile {
   quota_email: number | null;
   quota_chat: number | null;
   quota_phone: number | null;
+  employment_status: string | null;
 }
 
 
@@ -154,7 +155,8 @@ Deno.serve(async (req) => {
     // Fetch all agent profiles with their directories and quota info
     const { data: profiles } = await supabase
       .from('agent_profiles')
-      .select('id, email, full_name, position, upwork_contract_id, quota_email, quota_chat, quota_phone');
+      .select('id, email, full_name, position, upwork_contract_id, quota_email, quota_chat, quota_phone, employment_status')
+      .neq('employment_status', 'Terminated');
 
     if (!profiles || profiles.length === 0) {
       return new Response(
@@ -403,12 +405,35 @@ Deno.serve(async (req) => {
         }).format(firstLogin));
         const loginMinutes = loginHour * 60 + loginMinute;
 
-        // Late if more than 10 minutes after schedule start
-        if (loginMinutes > parsedSchedule.startMinutes + 10) {
-          const reportKey = `${profile.email.toLowerCase()}_LATE_LOGIN`;
-          if (!existingReportSet.has(reportKey)) {
-            const lateMinutes = loginMinutes - parsedSchedule.startMinutes;
-            reportsToCreate.push({
+      // Check for OT grace period: if agent had an OT_LOGOUT within 30 min before shift start, extend grace by 30 min
+      let lateLoginGrace = 10; // default 10-minute grace
+      const otLogoutEvents = profileEvents.filter(e => e.event_type === 'OT_LOGOUT');
+      if (otLogoutEvents.length > 0) {
+        const lastOtLogout = new Date(otLogoutEvents[otLogoutEvents.length - 1].created_at);
+        const otLogoutHour = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          hour12: false,
+        }).format(lastOtLogout));
+        const otLogoutMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          minute: '2-digit',
+        }).format(lastOtLogout));
+        const otLogoutMinutes = otLogoutHour * 60 + otLogoutMinute;
+        // If OT_LOGOUT happened within 30 min before scheduled start, grant 30-min grace
+        const minutesBeforeStart = parsedSchedule.startMinutes - otLogoutMinutes;
+        if (minutesBeforeStart >= 0 && minutesBeforeStart <= 30) {
+          lateLoginGrace = 40; // 10 base + 30 OT grace
+          console.log(`OT grace applied for ${agentName}: OT_LOGOUT was ${minutesBeforeStart}min before shift start`);
+        }
+      }
+
+      // Late if more than grace period after schedule start
+      if (loginMinutes > parsedSchedule.startMinutes + lateLoginGrace) {
+        const reportKey = `${profile.email.toLowerCase()}_LATE_LOGIN`;
+        if (!existingReportSet.has(reportKey)) {
+          const lateMinutes = loginMinutes - parsedSchedule.startMinutes;
+          reportsToCreate.push({
               agent_email: profile.email.toLowerCase(),
               agent_name: agentName,
               profile_id: profile.id,
@@ -686,40 +711,61 @@ Deno.serve(async (req) => {
 
       // ========================
       // Check for QUOTA_NOT_MET
+      // Skip Team Lead / Technical positions entirely
       // ========================
-      const expectedQuota = calculateExpectedQuota(profile);
-      if (expectedQuota > 0) {
-        const agentTickets = ticketCountsByAgent.get(profile.email.toLowerCase()) || { email: 0, chat: 0, call: 0 };
-        const actualTotal = agentTickets.email + agentTickets.chat + agentTickets.call;
+      const posArr = profile.position || [];
+      const isNonTicketRole = posArr.some(p => ['Team Lead', 'Technical'].includes(p));
+      
+      if (!isNonTicketRole) {
+        // Use effective quotas from the schedule resolver (accounts for overrides & assignments)
+        const effQuotaEmail = effectiveRow.effective_quota_email || 0;
+        const effQuotaChat = effectiveRow.effective_quota_chat || 0;
+        const effQuotaPhone = effectiveRow.effective_quota_phone || 0;
+        
+        const hasEmail = posArr.includes('Email');
+        const hasChat = posArr.includes('Chat');
+        const hasPhone = posArr.includes('Phone');
+        
+        let expectedQuota = 0;
+        if (hasEmail && hasChat && hasPhone) expectedQuota = effQuotaEmail + effQuotaChat + effQuotaPhone;
+        else if (hasEmail && hasChat) expectedQuota = effQuotaEmail + effQuotaChat;
+        else if (hasEmail && hasPhone) expectedQuota = effQuotaEmail + effQuotaPhone;
+        else if (hasEmail) expectedQuota = effQuotaEmail;
+        
+        if (expectedQuota > 0) {
+          const agentTickets = ticketCountsByAgent.get(profile.email.toLowerCase()) || { email: 0, chat: 0, call: 0 };
+          const actualTotal = agentTickets.email + agentTickets.chat + agentTickets.call;
 
-        if (actualTotal < expectedQuota) {
-          const reportKey = `${profile.email.toLowerCase()}_QUOTA_NOT_MET`;
-          if (!existingReportSet.has(reportKey)) {
-            const shortfall = expectedQuota - actualTotal;
-            reportsToCreate.push({
-              agent_email: profile.email.toLowerCase(),
-              agent_name: agentName,
-              profile_id: profile.id,
-              incident_date: targetDateStr,
-              incident_type: 'QUOTA_NOT_MET',
-              severity: calculateQuotaSeverity(shortfall),
-              details: {
-                expectedQuota,
-                actualTotal,
-                shortfall,
-                breakdown: agentTickets,
-                position: profile.position,
-              },
-              status: 'open',
-            });
+          if (actualTotal < expectedQuota) {
+            const reportKey = `${profile.email.toLowerCase()}_QUOTA_NOT_MET`;
+            if (!existingReportSet.has(reportKey)) {
+              const shortfall = expectedQuota - actualTotal;
+              reportsToCreate.push({
+                agent_email: profile.email.toLowerCase(),
+                agent_name: agentName,
+                profile_id: profile.id,
+                incident_date: targetDateStr,
+                incident_type: 'QUOTA_NOT_MET',
+                severity: calculateQuotaSeverity(shortfall),
+                details: {
+                  expectedQuota,
+                  actualTotal,
+                  shortfall,
+                  breakdown: agentTickets,
+                  position: profile.position,
+                  quotaSource: 'effective_schedule',
+                },
+                status: 'open',
+              });
+            }
           }
         }
       }
 
       // ========================
-      // Check for HIGH_GAP (Email Support only)
+      // Check for HIGH_GAP (Email Support only, skip TL/Technical)
       // ========================
-      if (isEmailSupport(profile)) {
+      if (!isNonTicketRole && isEmailSupport(profile)) {
         const avgGapSeconds = ticketGapByAgent.get(profile.email.toLowerCase());
         if (avgGapSeconds !== undefined) {
           const avgGapMinutes = avgGapSeconds / 60;
