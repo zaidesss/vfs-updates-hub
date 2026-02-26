@@ -102,6 +102,7 @@ export function OverrideEditor({
       override_start: startTime.trim(),
       override_end: endTime.trim(),
       reason: reason.trim() || 'manual',
+      block_type: 'regular',
     });
     onOpenChange(false);
   };
