@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { upsertScheduleAssignment, getNextMondayEST as resolverGetNextMondayEST, getCurrentMondayEST as resolverGetCurrentMondayEST } from '@/lib/scheduleResolver';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 
 export interface RateHistoryEntry {
   date: string;
@@ -372,7 +373,7 @@ async function syncProfileToDirectory(input: AgentProfileInput): Promise<void> {
     agent_tag: input.agent_tag || null,
     zendesk_instance: input.zendesk_instance || null,
     support_account: input.support_account || null,
-    support_type: Array.isArray(input.support_type) ? input.support_type.join(', ') : null,
+    support_type: resolvePositionCategory(input.position || input.support_type),
     views: input.views || [],
     ticket_assignment_view_id: input.ticket_assignment_enabled ? input.ticket_assignment_view_id : null,
     quota: quota || null,

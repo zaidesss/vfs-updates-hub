@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Filter, X, ChevronDown, Search } from 'lucide-react';
 import type { AgentScheduleRow } from '@/lib/coverageBoardApi';
+import { resolvePositionCategory } from '@/lib/positionUtils';
 
 // ── Filter state shape ──────────────────────────────────────────────────────
 
@@ -37,15 +38,7 @@ export const EMPTY_FILTERS: CoverageFilterState = {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const POSITION_OPTIONS = [
-  'Hybrid Support',
-  'Phone Support',
-  'Chat Support',
-  'Email Support',
-  'Logistics',
-  'Team Lead',
-  'Technical Support',
-];
+const POSITION_OPTIONS = ['Hybrid', 'Chat', 'Logistics'];
 
 const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -54,7 +47,10 @@ const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export function applyFilters(agents: AgentScheduleRow[], filters: CoverageFilterState): AgentScheduleRow[] {
   return agents.filter(agent => {
     if (filters.zdInstance && agent.zendesk_instance !== filters.zdInstance) return false;
-    if (filters.positions.length > 0 && !filters.positions.some(p => (agent.position || []).includes(p))) return false;
+    if (filters.positions.length > 0) {
+      const resolved = resolvePositionCategory(agent.position);
+      if (!filters.positions.includes(resolved)) return false;
+    }
     if (filters.agentNames.length > 0) {
       const name = agent.full_name || agent.agent_name || agent.email;
       if (!filters.agentNames.includes(name)) return false;

@@ -99,7 +99,7 @@ export default function MasterDirectory() {
     const teamLeads = [...new Set(activeEntries.map(e => e.team_lead).filter(Boolean))].sort() as string[];
     const zdInstances = [...new Set(activeEntries.map(e => e.zendesk_instance).filter(Boolean))].sort() as string[];
     // Derive position categories from the position field stored in directory entries
-    const positionCategories = [...new Set(activeEntries.map(e => e.position).filter(Boolean))].sort() as string[];
+    const positionCategories = [...new Set(activeEntries.map(e => resolvePositionCategory(e.position)).filter(Boolean))].sort() as string[];
     
     return { teamLeads, zdInstances, positionCategories };
   }, [editedData]);
@@ -119,7 +119,7 @@ export default function MasterDirectory() {
       result = result.filter(entry => entry.zendesk_instance === zdInstanceFilter);
     }
     if (positionFilter !== 'all') {
-      result = result.filter(entry => entry.position === positionFilter);
+      result = result.filter(entry => resolvePositionCategory(entry.position) === positionFilter);
     }
     
     // Apply search filter
