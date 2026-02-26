@@ -86,7 +86,7 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
         </Badge>
       );
       // Show OT Scheduled badge if there's an OT schedule on a day off
-      if (dayAttendance.otSchedule) {
+      if (dayAttendance.otSchedule && dayAttendance.otSchedule !== 'Day Off' && dayAttendance.otSchedule !== 'Off') {
         badges.push(
           <Badge key="ot-scheduled" variant="secondary" className="bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-700">
             OT: {dayAttendance.otSchedule}
@@ -132,7 +132,9 @@ function getStatusBadges(dayAttendance: DayAttendance | undefined): React.ReactN
   }
 
   // OT badges
-  if (dayAttendance.otStatus || dayAttendance.otSchedule) {
+  const otSchedValue = dayAttendance.otSchedule;
+  const hasRealOtSchedule = otSchedValue && otSchedValue !== 'Day Off' && otSchedValue !== 'Off';
+  if (dayAttendance.otStatus || hasRealOtSchedule) {
     const { otStatus, otLoginTime, otLogoutTime, otSchedule } = dayAttendance;
     
     switch (otStatus) {
@@ -280,7 +282,7 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
                     {(() => {
                       const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === day.short);
                       const otSched = effectiveDay?.otSchedule;
-                      if (otSched) {
+                      if (otSched && otSched !== 'Day Off' && otSched !== 'Off') {
                         return (
                           <div className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
                             OT: {otSched}
