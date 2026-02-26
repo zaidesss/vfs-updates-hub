@@ -1,16 +1,57 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, AlertTriangle, Ticket, Info } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail } from 'lucide-react';
 import { useZendeskRealtime } from '@/lib/zendeskRealtimeApi';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+
+function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading }: {
+  icon: React.ReactNode;
+  label: string;
+  total: number;
+  zd1: number;
+  zd2: number;
+  variant: 'destructive' | 'default' | 'success';
+  isLoading: boolean;
+}) {
+  const colorClass = variant === 'destructive'
+    ? 'text-destructive'
+    : variant === 'success'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-foreground';
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <span className={colorClass}>{icon}</span>
+        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className={`text-2xl font-extrabold tabular-nums ${colorClass}`}>
+          {isLoading ? '—' : total.toLocaleString()}
+        </span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          ({isLoading ? '—' : `ZD1: ${zd1.toLocaleString()} / ZD2: ${zd2.toLocaleString()}`})
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function NewTicketsCounter() {
   const { data, isLoading, error, refresh } = useZendeskRealtime();
 
-  const zd1Count = data?.zd1?.newTickets ?? 0;
-  const zd2Count = data?.zd2?.newTickets ?? 0;
-  const total = zd1Count + zd2Count;
+  const awaitingZd1 = data?.zd1?.newTickets ?? 0;
+  const awaitingZd2 = data?.zd2?.newTickets ?? 0;
+  const awaitingTotal = awaitingZd1 + awaitingZd2;
+
+  const totalZd1 = data?.zd1?.totalTicketsToday ?? 0;
+  const totalZd2 = data?.zd2?.totalTicketsToday ?? 0;
+  const totalAll = totalZd1 + totalZd2;
+
+  const respondedZd1 = Math.max(0, totalZd1 - awaitingZd1);
+  const respondedZd2 = Math.max(0, totalZd2 - awaitingZd2);
+  const respondedTotal = respondedZd1 + respondedZd2;
 
   const fetchedAt = data?.fetchedAt
     ? new Date(data.fetchedAt).toLocaleTimeString('en-US', {
@@ -39,43 +80,27 @@ export function NewTicketsCounter() {
   return (
     <Card className="border-destructive/30 bg-gradient-to-r from-destructive/5 via-destructive/10 to-destructive/5 dark:from-destructive/10 dark:via-destructive/20 dark:to-destructive/10">
       <CardContent className="py-5 px-6">
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Icon + Count */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-destructive/15 dark:bg-destructive/25">
-              <Ticket className="h-6 w-6 text-destructive" />
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-destructive/15 dark:bg-destructive/25">
+              <Ticket className="h-5 w-5 text-destructive" />
             </div>
-            <div>
-              <div className="flex items-baseline gap-3">
-                <span className="text-4xl font-extrabold tracking-tight text-destructive tabular-nums">
-                  {isLoading ? '—' : total.toLocaleString()}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-foreground">
-                    New Tickets as of Today
-                  </span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="text-muted-foreground hover:text-foreground transition-colors">
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto text-sm" side="top">
-                      Ticket counting started on <strong>February 26, 2026</strong>.
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                <span>ZD1: <strong className="text-foreground">{isLoading ? '—' : zd1Count.toLocaleString()}</strong></span>
-                <span className="text-border">|</span>
-                <span>ZD2: <strong className="text-foreground">{isLoading ? '—' : zd2Count.toLocaleString()}</strong></span>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-foreground">New Tickets Breakdown</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="text-muted-foreground hover:text-foreground transition-colors">
+                    <Info className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto text-sm" side="top">
+                  Ticket counting started on <strong>February 26, 2026</strong>.
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
-
-          {/* Right: SLA badge + refresh */}
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-1.5">
             <Badge variant="destructive" className="text-xs font-bold px-2.5 py-1">
               2hr SLA
             </Badge>
@@ -92,6 +117,39 @@ export function NewTicketsCounter() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Metrics */}
+        <div className="space-y-3">
+          <MetricRow
+            icon={<Clock className="h-4 w-4" />}
+            label="Awaiting Response"
+            total={awaitingTotal}
+            zd1={awaitingZd1}
+            zd2={awaitingZd2}
+            variant="destructive"
+            isLoading={isLoading}
+          />
+          <div className="border-t border-border/50" />
+          <MetricRow
+            icon={<Mail className="h-4 w-4" />}
+            label="Total New Tickets as of Today"
+            total={totalAll}
+            zd1={totalZd1}
+            zd2={totalZd2}
+            variant="default"
+            isLoading={isLoading}
+          />
+          <div className="border-t border-border/50" />
+          <MetricRow
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            label="Responded"
+            total={respondedTotal}
+            zd1={respondedZd1}
+            zd2={respondedZd2}
+            variant="success"
+            isLoading={isLoading}
+          />
         </div>
       </CardContent>
     </Card>

@@ -17,6 +17,7 @@ export interface InstanceStats {
   talk: TalkStats;
   messaging: MessagingStats;
   newTickets: number;
+  totalTicketsToday: number;
 }
 
 export interface ZendeskRealtimeData {
