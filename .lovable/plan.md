@@ -1,107 +1,40 @@
 
 
-## Verification: OT Productivity
+## Root Cause
 
-**Richelle (laraine.lopez@gmail.com)** has:
-- 115 OT tickets this week
-- `quota_ot_email = 29`
-- OT scheduled on Mon, Tue, Wed, Thu, Sun = **5 OT days**
-- Expected OT Prod = `115 / (29 × 5) = 115 / 145 = 79.3%`
+There are **two bugs** in the live data path:
 
-Other agents with OT tickets: Bia (108), Nikki (94, but quota_ot_email is NULL so OT prod will be null), Ruth (87), Jannah (74), Will (70), Lhen (59), Hannah (44), Iman (12).
+1. **OT Productivity is hardcoded to `null`** -- Line 1138 of `scorecardApi.ts` explicitly sets `otProductivity: null` with a comment "Legacy path - OT productivity not computed here." The `fetchWeeklyScorecardDualRead` function calls the legacy `fetchWeeklyScorecard` for current/recent weeks, which never computes OT productivity.
 
-The OT calculation fix from the previous step is correctly using `otScheduledDays`. This should now reflect properly for agents with both `quota_ot_email` set AND OT schedules defined. Nikki has `quota_ot_email = null` so her OT prod won't compute.
+2. **Productivity includes OT tickets** -- The legacy ticket query (line 918-922) fetches all `ticket_logs` without selecting or filtering the `is_ot` column. This means OT email tickets are counted as regular email tickets, inflating regular productivity while OT productivity remains null.
 
----
+The **RPC-based path** (`fetchWeeklyScorecardRPC`) already handles both correctly -- the `get_weekly_scorecard_data` RPC separates `email_count` (excluding OT) from `ot_email_count`, and the RPC path computes OT productivity using the schedule resolver. But the UI never calls it.
 
-## Pre-existing Bug: Productivity Goal in Final Score
-
-The current `calculateMetricScore` receives productivity as a **percentage** (0-100) but the config goals are set to raw weekly ticket counts (e.g., 715 for Email, 257.6 for Hybrid). This means:
-- `calculateMetricScore(100%, 715, 'productivity')` = `(100/715) × 100 = 14%` -- clearly wrong
-
-**Fix**: Set productivity goal to `100` in the config, so 100% of quota = 100% score.
-
----
-
-## Plan
-
-### Step 1: Update position resolution
-
-**Files**: `src/lib/positionUtils.ts`, `get_weekly_scorecard_data` RPC (database migration)
-
-- Map `[Email, Chat]` → `"Chat"` instead of `"Email + Chat"`
-- Remove `"Email + Phone"`, `"Email + Chat"` as separate categories
-- Only 3 active categories: **Hybrid**, **Chat**, **Logistics**
-- Update the RPC's CASE expression to match
-
-### Step 2: Update SUPPORT_TYPES constant
+## Fix
 
 **File**: `src/lib/scorecardApi.ts`
 
-Change from 7 types to 3:
+### Change 1: Switch live data path to use the RPC function
+
+In `fetchWeeklyScorecardDualRead` (line 248-249), replace the call to the legacy `fetchWeeklyScorecard` with `fetchWeeklyScorecardRPC`, which already has correct OT separation and OT productivity calculation.
+
 ```typescript
-export const SUPPORT_TYPES = ['Hybrid', 'Chat', 'Logistics'] as const;
+// Before:
+return fetchWeeklyScorecard(weekStart, weekEnd, supportType);
+
+// After:
+const result = await fetchWeeklyScorecardRPC(weekStart, weekEnd, supportType);
+return result.data;
 ```
 
-### Step 3: Update `getWeeklyQuota` function
+This single change fixes both issues because:
+- The RPC separates regular email tickets from OT tickets at the database level
+- The RPC path already computes OT productivity using effective schedules and `quota_ot_email`
+- The RPC path falls back to the legacy function automatically if the RPC call fails
 
-**File**: `src/lib/scorecardApi.ts`
+### Other considerations
 
-- `"Chat"` case should sum `quota_email + quota_chat` (since Chat = Email + Chat tickets)
-- Remove Email, Phone, Email + Phone, Email + Chat cases
-
-### Step 4: Update productivity count switch
-
-**File**: `src/lib/scorecardApi.ts`
-
-- `"Chat"` case: `productivityCount = email_count + chat_count`
-- Remove old Email, Phone, Email + Phone, Email + Chat cases
-
-### Step 5: Update `scorecard_config` database data
-
-Delete all rows for support types: `Email`, `Phone`, `Email + Phone`, `Email + Chat`.
-
-Update **Chat** config to match the image:
-
-| Metric | Weight | Goal | Display Order |
-|--------|--------|------|---------------|
-| productivity | 25% | 100 | 1 |
-| chat_aht | 10% | 420 | 2 |
-| chat_frt | 10% | 20 | 3 |
-| qa | 20% | 96 | 4 |
-| revalida | 5% | 95 | 5 |
-| reliability | 30% | 98 | 6 |
-
-Update **Hybrid** config:
-
-| Metric | Weight | Goal | Display Order |
-|--------|--------|------|---------------|
-| productivity | 15% | 100 | 1 |
-| call_aht | 10% | 240 | 2 |
-| chat_aht | 10% | 420 | 3 |
-| chat_frt | 10% | 20 | 4 |
-| qa | 20% | 96 | 5 |
-| revalida | 5% | 95 | 6 |
-| reliability | 30% | 98 | 7 |
-
-Update **Logistics** productivity goal to `100` as well (same bug fix).
-
-### Step 6: Update compute-weekly-snapshots edge function
-
-Ensure the snapshot function uses the updated position resolution (Chat instead of Email + Chat).
-
-### Step 7: Update TeamScorecard UI default goals
-
-**File**: `src/pages/TeamScorecard.tsx`
-
-Update `DEFAULT_METRIC_GOALS` to match new values (call_aht: 240, chat_aht: 420, chat_frt: 20).
-
----
-
-## Other considerations
-
-- **Saved scorecards**: Historical saved_scorecards records with `support_type = 'Email + Chat'` won't match the new `'Chat'` key. These would need a data migration to rename them if you want old snapshots to load correctly.
-- **weekly_scorecard_snapshots**: Same concern -- old snapshots may have `support_type = 'Email + Chat'`.
-- **User Guide**: The TeamScorecardSection guide content references Email, Hybrid, and Logistics metrics that need updating.
-- **Agent Reports / EOD Analytics**: These use position resolution too -- updating `positionUtils.ts` will cascade to those views.
+- **No database changes needed** -- the RPC already has the correct logic from our previous updates.
+- **Performance improvement** -- the RPC consolidates 10+ parallel queries into a single database call, so this is actually faster.
+- **The legacy `fetchWeeklyScorecard` function** can remain as a fallback (the RPC path already falls back to it on error), but it will still have the OT bug if used. We could optionally fix it too for safety, but the RPC path should handle all cases.
 
