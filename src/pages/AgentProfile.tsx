@@ -23,7 +23,7 @@ import { WorkConfigurationSection } from '@/components/profile/WorkConfiguration
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DatePicker } from '@/components/ui/date-picker';
-import { getNextMondayEST, upsertScheduleAssignment } from '@/lib/scheduleResolver';
+import { getNextMondayEST, getCurrentMondayEST, upsertScheduleAssignment } from '@/lib/scheduleResolver';
 import { ScheduleChangeConfirmDialog } from '@/components/profile/ScheduleChangeConfirmDialog';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
@@ -402,10 +402,10 @@ export default function AgentProfilePage() {
       
       if (scheduleChanged) {
         try {
+          const currentMonday = getCurrentMondayEST();
           const nextMonday = getNextMondayEST();
-          await upsertScheduleAssignment({
+          const assignmentPayload = {
             agentId: result.data.id,
-            effectiveWeekStart: nextMonday,
             monSchedule: profile.mon_schedule,
             tueSchedule: profile.tue_schedule,
             wedSchedule: profile.wed_schedule,
@@ -428,10 +428,14 @@ export default function AgentProfilePage() {
             quotaPhone: profile.quota_phone,
             quotaOtEmail: profile.quota_ot_email,
             createdBy: user.email.toLowerCase()
-          });
+          };
+          // Upsert both current and next week so changes take effect immediately
+          await Promise.all([
+            upsertScheduleAssignment({ ...assignmentPayload, effectiveWeekStart: currentMonday }),
+            upsertScheduleAssignment({ ...assignmentPayload, effectiveWeekStart: nextMonday }),
+          ]);
         } catch (syncError) {
-          console.error('Failed to sync schedule to next week:', syncError);
-          // Don't fail the save, but log the issue
+          console.error('Failed to sync schedule assignments:', syncError);
         }
       }
       
