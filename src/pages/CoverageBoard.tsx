@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Pencil, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { writeAuditLog } from '@/lib/auditLogApi';
+import { clearScheduleCache } from '@/lib/scheduleResolver';
 import {
   fetchAgentSchedules,
   fetchOverridesForWeek,
@@ -244,8 +245,9 @@ export default function CoverageBoard() {
          }
        }
 
-       toast.success(`${pendingOverrides.size} override(s) saved`);
-       queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
+        toast.success(`${pendingOverrides.size} override(s) saved`);
+        clearScheduleCache();
+        queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
        // Build summary of overrides in metadata
        const overrideSummary: string[] = [];
        for (const [, pending] of pendingOverrides) {

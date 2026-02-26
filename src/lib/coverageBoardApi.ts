@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { parseScheduleRange } from "@/components/coverage-board/ShiftBlock";
-import { getEffectiveSchedulesForWeek } from "./scheduleResolver";
+import { getEffectiveSchedulesForWeek, clearScheduleCache } from "./scheduleResolver";
 
 // ── Grid Constants ──────────────────────────────────────────────────────────
 export const STICKY_COLS = 3;
@@ -367,6 +367,7 @@ export async function upsertOverride(override: {
     .single();
 
   if (error) throw error;
+  clearScheduleCache();
   return data;
 }
 
@@ -403,6 +404,7 @@ export async function deleteOverride(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) throw error;
+  clearScheduleCache();
 }
 
 export async function fetchLeavesForWeek(startDate: string, endDate: string): Promise<LeaveForDate[]> {
