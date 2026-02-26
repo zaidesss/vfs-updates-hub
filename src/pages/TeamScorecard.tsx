@@ -52,9 +52,9 @@ const DATA_RETENTION_WEEKS = 2;
 
 // Default AHT/FRT goals in seconds (fallback only - DB values preferred)
 const DEFAULT_METRIC_GOALS = {
-  call_aht: 420,  // 7 minutes
-  chat_aht: 600,  // 10 minutes
-  chat_frt: 30,   // 30 seconds
+  call_aht: 240,  // 4 minutes
+  chat_aht: 420,  // 7 minutes
+  chat_frt: 20,   // 20 seconds
 } as const;
 
 const MONTHS = [

@@ -95,11 +95,7 @@ export interface ZendeskAgentMetrics {
 // Constants
 export const SUPPORT_TYPES = [
   'Hybrid',
-  'Email + Phone',
-  'Email + Chat',
-  'Phone',
   'Chat',
-  'Email',
   'Logistics'
 ] as const;
 
@@ -483,18 +479,12 @@ export function countDaysWithLogin(
 // Get weekly quota based on support type
 export function getWeeklyQuota(profile: AgentProfile, supportType: string, workingDays: number): number {
   switch (supportType) {
-    case 'Email':
-      return (profile.quota_email || 0) * workingDays;
     case 'Chat':
-      return (profile.quota_chat || 0) * workingDays;
-    case 'Phone':
-      return (profile.quota_phone || 0) * workingDays;
-    case 'Email + Chat':
       return ((profile.quota_email || 0) + (profile.quota_chat || 0)) * workingDays;
-    case 'Email + Phone':
-      return ((profile.quota_email || 0) + (profile.quota_phone || 0)) * workingDays;
     case 'Hybrid':
       return ((profile.quota_email || 0) + (profile.quota_chat || 0) + (profile.quota_phone || 0)) * workingDays;
+    case 'Logistics':
+      return (profile.quota_email || 0) * workingDays;
     default:
       return 0;
   }
@@ -702,23 +692,14 @@ export async function fetchWeeklyScorecardRPC(
       // Calculate productivity based on support type
       let productivityCount = 0;
       switch (agentSupportType) {
-        case 'Email':
-          productivityCount = row.email_count;
-          break;
         case 'Chat':
-          productivityCount = row.chat_count;
-          break;
-        case 'Phone':
-          productivityCount = row.call_count;
-          break;
-        case 'Email + Chat':
           productivityCount = row.email_count + row.chat_count;
-          break;
-        case 'Email + Phone':
-          productivityCount = row.email_count + row.call_count;
           break;
         case 'Hybrid':
           productivityCount = row.email_count + row.chat_count + row.call_count;
+          break;
+        case 'Logistics':
+          productivityCount = row.email_count;
           break;
       }
 
