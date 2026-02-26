@@ -1,13 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { User, Monitor, Headphones, Clock, Target, Eye, Coffee } from 'lucide-react';
+import { User, Monitor, Headphones, Clock, Target, Coffee, Timer } from 'lucide-react';
 import type { DashboardProfile } from '@/lib/agentDashboardApi';
+import type { EffectiveDaySchedule } from '@/lib/scheduleResolver';
 
 interface ProfileHeaderProps {
   profile: DashboardProfile;
+  effectiveWeekSchedules?: EffectiveDaySchedule[];
 }
 
-export function ProfileHeader({ profile }: ProfileHeaderProps) {
+export function ProfileHeader({ profile, effectiveWeekSchedules }: ProfileHeaderProps) {
+  // Get today's OT schedule from effective schedules
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const todayEffective = effectiveWeekSchedules?.find(d => d.dayDate === todayStr);
+  const todayOtSchedule = todayEffective?.otSchedule || null;
+
   const fields = [
     { 
       icon: User, 
@@ -31,9 +38,10 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
       badge: true 
     },
     { 
-      icon: Eye, 
-      label: 'Ticket View ID', 
-      value: profile.ticket_assignment_view_id || '-' 
+      icon: Timer, 
+      label: 'OT Schedule', 
+      value: todayOtSchedule || 'None',
+      badge: !!todayOtSchedule
     },
     { 
       icon: Coffee, 

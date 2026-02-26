@@ -275,7 +275,21 @@ export function ShiftScheduleTable({ profile, attendance, weekStart, weekEnd, we
                     <span className="hidden md:inline">{day.label}</span>
                     <span className="md:hidden">{day.short}</span>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{schedule}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <div>{schedule}</div>
+                    {(() => {
+                      const effectiveDay = effectiveWeekSchedules?.find(d => d.dayName.substring(0, 3) === day.short);
+                      const otSched = effectiveDay?.otSchedule;
+                      if (otSched) {
+                        return (
+                          <div className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+                            OT: {otSched}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </TableCell>
                   <TableCell>
                     {getStatusBadges(dayAttendance)}
                   </TableCell>
