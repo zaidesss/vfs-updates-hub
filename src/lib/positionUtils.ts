@@ -2,13 +2,15 @@
  * Shared utility to resolve a position array to a category string.
  * Used by scorecard, coverage board, team status, master directory, and dashboard.
  *
+ * Only 3 active scorecard categories: Hybrid, Chat, Logistics
+ *
  * Examples:
  *   ["Email", "Chat", "Phone"] → "Hybrid"
- *   ["Email", "Chat"]          → "Email + Chat"
- *   ["Email", "Phone"]         → "Email + Phone"
- *   ["Email"]                  → "Email"
+ *   ["Email", "Phone"]         → "Hybrid"
+ *   ["Phone"]                  → "Hybrid"
+ *   ["Email", "Chat"]          → "Chat"
+ *   ["Email"]                  → "Chat"
  *   ["Chat"]                   → "Chat"
- *   ["Phone"]                  → "Phone"
  *   ["Logistics"]              → "Logistics"
  *   ["Team Lead"]              → "Team Lead"
  *   ["Technical"]              → "Technical"

@@ -179,13 +179,21 @@ async function computeScorecardSnapshot(
     otProductivityPercent = weeklyOtQuota > 0 ? (otEmailCount / weeklyOtQuota) * 100 : null;
   }
 
+  // Resolve position to support type category
+  const posArr = Array.isArray(agent.position) ? agent.position : [];
+  let resolvedSupportType = 'Chat';
+  if (posArr.includes('Email') && posArr.includes('Chat') && posArr.includes('Phone')) resolvedSupportType = 'Hybrid';
+  else if (posArr.includes('Email') && posArr.includes('Phone')) resolvedSupportType = 'Hybrid';
+  else if (posArr.includes('Phone')) resolvedSupportType = 'Hybrid';
+  else if (posArr.includes('Logistics')) resolvedSupportType = 'Logistics';
+
   const scorecardSnapshot = {
     agent_email: agent.email,
     agent_id: agent.id,
     agent_name: agent.full_name || agent.agent_name || null,
     week_start: weekStartStr,
     week_end: weekEndStr,
-    support_type: agent.position,
+    support_type: resolvedSupportType,
     productivity_count: emailCount + chatCount + callCount,
     ot_productivity: otProductivityPercent,
     qa: qaAverage,

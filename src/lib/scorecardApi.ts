@@ -1046,23 +1046,14 @@ export async function fetchWeeklyScorecard(
     
     let productivityCount = 0;
     switch (agentSupportType) {
-      case 'Email':
-        productivityCount = emailCount;
-        break;
       case 'Chat':
-        productivityCount = chatCount;
-        break;
-      case 'Phone':
-        productivityCount = callCount;
-        break;
-      case 'Email + Chat':
         productivityCount = emailCount + chatCount;
-        break;
-      case 'Email + Phone':
-        productivityCount = emailCount + callCount;
         break;
       case 'Hybrid':
         productivityCount = emailCount + chatCount + callCount;
+        break;
+      case 'Logistics':
+        productivityCount = emailCount;
         break;
     }
 
