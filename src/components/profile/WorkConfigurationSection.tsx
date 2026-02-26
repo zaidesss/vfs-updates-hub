@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProfileSectionHeader } from '@/components/profile/ProfileSectionHeader';
 import { UpworkLimitRequestDialog } from '@/components/profile/UpworkLimitRequestDialog';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   AgentProfileInput, 
   POSITION_OPTIONS, 
@@ -54,6 +55,31 @@ export function WorkConfigurationSection({
   const [showUpworkDialog, setShowUpworkDialog] = useState(false);
   
   const errors = Object.keys(scheduleErrors).length > 0 ? scheduleErrors : localScheduleErrors;
+
+  // Auto-populate Zendesk User ID from lookup table
+  const lookupZendeskUserId = useCallback(async (instance: string | null, account: string | null) => {
+    if (!instance || !account) return;
+    const { data } = await supabase
+      .from('zendesk_user_ids')
+      .select('zendesk_user_id')
+      .eq('zd_instance', instance)
+      .eq('support_account', account)
+      .maybeSingle();
+    if (data?.zendesk_user_id) {
+      onInputChange('zendesk_user_id', data.zendesk_user_id);
+    }
+  }, [onInputChange]);
+
+  // Trigger lookup when zendesk_instance or support_account changes
+  const handleZdInstanceChange = (value: string) => {
+    onInputChange('zendesk_instance', value);
+    lookupZendeskUserId(value, profile.support_account || null);
+  };
+
+  const handleSupportAccountChange = (value: string) => {
+    onInputChange('support_account', value);
+    lookupZendeskUserId(profile.zendesk_instance || null, value);
+  };
 
   const positionDefaults = getPositionDefaults(profile.position || null);
   // Admins and Super Admins can edit work configuration fields
@@ -371,7 +397,7 @@ export function WorkConfigurationSection({
           <Label>Zendesk Instance</Label>
           <Select
             value={profile.zendesk_instance || ''}
-            onValueChange={(value) => onInputChange('zendesk_instance', value)}
+            onValueChange={handleZdInstanceChange}
             disabled={!canEdit}
           >
             <SelectTrigger className={!canEdit ? 'bg-muted' : ''}>
@@ -389,7 +415,7 @@ export function WorkConfigurationSection({
           <Label>Support Account</Label>
           <Select
             value={profile.support_account || ''}
-            onValueChange={(value) => onInputChange('support_account', value)}
+            onValueChange={handleSupportAccountChange}
             disabled={!canEdit}
           >
             <SelectTrigger className={!canEdit ? 'bg-muted' : ''}>
@@ -410,11 +436,12 @@ export function WorkConfigurationSection({
           <Label>Zendesk User ID</Label>
           <Input
             value={profile.zendesk_user_id || ''}
-            onChange={(e) => onInputChange('zendesk_user_id', e.target.value)}
-            placeholder="e.g., 11436740426393"
-            disabled={!canEdit}
-            className={!canEdit ? 'bg-muted' : ''}
+            readOnly
+            disabled
+            className="bg-muted"
+            placeholder="Auto-populated from Support Account"
           />
+          <p className="text-xs text-muted-foreground">Auto-populated based on ZD Instance + Support Account</p>
         </div>
       </div>
 
