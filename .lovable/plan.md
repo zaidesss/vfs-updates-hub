@@ -1,51 +1,84 @@
 
 
-## Root Cause Analysis
+## Root Cause Found — The Database RPC Is Broken
 
-There are **three interconnected issues** causing the override to not reflect on the Dashboard:
+The overrides **are being saved correctly** to the database. The problem is that the `get_effective_schedule` RPC **silently ignores them** due to a PostgreSQL behavior with NULL fields in RECORD variables.
 
-### Issue 1: Schedule Resolver Cache Never Cleared After Coverage Board Saves
-The `scheduleResolver.ts` has an in-memory cache (`scheduleCache` and `weekCache`). When the Coverage Board saves overrides via `upsertOverride()` in `coverageBoardApi.ts`, it does NOT call `clearScheduleCache()`. When the user navigates to the Dashboard, `getEffectiveSchedulesForWeek()` returns stale cached data (the old base schedule), so both the Shift Schedule Table and the Logout Dialog show the pre-override schedule.
+### The Core Bug
 
-`clearScheduleCache()` is only called in one place: `upsertScheduleAssignment()` in `scheduleResolver.ts`. The coverage board uses a completely separate function (`upsertOverride` / `deleteOverride` in `coverageBoardApi.ts`) which never touches the cache.
+In the `get_effective_schedule` RPC, overrides are loaded into RECORD variables and then checked with `IS NOT NULL`:
 
-### Issue 2: OverrideEditor Does Not Set `block_type`
-When a user clicks a cell and manually enters override times, `OverrideEditor.handleApply()` (line 99-106) creates a `PendingOverride` without setting `block_type`. This falls through to the default `'override'` (legacy type) in `CoverageBoard.handleSave()` (line 161). While the RPC does handle legacy overrides, this is inconsistent — new overrides should use `'regular'` type to match the modern override flow.
+```sql
+SELECT co.override_start, co.override_end, co.reason, co.break_schedule
+INTO v_regular
+FROM coverage_overrides co
+WHERE co.agent_id = p_agent_id AND co.date = p_target_date AND co.override_type = 'regular';
+```
 
-### Issue 3: `override_type = 'override'` (Legacy) Has Restrictive Handling in RPC
-In the `get_effective_schedule` RPC (line 121-127), legacy overrides are only used if NO regular, OT, or dayoff overrides exist for the same agent+date. If any typed override co-exists, the legacy one is silently ignored. This means future typed overrides could mask legacy ones unpredictably. Using `'regular'` type avoids this.
+Later:
+```sql
+IF v_regular IS NOT NULL THEN ...
+```
+
+**The problem**: In PostgreSQL, `ROW('9:00 AM', '11:00 PM', 'drag adjustment', NULL) IS NOT NULL` returns **FALSE**. When ANY field in a record is NULL (like `break_schedule`), the entire `IS NOT NULL` check fails. Since `break_schedule` is almost always NULL, the RPC treats every override as if it doesn't exist.
+
+I verified this directly:
+- The `coverage_overrides` table has the correct rows for Feb 25 and Feb 26
+- The direct query `SELECT * FROM coverage_overrides WHERE ...` returns them
+- But `get_effective_schedule('...', '2026-02-25')` returns `is_override: false` and the base schedule `9:00 AM-5:00 PM`
+
+This means **nothing on the frontend matters** — the Dashboard, Shift Schedule, Logout Dialog all call this RPC and get wrong data.
+
+### Additional Issues
+
+1. **SaveConfirmationDialog "From" column**: Line 116 hardcodes `—` instead of showing the agent's base schedule before the override.
+
+2. **Activity Log `previous_value`**: `CoverageBoard.handleSave` passes `previous_value: null` when inserting log entries, so the "From" in the activity log is also empty.
 
 ---
 
 ## Implementation Plan
 
-### Step 1: Clear schedule cache after Coverage Board saves
-In `CoverageBoard.tsx`, import and call `clearScheduleCache()` in `handleSave` right before the React Query invalidation (line 248). This ensures the Dashboard fetches fresh data from the RPC instead of serving stale cache.
+### Step 1: Fix the `get_effective_schedule` RPC (Database Migration)
 
-```typescript
-import { clearScheduleCache } from '@/lib/scheduleResolver';
+Replace all `v_variable IS NOT NULL` checks with boolean flags set from `FOUND` after each `SELECT INTO`:
 
-// In handleSave, after all upserts/deletes:
-clearScheduleCache();
-queryClient.invalidateQueries({ queryKey: ['coverage-overrides'] });
+```sql
+SELECT ... INTO v_regular FROM coverage_overrides ...;
+v_found_regular := FOUND;
+
+SELECT ... INTO v_ot FROM coverage_overrides ...;
+v_found_ot := FOUND;
+
+SELECT ... INTO v_dayoff FROM coverage_overrides ...;
+v_found_dayoff := FOUND;
+
+SELECT ... INTO v_legacy FROM coverage_overrides ...;
+v_found_legacy := FOUND;
 ```
 
-### Step 2: Clear schedule cache in `coverageBoardApi.ts` functions
-Add `clearScheduleCache()` calls inside `upsertOverride()` and `deleteOverride()` so any consumer of these functions (not just the Coverage Board page) automatically invalidates the cache.
+Then replace all `v_regular IS NOT NULL` → `v_found_regular`, `v_ot IS NOT NULL` → `v_found_ot`, etc. throughout the function.
 
-### Step 3: Fix `OverrideEditor` to set `block_type: 'regular'` by default
-In `OverrideEditor.tsx`, update `handleApply` to include `block_type: 'regular'` in the override object. This ensures overrides are stored with the modern type and correctly resolved by the RPC.
+### Step 2: Fix SaveConfirmationDialog "From" column
 
-### Step 4: Also clear cache on Coverage Board edit mode toggle-off
-When `setEditMode(false)` is called after save (line 265), the cache is already cleared from Step 1. No additional change needed here — just noting for completeness.
+Instead of hardcoded `—`, look up the agent's base schedule for that day from the `agents` array (which contains `mon_schedule`, `tue_schedule`, etc.) and display it.
+
+### Step 3: Fix Activity Log `previous_value`
+
+In `CoverageBoard.handleSave`, compute the agent's base schedule for the overridden day and pass it as `previous_value` to `insertOverrideLog`.
+
+### Step 4: Clean up legacy overrides in the database
+
+The Feb 25 entry with `override_type = 'override'` (legacy) is redundant since a `'regular'` type already exists for the same date. Should be deleted to avoid confusion.
 
 ---
 
-## Summary of Files to Change
+## Files to Change
 
-| File | Change |
-|------|--------|
-| `src/pages/CoverageBoard.tsx` | Import `clearScheduleCache`, call it in `handleSave` |
-| `src/lib/coverageBoardApi.ts` | Call `clearScheduleCache()` in `upsertOverride` and `deleteOverride` |
-| `src/components/coverage-board/OverrideEditor.tsx` | Set `block_type: 'regular'` in `handleApply` |
+| File / Location | Change |
+|---|---|
+| Database RPC `get_effective_schedule` | Add FOUND-based boolean flags instead of `IS NOT NULL` on RECORD variables |
+| `src/components/coverage-board/SaveConfirmationDialog.tsx` | Show base schedule in "From" column instead of `—` |
+| `src/pages/CoverageBoard.tsx` (handleSave) | Compute and pass `previous_value` (base schedule) to `insertOverrideLog` |
+| Database cleanup | Delete the legacy `override_type='override'` row for Feb 25 |
 
