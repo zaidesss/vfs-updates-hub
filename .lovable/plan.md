@@ -1,33 +1,17 @@
 
 
-## Plan: New Tickets Counter for Agent Dashboard & Team Status Board
+## Plan: Emphasize "New Tickets as of Today" + Add Info Disclaimer Button
 
-### Step 1: Update `fetch-zendesk-realtime` edge function
-Add a `newTickets` count to each instance's response. Use the existing `searchCount` helper with query `type:ticket status:new created>=2026-02-26` (hardcoded start date as requested — only count new tickets from today forward). Add `newTickets` field alongside existing `talk` and `messaging` in the response.
+### Changes to `src/components/dashboard/NewTicketsCounter.tsx`
 
-### Step 2: Update `zendeskRealtimeApi.ts` types
-Add `newTickets: number` to `InstanceStats` interface.
+1. **Change label text** from `"New Tickets"` to `"New Tickets as of Today"` and make it more prominent (larger font weight/size)
 
-### Step 3: Create `NewTicketsCounter.tsx` component
-Shared component in `src/components/dashboard/NewTicketsCounter.tsx`:
-- Takes ZD1 + ZD2 new ticket counts, fetchedAt, loading/error state, and refresh callback
-- Large bold total count with red/orange accent color
-- Per-instance breakdown (ZD1: X, ZD2: Y)
-- "2hr SLA" badge reminder
-- Auto-refreshes via the existing 60s polling in `useZendeskRealtime`
+2. **Add an info "ⓘ" button** using a `Popover` (or `Tooltip`) next to the label that, when clicked, shows a small popup with:
+   > "Ticket counting started on February 26, 2026."
 
-### Step 4: Add to Agent Dashboard
-Place `NewTicketsCounter` after the debug card and before `ProfileHeader` (around line 818). Use `useZendeskRealtime` hook.
-
-### Step 5: Add to Team Status Board
-Place `NewTicketsCounter` before `<ZendeskRealtimePanel />` (around line 160). Use the same `useZendeskRealtime` hook.
-
-### Files to change
-| File | Change |
-|---|---|
-| `supabase/functions/fetch-zendesk-realtime/index.ts` | Add `newTickets` search query per instance |
-| `src/lib/zendeskRealtimeApi.ts` | Add `newTickets` to `InstanceStats` |
-| `src/components/dashboard/NewTicketsCounter.tsx` | New component |
-| `src/pages/AgentDashboard.tsx` | Import hook + render counter |
-| `src/pages/TeamStatusBoard.tsx` | Import hook + render counter |
+### Single file change
+- Import `Info` icon from lucide-react
+- Import `Popover`, `PopoverTrigger`, `PopoverContent` from UI components
+- Update the label span text and styling
+- Add the info icon button with popover content
 
