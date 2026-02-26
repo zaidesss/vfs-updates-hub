@@ -126,16 +126,7 @@ export async function fetchScheduledTeamMembers(now?: Date): Promise<{
     // Fetch all active agent profiles (parallel queries)
     const [profilesResult, statusesResult, outagesResult] = await Promise.all([
       // Fetch all active profiles
-      supabase
-        .from('agent_profiles_team_status')
-        .select(`
-          id, 
-          email, 
-          full_name, 
-          position,
-          break_schedule
-        `)
-        .neq('employment_status', 'Terminated'),
+      supabase.rpc('get_team_status_profiles') as any,
       
       // Fetch all profile statuses
       supabase
