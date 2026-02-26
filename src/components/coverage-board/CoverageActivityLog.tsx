@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -132,7 +132,7 @@ export function CoverageActivityLog({ weekStart, weekEnd }: CoverageActivityLogP
                 {filteredLogs.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="font-medium">{log.agent_name}</TableCell>
-                    <TableCell>{format(new Date(log.date), 'MMM dd, yyyy')}</TableCell>
+                    <TableCell>{format(parseISO(log.date), 'MMM dd, yyyy')}</TableCell>
                     <TableCell>
                       <Badge className={getTypeColor(log.override_type)}>
                         {getTypeLabel(log.override_type)}
