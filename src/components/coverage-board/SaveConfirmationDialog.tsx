@@ -8,7 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { useState } from 'react';
 import type { PendingOverride } from './OverrideEditor';
 import type { AgentScheduleRow } from '@/lib/coverageBoardApi';
@@ -57,12 +57,12 @@ export function SaveConfirmationDialog({
       agentId,
       agentName,
       dateStr,
-      date: new Date(dateStr),
+      date: parseISO(dateStr),
       blocks,
     };
   });
 
-  changes.sort((a, b) => new Date(a.dateStr).getTime() - new Date(b.dateStr).getTime());
+  changes.sort((a, b) => parseISO(a.dateStr).getTime() - parseISO(b.dateStr).getTime());
 
   const handleConfirm = () => {
     // Merge break schedules back into pending overrides

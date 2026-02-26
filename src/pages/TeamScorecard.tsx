@@ -1153,9 +1153,17 @@ export default function TeamScorecard() {
                           {showOtProductivity && (
                             <TableCell className="text-center">
                               {metricApplies(scorecard.agent.position, 'otProductivity') ? (
-                                <div className="px-2 py-1 rounded bg-muted/30">
-                                  <span className="text-muted-foreground">-</span>
-                                </div>
+                                scorecard.otProductivity !== null ? (
+                                  <div className={`px-2 py-1 rounded ${getScoreBgColor(scorecard.otProductivity, getMetricGoal('ot_productivity', scorecard.agent.position))}`}>
+                                    <span className={getScoreColor(scorecard.otProductivity, getMetricGoal('ot_productivity', scorecard.agent.position))}>
+                                      {formatScore(scorecard.otProductivity)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="px-2 py-1 rounded bg-muted/30">
+                                    <span className="text-muted-foreground">-</span>
+                                  </div>
+                                )
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
