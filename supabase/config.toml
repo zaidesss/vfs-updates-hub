@@ -171,3 +171,9 @@ verify_jwt = false
 
 [functions.fetch-sla-responsiveness]
 verify_jwt = false
+
+[functions.backfill-sla-snapshots]
+verify_jwt = false
+
+[functions.snapshot-sla-daily]
+verify_jwt = false
