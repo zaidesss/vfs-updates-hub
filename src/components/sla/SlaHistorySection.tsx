@@ -129,6 +129,8 @@ function WeeklyTab({ weekly, onDrillDown }: { weekly: WeeklyBucket[]; onDrillDow
                   <TableHead className="text-right">Remaining (ZD2)</TableHead>
                   <TableHead className="text-right">Avg FRT (ZD1)</TableHead>
                   <TableHead className="text-right">Avg FRT (ZD2)</TableHead>
+                  <TableHead className="text-right">Avg Res (ZD1)</TableHead>
+                  <TableHead className="text-right">Avg Res (ZD2)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -143,6 +145,8 @@ function WeeklyTab({ weekly, onDrillDown }: { weekly: WeeklyBucket[]; onDrillDow
                     <TableCell className="text-right tabular-nums">{w.zd2.remaining}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatResolutionTime(w.zd1.avgFirstReply)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatResolutionTime(w.zd2.avgFirstReply)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatResolutionTime(w.zd1.avgFullResolution)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatResolutionTime(w.zd2.avgFullResolution)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

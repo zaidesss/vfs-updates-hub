@@ -34,7 +34,7 @@ async function searchCount(config: ZendeskConfig, query: string): Promise<number
 }
 
 async function fetchResolutionForDay(config: ZendeskConfig, date: string, nextDate: string) {
-  const query = `type:ticket status:solved solved>=${date} solved<${nextDate}`;
+  const query = `type:ticket status>=solved solved>=${date} solved<${nextDate}`;
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=100`;
   const res = await fetch(url, { headers: authHeaders(config) });
   if (!res.ok) { await res.text(); return { avg_first: null, avg_full: null, distribution: [] }; }
