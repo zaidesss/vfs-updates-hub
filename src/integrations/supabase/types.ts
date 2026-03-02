@@ -3528,6 +3528,7 @@ export type Database = {
           fetched_at: string
           id: string
           order_escalation: number | null
+          productivity_count_override: number | null
           total_calls: number | null
           total_chats: number | null
           week_end: string
@@ -3542,6 +3543,7 @@ export type Database = {
           fetched_at?: string
           id?: string
           order_escalation?: number | null
+          productivity_count_override?: number | null
           total_calls?: number | null
           total_chats?: number | null
           week_end: string
@@ -3556,6 +3558,7 @@ export type Database = {
           fetched_at?: string
           id?: string
           order_escalation?: number | null
+          productivity_count_override?: number | null
           total_calls?: number | null
           total_chats?: number | null
           week_end?: string
