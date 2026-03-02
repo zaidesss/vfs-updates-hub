@@ -12,6 +12,7 @@ import {
   combineInstances,
   type SlaInstanceData,
 } from '@/lib/slaResponsivenessApi';
+import SlaHistorySection from '@/components/sla/SlaHistorySection';
 
 function SlaCards({ data, isLoading }: { data: SlaInstanceData | null; isLoading: boolean }) {
   const d = data;
@@ -225,6 +226,9 @@ const Responsiveness = () => {
             <SlaCards data={data?.zd2 ?? null} isLoading={isLoading} />
           </TabsContent>
         </Tabs>
+
+        {/* Historical Charts */}
+        <SlaHistorySection />
       </div>
     </Layout>
   );
