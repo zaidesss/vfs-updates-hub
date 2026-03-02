@@ -3944,6 +3944,7 @@ export type Database = {
           order_escalation: number
           ot_email_count: number
           planned_leave_days: number
+          productivity_count_override: number
           profile_id: string
           qa_average: number
           quota_chat: number

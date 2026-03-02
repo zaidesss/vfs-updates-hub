@@ -38,6 +38,7 @@ export interface AgentScorecard {
   agent: AgentProfile;
   productivity: number | null;
   productivityCount: number;
+  productivityCountOriginal: number; // Auto-calculated count (before override)
   callAht: number | null;
   chatAht: number | null;
   chatFrt: number | null;
@@ -55,6 +56,7 @@ export interface AgentScorecard {
   unplannedOutageDays: number;
   isSaved?: boolean;
   dataSource?: 'snapshot' | 'live'; // Indicator of data origin
+  weeklyQuota: number; // For live recalculation of productivity %
 }
 
 export interface SavedScorecard {
@@ -90,6 +92,7 @@ export interface ZendeskAgentMetrics {
   total_calls: number | null;
   total_chats: number | null;
   order_escalation: number | null;
+  productivity_count_override: number | null;
 }
 
 // Constants
@@ -145,6 +148,7 @@ interface ScorecardRPCResult {
   chat_aht_seconds: number | null;
   chat_frt_seconds: number | null;
   order_escalation: number | null;
+  productivity_count_override: number | null;
   is_saved: boolean;
 }
 
@@ -176,6 +180,7 @@ async function convertSnapshotToScorecard(snapshot: SavedScorecard, agent: Agent
     agent,
     productivity: snapshot.productivity,
     productivityCount: snapshot.productivity_count || 0,
+    productivityCountOriginal: snapshot.productivity_count || 0,
     callAht: snapshot.call_aht_seconds,
     chatAht: snapshot.chat_aht_seconds,
     chatFrt: snapshot.chat_frt_seconds,
@@ -193,6 +198,7 @@ async function convertSnapshotToScorecard(snapshot: SavedScorecard, agent: Agent
     unplannedOutageDays: 0, // Not stored in snapshots
     isSaved: true,
     dataSource: 'snapshot' as const,
+    weeklyQuota: 0,
   };
 }
 
@@ -514,7 +520,7 @@ export async function fetchZendeskMetrics(
 ): Promise<ZendeskAgentMetrics[]> {
   let query = supabase
     .from('zendesk_agent_metrics')
-    .select('agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds, total_calls, total_chats, order_escalation')
+    .select('agent_email, call_aht_seconds, chat_aht_seconds, chat_frt_seconds, total_calls, total_chats, order_escalation, productivity_count_override')
     .eq('week_start', weekStart)
     .eq('week_end', weekEnd);
 
@@ -692,18 +698,23 @@ export async function fetchWeeklyScorecardRPC(
       const adjustedScheduledDays = Math.max(0, scheduledDays - row.approved_leave_days);
 
       // Calculate productivity based on support type
-      let productivityCount = 0;
+      let productivityCountAuto = 0;
       switch (agentSupportType) {
         case 'Chat':
-          productivityCount = row.email_count + row.chat_count;
+          productivityCountAuto = row.email_count + row.chat_count;
           break;
         case 'Hybrid':
-          productivityCount = row.email_count + row.chat_count + row.call_count;
+          productivityCountAuto = row.email_count + row.chat_count + row.call_count;
           break;
         case 'Logistics':
-          productivityCount = row.email_count;
+          productivityCountAuto = row.email_count;
           break;
       }
+
+      // Apply productivity count override if set
+      const productivityCount = row.productivity_count_override !== null && row.productivity_count_override !== undefined
+        ? row.productivity_count_override
+        : productivityCountAuto;
 
       // Get weekly quota
       const agentProfile: AgentProfile = {
@@ -794,6 +805,7 @@ export async function fetchWeeklyScorecardRPC(
         agent: agentProfile,
         productivity,
         productivityCount,
+        productivityCountOriginal: productivityCountAuto,
         callAht: row.call_aht_seconds,
         chatAht: row.chat_aht_seconds,
         chatFrt: row.chat_frt_seconds,
@@ -810,6 +822,7 @@ export async function fetchWeeklyScorecardRPC(
         plannedLeaveDays: row.planned_leave_days,
         unplannedOutageDays: row.unplanned_outage_days,
         isSaved: row.is_saved,
+        weeklyQuota,
       });
     }
 
@@ -1000,6 +1013,7 @@ export async function fetchWeeklyScorecard(
         agent,
         productivity: saved.productivity,
         productivityCount: saved.productivity_count || 0,
+        productivityCountOriginal: saved.productivity_count || 0,
         callAht: saved.call_aht_seconds,
         chatAht: saved.chat_aht_seconds,
         chatFrt: saved.chat_frt_seconds,
@@ -1016,6 +1030,7 @@ export async function fetchWeeklyScorecard(
         plannedLeaveDays: (saved as any).planned_leave_days ?? 0,
         unplannedOutageDays: (saved as any).unplanned_outage_days ?? 0,
         isSaved: true,
+        weeklyQuota: 0,
       });
       continue;
     }
@@ -1131,6 +1146,7 @@ export async function fetchWeeklyScorecard(
       agent,
       productivity,
       productivityCount,
+      productivityCountOriginal: productivityCount,
       callAht,
       chatAht,
       chatFrt,
@@ -1147,6 +1163,7 @@ export async function fetchWeeklyScorecard(
       plannedLeaveDays,
       unplannedOutageDays,
       isSaved: false,
+      weeklyQuota,
     });
   }
 
@@ -1215,6 +1232,7 @@ export async function upsertZendeskMetrics(
     chat_aht_seconds?: number | null;
     chat_frt_seconds?: number | null;
     order_escalation?: number | null;
+    productivity_count_override?: number | null;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const { error } = await supabase

@@ -77,6 +77,7 @@ interface EditedMetrics {
   chatAht?: number | null;
   chatFrt?: number | null;
   orderEscalation?: number | null;
+  productivityCount?: number | null;
 }
 
 type ScoreFilter = 'all' | 'excellent' | 'good' | 'needs-improvement' | 'on-leave';
@@ -352,6 +353,7 @@ export default function TeamScorecard() {
             chat_aht_seconds: edits.chatAht,
             chat_frt_seconds: edits.chatFrt,
             order_escalation: edits.orderEscalation,
+            productivity_count_override: edits.productivityCount,
           })
         )
       );
@@ -378,6 +380,8 @@ export default function TeamScorecard() {
           metricChanges[`${agentEmail}:chat_frt`] = { old: String(sc.chatFrt ?? ''), new: String(edits.chatFrt) };
         if (edits.orderEscalation !== undefined)
           metricChanges[`${agentEmail}:order_escalation`] = { old: null, new: String(edits.orderEscalation) };
+        if (edits.productivityCount !== undefined && edits.productivityCount !== sc.productivityCountOriginal)
+          metricChanges[`${agentEmail}:productivity_count`] = { old: String(sc.productivityCountOriginal), new: String(edits.productivityCount) };
       });
       writeAuditLog({
         area: 'Scorecard',
@@ -402,11 +406,22 @@ export default function TeamScorecard() {
       const scorecardsWithEdits = scorecards?.map(sc => {
         const edits = editedMetrics[sc.agent.email.toLowerCase()];
         if (!edits) return sc;
+        
+        // Recalculate productivity if count was overridden
+        let updatedProductivity = edits.callAht !== undefined || edits.chatAht !== undefined || edits.chatFrt !== undefined ? sc.productivity : sc.productivity;
+        let updatedCount = sc.productivityCount;
+        if (edits.productivityCount !== undefined && edits.productivityCount !== null) {
+          updatedCount = edits.productivityCount;
+          updatedProductivity = sc.weeklyQuota > 0 ? (updatedCount / sc.weeklyQuota) * 100 : null;
+        }
+        
         return {
           ...sc,
           callAht: edits.callAht !== undefined ? edits.callAht : sc.callAht,
           chatAht: edits.chatAht !== undefined ? edits.chatAht : sc.chatAht,
           chatFrt: edits.chatFrt !== undefined ? edits.chatFrt : sc.chatFrt,
+          productivityCount: updatedCount,
+          productivity: updatedProductivity,
         };
       }) || [];
       
@@ -459,7 +474,7 @@ export default function TeamScorecard() {
   });
 
   // Handle metric edit
-  const handleMetricEdit = useCallback((agentEmail: string, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation', value: number | null) => {
+  const handleMetricEdit = useCallback((agentEmail: string, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation' | 'productivityCount', value: number | null) => {
     const emailLower = agentEmail.toLowerCase();
     setEditedMetrics(prev => {
       const current = prev[emailLower] || {};
@@ -471,7 +486,8 @@ export default function TeamScorecard() {
           (updated.callAht === undefined || updated.callAht === scorecard.callAht) &&
           (updated.chatAht === undefined || updated.chatAht === scorecard.chatAht) &&
           (updated.chatFrt === undefined || updated.chatFrt === scorecard.chatFrt) &&
-          (updated.orderEscalation === undefined || updated.orderEscalation === scorecard.orderEscalation);
+          (updated.orderEscalation === undefined || updated.orderEscalation === scorecard.orderEscalation) &&
+          (updated.productivityCount === undefined || updated.productivityCount === scorecard.productivityCount);
         
         if (isOriginal) {
           const { [emailLower]: _, ...rest } = prev;
@@ -484,7 +500,7 @@ export default function TeamScorecard() {
   }, [scorecards]);
 
   // Get displayed value (edited or original)
-  const getDisplayValue = useCallback((scorecard: AgentScorecard, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation'): number | null => {
+  const getDisplayValue = useCallback((scorecard: AgentScorecard, metricKey: 'callAht' | 'chatAht' | 'chatFrt' | 'orderEscalation' | 'productivityCount'): number | null => {
     const edits = editedMetrics[scorecard.agent.email.toLowerCase()];
     if (edits && edits[metricKey] !== undefined) {
       return edits[metricKey]!;
@@ -1019,18 +1035,46 @@ export default function TeamScorecard() {
                           
                           {showProductivity && (
                             <TableCell className="text-center">
-                              {metricApplies(scorecard.agent.position, 'productivity') ? (
-                                <div className={`px-2 py-1 rounded ${getScoreBgColor(scorecard.productivity, getMetricGoal('productivity'))}`}>
-                                  <span className={getScoreColor(scorecard.productivity, getMetricGoal('productivity'))}>
-                                    {scorecard.productivity !== null ? (
-                                      <>
-                                        {formatScore(scorecard.productivity)}
-                                        <span className="text-xs text-muted-foreground ml-1">({scorecard.productivityCount})</span>
-                                      </>
-                                    ) : '-'}
-                                  </span>
-                                </div>
-                              ) : (
+                              {metricApplies(scorecard.agent.position, 'productivity') ? (() => {
+                                const editedCount = getDisplayValue(scorecard, 'productivityCount');
+                                const displayCount = editedCount !== null ? editedCount : scorecard.productivityCount;
+                                const displayProd = scorecard.weeklyQuota > 0 && editedCount !== null && editedCount !== scorecard.productivityCount
+                                  ? (displayCount / scorecard.weeklyQuota) * 100
+                                  : scorecard.productivity;
+                                const isEdited = editedCount !== null && editedCount !== scorecard.productivityCountOriginal;
+                                return (
+                                  <div className={`px-2 py-1 rounded ${getScoreBgColor(displayProd, getMetricGoal('productivity'))}`}>
+                                    <span className={getScoreColor(displayProd, getMetricGoal('productivity'))}>
+                                      {displayProd !== null ? formatScore(displayProd) : '-'}
+                                    </span>
+                                    {canSave ? (
+                                      <span
+                                        className="text-xs text-muted-foreground ml-1 cursor-pointer hover:text-foreground transition-colors border-b border-dashed border-muted-foreground/50"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const input = prompt('Enter ticket count:', String(displayCount));
+                                          if (input !== null) {
+                                            const parsed = parseInt(input, 10);
+                                            if (!isNaN(parsed) && parsed >= 0) {
+                                              handleMetricEdit(scorecard.agent.email, 'productivityCount', parsed);
+                                            }
+                                          }
+                                        }}
+                                        title="Click to override ticket count"
+                                      >
+                                        ({displayCount})
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground ml-1">({displayCount})</span>
+                                    )}
+                                    {isEdited && (
+                                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 text-amber-600 border-amber-300 ml-1">
+                                        edited
+                                      </Badge>
+                                    )}
+                                  </div>
+                                );
+                              })() : (
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </TableCell>
