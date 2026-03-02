@@ -78,8 +78,9 @@ Deno.serve(async (req) => {
 
     // Search for messaging/chat tickets assigned to this agent in the date range
     // Using Zendesk Search API with explicit dates
-    const searchQuery = `type:ticket assignee:${agent_email} via:chat via:messaging created>=${start_date} created<=${end_date}`;
+    const searchQuery = `type:ticket assignee:${agent_email} created>=${start_date} created<=${end_date}`;
     let searchUrl = `https://${ZD2_SUBDOMAIN}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(searchQuery)}&per_page=100&sort_by=created_at&sort_order=asc`;
+    console.log(`Search URL: ${searchUrl}`);
     let hasMore = true;
 
     while (hasMore && searchUrl) {
@@ -93,6 +94,7 @@ Deno.serve(async (req) => {
 
       const data = await resp.json();
       const results = data.results || [];
+      console.log(`Search returned ${results.length} tickets (page), total count: ${data.count}`);
 
       for (const ticket of results) {
         processed++;
