@@ -165,12 +165,6 @@ Deno.serve(async (req) => {
       for (const ticket of tickets) {
         processed++;
 
-        // Skip solved/closed
-        if (ticket.status === "solved" || ticket.status === "closed") {
-          skipped++;
-          continue;
-        }
-
         const channel = ticket.via?.channel;
         const tags: string[] = ticket.tags || [];
 
