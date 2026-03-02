@@ -1,35 +1,35 @@
 
 
-# Plan: Daily Ticket Counts (EST-aligned) + Yesterday Metrics + Ticket ID
+# Fix: Zendesk API rejects `created:today` — requires `YYYY-MM-DD` format
 
-Since Zendesk's account timezone is already set to EST, `created:today` and `created:yesterday` filters will naturally align with EST midnight boundaries. No manual date computation needed.
+## Root Cause
+The Zendesk Search API does **not** support `created:today` as a date value. It returns:
+```
+422 - "Invalid search: Illegal date value (yyyy-mm-dd expected): created:today"
+```
 
-## Step 1: Update `fetch-zendesk-realtime` edge function
-**Lines 133-136**: Replace hardcoded `created>=2026-02-26` with `created:today` for all 4 queries:
-- `type:ticket status:new created:today` (awaiting)
-- `type:ticket created:today` (total today)
+All ticket counts are returning 0 because every search query fails.
 
-This makes counts reset daily at midnight EST automatically.
+## Fix
 
-## Step 2: Update `fetch-sla-responsiveness` edge function
-Add 2 new queries per instance in `fetchInstanceData`:
-- `totalYesterday`: `type:ticket created:yesterday`
-- `workedYesterday`: `type:ticket status>new created:yesterday`
+### 1. `fetch-zendesk-realtime` (lines 129-136)
+Add an EST date helper at the top of the handler, then replace `created:today` with `created>={todayEST}`:
 
-Add these to the `InstanceResult` interface and return them.
+```typescript
+// Compute today's date in EST
+const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+const todayEST = `${estNow.getFullYear()}-${String(estNow.getMonth()+1).padStart(2,'0')}-${String(estNow.getDate()).padStart(2,'0')}`;
+```
 
-## Step 3: Update `slaResponsivenessApi.ts`
-- Add `totalYesterday` and `workedYesterday` to `SlaInstanceData`
-- Update `combineInstances` to sum them
+Queries become:
+- `type:ticket status:new created>=${todayEST}`
+- `type:ticket created>=${todayEST}`
 
-## Step 4: Update `NewTicketsCounter.tsx`
-- Update popover text: "Daily counts reset at 12:00 AM EST"
-- Keep existing rows: Awaiting Response, Total New Tickets Today, Responded
-- Add 3 rows after Responded: **Total Yesterday**, **Worked Yesterday**, **Remaining Yesterday**
-- Update **Oldest New Ticket** to show ticket number: `#12345 — 6h 29m`
+### 2. `fetch-sla-responsiveness`
+Same fix — replace any `created:today` or `created:yesterday` with computed EST dates:
+- `created>=${todayEST}` for today queries
+- `created>=${yesterdayEST} created<${todayEST}` for yesterday queries
 
-## Technical Details
-- Zendesk Search API `created:today` / `created:yesterday` respects the account timezone (EST per screenshot)
-- No EST date computation needed in edge functions — Zendesk handles it natively
-- `oldestNewTicket.id` is already available in the data, just needs to be displayed
+### 3. No frontend changes needed
+The UI is correct; it's just receiving zeros from the broken API queries.
 
