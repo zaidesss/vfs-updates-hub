@@ -1,24 +1,43 @@
 
 
-## Investigation Results
+## Investigation Findings
 
-**The data exists in the database** (8 rows with real ticket volumes: 971, 892, 693, 643 for ZD1 and 233, 233, 197, 224 for ZD2). The RLS policy correctly allows authenticated users to SELECT. The user IS authenticated.
+**FRT and Resolution are null** for all 8 rows in the database. The root cause is in the backfill edge function: it queries Zendesk with `status:solved solved>=DATE`, but tickets from past days have already transitioned from "solved" to "closed" in Zendesk. The query needs to use `status>=solved` (which includes both solved and closed tickets) to capture historical resolution metrics.
 
-**Root cause**: The `useSlaHistory()` hook's Supabase query is likely failing silently on the client side. The Supabase JS client may return `{ data: null, error: null }` in certain edge cases (e.g., PostgREST response parsing issues with the JSONB `distribution` column), causing `data || []` to resolve to an empty array. The error is caught but `setSnapshots` receives `[]`. Additionally, there is a secondary issue: the `SlaCards` component lacks `forwardRef`, causing a React warning when used inside `TabsContent`.
+The same issue exists in the `snapshot-sla-daily` function for the nightly cron -- though less critical since it runs at end-of-day when tickets are still "solved".
 
 ## Plan
 
-### Step 1: Fix the `useSlaHistory` query
-In `src/lib/slaResponsivenessApi.ts`:
-- Add `console.log` debugging for the raw query response
-- Simplify the `.select()` to use `'*'` instead of listing individual columns (avoids potential column name mismatches with PostgREST)
-- Add a fallback: if `data` is null but `error` is also null, set an explicit error message
+### Step 1: Fix the backfill and snapshot edge functions
+**Files**: `supabase/functions/backfill-sla-snapshots/index.ts`, `supabase/functions/snapshot-sla-daily/index.ts`
+- Change the resolution query from `status:solved solved>=DATE` to `status>=solved solved>=DATE solved<NEXTDATE` so it captures both solved and closed tickets
+- This ensures historical backfills find tickets that have since been closed
 
-### Step 2: Fix the `SlaCards` forwardRef warning
-In `src/pages/operations/Responsiveness.tsx`:
-- Wrap the `SlaCards` component with `React.forwardRef` to eliminate the console warning (this is a secondary fix but good housekeeping)
+### Step 2: Re-run the backfill
+- Invoke the updated `backfill-sla-snapshots` function with `{"start_date": "2026-02-26"}` to repopulate FRT and resolution data
+
+### Step 3: Redesign the real-time top section
+**File**: `src/pages/operations/Responsiveness.tsx`
+- Remove the "Last 60 Minutes" card entirely
+- Replace the 4 summary cards + distribution chart with a single card matching the `NewTicketsCounter` MetricRow pattern:
+  - **Awaiting Response** (emphasized, destructive) -- current new tickets
+  - **Total New Tickets Today** -- total created today
+  - **Responded** -- total - awaiting
+  - Separator
+  - **Total Yesterday** / **Worked Yesterday** / **Remaining Yesterday**
+  - Separator
+  - **Oldest New Ticket** -- age + ID
+  - Separator
+  - **Avg First Reply (Today)** / **Avg Resolution (Today)**
+- Keep the Tabs (Combined / ZD1 / ZD2) around this redesigned card
+- Keep the Resolution Distribution chart below the card
+
+### Step 4: Add Resolution columns to weekly history table
+**File**: `src/components/sla/SlaHistorySection.tsx`
+- Add "Avg Resolution (ZD1)" and "Avg Resolution (ZD2)" columns to the weekly table (currently only has FRT)
+- The `WeeklyBucket` type already has `avgFullResolution` so this is just a UI addition
 
 ### Other considerations
-- The `distribution` JSONB column may contain null values from the backfill that could cause type casting issues. The fix in Step 1 (using `'*'`) should handle this gracefully.
-- The nightly cron job for `snapshot-sla-daily` should be verified separately to ensure future days populate correctly.
+- The `SlaInstanceData` interface already includes `lastHourNew`/`lastHourResponded` -- these fields will remain in the API response but won't be displayed. No API change needed.
+- The `combineInstances` function stays unchanged.
 
