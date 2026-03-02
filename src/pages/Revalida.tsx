@@ -21,6 +21,7 @@ import {
   fetchAllAttempts,
   fetchReviewQueue,
   fetchAnswersForAttempt,
+  fetchAgentNameMap,
   gradeAnswer,
   finalizeAttempt,
   RevalidaBatch,
@@ -39,6 +40,7 @@ import { SubmissionTable } from '@/components/revalida/SubmissionTable';
 import { ReviewQueue } from '@/components/revalida/ReviewQueue';
 import { GradingDialog } from '@/components/revalida/GradingDialog';
 import { SubmissionDetailDialog } from '@/components/revalida/SubmissionDetailDialog';
+import { ScoreOverrideDialog } from '@/components/revalida/ScoreOverrideDialog';
 import { BatchDetailDialog } from '@/components/revalida/BatchDetailDialog';
 import { FileText, Loader2 } from 'lucide-react';
 
@@ -67,6 +69,7 @@ export default function Revalida() {
   const [reviewQueue, setReviewQueue] = useState<RevalidaAttempt[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [agentNameMap, setAgentNameMap] = useState<Map<string, string>>(new Map());
 
   // Grading dialog state
   const [gradingAttempt, setGradingAttempt] = useState<RevalidaAttempt | null>(null);
@@ -82,9 +85,22 @@ export default function Revalida() {
   const [viewLoading, setViewLoading] = useState(false);
   const [gradingLoading, setGradingLoading] = useState(false);
   
-  // Batch detail dialog state (for batch eye icon)
+  // Batch detail dialog state
   const [viewingBatchDetail, setViewingBatchDetail] = useState<RevalidaBatch | null>(null);
   const [viewingBatchQuestions, setViewingBatchQuestions] = useState<RevalidaQuestion[]>([]);
+
+  // Score override dialog state
+  const [overrideAttempt, setOverrideAttempt] = useState<RevalidaAttempt | null>(null);
+  const [overrideBatch, setOverrideBatch] = useState<RevalidaBatch | null>(null);
+  const [overrideQuestions, setOverrideQuestions] = useState<RevalidaQuestion[]>([]);
+  const [overrideAnswers, setOverrideAnswers] = useState<RevalidaAnswer[]>([]);
+
+  // Load agent name map
+  useEffect(() => {
+    if (isAdmin) {
+      fetchAgentNameMap().then(setAgentNameMap).catch(console.error);
+    }
+  }, [isAdmin]);
 
   // Load batches
   const loadBatches = useCallback(async () => {
@@ -92,14 +108,12 @@ export default function Revalida() {
       const data = await fetchBatches();
       setBatches(data);
 
-      // Find active batch for agents
       const active = data.find(b => b.is_active);
       if (active) {
         const { batch, questions } = await fetchBatchById(active.id);
         setActiveBatch(batch);
         setActiveQuestions(questions);
 
-        // Load agent's attempt for this batch
         if (user?.email) {
           const attempt = await fetchMyAttempt(active.id, user.email);
           setMyAttempt(attempt);
@@ -198,7 +212,6 @@ export default function Revalida() {
       const questionsImport = questions.map(convertToImport);
       
       if (editingBatch) {
-        // Update existing batch
         await updateBatch(editingBatch.id, title, questionsImport);
         writeAuditLog({
           area: 'Revalida',
@@ -213,7 +226,6 @@ export default function Revalida() {
           description: `"${title}" has been saved.`,
         });
       } else {
-        // Create new batch
         const batch = await createBatch(title, questionsImport, user.email);
         writeAuditLog({
           area: 'Revalida',
@@ -238,7 +250,7 @@ export default function Revalida() {
     }
   };
 
-  // Send revalida email notification (non-blocking)
+  // Send revalida email notification
   const sendRevalidaNotification = async (batchTitle: string, version: 'v1' | 'v2') => {
     try {
       const testUrl = `${window.location.origin}/${version === 'v2' ? 'team-performance/revalida-v2' : 'team-performance/revalida'}`;
@@ -275,7 +287,6 @@ export default function Revalida() {
         batch = await createBatch(title, questionsImport, user.email);
       }
       
-      // Deactivate any currently active batch first
       const currentActive = batches.find(b => b.is_active);
       if (currentActive && currentActive.id !== batch.id) {
         await deactivateBatch(currentActive.id);
@@ -298,7 +309,6 @@ export default function Revalida() {
         description: 'The test is now available to agents for 48 hours.',
       });
       
-      // Send email notification (non-blocking)
       sendRevalidaNotification(title, 'v1');
       
       setShowQuestionBuilder(false);
@@ -312,7 +322,6 @@ export default function Revalida() {
 
   // Handle publish
   const handlePublish = async (batchId: string) => {
-    // Deactivate any currently active batch first
     const currentActive = batches.find(b => b.is_active);
     if (currentActive && currentActive.id !== batchId) {
       await deactivateBatch(currentActive.id);
@@ -320,7 +329,6 @@ export default function Revalida() {
 
     await publishBatch(batchId);
     
-    // Get batch title for notification
     const batch = batches.find(b => b.id === batchId);
     
     writeAuditLog({
@@ -338,7 +346,6 @@ export default function Revalida() {
       description: 'The test is now available to agents for 48 hours.',
     });
     
-    // Send email notification (non-blocking)
     if (batch) {
       sendRevalidaNotification(batch.title, 'v1');
     }
@@ -405,7 +412,7 @@ export default function Revalida() {
     }
   };
 
-  // Handle continue test (resume existing attempt without API call)
+  // Handle continue test
   const handleContinueTest = () => {
     if (myAttempt && activeBatch) {
       setShowTestForm(true);
@@ -436,7 +443,6 @@ export default function Revalida() {
     }
   };
 
-  // Check if agent can view detailed results (batch expired or deactivated)
   const handleSubmitTest = async (answers: { question_id: string; answer_value: string }[]) => {
     if (!myAttempt) return;
 
@@ -477,18 +483,16 @@ export default function Revalida() {
     }
   };
 
-  // Handle view attempt - works for all statuses
+  // Handle view attempt
   const handleViewAttempt = async (attemptId: string) => {
     const attempt = allAttempts.find(a => a.id === attemptId);
     if (!attempt) return;
     
-    // For needs_manual_review, open grading dialog if admin
     if (attempt.status === 'needs_manual_review' && isAdmin) {
       handleGradeAttempt(attemptId);
       return;
     }
     
-    // For all other statuses, open view-only detail dialog
     setViewLoading(true);
     try {
       const { batch, questions } = await fetchBatchById(attempt.batch_id);
@@ -506,6 +510,28 @@ export default function Revalida() {
       });
     } finally {
       setViewLoading(false);
+    }
+  };
+
+  // Handle edit attempt (score override)
+  const handleEditAttempt = async (attemptId: string) => {
+    const attempt = allAttempts.find(a => a.id === attemptId);
+    if (!attempt) return;
+
+    try {
+      const { batch, questions } = await fetchBatchById(attempt.batch_id);
+      const answers = await fetchAnswersForAttempt(attemptId);
+
+      setOverrideAttempt(attempt);
+      setOverrideBatch(batch);
+      setOverrideQuestions(questions);
+      setOverrideAnswers(answers);
+    } catch (error: any) {
+      toast({
+        title: 'Error loading submission',
+        description: error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -551,7 +577,7 @@ export default function Revalida() {
       area: 'Revalida',
       action_type: 'updated',
       entity_id: gradingAttempt.id,
-      entity_label: `Grading: ${gradingAttempt.agent_email}`,
+      entity_label: `Grading: ${agentNameMap.get(gradingAttempt.agent_email.toLowerCase()) || gradingAttempt.agent_email}`,
       changed_by: user.email,
       changes: { status: { old: 'needs_manual_review', new: 'graded' } },
       metadata: { version: 'v1', batch_id: gradingAttempt.batch_id },
@@ -664,6 +690,8 @@ export default function Revalida() {
                 selectedBatchId={selectedBatchId}
                 onBatchChange={setSelectedBatchId}
                 onViewAttempt={handleViewAttempt}
+                onEditAttempt={handleEditAttempt}
+                agentNameMap={agentNameMap}
                 isLoading={attemptsLoading}
               />
             </TabsContent>
@@ -673,6 +701,7 @@ export default function Revalida() {
                 attempts={reviewQueue}
                 batches={batches}
                 onGradeAttempt={handleGradeAttempt}
+                agentNameMap={agentNameMap}
                 isLoading={attemptsLoading}
               />
             </TabsContent>
@@ -721,10 +750,11 @@ export default function Revalida() {
           answers={gradingAnswers}
           onGradeAnswer={handleGradeAnswer}
           onFinalizeGrading={handleFinalizeGrading}
+          agentNameMap={agentNameMap}
           isLoading={gradingLoading}
         />
         
-        {/* Submission Detail Dialog (for viewing graded/submitted attempts) */}
+        {/* Submission Detail Dialog */}
         <SubmissionDetailDialog
           isOpen={!!viewingAttempt}
           onOpenChange={(open) => {
@@ -741,9 +771,30 @@ export default function Revalida() {
           answers={viewingAnswers}
           isAdmin={isAdmin}
           showCorrectAnswers={!isAdmin ? true : undefined}
+          agentNameMap={agentNameMap}
+        />
+
+        {/* Score Override Dialog */}
+        <ScoreOverrideDialog
+          isOpen={!!overrideAttempt}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOverrideAttempt(null);
+              setOverrideBatch(null);
+              setOverrideQuestions([]);
+              setOverrideAnswers([]);
+            }
+          }}
+          attempt={overrideAttempt}
+          batch={overrideBatch}
+          questions={overrideQuestions}
+          answers={overrideAnswers}
+          agentNameMap={agentNameMap}
+          graderEmail={user?.email || ''}
+          onSaved={() => loadAttempts()}
         />
         
-        {/* Batch Detail Dialog (for viewing batch questions) */}
+        {/* Batch Detail Dialog */}
         <BatchDetailDialog
           isOpen={!!viewingBatchDetail}
           onOpenChange={(open) => {

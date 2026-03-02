@@ -10,6 +10,7 @@ interface ReviewQueueProps {
   attempts: RevalidaAttempt[];
   batches: RevalidaBatch[];
   onGradeAttempt: (attemptId: string) => void;
+  agentNameMap?: Map<string, string>;
   isLoading: boolean;
 }
 
@@ -17,6 +18,7 @@ export function ReviewQueue({
   attempts,
   batches,
   onGradeAttempt,
+  agentNameMap,
   isLoading,
 }: ReviewQueueProps) {
   const getBatchTitle = (batchId: string) => {
@@ -65,7 +67,7 @@ export function ReviewQueue({
             <TableBody>
               {pendingAttempts.map((attempt) => (
                 <TableRow key={attempt.id}>
-                  <TableCell className="font-medium">{attempt.agent_email}</TableCell>
+                  <TableCell className="font-medium">{agentNameMap?.get(attempt.agent_email.toLowerCase()) || attempt.agent_email}</TableCell>
                   <TableCell>{getBatchTitle(attempt.batch_id)}</TableCell>
                   <TableCell>
                     {attempt.auto_total_points > 0 ? (

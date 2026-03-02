@@ -15,6 +15,7 @@ interface SubmissionDetailDialogProps {
   answers: RevalidaAnswer[];
   isAdmin: boolean;
   showCorrectAnswers?: boolean;
+  agentNameMap?: Map<string, string>;
 }
 
 export function SubmissionDetailDialog({
@@ -26,6 +27,7 @@ export function SubmissionDetailDialog({
   answers,
   isAdmin,
   showCorrectAnswers: showCorrectAnswersProp,
+  agentNameMap,
 }: SubmissionDetailDialogProps) {
   const showCorrectAnswers = showCorrectAnswersProp ?? isAdmin;
   if (!attempt || !batch) return null;
@@ -73,7 +75,7 @@ export function SubmissionDetailDialog({
               Submission Details
             </DialogTitle>
             <DialogDescription>
-              {attempt.agent_email} - {batch.title}
+              {agentNameMap?.get(attempt.agent_email.toLowerCase()) || attempt.agent_email} — {batch.title}
             </DialogDescription>
           </DialogHeader>
 
