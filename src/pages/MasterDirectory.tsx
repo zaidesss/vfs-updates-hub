@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
@@ -42,6 +41,48 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  FilterableColumnHeader,
+  ColumnFilter,
+  SortDirection,
+} from '@/components/master-directory/FilterableColumnHeader';
+
+// Column definitions for the table
+type ColDef = {
+  key: string;
+  label: string;
+  type: 'categorical' | 'numeric';
+  getValue: (e: DirectoryEntry) => string | number | null;
+  minWidth: string;
+};
+
+const COLUMNS: ColDef[] = [
+  { key: 'full_name', label: 'Full Name', type: 'categorical', getValue: e => e.full_name, minWidth: '150px' },
+  { key: 'position', label: 'Position', type: 'categorical', getValue: e => e.position, minWidth: '100px' },
+  { key: 'team_lead', label: 'Team Lead', type: 'categorical', getValue: e => e.team_lead, minWidth: '120px' },
+  { key: 'zendesk_instance', label: 'ZD Instance', type: 'categorical', getValue: e => e.zendesk_instance, minWidth: '100px' },
+  { key: 'support_account', label: 'Support Account', type: 'categorical', getValue: e => e.support_account, minWidth: '100px' },
+  { key: 'quota', label: 'Quota', type: 'numeric', getValue: e => e.quota, minWidth: '80px' },
+  { key: 'agent_name', label: 'Agent Name', type: 'categorical', getValue: e => e.agent_name, minWidth: '120px' },
+  { key: 'agent_tag', label: 'Agent Tag', type: 'categorical', getValue: e => e.agent_tag, minWidth: '100px' },
+  { key: 'ticket_assignment', label: 'Ticket Assignment', type: 'categorical', getValue: e => {
+    const isZD2 = !e.zendesk_instance || e.zendesk_instance === 'ZD2';
+    return isZD2 ? 'ZD2' : e.ticket_assignment_enabled ? 'On' : 'Off';
+  }, minWidth: '100px' },
+  { key: 'assignment_view', label: 'Assignment View', type: 'categorical', getValue: e => e.ticket_assignment_view_id || 'Auto', minWidth: '150px' },
+  { key: 'weekday_schedule', label: 'Weekday Schedule', type: 'categorical', getValue: e => e.weekday_schedule, minWidth: '130px' },
+  { key: 'weekday_total_hours', label: 'WD Hours', type: 'numeric', getValue: e => e.weekday_total_hours, minWidth: '80px' },
+  { key: 'wd_ticket_assign', label: 'WD Ticket Assign', type: 'categorical', getValue: e => e.wd_ticket_assign, minWidth: '100px' },
+  { key: 'weekend_schedule', label: 'Weekend Schedule', type: 'categorical', getValue: e => e.weekend_schedule, minWidth: '130px' },
+  { key: 'weekend_total_hours', label: 'WE Hours', type: 'numeric', getValue: e => e.weekend_total_hours, minWidth: '80px' },
+  { key: 'we_ticket_assign', label: 'WE Ticket Assign', type: 'categorical', getValue: e => e.we_ticket_assign, minWidth: '100px' },
+  { key: 'break_schedule', label: 'Break Schedule', type: 'categorical', getValue: e => e.break_schedule, minWidth: '130px' },
+  { key: 'weekday_ot_schedule', label: 'Weekday OT', type: 'categorical', getValue: e => e.weekday_ot_schedule, minWidth: '130px' },
+  { key: 'weekend_ot_schedule', label: 'Weekend OT', type: 'categorical', getValue: e => e.weekend_ot_schedule, minWidth: '130px' },
+  { key: 'ot_total_hours', label: 'OT Hours', type: 'numeric', getValue: e => e.ot_total_hours, minWidth: '80px' },
+  { key: 'overall_total_hours', label: 'Total Hours', type: 'numeric', getValue: e => e.overall_total_hours, minWidth: '80px' },
+  { key: 'day_off', label: 'Day Off', type: 'categorical', getValue: e => (e.day_off || []).join(', ') || null, minWidth: '120px' },
+];
 
 export default function MasterDirectory() {
   const { user, isAdmin } = useAuth();
@@ -52,11 +93,15 @@ export default function MasterDirectory() {
   const [originalData, setOriginalData] = useState<DirectoryEntry[]>([]);
   const [editedData, setEditedData] = useState<DirectoryEntry[]>([]);
   const [viewConfigs, setViewConfigs] = useState<ViewConfigOption[]>([]);
-  
-  // Filter states
+
+  // Top-level quick filters (kept for convenience)
   const [teamLeadFilter, setTeamLeadFilter] = useState('all');
   const [zdInstanceFilter, setZdInstanceFilter] = useState('all');
   const [positionFilter, setPositionFilter] = useState('all');
+
+  // Column-level filters and sorting
+  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({});
+  const [sortConfig, setSortConfig] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -79,11 +124,7 @@ export default function MasterDirectory() {
       fetchViewConfigOptions(),
     ]);
     if (directoryResult.error) {
-      toast({
-        title: 'Error',
-        description: directoryResult.error,
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: directoryResult.error, variant: 'destructive' });
     } else if (directoryResult.data) {
       setOriginalData(directoryResult.data);
       setEditedData(JSON.parse(JSON.stringify(directoryResult.data)));
@@ -92,63 +133,141 @@ export default function MasterDirectory() {
     setIsLoading(false);
   };
 
-  // Extract unique filter options from active entries
+  // Active (non-terminated) entries for computing filter options
+  const activeEntries = useMemo(() => editedData.filter(e => e.employment_status !== 'Terminated'), [editedData]);
+
+  // Compute unique values and numeric ranges per column
+  const columnMeta = useMemo(() => {
+    const meta: Record<string, { uniqueValues?: string[]; numericRange?: { min: number; max: number } }> = {};
+    COLUMNS.forEach(col => {
+      if (col.type === 'categorical') {
+        if (col.key === 'day_off') {
+          // Flatten day arrays
+          const allDays = new Set<string>();
+          activeEntries.forEach(e => (e.day_off || []).forEach(d => allDays.add(d)));
+          meta[col.key] = { uniqueValues: [...allDays].sort() };
+        } else {
+          const vals = [...new Set(activeEntries.map(e => {
+            const v = col.getValue(e);
+            return v != null ? String(v) : null;
+          }).filter(Boolean) as string[])].sort();
+          meta[col.key] = { uniqueValues: vals };
+        }
+      } else {
+        const nums = activeEntries.map(e => {
+          const v = col.getValue(e);
+          return typeof v === 'number' ? v : null;
+        }).filter((n): n is number => n !== null);
+        if (nums.length > 0) {
+          meta[col.key] = { numericRange: { min: Math.min(...nums), max: Math.max(...nums) } };
+        }
+      }
+    });
+    return meta;
+  }, [activeEntries]);
+
+  // Quick-filter options
   const filterOptions = useMemo(() => {
-    const activeEntries = editedData.filter(e => e.employment_status !== 'Terminated');
-    
     const teamLeads = [...new Set(activeEntries.map(e => e.team_lead).filter(Boolean))].sort() as string[];
     const zdInstances = [...new Set(activeEntries.map(e => e.zendesk_instance).filter(Boolean))].sort() as string[];
-    // Derive position categories from the position field stored in directory entries
     const positionCategories = [...new Set(activeEntries.map(e => resolvePositionCategory(e.position)).filter(Boolean))].sort() as string[];
-    
     return { teamLeads, zdInstances, positionCategories };
-  }, [editedData]);
+  }, [activeEntries]);
 
-  // Filter entries based on search and exclude terminated profiles
+  // Filtered + sorted entries
   const filteredEntries = useMemo(() => {
-    let result = editedData;
-    
-    // Exclude terminated profiles
-    result = result.filter(entry => entry.employment_status !== 'Terminated');
-    
-    // Apply dropdown filters
-    if (teamLeadFilter !== 'all') {
-      result = result.filter(entry => entry.team_lead === teamLeadFilter);
-    }
-    if (zdInstanceFilter !== 'all') {
-      result = result.filter(entry => entry.zendesk_instance === zdInstanceFilter);
-    }
-    if (positionFilter !== 'all') {
-      result = result.filter(entry => resolvePositionCategory(entry.position) === positionFilter);
-    }
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (entry) =>
-          entry.full_name?.toLowerCase().includes(query) ||
-          entry.email.toLowerCase().includes(query)
-      );
-    }
-    
-    return result;
-  }, [editedData, searchQuery, teamLeadFilter, zdInstanceFilter, positionFilter]);
+    let result = activeEntries;
 
-  // Reset filters handler
+    // Quick-access dropdown filters
+    if (teamLeadFilter !== 'all') result = result.filter(e => e.team_lead === teamLeadFilter);
+    if (zdInstanceFilter !== 'all') result = result.filter(e => e.zendesk_instance === zdInstanceFilter);
+    if (positionFilter !== 'all') result = result.filter(e => resolvePositionCategory(e.position) === positionFilter);
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(e => e.full_name?.toLowerCase().includes(q) || e.email.toLowerCase().includes(q));
+    }
+
+    // Column-level filters
+    Object.entries(columnFilters).forEach(([colKey, filter]) => {
+      const colDef = COLUMNS.find(c => c.key === colKey);
+      if (!colDef) return;
+
+      if (filter.type === 'categorical') {
+        if (colKey === 'day_off') {
+          result = result.filter(e => {
+            const days = e.day_off || [];
+            return days.some(d => filter.values.has(d));
+          });
+        } else {
+          result = result.filter(e => {
+            const v = colDef.getValue(e);
+            return filter.values.has(v != null ? String(v) : '');
+          });
+        }
+      } else if (filter.type === 'numeric') {
+        result = result.filter(e => {
+          const v = colDef.getValue(e);
+          if (typeof v !== 'number') return false;
+          if (filter.min !== undefined && v < filter.min) return false;
+          if (filter.max !== undefined && v > filter.max) return false;
+          return true;
+        });
+      }
+    });
+
+    // Sorting
+    if (sortConfig) {
+      const colDef = COLUMNS.find(c => c.key === sortConfig.column);
+      if (colDef) {
+        result = [...result].sort((a, b) => {
+          const va = colDef.getValue(a);
+          const vb = colDef.getValue(b);
+          if (va == null && vb == null) return 0;
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          let cmp = 0;
+          if (typeof va === 'number' && typeof vb === 'number') {
+            cmp = va - vb;
+          } else {
+            cmp = String(va).localeCompare(String(vb));
+          }
+          return sortConfig.direction === 'desc' ? -cmp : cmp;
+        });
+      }
+    }
+
+    return result;
+  }, [activeEntries, searchQuery, teamLeadFilter, zdInstanceFilter, positionFilter, columnFilters, sortConfig]);
+
+  const columnFilterCount = Object.keys(columnFilters).length;
+  const hasActiveFilters = teamLeadFilter !== 'all' || zdInstanceFilter !== 'all' || positionFilter !== 'all' || searchQuery.trim() !== '' || columnFilterCount > 0 || sortConfig !== null;
+
   const resetFilters = () => {
     setTeamLeadFilter('all');
     setZdInstanceFilter('all');
     setPositionFilter('all');
     setSearchQuery('');
+    setColumnFilters({});
+    setSortConfig(null);
   };
 
-  const hasActiveFilters = teamLeadFilter !== 'all' || 
-                           zdInstanceFilter !== 'all' || 
-                           positionFilter !== 'all' || 
-                           searchQuery.trim() !== '';
+  const handleColumnFilterChange = useCallback((colKey: string, filter: ColumnFilter | null) => {
+    setColumnFilters(prev => {
+      const next = { ...prev };
+      if (filter) next[colKey] = filter;
+      else delete next[colKey];
+      return next;
+    });
+  }, []);
 
-  // Update a single field for an entry (only for editable fields)
+  const handleSortChange = useCallback((colKey: string, direction: SortDirection) => {
+    if (direction === null) setSortConfig(null);
+    else setSortConfig({ column: colKey, direction });
+  }, []);
+
+  // Update a single field for an entry
   const updateField = (email: string, field: keyof DirectoryEntry, value: any) => {
     setEditedData((prev) =>
       prev.map((entry) => {
@@ -160,16 +279,9 @@ export default function MasterDirectory() {
 
   // Handle ticket assignment toggle
   const handleTicketAssignmentToggle = async (email: string, enabled: boolean) => {
-    // Update local state
     updateField(email, 'ticket_assignment_enabled', enabled);
-    
-    // Also update agent_profiles directly since this is the source of truth for this field
     try {
-      await supabase
-        .from('agent_profiles')
-        .update({ ticket_assignment_enabled: enabled })
-        .eq('email', email.toLowerCase());
-      
+      await supabase.from('agent_profiles').update({ ticket_assignment_enabled: enabled }).eq('email', email.toLowerCase());
       const agent = editedData.find(e => e.email.toLowerCase() === email.toLowerCase());
       writeAuditLog({
         area: 'Master Directory',
@@ -186,19 +298,10 @@ export default function MasterDirectory() {
   // Handle save
   const handleSave = async () => {
     setIsSaving(true);
-    const { success, error } = await bulkSaveEntries(
-      editedData,
-      originalData,
-      user?.email || ''
-    );
+    const { success, error } = await bulkSaveEntries(editedData, originalData, user?.email || '');
     setIsSaving(false);
-
     if (success) {
-      toast({
-        title: 'Saved',
-        description: 'All changes have been saved successfully.',
-      });
-      // Build summary of changed agents/fields
+      toast({ title: 'Saved', description: 'All changes have been saved successfully.' });
       const dirChanges: string[] = [];
       editedData.forEach((entry) => {
         const orig = originalData.find(o => o.id === entry.id);
@@ -217,11 +320,7 @@ export default function MasterDirectory() {
       });
       await loadData();
     } else {
-      toast({
-        title: 'Error',
-        description: error || 'Failed to save changes.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error || 'Failed to save changes.', variant: 'destructive' });
     }
   };
 
@@ -230,12 +329,8 @@ export default function MasterDirectory() {
     setIsSyncing(true);
     const { success, synced, error } = await syncAllProfilesToDirectory();
     setIsSyncing(false);
-
     if (success) {
-      toast({
-        title: 'Sync Complete',
-        description: `Successfully synced ${synced} profile(s) to Master Directory.`,
-      });
+      toast({ title: 'Sync Complete', description: `Successfully synced ${synced} profile(s) to Master Directory.` });
       writeAuditLog({
         area: 'Master Directory',
         action_type: 'updated',
@@ -243,17 +338,12 @@ export default function MasterDirectory() {
         changed_by: user?.email || '',
         metadata: { synced_count: synced },
       });
-      await loadData(); // Refresh the data
+      await loadData();
     } else {
-      toast({
-        title: 'Sync Failed',
-        description: error || 'Failed to sync profiles.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Sync Failed', description: error || 'Failed to sync profiles.', variant: 'destructive' });
     }
   };
 
-  // Access control
   if (!isAdmin) {
     return (
       <Layout>
@@ -287,12 +377,7 @@ export default function MasterDirectory() {
           </div>
           <div className="flex gap-2">
             <PageGuideButton pageId="master-directory" />
-            <Button
-              data-tour="sync-button"
-              onClick={handleSyncAll}
-              disabled={isSyncing || isSaving}
-              variant="outline"
-            >
+            <Button data-tour="sync-button" onClick={handleSyncAll} disabled={isSyncing || isSaving} variant="outline">
               <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
               {isSyncing ? 'Syncing...' : 'Sync from Bios'}
             </Button>
@@ -302,9 +387,7 @@ export default function MasterDirectory() {
               disabled={!hasChanges || isSaving}
               className={cn(
                 'transition-all',
-                hasChanges
-                  ? 'bg-primary hover:bg-primary/90'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                hasChanges ? 'bg-primary hover:bg-primary/90' : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
               )}
             >
               <Save className="h-4 w-4 mr-2" />
@@ -315,18 +398,11 @@ export default function MasterDirectory() {
 
         {/* Filter Bar */}
         <div className="flex flex-wrap items-center gap-3" data-tour="filter-bar">
-          {/* Search */}
           <div className="relative w-full sm:w-auto sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search agents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+            <Input placeholder="Search agents..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
           </div>
-          
-          {/* Team Lead Filter */}
+
           <Select value={teamLeadFilter} onValueChange={setTeamLeadFilter}>
             <SelectTrigger className="w-[160px] bg-background border-border">
               <SelectValue placeholder="Team Lead" />
@@ -338,8 +414,7 @@ export default function MasterDirectory() {
               ))}
             </SelectContent>
           </Select>
-          
-          {/* Zendesk Instance Filter */}
+
           <Select value={zdInstanceFilter} onValueChange={setZdInstanceFilter}>
             <SelectTrigger className="w-[140px] bg-background border-border">
               <SelectValue placeholder="ZD Instance" />
@@ -351,8 +426,7 @@ export default function MasterDirectory() {
               ))}
             </SelectContent>
           </Select>
-          
-          {/* Position Filter */}
+
           <Select value={positionFilter} onValueChange={setPositionFilter}>
             <SelectTrigger className="w-[150px] bg-background border-border">
               <SelectValue placeholder="Position" />
@@ -364,23 +438,20 @@ export default function MasterDirectory() {
               ))}
             </SelectContent>
           </Select>
-          
-          {/* Reset Button */}
+
           {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetFilters}
-              className="text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4 mr-1" />
               Reset
+              {columnFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{columnFilterCount}</Badge>
+              )}
             </Button>
           )}
         </div>
 
-        {/* Table with sticky header and frozen first column */}
-        <div 
+        {/* Table */}
+        <div
           className="border rounded-lg overflow-auto data-table-scroll"
           style={{ height: 'calc(100vh - 220px)' }}
           data-tour="directory-table"
@@ -389,35 +460,39 @@ export default function MasterDirectory() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted">
-                  <TableHead className="min-w-[50px] sticky left-0 top-0 z-30 bg-muted">
-                    
-                  </TableHead>
-                  <TableHead className="min-w-[150px] sticky left-[50px] top-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
-                    Full Name
-                  </TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Position</TableHead>
-                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Team Lead</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Zendesk Instance</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Support Account</TableHead>
-                  
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Quota</TableHead>
-                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Agent Name</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Agent Tag</TableHead>
-                  
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">Ticket Assignment</TableHead>
-                  <TableHead className="min-w-[150px] sticky top-0 z-20 bg-muted">Assignment View</TableHead>
-                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday Schedule</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">WD Hours</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WD Ticket Assign</TableHead>
-                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekend Schedule</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">WE Hours</TableHead>
-                  <TableHead className="min-w-[100px] sticky top-0 z-20 bg-muted">WE Ticket Assign</TableHead>
-                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Break Schedule</TableHead>
-                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekday OT</TableHead>
-                  <TableHead className="min-w-[130px] sticky top-0 z-20 bg-muted">Weekend OT</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">OT Hours</TableHead>
-                  <TableHead className="min-w-[80px] sticky top-0 z-20 bg-muted">Total Hours</TableHead>
-                  <TableHead className="min-w-[120px] sticky top-0 z-20 bg-muted">Day Off</TableHead>
+                  {/* Row number / link column - not filterable */}
+                  <th className="min-w-[50px] sticky left-0 top-0 z-30 bg-muted h-12 px-4 text-left align-middle font-medium text-muted-foreground" />
+
+                  {/* Full Name - frozen */}
+                  <FilterableColumnHeader
+                    columnKey="full_name"
+                    label="Full Name"
+                    filterType="categorical"
+                    uniqueValues={columnMeta.full_name?.uniqueValues}
+                    activeFilter={columnFilters.full_name}
+                    sortDirection={sortConfig?.column === 'full_name' ? sortConfig.direction : null}
+                    onFilterChange={handleColumnFilterChange}
+                    onSortChange={handleSortChange}
+                    className="min-w-[150px] sticky left-[50px] top-0 z-30 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]"
+                  />
+
+                  {/* Remaining columns */}
+                  {COLUMNS.slice(1).map(col => (
+                    <FilterableColumnHeader
+                      key={col.key}
+                      columnKey={col.key}
+                      label={col.label}
+                      filterType={col.type}
+                      uniqueValues={columnMeta[col.key]?.uniqueValues}
+                      numericRange={columnMeta[col.key]?.numericRange}
+                      activeFilter={columnFilters[col.key]}
+                      sortDirection={sortConfig?.column === col.key ? sortConfig.direction : null}
+                      onFilterChange={handleColumnFilterChange}
+                      onSortChange={handleSortChange}
+                      className={cn('sticky top-0 z-20 bg-muted', `min-w-[${col.minWidth}]`)}
+                      style={{ minWidth: col.minWidth }}
+                    />
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -433,23 +508,22 @@ export default function MasterDirectory() {
                         </Link>
                       )}
                     </TableCell>
-                    
-                    {/* Full Name - frozen column */}
+
+                    {/* Full Name - frozen */}
                     <TableCell className="font-medium sticky left-[50px] z-10 bg-background shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                       {entry.full_name || '-'}
                     </TableCell>
-                    
+
                     {/* Read-only synced fields */}
                     <TableCell className="text-muted-foreground">{entry.position || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.team_lead || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.zendesk_instance || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.support_account || '-'}</TableCell>
-                    
                     <TableCell className="text-muted-foreground text-center">{entry.quota ?? '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{entry.agent_tag || '-'}</TableCell>
-                    
-                    {/* Ticket Assignment Toggle - EDITABLE (disabled for ZD2) */}
+
+                    {/* Ticket Assignment Toggle */}
                     <TableCell>
                       {(() => {
                         const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
@@ -468,30 +542,24 @@ export default function MasterDirectory() {
                                   </div>
                                 </TooltipTrigger>
                                 {isZD2orNull && (
-                                  <TooltipContent>
-                                    <p>Not available for ZD2</p>
-                                  </TooltipContent>
+                                  <TooltipContent><p>Not available for ZD2</p></TooltipContent>
                                 )}
                               </Tooltip>
                             </TooltipProvider>
-                            <span className={cn(
-                              "text-xs",
-                              isZD2orNull ? "text-amber-600" : "text-muted-foreground"
-                            )}>
+                            <span className={cn("text-xs", isZD2orNull ? "text-amber-600" : "text-muted-foreground")}>
                               {isZD2orNull ? 'ZD2' : (entry.ticket_assignment_enabled ? 'On' : 'Off')}
                             </span>
                           </div>
                         );
                       })()}
                     </TableCell>
-                    
-                    {/* Assignment View Dropdown - EDITABLE */}
+
+                    {/* Assignment View Dropdown */}
                     <TableCell>
                       {(() => {
                         const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
                         const isDisabled = isZD2orNull || !entry.ticket_assignment_enabled;
                         const availableViews = viewConfigs.filter(v => v.zendesk_instance === entry.zendesk_instance);
-                        
                         return (
                           <Select
                             value={entry.ticket_assignment_view_id || 'none'}
@@ -511,12 +579,12 @@ export default function MasterDirectory() {
                         );
                       })()}
                     </TableCell>
-                    
-                    {/* Weekday Schedule - read-only */}
+
+                    {/* Weekday Schedule */}
                     <TableCell className="text-muted-foreground text-xs">{entry.weekday_schedule || '-'}</TableCell>
                     <TableCell className="text-center font-medium">{entry.weekday_total_hours.toFixed(1)}</TableCell>
-                    
-                    {/* WD Ticket Assign - EDITABLE (disabled for ZD2) */}
+
+                    {/* WD Ticket Assign */}
                     <TableCell>
                       {(() => {
                         const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
@@ -535,21 +603,19 @@ export default function MasterDirectory() {
                                 </div>
                               </TooltipTrigger>
                               {isZD2orNull && (
-                                <TooltipContent>
-                                  <p>Not available for ZD2</p>
-                                </TooltipContent>
+                                <TooltipContent><p>Not available for ZD2</p></TooltipContent>
                               )}
                             </Tooltip>
                           </TooltipProvider>
                         );
                       })()}
                     </TableCell>
-                    
-                    {/* Weekend Schedule - read-only */}
+
+                    {/* Weekend Schedule */}
                     <TableCell className="text-muted-foreground text-xs">{entry.weekend_schedule || '-'}</TableCell>
                     <TableCell className="text-center font-medium">{entry.weekend_total_hours.toFixed(1)}</TableCell>
-                    
-                    {/* WE Ticket Assign - EDITABLE (disabled for ZD2) */}
+
+                    {/* WE Ticket Assign */}
                     <TableCell>
                       {(() => {
                         const isZD2orNull = !entry.zendesk_instance || entry.zendesk_instance === 'ZD2';
@@ -568,24 +634,22 @@ export default function MasterDirectory() {
                                 </div>
                               </TooltipTrigger>
                               {isZD2orNull && (
-                                <TooltipContent>
-                                  <p>Not available for ZD2</p>
-                                </TooltipContent>
+                                <TooltipContent><p>Not available for ZD2</p></TooltipContent>
                               )}
                             </Tooltip>
                           </TooltipProvider>
                         );
                       })()}
                     </TableCell>
-                    
-                    {/* Break & OT Schedules - read-only */}
+
+                    {/* Break & OT Schedules */}
                     <TableCell className="text-muted-foreground text-xs">{entry.break_schedule || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">{entry.weekday_ot_schedule || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">{entry.weekend_ot_schedule || '-'}</TableCell>
                     <TableCell className="text-center font-medium">{entry.ot_total_hours.toFixed(1)}</TableCell>
                     <TableCell className="text-center font-semibold text-primary">{entry.overall_total_hours.toFixed(1)}</TableCell>
-                    
-                    {/* Day Off - read-only badges */}
+
+                    {/* Day Off */}
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {(entry.day_off || []).length > 0 ? (
@@ -605,9 +669,7 @@ export default function MasterDirectory() {
         </div>
 
         {filteredEntries.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            No agents found.
-          </div>
+          <div className="text-center py-8 text-muted-foreground">No agents found.</div>
         )}
       </div>
     </Layout>
