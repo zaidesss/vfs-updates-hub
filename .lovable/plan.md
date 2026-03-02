@@ -1,37 +1,63 @@
 
 
-## Investigation Findings
+## Schedule Changes Detected
 
-**Database state**: Only Feb 26 has FRT/ART values (ZD1: 23m FRT, 7m ART; ZD2: 2432m FRT, 2989m ART). Feb 27 through Mar 1 were **overwritten with zeros** during the last backfill re-run -- the edge function likely wasn't redeployed before the backfill was triggered, so the old code ran and returned 0s.
+I compared the reference images against the database. Here's a summary of all changes needed:
 
-**Real-time FRT/ART** (SLA Monitor card): The `fetch-sla-responsiveness` function correctly fetches today's solved tickets and computes FRT/ART. The screenshot shows values (2h 29m FRT, 17h 53m ART), so this part works. No code change needed here.
+### Agents with Changes (14 of 17)
 
-**Historical FRT/ART** (Historical Trends section): All showing "—" because the DB has nulls for Feb 27+. Need to re-run the backfill after confirming the edge function is deployed.
+| Agent | What Changed |
+|---|---|
+| Bryan Santiago | Break 12:00-12:30→10:00-10:30, Off Wed-Thu→Tue-Wed |
+| Catherine Jane Plaza | Break 12:30-1:00→11:00-11:30 |
+| Jennifer Katigbak | Break 1:00-1:30→1:30-2:00 |
+| Kent Michael Cerbeto | Off Sun-Mon→Fri-Sat, Break 1:00-1:30→12:00-12:30 |
+| Lorenz Philip Malanog | Break 12:00-12:30→1:00-1:30 |
+| Reza Joy Docto | Break 12:00-12:30→2:00-2:30 |
+| Sheena Jane Camposo | Break 1:00-1:30→12:30-1:00 |
+| Pauline Carbajosa | Off Mon-Sun→Tue-Wed, Break 1:00-1:30→12:00-12:30 |
+| Precious Mae Gagarra | Break 11:30-12:00→1:00-1:30 |
+| Princess Infinity F. Medina | Off Thu-Fri→Fri-Sat, Break 12:00-12:30→11:30-12:00 |
+| Russell Kent I. Quieta | Shift 4:30→3:30 PM, Break 12:30-1:00→11:00-11:30 |
+| Stephen Martinez | Break 12:30-1:00→2:00-2:30, OT added 5:30-7:30 PM |
+| Trisha Nicolle Arancillo | Off Sun-Mon→Tue-Wed, Break 12:30-1:00→11:30-12:00 |
+| Will Angeline Reyes | Shift 9:00-4:30→2:00-6:00, Break removed, OT added 6:00-7:00 PM |
 
-**Missing metric**: "Total New Tickets Since Feb 26" needs to be added to the SLA Monitor card.
+**No changes**: Nikki Ignacio, Richelle Cayabyab, Ruth Gajo
 
-## Plan
+### Implementation Plan
 
-### Step 1: Re-deploy backfill edge function and re-run
-- The `backfill-sla-snapshots` function code already has the correct `status>=solved` query
-- Deploy the edge function explicitly, then re-invoke it with `{"start_date": "2026-02-26"}` to repopulate all rows with correct ticket counts and FRT/ART values
+#### Step 1: Apply schedule changes to all 14 agents
+For each agent, update three tables simultaneously:
+- **agent_profiles** — update the permanent record (break, day_off, per-day schedules, OT fields)
+- **agent_schedule_assignments** — upsert for week `2026-03-02` (current week) to bypass the deferment logic and take effect immediately
+- **agent_directory** — sync the matching fields
 
-### Step 2: Add "Total New Tickets Since Feb 26" to SLA Monitor
-**File**: `src/pages/operations/Responsiveness.tsx`
-- Import and use the `useSlaHistory` hook alongside the existing `useSlaResponsiveness` hook
-- Compute cumulative total from snapshots: `snapshots.reduce((sum, s) => sum + s.total_new, 0)`
-- Add a new `MetricRow` at the top of the `SlaSummaryCard` (before "Total Yesterday") with:
-  - Icon: `Mail` or `Ticket`
-  - Label: "Total New Tickets (Since Feb 26)"
-  - Value: the cumulative total
-  - Show ZD1/ZD2 split in the `sub` text for combined tab
-  - Followed by a separator
+This is done via SQL UPDATE/UPSERT statements. For agents whose day_off changed, all per-day schedule and OT columns must be re-nullified for new off-days and populated for new working days.
 
-### Step 3: Pass history data to SlaSummaryCard
-- The `SlaSummaryCard` component needs to accept cumulative ticket count as a prop (computed from `useSlaHistory` snapshots in the parent)
-- Add props for `totalSinceFeb26`, `totalSinceFeb26Zd1`, `totalSinceFeb26Zd2`
+#### Step 2: Build Bulk Schedule Import feature
+Create a new Admin-accessible page/dialog with two import modes:
 
-### Other considerations
-- The `useSlaHistory` hook already fetches from the `sla_daily_snapshots` table with `.gte('date', '2026-02-26')`, so it will automatically reflect the repopulated data
-- Once the backfill succeeds, the "All Time" summary cards (Avg First Reply, Avg Resolution) and the Weekly/Daily tables will all populate automatically since the UI code already reads `avg_first_reply_minutes` and `avg_full_resolution_minutes` from the snapshots
+**Mode A: Coverage Board Import** (current week only)
+- Creates `coverage_overrides` entries for remaining days this week
+- Does NOT touch agent_profiles — temporary, expires end of week
+- Good for one-time adjustments
+
+**Mode B: Agent Profile Import** (permanent, immediate)
+- Updates `agent_profiles` directly
+- Upserts `agent_schedule_assignments` for current week (bypasses deferment)
+- Syncs `agent_directory`
+- Changes persist for all future weeks
+
+**Import format** (tab-separated, paste-friendly from spreadsheet):
+```text
+AGENT	SHIFT	BREAK	OFF	OT
+Bryan Santiago	9:00 AM-3:30 PM	10:00 AM-10:30 AM	TUE-WED	
+Catherine Jane Plaza	9:00 AM-3:30 PM	11:00 AM-11:30 AM	WED-THU	
+```
+
+The system provides a template download button and validates agent names against existing profiles before applying.
+
+#### Step 3: Verify changes across all consumers
+Spot-check that Dashboard, Team Status Board, Coverage Board, and Shift Schedule Table all reflect the updated schedules for the current week.
 
