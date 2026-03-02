@@ -1,41 +1,49 @@
 
 
-## Plan: Fix Duplicate Auto-Logout Events & Add Idempotency
+## Plan: Add Score Override Dialog + Display Full Agent Names in Revalida V1
 
-### Problem Summary
-Precious Mae Gagarra has **10 duplicate SYSTEM_AUTO_LOGOUT events** (7 on Mar 1, 3 on Feb 27). No other agents are affected. The root cause is that both the cron job (`auto-logout-stale-sessions`) and the client-side function (`checkAndCleanupStaleSession`) insert LOGOUT events without checking if one already exists. The notification call on line 553 fires even when a duplicate report already exists.
+### Two features to implement:
 
-### Step 1: Clean up Precious's duplicate events
-- Delete all but the earliest `SYSTEM_AUTO_LOGOUT` event for each (profile_id, date) combination
-- Affects 2 dates: Feb 27 (keep 1, delete 2) and Mar 1 (keep 1, delete 6)
+### Feature 1: Display Full Agent Names Instead of Emails
+Currently, `SubmissionTable`, `ReviewQueue`, `GradingDialog`, and `SubmissionDetailDialog` all display raw `agent_email`. We need to resolve emails to full names from `agent_profiles`.
 
-### Step 2: Add idempotency to client-side `checkAndCleanupStaleSession`
-**File:** `src/lib/agentDashboardApi.ts` (lines ~507-558)
+**Approach:** Create a shared hook/utility that fetches a name map from `agent_profiles` once, then pass it through the components.
 
-Before inserting the LOGOUT event (line 508), query `profile_events` for an existing `SYSTEM_AUTO_LOGOUT` on the same profile and date. If found, skip the insert, report creation, and notification — just update `profile_status` and return.
+#### Step 1: Add name resolution to `Revalida.tsx`
+- Fetch all agent profiles (`email`, `full_name`) on mount into a `Map<string, string>`
+- Pass this map as `agentNameMap` prop to `SubmissionTable`, `ReviewQueue`, `GradingDialog`, and `SubmissionDetailDialog`
 
-Also move the `sendStatusAlertNotification` call (line 553) **inside** the `if (!existingReport)` block (after line 549) so it only fires when a new report is actually created.
+#### Step 2: Update display components
+- **`SubmissionTable.tsx`** — Replace `attempt.agent_email` with resolved name (email as fallback)
+- **`ReviewQueue.tsx`** — Same change in the Agent column
+- **`GradingDialog.tsx`** — Show resolved name in the dialog description
+- **`SubmissionDetailDialog.tsx`** — Show resolved name in the dialog description
 
-### Step 3: Add idempotency to cron job `auto-logout-stale-sessions`
-**File:** `supabase/functions/auto-logout-stale-sessions/index.ts`
+---
 
-Before inserting the LOGOUT event, check for an existing `SYSTEM_AUTO_LOGOUT` event for the same `profile_id` on the same date. If found, skip entirely and just ensure `profile_status` is set to `LOGGED_OUT`.
+### Feature 2: Score Override Dialog (Edit Icon)
+Allow admins to manually override scores for any submitted/graded attempt.
 
-### Technical Detail
+#### Step 3: Add `overrideAnswer` and `recalculateAttemptScore` to `revalidaApi.ts`
+- `overrideAnswer(answerId, pointsAwarded, isCorrect, feedback)` — updates `revalida_answers` row
+- `recalculateAttemptScore(attemptId, graderEmail)` — recalculates `auto_score_points`, `manual_score_points`, `final_percent` from all answers, updates `revalida_attempts`
 
-```text
-Before (both functions):
-  1. Insert LOGOUT event         ← no guard
-  2. Check for duplicate report
-  3. Insert report if new
-  4. Send notification           ← always fires
+#### Step 4: Create `ScoreOverrideDialog.tsx`
+- Similar layout to `SubmissionDetailDialog` but with editable points fields for each answer
+- Shows question prompt, agent answer, correct answer (for MCQ/TF), and an editable points input + feedback textarea
+- "Save & Recalculate" button that calls `overrideAnswer` for changed answers, then `recalculateAttemptScore`
+- Overridden answers get a visual "Overridden" badge
+- Audit log entry written on save
 
-After (both functions):
-  1. Check for existing SYSTEM_AUTO_LOGOUT event on same date
-  2. If exists → skip to step 6 (just ensure status is LOGGED_OUT)
-  3. Insert LOGOUT event
-  4. Check for duplicate report
-  5. Insert report + send notification if new
-  6. Update profile_status
-```
+#### Step 5: Add edit icon to `SubmissionTable.tsx`
+- Add a `PenTool` icon button next to the existing `Eye` button in the Actions column
+- Only visible for `graded` or `needs_manual_review` status (submitted attempts that have answers)
+- Wire to open `ScoreOverrideDialog` via new `onEditAttempt` callback
+
+#### Step 6: Wire up in `Revalida.tsx`
+- Add state for the override dialog (similar to grading/viewing dialog pattern)
+- Add `handleEditAttempt` handler that loads batch, questions, answers
+- Pass `onEditAttempt` to `SubmissionTable`
+- Render `ScoreOverrideDialog`
+- After save, reload attempts
 
