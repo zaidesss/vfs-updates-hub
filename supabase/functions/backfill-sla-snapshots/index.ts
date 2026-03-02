@@ -27,9 +27,15 @@ function authHeaders(config: ZendeskConfig): Record<string, string> {
 
 async function searchCount(config: ZendeskConfig, query: string): Promise<number> {
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=1`;
+  console.log(`Search: ${config.subdomain} query="${query}"`);
   const res = await fetch(url, { headers: authHeaders(config) });
-  if (!res.ok) { await res.text(); return 0; }
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Search failed [${config.subdomain}]: ${res.status} - ${errText}`);
+    return 0;
+  }
   const data = await res.json();
+  console.log(`Search result: count=${data.count}`);
   return data.count ?? 0;
 }
 

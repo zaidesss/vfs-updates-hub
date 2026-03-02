@@ -9,6 +9,7 @@ import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail, Cale
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   useSlaResponsiveness,
+  useSlaHistory,
   formatAge,
   formatResolutionTime,
   combineInstances,
@@ -49,28 +50,34 @@ function MetricRow({ icon, label, value, sub, variant, isLoading, emphasized }: 
 }
 
 /* ── SLA Summary Card (single consolidated card per tab) ── */
-function SlaSummaryCard({ data, isLoading, zd1, zd2, showSplit }: {
+function SlaSummaryCard({ data, isLoading, zd1, zd2, showSplit, totalSinceFeb26, totalSinceFeb26Zd1, totalSinceFeb26Zd2 }: {
   data: SlaInstanceData | null;
   isLoading: boolean;
   zd1?: SlaInstanceData | null;
   zd2?: SlaInstanceData | null;
   showSplit: boolean;
+  totalSinceFeb26?: number;
+  totalSinceFeb26Zd1?: number;
+  totalSinceFeb26Zd2?: number;
 }) {
   const d = data;
 
-  // Today metrics
-  const totalToday = (d?.lastHourNew ?? 0) + (d?.remainingYesterday ?? 0) + (d?.lastHourResponded ?? 0);
-  // We don't actually have totalToday from the combined data — use the real-time fields
-  // Actually the SLA edge function gives us lastHourNew/lastHourResponded for 60-min window,
-  // but we want daily totals. The real-time data from the dashboard uses zendesk-realtime.
-  // For the SLA page we'll use what we have: remainingYesterday, totalYesterday, workedYesterday, resolution, oldest.
-
-  const awaiting = 0; // We don't have real-time new ticket count from SLA data alone
-  // The SLA data has lastHourNew but that's 60-min, not daily awaiting.
-
   return (
     <div className="space-y-3">
-      {/* Yesterday Section */}
+      {/* Total New Tickets Since Feb 26 */}
+      {totalSinceFeb26 != null && (
+        <>
+          <MetricRow
+            icon={<Mail />}
+            label="Total New Tickets (Since Feb 26)"
+            value={totalSinceFeb26}
+            sub={showSplit && totalSinceFeb26Zd1 != null && totalSinceFeb26Zd2 != null ? `(ZD1: ${totalSinceFeb26Zd1.toLocaleString()} / ZD2: ${totalSinceFeb26Zd2.toLocaleString()})` : undefined}
+            variant="default"
+            isLoading={isLoading}
+          />
+          <div className="border-t border-border/50" />
+        </>
+      )}
       <MetricRow
         icon={<Calendar />}
         label="Total Yesterday"
@@ -192,8 +199,14 @@ function DistributionChart({ data, isLoading }: { data: SlaInstanceData | null; 
 /* ── Main Page ── */
 const Responsiveness = () => {
   const { data, isLoading, error, refresh } = useSlaResponsiveness();
+  const { snapshots } = useSlaHistory();
 
   const combined = data ? combineInstances(data.zd1, data.zd2) : null;
+
+  // Compute cumulative totals from historical snapshots
+  const totalSinceFeb26 = snapshots.reduce((s, d) => s + d.total_new, 0);
+  const totalSinceFeb26Zd1 = snapshots.filter(s => s.zd_instance === 'ZD1').reduce((s, d) => s + d.total_new, 0);
+  const totalSinceFeb26Zd2 = snapshots.filter(s => s.zd_instance === 'ZD2').reduce((s, d) => s + d.total_new, 0);
 
   const fetchedAt = data?.fetchedAt
     ? new Date(data.fetchedAt).toLocaleTimeString('en-US', {
@@ -260,7 +273,8 @@ const Responsiveness = () => {
                     </Popover>
                   </div>
                 </div>
-                <SlaSummaryCard data={combined} isLoading={isLoading} zd1={data?.zd1} zd2={data?.zd2} showSplit={true} />
+                <SlaSummaryCard data={combined} isLoading={isLoading} zd1={data?.zd1} zd2={data?.zd2} showSplit={true}
+                  totalSinceFeb26={totalSinceFeb26} totalSinceFeb26Zd1={totalSinceFeb26Zd1} totalSinceFeb26Zd2={totalSinceFeb26Zd2} />
               </CardContent>
             </Card>
             <DistributionChart data={combined} isLoading={isLoading} />
@@ -269,7 +283,7 @@ const Responsiveness = () => {
           <TabsContent value="zd1" className="mt-4 space-y-6">
             <Card>
               <CardContent className="py-5 px-6">
-                <SlaSummaryCard data={data?.zd1 ?? null} isLoading={isLoading} showSplit={false} />
+                <SlaSummaryCard data={data?.zd1 ?? null} isLoading={isLoading} showSplit={false} totalSinceFeb26={totalSinceFeb26Zd1} />
               </CardContent>
             </Card>
             <DistributionChart data={data?.zd1 ?? null} isLoading={isLoading} />
@@ -278,7 +292,7 @@ const Responsiveness = () => {
           <TabsContent value="zd2" className="mt-4 space-y-6">
             <Card>
               <CardContent className="py-5 px-6">
-                <SlaSummaryCard data={data?.zd2 ?? null} isLoading={isLoading} showSplit={false} />
+                <SlaSummaryCard data={data?.zd2 ?? null} isLoading={isLoading} showSplit={false} totalSinceFeb26={totalSinceFeb26Zd2} />
               </CardContent>
             </Card>
             <DistributionChart data={data?.zd2 ?? null} isLoading={isLoading} />
