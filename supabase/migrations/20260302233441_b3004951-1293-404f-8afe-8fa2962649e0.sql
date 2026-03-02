@@ -1,0 +1,1 @@
+ALTER TABLE public.zendesk_agent_metrics ADD COLUMN IF NOT EXISTS productivity_count_override integer DEFAULT NULL;
