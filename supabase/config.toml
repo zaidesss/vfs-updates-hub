@@ -177,3 +177,9 @@ verify_jwt = false
 
 [functions.snapshot-sla-daily]
 verify_jwt = false
+
+[functions.zd-reconcile-converted-emails]
+verify_jwt = false
+
+[functions.zd-backfill-email-counted]
+verify_jwt = false
