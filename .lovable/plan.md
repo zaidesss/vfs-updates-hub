@@ -1,20 +1,28 @@
 
 
-## Step 2: Manual Insert of Ticket Logs for Nikki and Joy
+## Fix: Reconciliation Search Query Returns No Results
 
-### Deduplication Results
-- **Nikki** (`nikki` / `ignacionikki7@gmail.com`): **101 unique tickets** after removing duplicates (47648, 48475, 48094, 47997, 48597, 48637, 48497, 47443, 47121, 46663, 46353, 46108, 48666)
-- **Joy** (`rezajoy` / `joydocto56@gmail.com`): **7 unique tickets** (48226, 48438, 48440, 48442, 48446, 48449, 48453)
-- **Total**: 108 rows
+### Root Cause
+The Zendesk Search API query uses `via:chat via:messaging` which doesn't work — multiple `via:` filters conflict (AND logic), and `via:messaging` isn't a standard Zendesk search term.
 
-### Insert Details
-- `zd_instance`: `customerserviceadvocateshelp`
-- `ticket_type`: `Email`
-- `status`: `Solved`
-- `is_ot`: false
-- `is_autosolved`: false
-- Timestamps distributed across Feb 23 – Mar 1, 2026 (7 days), during EST business hours (9am–5pm), staggered naturally
+### Fix
+**In `supabase/functions/zd-reconcile-converted-emails/index.ts`:**
 
-### Implementation
-One batch SQL INSERT with all 108 rows using the data insert tool. Timestamps will be spread ~15-16 tickets per day for Nikki and 1 per day for Joy, with varied times throughout the business day.
+1. **Remove `via:` filters from the search query** — search broadly for all tickets assigned to the agent in the date range:
+   ```
+   type:ticket assignee:{email} created>={start} created<={end}
+   ```
+
+2. **Keep the channel filter in the loop** (lines 100-104) — the code already checks `ticket.via.channel` for `messaging`, `chat`, or `native_messaging` and skips others. This is the correct place to filter.
+
+3. **Add console logging** for the search URL and result count so we can debug in logs if issues persist.
+
+### Why This Works
+- The broad search returns ALL tickets for the agent in the date range
+- The existing channel filter on line 100-104 correctly skips non-chat/messaging tickets
+- This approach is more reliable than depending on Zendesk's `via:` search syntax
+
+### Expected Behavior After Fix
+- **Dry run**: Should show `processed: N` (total tickets found), `skipped: X` (non-chat tickets + already-counted), `inserted: Y` (qualifying tickets that would be added)
+- **Live run**: Same but actually inserts the missing Email entries into `ticket_logs`
 
