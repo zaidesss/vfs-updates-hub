@@ -304,7 +304,7 @@ function splitOvernight(startHour: number, endHour: number, dayOffset: number): 
 
 // ── Data fetching ───────────────────────────────────────────────────────────
 
-export async function fetchAgentSchedules(): Promise<AgentScheduleRow[]> {
+export async function fetchAgentSchedules(weekStartDate?: string): Promise<AgentScheduleRow[]> {
   const { data, error } = await supabase
     .from('agent_profiles_team_status')
     .select('id, email, agent_name, full_name, position, zendesk_instance, support_type, employment_status, day_off, ot_enabled, mon_schedule, tue_schedule, wed_schedule, thu_schedule, fri_schedule, sat_schedule, sun_schedule, mon_ot_schedule, tue_ot_schedule, wed_ot_schedule, thu_ot_schedule, fri_ot_schedule, sat_ot_schedule, sun_ot_schedule')
@@ -312,7 +312,55 @@ export async function fetchAgentSchedules(): Promise<AgentScheduleRow[]> {
     .order('full_name');
 
   if (error) throw error;
-  return data || [];
+  const agents = data || [];
+
+  // If a week start is provided, merge schedule assignments for that week
+  // This ensures the Coverage Board shows effective (assignment-resolved) schedules
+  if (weekStartDate && agents.length > 0) {
+    const agentIds = agents.map(a => a.id);
+    const { data: assignments } = await supabase
+      .from('agent_schedule_assignments')
+      .select('*')
+      .in('agent_id', agentIds)
+      .lte('effective_week_start', weekStartDate)
+      .order('effective_week_start', { ascending: false });
+
+    if (assignments && assignments.length > 0) {
+      // Build map: agent_id → most recent assignment for this week
+      const assignmentMap = new Map<string, any>();
+      for (const a of assignments) {
+        if (!assignmentMap.has(a.agent_id)) {
+          assignmentMap.set(a.agent_id, a);
+        }
+      }
+
+      // Merge assignment values into agent rows (assignment takes precedence)
+      for (const agent of agents) {
+        const assignment = assignmentMap.get(agent.id);
+        if (assignment) {
+          const scheduleFields = [
+            'mon_schedule', 'tue_schedule', 'wed_schedule', 'thu_schedule',
+            'fri_schedule', 'sat_schedule', 'sun_schedule',
+            'mon_ot_schedule', 'tue_ot_schedule', 'wed_ot_schedule', 'thu_ot_schedule',
+            'fri_ot_schedule', 'sat_ot_schedule', 'sun_ot_schedule',
+          ] as const;
+          for (const field of scheduleFields) {
+            if (field in assignment) {
+              (agent as any)[field] = assignment[field];
+            }
+          }
+          if (assignment.day_off != null) {
+            agent.day_off = assignment.day_off;
+          }
+          if (assignment.ot_enabled != null) {
+            agent.ot_enabled = assignment.ot_enabled;
+          }
+        }
+      }
+    }
+  }
+
+  return agents;
 }
 
 export async function fetchOverridesForWeek(startDate: string, endDate: string): Promise<CoverageOverride[]> {

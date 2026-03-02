@@ -496,14 +496,16 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
     ] as const;
 
     let scheduleChanged = isNewProfile;
+    let oldProfile: any = null;
     if (!isNewProfile) {
       // Check if any schedule fields were actually modified vs existing profile
-      const { data: oldProfile } = await supabase
+      const { data: fetchedOldProfile } = await supabase
         .from('agent_profiles')
         .select('mon_schedule,tue_schedule,wed_schedule,thu_schedule,fri_schedule,sat_schedule,sun_schedule,mon_ot_schedule,tue_ot_schedule,wed_ot_schedule,thu_ot_schedule,fri_ot_schedule,sat_ot_schedule,sun_ot_schedule,break_schedule,day_off,ot_enabled,quota_email,quota_chat,quota_phone,quota_ot_email')
         .eq('email', dbInput.email)
         .maybeSingle();
 
+      oldProfile = fetchedOldProfile;
       if (oldProfile) {
         for (const field of scheduleFields) {
           const oldVal = oldProfile[field] ?? null;
@@ -523,10 +525,54 @@ export async function upsertProfile(input: AgentProfileInput): Promise<{ data: A
 
     if (scheduleChanged) {
       // New profiles → current Monday (immediately effective)
-      // Existing profiles → next Monday
+      // Existing profiles → next Monday + preserve current week with OLD values
+      const currentMonday = resolverGetCurrentMondayEST();
       const effectiveWeekStart = isNewProfile
-        ? resolverGetCurrentMondayEST()
+        ? currentMonday
         : resolverGetNextMondayEST();
+
+      // For existing profiles: freeze current week with OLD values if no assignment exists yet
+      if (!isNewProfile && oldProfile) {
+        const { data: currentWeekAssignment } = await supabase
+          .from('agent_schedule_assignments')
+          .select('id')
+          .eq('agent_id', result.data.id)
+          .eq('effective_week_start', currentMonday)
+          .maybeSingle();
+
+        if (!currentWeekAssignment) {
+          // No current-week assignment exists — create one with OLD profile values
+          // so the current week remains unchanged
+          await upsertScheduleAssignment({
+            agentId: result.data.id,
+            effectiveWeekStart: currentMonday,
+            monSchedule: oldProfile.mon_schedule ?? null,
+            tueSchedule: oldProfile.tue_schedule ?? null,
+            wedSchedule: oldProfile.wed_schedule ?? null,
+            thuSchedule: oldProfile.thu_schedule ?? null,
+            friSchedule: oldProfile.fri_schedule ?? null,
+            satSchedule: oldProfile.sat_schedule ?? null,
+            sunSchedule: oldProfile.sun_schedule ?? null,
+            monOtSchedule: oldProfile.mon_ot_schedule ?? null,
+            tueOtSchedule: oldProfile.tue_ot_schedule ?? null,
+            wedOtSchedule: oldProfile.wed_ot_schedule ?? null,
+            thuOtSchedule: oldProfile.thu_ot_schedule ?? null,
+            friOtSchedule: oldProfile.fri_ot_schedule ?? null,
+            satOtSchedule: oldProfile.sat_ot_schedule ?? null,
+            sunOtSchedule: oldProfile.sun_ot_schedule ?? null,
+            dayOff: Array.isArray(oldProfile.day_off) ? oldProfile.day_off : [],
+            breakSchedule: oldProfile.break_schedule ?? null,
+            otEnabled: oldProfile.ot_enabled ?? false,
+            quotaEmail: oldProfile.quota_email ?? null,
+            quotaChat: oldProfile.quota_chat ?? null,
+            quotaPhone: oldProfile.quota_phone ?? null,
+            quotaOtEmail: oldProfile.quota_ot_email ?? null,
+            source: 'agent_profile',
+            notes: 'Frozen current week before profile update',
+          });
+          console.log('Current week assignment frozen with old values:', currentMonday);
+        }
+      }
 
       await upsertScheduleAssignment({
         agentId: result.data.id,
