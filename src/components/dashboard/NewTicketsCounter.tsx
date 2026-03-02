@@ -99,7 +99,7 @@ export function NewTicketsCounter() {
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto text-sm" side="top">
-                  Ticket counting started on <strong>February 26, 2026</strong>.
+                  Daily counts reset at <strong>12:00 AM EST</strong>.
                 </PopoverContent>
               </Popover>
             </div>
@@ -158,11 +158,29 @@ export function NewTicketsCounter() {
           <div className="border-t border-border/50" />
           <MetricRow
             icon={<Calendar className="h-4 w-4" />}
+            label="Total Yesterday"
+            total={(slaData?.zd1?.totalYesterday ?? 0) + (slaData?.zd2?.totalYesterday ?? 0)}
+            zd1={slaData?.zd1?.totalYesterday ?? 0}
+            zd2={slaData?.zd2?.totalYesterday ?? 0}
+            variant="default"
+            isLoading={slaLoading}
+          />
+          <MetricRow
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            label="Worked Yesterday"
+            total={(slaData?.zd1?.workedYesterday ?? 0) + (slaData?.zd2?.workedYesterday ?? 0)}
+            zd1={slaData?.zd1?.workedYesterday ?? 0}
+            zd2={slaData?.zd2?.workedYesterday ?? 0}
+            variant="success"
+            isLoading={slaLoading}
+          />
+          <MetricRow
+            icon={<Clock className="h-4 w-4" />}
             label="Remaining Yesterday"
             total={(slaData?.zd1?.remainingYesterday ?? 0) + (slaData?.zd2?.remainingYesterday ?? 0)}
             zd1={slaData?.zd1?.remainingYesterday ?? 0}
             zd2={slaData?.zd2?.remainingYesterday ?? 0}
-            variant="default"
+            variant="destructive"
             isLoading={slaLoading}
           />
           <div className="border-t border-border/50" />
@@ -178,9 +196,13 @@ export function NewTicketsCounter() {
                 : 'text-emerald-600 dark:text-emerald-400'
             }`}>
               {slaLoading ? '—' : (() => {
-                const ages = [slaData?.zd1?.oldestNewTicket?.age_minutes, slaData?.zd2?.oldestNewTicket?.age_minutes].filter((a): a is number => a != null);
-                if (ages.length === 0) return 'None ✓';
-                return formatAge(Math.max(...ages));
+                const zd1t = slaData?.zd1?.oldestNewTicket;
+                const zd2t = slaData?.zd2?.oldestNewTicket;
+                if (!zd1t && !zd2t) return 'None ✓';
+                const oldest = (zd1t && zd2t)
+                  ? (zd1t.age_minutes >= zd2t.age_minutes ? zd1t : zd2t)
+                  : (zd1t || zd2t)!;
+                return `#${oldest.id} — ${formatAge(oldest.age_minutes)}`;
               })()}
             </span>
           </div>
