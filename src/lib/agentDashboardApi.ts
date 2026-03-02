@@ -504,6 +504,30 @@ export async function checkAndCleanupStaleSession(
     
     const autoLogoutTimestamp = deadline.toISOString();
     
+    // Idempotency check: skip if a SYSTEM_AUTO_LOGOUT event already exists for this profile + date
+    const { data: existingAutoLogout } = await supabase
+      .from('profile_events')
+      .select('id')
+      .eq('profile_id', profileId)
+      .eq('event_type', 'LOGOUT')
+      .eq('triggered_by', 'SYSTEM_AUTO_LOGOUT')
+      .gte('created_at', `${statusDateStr}T00:00:00-05:00`)
+      .lt('created_at', `${statusDateStr}T23:59:59-05:00`)
+      .limit(1);
+    
+    if (existingAutoLogout && existingAutoLogout.length > 0) {
+      console.log(`Skipping duplicate auto-logout for ${profileId} on ${statusDateStr} — event already exists`);
+      // Just ensure status is LOGGED_OUT
+      await supabase
+        .from('profile_status')
+        .update({
+          current_status: 'LOGGED_OUT',
+          status_since: autoLogoutTimestamp,
+        })
+        .eq('profile_id', profileId);
+      return { wasStale: true, error: null };
+    }
+    
     // Insert SYSTEM_AUTO_LOGOUT event
     await supabase.from('profile_events').insert({
       profile_id: profileId,
@@ -547,15 +571,15 @@ export async function checkAndCleanupStaleSession(
           },
           status: 'open',
         });
+        
+        // Send Slack notification only when a new report is created
+        sendStatusAlertNotification(
+          agentProfile.email,
+          agentProfile.full_name || agentProfile.email,
+          'NO_LOGOUT',
+          { lastStatusDate: statusDateStr, severity: 'high' }
+        ).catch((err) => console.error('Failed to send NO_LOGOUT alert:', err));
       }
-      
-      // Send Slack notification
-      sendStatusAlertNotification(
-        agentProfile.email,
-        agentProfile.full_name || agentProfile.email,
-        'NO_LOGOUT',
-        { lastStatusDate: statusDateStr, severity: 'high' }
-      ).catch((err) => console.error('Failed to send NO_LOGOUT alert:', err));
     }
     
     // Update profile_status to LOGGED_OUT

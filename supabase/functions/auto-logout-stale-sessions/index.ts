@@ -204,11 +204,35 @@ Deno.serve(async (req) => {
 
       // Don't skip on leave - they still forgot to log out
 
-      console.log(`[auto-logout] Auto-logging out ${agentProfile.email} (status since ${status_since}, deadline was ${deadline.toISOString()})`);
-
-      // 6. Insert SYSTEM_AUTO_LOGOUT event at shift_end + 5 hours
       const autoLogoutTimestamp = deadline.toISOString();
 
+      // 6. Idempotency check: skip if a SYSTEM_AUTO_LOGOUT event already exists for this profile + date
+      const { data: existingEvent } = await supabase
+        .from('profile_events')
+        .select('id')
+        .eq('profile_id', profile_id)
+        .eq('event_type', 'LOGOUT')
+        .eq('triggered_by', 'SYSTEM_AUTO_LOGOUT')
+        .gte('created_at', `${statusDateStr}T00:00:00-05:00`)
+        .lt('created_at', `${statusDateStr}T23:59:59-05:00`)
+        .limit(1);
+
+      if (existingEvent && existingEvent.length > 0) {
+        console.log(`[auto-logout] Skipping ${agentProfile.email} — SYSTEM_AUTO_LOGOUT already exists for ${statusDateStr}`);
+        // Just ensure status is LOGGED_OUT
+        await supabase
+          .from('profile_status')
+          .update({
+            current_status: 'LOGGED_OUT',
+            status_since: autoLogoutTimestamp,
+          })
+          .eq('profile_id', profile_id);
+        continue;
+      }
+
+      console.log(`[auto-logout] Auto-logging out ${agentProfile.email} (status since ${status_since}, deadline was ${deadline.toISOString()})`);
+
+      // 7. Insert SYSTEM_AUTO_LOGOUT event
       await supabase.from('profile_events').insert({
         profile_id,
         event_type: 'LOGOUT',
@@ -218,7 +242,7 @@ Deno.serve(async (req) => {
         created_at: autoLogoutTimestamp,
       });
 
-      // 7. Create NO_LOGOUT report (check for duplicates first)
+      // 8. Create NO_LOGOUT report (check for duplicates first)
       const { data: existingReport } = await supabase
         .from('agent_reports')
         .select('id')
@@ -245,7 +269,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      // 8. Update profile_status to LOGGED_OUT
+      // 9. Update profile_status to LOGGED_OUT
       await supabase
         .from('profile_status')
         .update({
