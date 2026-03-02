@@ -1,51 +1,56 @@
 
 
-## Root Cause Analysis & Fix Plan: Schedule System Inconsistencies
+## Revised Fix Plan: Schedule System Inconsistencies
 
-### Issues Found
+### Updated Root Cause
 
-**Issue 1: Biah & Richelle — Wrong OT displayed ("Post Shift" instead of "Pre-shift")**
-- **Root cause**: The `agent_schedule_assignments` table for week `2026-03-02` has ALL days set to `7:00 AM-9:00 AM` OT. But the `agent_profiles` table has the correct per-day values (e.g., Biah Mon = `5:30 PM-7:30 PM`, Fri = `7:00 AM-9:00 AM`). A previous bulk update flattened the per-day OT into a single value. The schedule resolver picks up `agent_schedule_assignments` over `agent_profiles`, so it shows the wrong OT.
-- **Fix**: SQL migration to correct the `agent_schedule_assignments` rows for Biah and Richelle to match their actual per-day OT from `agent_profiles`.
+The previous analysis assumed Ruth and Erika had overnight shifts and needed a code fix. The reference images reveal their schedules are simply **wrong data** — both should be standard daytime (9:00 AM-5:30 PM) but are stored as overnight shifts. Similarly, Biah and Richelle have stale/incorrect profile data beyond just the OT issue.
 
-**Issue 2: Ruth & Erika — Not showing in Team Status**
-- **Root cause**: Both have correct schedules and `get_team_status_data` DOES return them. Ruth works 5:00 PM - 2:30 AM EST and Erika works 7:00 PM - 6:30 AM EST. The `isWithinScheduleWindow()` function in `teamStatusApi.ts` doesn't handle overnight shifts correctly — it checks `isTimeInScheduleRange(currentTimeMinutes, start, end)` but for overnight shifts where end < start (e.g., 17:00-2:30), the range check fails during daytime hours and also fails during the next-day portion (0:00-2:30 AM). The `parseScheduleRange` returns `{start: 17, end: 2.5}` and `isTimeInScheduleRange` likely doesn't wrap correctly.
-- **Fix**: Fix `isWithinScheduleWindow()` to properly handle overnight shifts where end < start.
+### Data Corrections Needed (All 4 Agents)
 
-**Issue 3: Coverage Board — OT on Day Offs unresponsive**
-- **Root cause**: The `OverrideEditor` component hardcodes `block_type: 'regular'` (line 106). There's no mechanism in the UI to create OT-type overrides. When you click a day-off cell, it opens the regular override editor, but OT overrides need a separate `block_type: 'ot'` entry.
-- **Fix**: Extend `OverrideEditor` to support a block type selector (Regular / OT / Day Off) so admins can create OT overrides on any day including day-off days.
+**Biah Mae Divinagracia** — Profile + Assignments:
+- Break: `12:00 PM-01:00 PM` (currently 12:30 PM-01:00 PM)
+- OT: uniform `5:30 PM-7:30 PM` all working days (profile has Thu/Fri as 7:00 AM-9:00 AM)
+- Assignments: fix OT from 7:00 AM-9:00 AM to 5:30 PM-7:30 PM; clear Thu/Fri (day off)
 
-**Issue 4: Team Status showing stale schedules**
-- **Root cause**: The `get_team_status_data` RPC correctly resolves schedules from assignments > profiles. BUT the Coverage Board's `fetchAgentSchedules()` reads raw `agent_profiles` (via the `agent_profiles_team_status` view), not resolved schedules. So the Coverage Board timeline shows the old base profile data instead of the effective schedule. When admins make changes on profiles, the base `agent_profiles` table updates immediately, but the `agent_schedule_assignments` targets next week — creating a mismatch where the Coverage Board shows "new" data while the resolver uses "old" assignment data for the current week.
-- **Fix**: The Coverage Board's timeline rendering (`getEffectiveBlocks`) already receives overrides, but it falls back to `getScheduleForDay(agent, jsDayIndex)` which reads raw profile fields. This needs to use the effective schedule data from `get_team_status_data` or the resolver instead.
+**Richelle Cayabyab** — Profile + Assignments:
+- Day off: `Sat-Sun` (currently Fri-Sat)
+- OT: uniform `7:00 AM-9:00 AM` all working days (profile has most days as 6:00 PM-8:00 PM)
+- Assignments: clear Sat/Sun (day off)
 
-**Issue 5: Profile saves updating base table immediately**
-- **Root cause**: When an admin saves a profile, `upsertProfile()` updates `agent_profiles` immediately AND creates a schedule assignment for next Monday. But `agent_profiles` is the fallback source for the current week (when no assignment exists for it). This means if someone had no assignment for the current week, the profile change takes effect immediately instead of next week.
-- **Fix**: When saving profile schedule changes, also upsert the CURRENT week's assignment with the OLD values (if no current-week assignment exists), ensuring the current week remains unchanged.
+**Ruth Gajo** — Profile + Assignments (complete rewrite):
+- Shift: `9:00 AM-5:30 PM` (currently 5:00 PM-2:30 AM)
+- Break: `01:00 PM-01:30 PM` (currently 11:00 PM-11:30 PM)
+- OT: `7:00 AM-9:00 AM` (currently 2:30 AM-4:30 AM)
+- Day off: Wed-Thu (correct)
 
-### Implementation Steps (one at a time)
+**Erika Rhea Santiago** — Profile + Assignments (complete rewrite):
+- Shift: `9:00 AM-5:30 PM` (currently 7:00 PM-6:30 AM)
+- Break: `12:30 PM-01:00 PM` (currently 10:30 PM-11:00 PM)
+- OT: `7:00 AM-9:00 AM` on working days (currently only Fri has OT)
+- Day off: `Sat-Sun` (currently Fri-Sat-Sun)
 
-**Step 1: Data fix — Correct Biah & Richelle schedule assignments**
-- SQL migration to update their `agent_schedule_assignments` for weeks `2026-02-23` and `2026-03-02` with correct per-day OT values from `agent_profiles`.
+### Implementation Steps
 
-**Step 2: Fix overnight shift detection in Team Status**
-- Update `isWithinScheduleWindow()` in `teamStatusApi.ts` to handle overnight shifts where the end time is less than the start time (wrap-around logic).
+**Step 1: SQL migration to fix all 4 agents' profiles and assignments**
+- Update `agent_profiles` for Biah, Richelle, Ruth, Erika with correct per-day schedules, OT, breaks, and days off
+- Update `agent_schedule_assignments` for weeks 2026-02-23 and 2026-03-02 to match
+- Sync `agent_directory` break/schedule fields
 
-**Step 3: Extend Coverage Board Override Editor for OT**
-- Add a block type selector to `OverrideEditor` (Regular Schedule / OT Schedule / Day Off toggle).
-- Pass the selected block type through to `PendingOverride.block_type`.
-- Allow OT overrides to be created on day-off cells.
+**Step 2: Fix overnight shift detection in Team Status (still needed)**
+- Even though Ruth/Erika aren't overnight, the `isWithinScheduleWindow()` bug should be fixed for any future overnight agents
+- Add wrap-around logic: if `end < start`, valid window is `time >= start || time <= end`
 
-**Step 4: Fix profile save to preserve current week**
-- In `upsertProfile()`, before creating the next-week assignment, check if a current-week assignment exists. If not, create one with the OLD profile values so the current week is frozen.
+**Step 3: Coverage Board Override Editor — add OT block type**
+- Add block type selector (Regular / OT / Day Off) to the OverrideEditor
+- Pass `block_type` to `PendingOverride` instead of hardcoding `'regular'`
+
+**Step 4: Profile save — preserve current week**
+- When saving profile schedule changes, upsert current week assignment with OLD values if none exists, so changes only take effect next week
 
 **Step 5: Coverage Board schedule resolution**
-- Update `getEffectiveBlocks()` to accept resolved schedule data (from the schedule resolver) instead of reading raw profile fields, ensuring the Coverage Board displays the same effective schedule as Team Status and Dashboard.
+- Use resolved schedules (from the schedule resolver) instead of raw profile fields in `getEffectiveBlocks()`
 
-### Technical Details
-
-- The `isTimeInScheduleRange` utility likely needs an overnight-aware variant: if `end < start`, the valid window is `time >= start || time <= end`.
-- The Coverage Board currently loads agents from `agent_profiles_team_status` view. To show effective schedules, it should either call the `get_team_status_data` RPC or integrate the schedule resolver per-agent per-day.
-- The `OverrideEditor` block_type will need a radio group or tabs: "Regular", "OT", "Day Off" — each creating the corresponding `override_type` in `coverage_overrides`.
+### Execution Order
+Step 1 first (data fix), then verify all 4 agents appear correctly before proceeding to code fixes.
 
