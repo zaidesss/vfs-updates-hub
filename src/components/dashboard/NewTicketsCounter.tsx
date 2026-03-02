@@ -2,8 +2,9 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail, Calendar, Timer } from 'lucide-react';
 import { useZendeskRealtime } from '@/lib/zendeskRealtimeApi';
+import { useSlaResponsiveness, formatAge } from '@/lib/slaResponsivenessApi';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading, emphasized }: {
@@ -42,6 +43,7 @@ function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading, emphasize
 
 export function NewTicketsCounter() {
   const { data, isLoading, error, refresh } = useZendeskRealtime();
+  const { data: slaData, isLoading: slaLoading } = useSlaResponsiveness();
 
   const awaitingZd1 = data?.zd1?.newTickets ?? 0;
   const awaitingZd2 = data?.zd2?.newTickets ?? 0;
@@ -153,6 +155,35 @@ export function NewTicketsCounter() {
             variant="success"
             isLoading={isLoading}
           />
+          <div className="border-t border-border/50" />
+          <MetricRow
+            icon={<Calendar className="h-4 w-4" />}
+            label="Remaining Yesterday"
+            total={(slaData?.zd1?.remainingYesterday ?? 0) + (slaData?.zd2?.remainingYesterday ?? 0)}
+            zd1={slaData?.zd1?.remainingYesterday ?? 0}
+            zd2={slaData?.zd2?.remainingYesterday ?? 0}
+            variant="default"
+            isLoading={slaLoading}
+          />
+          <div className="border-t border-border/50" />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground"><Timer className="h-4 w-4" /></span>
+              <span className="text-sm font-medium text-muted-foreground">Oldest New Ticket</span>
+            </div>
+            <span className={`text-2xl font-extrabold tabular-nums ${
+              slaData?.zd1?.oldestNewTicket || slaData?.zd2?.oldestNewTicket
+                ? ((Math.max(slaData?.zd1?.oldestNewTicket?.age_minutes ?? 0, slaData?.zd2?.oldestNewTicket?.age_minutes ?? 0)) > 120
+                  ? 'text-destructive' : 'text-foreground')
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {slaLoading ? '—' : (() => {
+                const ages = [slaData?.zd1?.oldestNewTicket?.age_minutes, slaData?.zd2?.oldestNewTicket?.age_minutes].filter((a): a is number => a != null);
+                if (ages.length === 0) return 'None ✓';
+                return formatAge(Math.max(...ages));
+              })()}
+            </span>
+          </div>
         </div>
       </CardContent>
     </Card>
