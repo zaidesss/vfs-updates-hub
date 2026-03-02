@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Trash2 } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { parseTimeToDecimal } from './ShiftBlock';
 import type { AgentScheduleRow, CoverageOverride } from '@/lib/coverageBoardApi';
 import { getScheduleForDay, getDisplayName } from '@/lib/coverageBoardApi';
@@ -54,6 +55,7 @@ export function OverrideEditor({
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
+  const [blockType, setBlockType] = useState<'regular' | 'ot' | 'dayoff'>('regular');
   const [error, setError] = useState('');
 
   // Pre-fill from pending or existing override
@@ -62,14 +64,17 @@ export function OverrideEditor({
       setStartTime(pendingOverride.override_start);
       setEndTime(pendingOverride.override_end);
       setReason(pendingOverride.reason);
+      setBlockType((pendingOverride.block_type as 'regular' | 'ot' | 'dayoff') || 'regular');
     } else if (existingOverride) {
       setStartTime(existingOverride.override_start);
       setEndTime(existingOverride.override_end);
       setReason(existingOverride.reason || '');
+      setBlockType((existingOverride.override_type as 'regular' | 'ot' | 'dayoff') || 'regular');
     } else {
       setStartTime('');
       setEndTime('');
       setReason('');
+      setBlockType('regular');
     }
     setError('');
   }, [pendingOverride, existingOverride, open]);
@@ -78,12 +83,26 @@ export function OverrideEditor({
 
   const dateStr = format(date, 'yyyy-MM-dd');
   const jsDayIndex = OFFSET_TO_JS_DAY[dayOffset];
-  const { schedule: baseSchedule } = getScheduleForDay(agent, jsDayIndex);
+  const { schedule: baseSchedule, otSchedule: baseOtSchedule } = getScheduleForDay(agent, jsDayIndex);
   const displayName = getDisplayName(agent);
   const hasExisting = !!existingOverride || (!!pendingOverride && !pendingOverride._delete);
 
   const handleApply = () => {
-    // Validate times
+    // Day off doesn't need time validation
+    if (blockType === 'dayoff') {
+      onApply({
+        agent_id: agent.id,
+        date: dateStr,
+        override_start: '00:00',
+        override_end: '23:59',
+        reason: reason.trim() || 'day off override',
+        block_type: 'dayoff',
+      });
+      onOpenChange(false);
+      return;
+    }
+
+    // Validate times for regular and OT
     const startDec = parseTimeToDecimal(startTime.trim());
     const endDec = parseTimeToDecimal(endTime.trim());
 
@@ -102,7 +121,7 @@ export function OverrideEditor({
       override_start: startTime.trim(),
       override_end: endTime.trim(),
       reason: reason.trim() || 'manual',
-      block_type: 'regular',
+      block_type: blockType,
     });
     onOpenChange(false);
   };
@@ -112,9 +131,11 @@ export function OverrideEditor({
     onOpenChange(false);
   };
 
+  const isDayOffMode = blockType === 'dayoff';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[380px]">
+      <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle className="text-base">Override Schedule</DialogTitle>
           <DialogDescription className="text-xs">
@@ -123,43 +144,87 @@ export function OverrideEditor({
         </DialogHeader>
 
         {/* Base schedule display */}
-        <div className="text-xs text-muted-foreground bg-muted rounded px-3 py-2">
-          <span className="font-medium">Base schedule:</span>{' '}
-          {baseSchedule && baseSchedule.toLowerCase() !== 'day off' ? baseSchedule : 'None / Day Off'}
+        <div className="text-xs text-muted-foreground bg-muted rounded px-3 py-2 space-y-1">
+          <div>
+            <span className="font-medium">Base schedule:</span>{' '}
+            {baseSchedule && baseSchedule.toLowerCase() !== 'day off' ? baseSchedule : 'None / Day Off'}
+          </div>
+          {baseOtSchedule && (
+            <div>
+              <span className="font-medium">Base OT:</span> {baseOtSchedule}
+            </div>
+          )}
         </div>
 
-        <div className="grid gap-3">
-          <div className="grid grid-cols-2 gap-3">
+        {/* Block type selector */}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Override Type</Label>
+          <RadioGroup
+            value={blockType}
+            onValueChange={(val) => setBlockType(val as 'regular' | 'ot' | 'dayoff')}
+            className="flex gap-4"
+          >
+            <div className="flex items-center space-x-1.5">
+              <RadioGroupItem value="regular" id="type-regular" />
+              <Label htmlFor="type-regular" className="text-xs cursor-pointer">Regular</Label>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <RadioGroupItem value="ot" id="type-ot" />
+              <Label htmlFor="type-ot" className="text-xs cursor-pointer">OT</Label>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <RadioGroupItem value="dayoff" id="type-dayoff" />
+              <Label htmlFor="type-dayoff" className="text-xs cursor-pointer">Day Off</Label>
+            </div>
+          </RadioGroup>
+        </div>
+
+        {!isDayOffMode && (
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Start Time</Label>
+                <Input
+                  placeholder="e.g. 9:00 AM"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">End Time</Label>
+                <Input
+                  placeholder="e.g. 6:00 PM"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
             <div className="space-y-1">
-              <Label className="text-xs">Start Time</Label>
+              <Label className="text-xs">Reason (optional)</Label>
               <Input
-                placeholder="e.g. 9:00 AM"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
+                placeholder="e.g. schedule adjustment"
+                value={reason}
+                onChange={e => setReason(e.target.value)}
                 className="h-8 text-sm"
               />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">End Time</Label>
-              <Input
-                placeholder="e.g. 6:00 PM"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                className="h-8 text-sm"
-              />
-            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
+        )}
+
+        {isDayOffMode && (
           <div className="space-y-1">
             <Label className="text-xs">Reason (optional)</Label>
             <Input
-              placeholder="e.g. schedule adjustment"
+              placeholder="e.g. schedule swap"
               value={reason}
               onChange={e => setReason(e.target.value)}
               className="h-8 text-sm"
             />
           </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
+        )}
 
         <DialogFooter className="flex items-center gap-2 sm:justify-between">
           {hasExisting ? (

@@ -54,10 +54,10 @@ export default function CoverageBoard() {
   const [editorDate, setEditorDate] = useState<Date | null>(null);
   const [editorDayOffset, setEditorDayOffset] = useState(0);
 
-  // Fetch agents
+  // Fetch agents with resolved schedules for the selected week
   const { data: agents = [], isLoading: loadingAgents } = useQuery({
-    queryKey: ['coverage-agents'],
-    queryFn: fetchAgentSchedules,
+    queryKey: ['coverage-agents', startStr],
+    queryFn: () => fetchAgentSchedules(startStr),
     staleTime: 5 * 60 * 1000,
   });
 
