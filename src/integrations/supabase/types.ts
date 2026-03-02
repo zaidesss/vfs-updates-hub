@@ -2657,6 +2657,45 @@ export type Database = {
         }
         Relationships: []
       }
+      sla_daily_snapshots: {
+        Row: {
+          avg_first_reply_minutes: number | null
+          avg_full_resolution_minutes: number | null
+          created_at: string | null
+          date: string
+          distribution: Json | null
+          id: string
+          remaining_unanswered: number
+          total_new: number
+          total_responded: number
+          zd_instance: string
+        }
+        Insert: {
+          avg_first_reply_minutes?: number | null
+          avg_full_resolution_minutes?: number | null
+          created_at?: string | null
+          date: string
+          distribution?: Json | null
+          id?: string
+          remaining_unanswered?: number
+          total_new?: number
+          total_responded?: number
+          zd_instance: string
+        }
+        Update: {
+          avg_first_reply_minutes?: number | null
+          avg_full_resolution_minutes?: number | null
+          created_at?: string | null
+          date?: string
+          distribution?: Json | null
+          id?: string
+          remaining_unanswered?: number
+          total_new?: number
+          total_responded?: number
+          zd_instance?: string
+        }
+        Relationships: []
+      }
       slack_threads: {
         Row: {
           agent_email: string
