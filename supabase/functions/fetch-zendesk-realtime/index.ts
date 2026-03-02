@@ -123,6 +123,10 @@ Deno.serve(async (req) => {
     const configZD1 = getZdConfig('ZD1');
     const configZD2 = getZdConfig('ZD2');
 
+    // Compute today's date in EST (Zendesk requires YYYY-MM-DD format)
+    const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const todayEST = `${estNow.getFullYear()}-${String(estNow.getMonth()+1).padStart(2,'0')}-${String(estNow.getDate()).padStart(2,'0')}`;
+
     // ZD2 does not have Talk
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
@@ -130,10 +134,10 @@ Deno.serve(async (req) => {
       fetchTalkStats(configZD1),
       fetchMessagingStats(configZD1),
       fetchMessagingStats(configZD2),
-      searchCount(configZD1, 'type:ticket status:new created:today'),
-      searchCount(configZD2, 'type:ticket status:new created:today'),
-      searchCount(configZD1, 'type:ticket created:today'),
-      searchCount(configZD2, 'type:ticket created:today'),
+      searchCount(configZD1, `type:ticket status:new created>=${todayEST}`),
+      searchCount(configZD2, `type:ticket status:new created>=${todayEST}`),
+      searchCount(configZD1, `type:ticket created>=${todayEST}`),
+      searchCount(configZD2, `type:ticket created>=${todayEST}`),
     ]);
 
     const result = {

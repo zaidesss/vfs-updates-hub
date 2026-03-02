@@ -83,9 +83,9 @@ async function searchOldestNew(config: ZendeskConfig): Promise<OldestTicket | nu
   };
 }
 
-async function fetchResolutionMetrics(config: ZendeskConfig): Promise<ResolutionData> {
+async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string): Promise<ResolutionData> {
   // Get tickets solved today to compute resolution metrics
-  const query = 'type:ticket status:solved solved>=today';
+  const query = todayEST ? `type:ticket status:solved solved>=${todayEST}` : 'type:ticket status:solved solved>=today';
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=100&page=1`;
   const res = await fetch(url, { headers: authHeaders(config) });
 
@@ -176,19 +176,19 @@ async function fetchResolutionMetrics(config: ZendeskConfig): Promise<Resolution
   };
 }
 
-async function fetchInstanceData(config: ZendeskConfig): Promise<InstanceResult> {
+async function fetchInstanceData(config: ZendeskConfig, todayEST: string, yesterdayEST: string): Promise<InstanceResult> {
   // Run the simpler queries in parallel
   const [lastHourNew, lastHourResponded, remainingYesterday, totalYesterday, workedYesterday, oldestNewTicket] = await Promise.all([
     searchCount(config, 'type:ticket status:new created>=1hour_ago'),
     searchCount(config, 'type:ticket status>new created>=1hour_ago'),
-    searchCount(config, 'type:ticket status:new created:yesterday'),
-    searchCount(config, 'type:ticket created:yesterday'),
-    searchCount(config, 'type:ticket status>new created:yesterday'),
+    searchCount(config, `type:ticket status:new created>=${yesterdayEST} created<${todayEST}`),
+    searchCount(config, `type:ticket created>=${yesterdayEST} created<${todayEST}`),
+    searchCount(config, `type:ticket status>new created>=${yesterdayEST} created<${todayEST}`),
     searchOldestNew(config),
   ]);
 
   // Resolution metrics separately (heavier)
-  const resolution = await fetchResolutionMetrics(config);
+  const resolution = await fetchResolutionMetrics(config, todayEST);
 
   return {
     lastHourNew,
@@ -210,9 +210,16 @@ Deno.serve(async (req) => {
     const configZD1 = getZdConfig('ZD1');
     const configZD2 = getZdConfig('ZD2');
 
+    // Compute today and yesterday in EST (Zendesk requires YYYY-MM-DD format)
+    const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const todayEST = `${estNow.getFullYear()}-${String(estNow.getMonth()+1).padStart(2,'0')}-${String(estNow.getDate()).padStart(2,'0')}`;
+    const estYesterday = new Date(estNow);
+    estYesterday.setDate(estYesterday.getDate() - 1);
+    const yesterdayEST = `${estYesterday.getFullYear()}-${String(estYesterday.getMonth()+1).padStart(2,'0')}-${String(estYesterday.getDate()).padStart(2,'0')}`;
+
     const [zd1, zd2] = await Promise.all([
-      fetchInstanceData(configZD1),
-      fetchInstanceData(configZD2),
+      fetchInstanceData(configZD1, todayEST, yesterdayEST),
+      fetchInstanceData(configZD2, todayEST, yesterdayEST),
     ]);
 
     const result = {
