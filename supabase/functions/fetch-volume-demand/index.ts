@@ -21,19 +21,47 @@ function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig | null {
   };
 }
 
-async function zdFetch(config: ZendeskConfig, url: string) {
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Zendesk API failed: ${response.status} - ${errorText}`);
-    throw new Error(`Zendesk API failed: ${response.status}`);
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function zdFetch(config: ZendeskConfig, url: string, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After');
+      const delayMs = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt) * 1000 + 500;
+      console.log(`Rate limited (429), retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await delay(Math.min(delayMs, 30000));
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Zendesk API failed: ${response.status} - ${errorText}`);
+      throw new Error(`Zendesk API failed: ${response.status}`);
+    }
+    return response.json();
   }
-  return response.json();
+  throw new Error('Zendesk API failed: 429 (max retries exceeded)');
+}
+
+/** Run promises in batches to avoid rate limits */
+async function runInBatches<T>(tasks: (() => Promise<T>)[], batchSize: number, delayMs: number): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn => fn()));
+    results.push(...batchResults);
+    if (i + batchSize < tasks.length) {
+      await delay(delayMs);
+    }
+  }
+  return results;
 }
 
 async function countSearchResults(config: ZendeskConfig, query: string): Promise<number> {
@@ -90,34 +118,36 @@ Deno.serve(async (req) => {
 
     const baseQuery = `type:ticket status<solved created>=${startDate} created<=${endDate}`;
 
-    const promises: Promise<any>[] = [
+    // Build all tasks as lazy functions
+    const tasks: (() => Promise<any>)[] = [
       // [0-3] Total + channel counts
-      countSearchResults(config, baseQuery),
-      countSearchResults(config, `${baseQuery} tags:emails`),
-      countSearchResults(config, `${baseQuery} tags:chat`),
-      countSearchResults(config, `${baseQuery} tags:voice`),
+      () => countSearchResults(config, baseQuery),
+      () => countSearchResults(config, `${baseQuery} tags:emails`),
+      () => countSearchResults(config, `${baseQuery} tags:chat`),
+      () => countSearchResults(config, `${baseQuery} tags:voice`),
     ];
 
     // [4-7] Per-status total counts
     for (const status of STATUS_KEYS) {
-      promises.push(countSearchResults(config, `type:ticket status:${status} created>=${startDate} created<=${endDate}`));
+      tasks.push(() => countSearchResults(config, `type:ticket status:${status} created>=${startDate} created<=${endDate}`));
     }
 
     // [8-19] Per-status per-channel counts (4×3)
     for (const status of STATUS_KEYS) {
       for (const tag of CHANNEL_TAGS) {
-        promises.push(countSearchResults(config, `type:ticket status:${status} tags:${tag} created>=${startDate} created<=${endDate}`));
+        tasks.push(() => countSearchResults(config, `type:ticket status:${status} tags:${tag} created>=${startDate} created<=${endDate}`));
       }
     }
 
     // [20-31] Per-status per-channel oldest tickets (4×3)
     for (const status of STATUS_KEYS) {
       for (const tag of CHANNEL_TAGS) {
-        promises.push(findOldestTicket(config, `type:ticket status:${status} tags:${tag}`));
+        tasks.push(() => findOldestTicket(config, `type:ticket status:${status} tags:${tag}`));
       }
     }
 
-    const results = await Promise.all(promises);
+    // Run in batches of 5 with 1.2s delay between batches to stay under rate limits
+    const results = await runInBatches(tasks, 5, 1200);
 
     const statuses: Record<string, any> = {};
     STATUS_KEYS.forEach((status, si) => {
