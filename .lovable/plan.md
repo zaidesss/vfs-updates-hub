@@ -1,28 +1,30 @@
 
 
-## Fix: Reconciliation Search Query Returns No Results
+## Add Editable Productivity Ticket Count to Scorecard
 
-### Root Cause
-The Zendesk Search API query uses `via:chat via:messaging` which doesn't work — multiple `via:` filters conflict (AND logic), and `via:messaging` isn't a standard Zendesk search term.
+### What Changes
 
-### Fix
-**In `supabase/functions/zd-reconcile-converted-emails/index.ts`:**
+**Step 1 — Database**: Add `productivity_count_override` (integer, nullable) column to `zendesk_agent_metrics`.
 
-1. **Remove `via:` filters from the search query** — search broadly for all tickets assigned to the agent in the date range:
-   ```
-   type:ticket assignee:{email} created>={start} created<={end}
-   ```
+**Step 2 — API (`scorecardApi.ts`)**:
+- Add `productivity_count_override` to `upsertZendeskMetrics` accepted fields
+- In `fetchWeeklyScorecardRPC`, read the override from `zendesk_agent_metrics` and apply it: override the `productivityCount` and recalculate `productivity` percentage
+- Add `productivityCountOverride` to `AgentScorecard` interface for tracking
 
-2. **Keep the channel filter in the loop** (lines 100-104) — the code already checks `ticket.via.channel` for `messaging`, `chat`, or `native_messaging` and skips others. This is the correct place to filter.
+**Step 3 — UI (`TeamScorecard.tsx`)**:
+- Add `productivityCount` to `EditedMetrics` interface
+- Replace the static Productivity cell with an editable cell (admin-only click to edit the count)
+- Display: percentage + count (same as now), but admins can click the count to override it
+- On edit, recalculate and display the new productivity percentage live
+- Include `productivity_count_override` in `saveChangesMutation` payload
+- Include in audit log diff
+- Apply override when saving scorecard snapshot
 
-3. **Add console logging** for the search URL and result count so we can debug in logs if issues persist.
+**Step 4 — Audit logging**: Productivity count overrides included in existing "Save Changes" audit entry.
 
-### Why This Works
-- The broad search returns ALL tickets for the agent in the date range
-- The existing channel filter on line 100-104 correctly skips non-chat/messaging tickets
-- This approach is more reliable than depending on Zendesk's `via:` search syntax
-
-### Expected Behavior After Fix
-- **Dry run**: Should show `processed: N` (total tickets found), `skipped: X` (non-chat tickets + already-counted), `inserted: Y` (qualifying tickets that would be added)
-- **Live run**: Same but actually inserts the missing Email entries into `ticket_logs`
+### Technical Notes
+- The Productivity cell will show the percentage and ticket count. Admins click the count number to edit it inline.
+- The percentage auto-recalculates based on the edited count and weekly quota.
+- "edited" badge appears when override differs from auto-calculated count.
+- Override persists in `zendesk_agent_metrics` and carries through to `saved_scorecards` via the existing save flow.
 
