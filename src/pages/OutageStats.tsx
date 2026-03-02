@@ -16,7 +16,7 @@ import { Loader2, AlertTriangle, Download, TrendingUp, Users, AlertCircle, Zap, 
 import { format, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
 import { fetchAllLeaveRequests, LeaveRequest } from '@/lib/leaveRequestApi';
 import { useToast } from '@/hooks/use-toast';
-import { Navigate } from 'react-router-dom';
+
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { getUniqueTeamLeads, getAgentEmailsByTeamLead } from '@/lib/agentDirectory';
 
@@ -89,7 +89,7 @@ interface RepeatOffender {
 }
 
 export default function OutageStats() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(true);
@@ -176,17 +176,23 @@ export default function OutageStats() {
     setIsLoading(false);
   };
 
+  // For non-admins, filter requests to only their own data
+  const displayRequests = useMemo(() => {
+    if (isAdmin) return requests;
+    return requests.filter(r => r.agent_email === user?.email);
+  }, [requests, isAdmin, user?.email]);
+
   // Get unique agents from requests (filtered by team lead if selected)
   const agents = useMemo(() => {
     const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
-    const agentSet = new Set(requests.map(r => r.agent_email));
+    const agentSet = new Set(displayRequests.map(r => r.agent_email));
     return Array.from(agentSet)
       .filter(email => !teamLeadEmails || teamLeadEmails.includes(email.toLowerCase().trim()))
       .map(email => {
-        const req = requests.find(r => r.agent_email === email);
+        const req = displayRequests.find(r => r.agent_email === email);
         return { email, name: req?.agent_name || email };
       });
-  }, [requests, selectedTeamLead]);
+  }, [displayRequests, selectedTeamLead]);
 
   // Filter requests by selected period, agent, and team lead
   const filteredRequests = useMemo(() => {
@@ -205,7 +211,7 @@ export default function OutageStats() {
 
     const teamLeadEmails = selectedTeamLead !== 'all' ? getAgentEmailsByTeamLead(selectedTeamLead) : null;
 
-    return requests.filter(req => {
+    return displayRequests.filter(req => {
       const reqStart = parseISO(req.start_date);
       const reqEnd = parseISO(req.end_date);
       const inPeriod = reqStart <= periodEnd && reqEnd >= periodStart;
@@ -213,7 +219,7 @@ export default function OutageStats() {
       const matchesTeamLead = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
       return inPeriod && matchesAgent && matchesTeamLead;
     });
-  }, [requests, selectedMonth, selectedQuarter, viewMode, selectedAgent, selectedTeamLead]);
+  }, [displayRequests, selectedMonth, selectedQuarter, viewMode, selectedAgent, selectedTeamLead]);
 
   // Calculate stats by reason (for breakdown table)
   const reasonStats = useMemo(() => {
@@ -248,7 +254,7 @@ export default function OutageStats() {
         let year = currentYear;
         while (q <= 0) { q += 4; year--; }
         const { qStart, qEnd } = getQuarterRange(`${year}-Q${q}`);
-        const periodRequests = requests.filter(req => {
+        const periodRequests = displayRequests.filter(req => {
           const reqStart = parseISO(req.start_date);
           const inPeriod = reqStart >= qStart && reqStart <= qEnd;
           const matchesTL = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
@@ -266,7 +272,7 @@ export default function OutageStats() {
         const date = subMonths(new Date(), i);
         const mStart = startOfMonth(date);
         const mEnd = endOfMonth(date);
-        const monthRequests = requests.filter(req => {
+        const monthRequests = displayRequests.filter(req => {
           const reqStart = parseISO(req.start_date);
           const inPeriod = reqStart >= mStart && reqStart <= mEnd;
           const matchesTL = !teamLeadEmails || teamLeadEmails.includes(req.agent_email.toLowerCase().trim());
@@ -281,7 +287,7 @@ export default function OutageStats() {
       }
     }
     return data;
-  }, [requests, viewMode, selectedTeamLead]);
+  }, [displayRequests, viewMode, selectedTeamLead]);
 
   // Reason distribution for pie chart
   const reasonDistribution = useMemo(() => {
@@ -416,10 +422,6 @@ export default function OutageStats() {
     return <Badge className="gap-1 bg-amber-500 hover:bg-amber-600"><AlertTriangle className="h-3 w-3" /> Needs Review</Badge>;
   };
 
-  // Redirect non-admins
-  if (!isAdmin) {
-    return <Navigate to="/outage-report" replace />;
-  }
 
   if (isLoading) {
     return (
@@ -474,31 +476,35 @@ export default function OutageStats() {
               </Select>
             )}
 
-            <Select value={selectedTeamLead} onValueChange={setSelectedTeamLead}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Team Lead" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Team Leads</SelectItem>
-                {teamLeads.map(lead => (
-                  <SelectItem key={lead} value={lead}>{lead}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isAdmin && (
+              <Select value={selectedTeamLead} onValueChange={setSelectedTeamLead}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Team Lead" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Team Leads</SelectItem>
+                  {teamLeads.map(lead => (
+                    <SelectItem key={lead} value={lead}>{lead}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             
-            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
-                {agents.map(agent => (
-                  <SelectItem key={agent.email} value={agent.email}>{agent.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isAdmin && (
+              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agents</SelectItem>
+                  {agents.map(agent => (
+                    <SelectItem key={agent.email} value={agent.email}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             
-            {repeatOffenders.length > 0 && (
+            {isAdmin && repeatOffenders.length > 0 && (
               <Button variant="outline" onClick={exportToCSV}>
                 <Download className="h-4 w-4 mr-2" />
                 Export CSV
@@ -511,7 +517,7 @@ export default function OutageStats() {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
-            <TabsTrigger value="offenders">Repeat Offenders</TabsTrigger>
+            {isAdmin && <TabsTrigger value="offenders">Repeat Offenders</TabsTrigger>}
             <TabsTrigger value="policy" className="gap-1">
               <FileText className="h-4 w-4" />
               Policy

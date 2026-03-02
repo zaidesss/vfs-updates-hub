@@ -114,9 +114,7 @@ export function Layout({ children }: LayoutProps) {
     if (!isAdmin) {
       outageItems.push({ href: '/outage-report', label: 'My Outage Report', icon: User });
     }
-    if (isAdmin) {
-      outageItems.push({ href: '/outage-stats', label: 'Outage Statistics', icon: BarChart3 });
-    }
+    outageItems.push({ href: '/outage-stats', label: 'Outage Statistics', icon: BarChart3 });
     groups.push({
       label: 'Outages',
       icon: Clock,
