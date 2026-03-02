@@ -534,6 +534,103 @@ export async function finalizeAttempt(
   return updatedAttempt as RevalidaAttempt;
 }
 
+// Fetch agent name map (email -> full_name)
+export async function fetchAgentNameMap(): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('agent_profiles')
+    .select('email, full_name')
+    .not('full_name', 'is', null);
+
+  if (error) throw error;
+  const map = new Map<string, string>();
+  (data || []).forEach(row => {
+    if (row.email && row.full_name) {
+      map.set(row.email.toLowerCase(), row.full_name);
+    }
+  });
+  return map;
+}
+
+// Override an answer's score (admin manual override)
+export async function overrideAnswer(
+  answerId: string,
+  pointsAwarded: number,
+  isCorrect: boolean,
+  feedback?: string
+): Promise<RevalidaAnswer> {
+  const { data, error } = await supabase
+    .from('revalida_answers')
+    .update({
+      points_awarded: pointsAwarded,
+      is_correct: isCorrect,
+      feedback: feedback || null,
+      graded_at: new Date().toISOString(),
+    })
+    .eq('id', answerId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RevalidaAnswer;
+}
+
+// Recalculate attempt score from all answers after overrides
+export async function recalculateAttemptScore(
+  attemptId: string,
+  graderEmail: string
+): Promise<RevalidaAttempt> {
+  // Get all answers
+  const { data: answers, error: answersError } = await supabase
+    .from('revalida_answers')
+    .select('*, question:revalida_questions(type, points)')
+    .eq('attempt_id', attemptId);
+
+  if (answersError) throw answersError;
+
+  let autoScorePoints = 0;
+  let autoTotalPoints = 0;
+  let manualScorePoints = 0;
+  let manualTotalPoints = 0;
+
+  for (const ans of answers || []) {
+    const q = ans.question as any;
+    if (!q) continue;
+    if (q.type === 'situational') {
+      manualTotalPoints += q.points;
+      manualScorePoints += ans.points_awarded ?? 0;
+    } else {
+      autoTotalPoints += q.points;
+      autoScorePoints += ans.points_awarded ?? 0;
+    }
+  }
+
+  const totalPoints = autoTotalPoints + manualTotalPoints;
+  const totalScore = autoScorePoints + manualScorePoints;
+  const finalPercent = totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
+
+  // Check if all answers are graded
+  const allGraded = (answers || []).every(a => a.points_awarded !== null);
+
+  const { data, error } = await supabase
+    .from('revalida_attempts')
+    .update({
+      auto_score_points: autoScorePoints,
+      auto_total_points: autoTotalPoints,
+      manual_score_points: manualScorePoints,
+      manual_total_points: manualTotalPoints,
+      final_percent: finalPercent,
+      status: allGraded ? 'graded' : 'needs_manual_review',
+      graded_by: graderEmail,
+      graded_at: new Date().toISOString(),
+    })
+    .eq('id', attemptId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RevalidaAttempt;
+}
+
 // Check if batch deadline has passed
 export function isDeadlinePassed(endAt: string | null): boolean {
   if (!endAt) return false;

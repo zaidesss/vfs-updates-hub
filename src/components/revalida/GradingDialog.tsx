@@ -20,6 +20,7 @@ interface GradingDialogProps {
   answers: RevalidaAnswer[];
   onGradeAnswer: (answerId: string, points: number, feedback?: string) => Promise<void>;
   onFinalizeGrading: () => Promise<void>;
+  agentNameMap?: Map<string, string>;
   isLoading: boolean;
 }
 
@@ -32,6 +33,7 @@ export function GradingDialog({
   answers,
   onGradeAnswer,
   onFinalizeGrading,
+  agentNameMap,
   isLoading,
 }: GradingDialogProps) {
   const [grades, setGrades] = useState<Record<string, { points: number; feedback: string }>>({});
@@ -123,7 +125,7 @@ export function GradingDialog({
             Grade Submission
           </DialogTitle>
           <DialogDescription>
-            {attempt.agent_email} - {batch.title}
+            {agentNameMap?.get(attempt.agent_email.toLowerCase()) || attempt.agent_email} — {batch.title}
           </DialogDescription>
         </DialogHeader>
 

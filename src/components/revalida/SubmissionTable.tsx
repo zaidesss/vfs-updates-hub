@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RevalidaAttempt, RevalidaBatch } from '@/lib/revalidaApi';
-import { Users, Eye, Loader2 } from 'lucide-react';
+import { Users, Eye, PenTool, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface SubmissionTableProps {
@@ -13,6 +13,8 @@ interface SubmissionTableProps {
   selectedBatchId: string | null;
   onBatchChange: (batchId: string | null) => void;
   onViewAttempt: (attemptId: string) => void;
+  onEditAttempt?: (attemptId: string) => void;
+  agentNameMap?: Map<string, string>;
   isLoading: boolean;
 }
 
@@ -22,6 +24,8 @@ export function SubmissionTable({
   selectedBatchId,
   onBatchChange,
   onViewAttempt,
+  onEditAttempt,
+  agentNameMap,
   isLoading,
 }: SubmissionTableProps) {
   const getStatusBadge = (status: string) => {
@@ -41,6 +45,14 @@ export function SubmissionTable({
   const getBatchTitle = (batchId: string) => {
     const batch = batches.find(b => b.id === batchId);
     return batch?.title || 'Unknown Batch';
+  };
+
+  const resolveAgentName = (email: string) => {
+    return agentNameMap?.get(email.toLowerCase()) || email;
+  };
+
+  const canEdit = (status: string) => {
+    return status === 'graded' || status === 'needs_manual_review' || status === 'submitted';
   };
 
   return (
@@ -92,7 +104,7 @@ export function SubmissionTable({
             <TableBody>
               {attempts.map((attempt) => (
                 <TableRow key={attempt.id}>
-                  <TableCell className="font-medium">{attempt.agent_email}</TableCell>
+                  <TableCell className="font-medium">{resolveAgentName(attempt.agent_email)}</TableCell>
                   <TableCell>{getBatchTitle(attempt.batch_id)}</TableCell>
                   <TableCell>{getStatusBadge(attempt.status)}</TableCell>
                   <TableCell>
@@ -114,14 +126,26 @@ export function SubmissionTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onViewAttempt(attempt.id)}
-                      title="View Details"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onViewAttempt(attempt.id)}
+                        title="View Details"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      {onEditAttempt && canEdit(attempt.status) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEditAttempt(attempt.id)}
+                          title="Override Scores"
+                        >
+                          <PenTool className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
