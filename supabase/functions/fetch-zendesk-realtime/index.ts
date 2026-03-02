@@ -130,10 +130,10 @@ Deno.serve(async (req) => {
       fetchTalkStats(configZD1),
       fetchMessagingStats(configZD1),
       fetchMessagingStats(configZD2),
-      searchCount(configZD1, 'type:ticket status:new created>=2026-02-26'),
-      searchCount(configZD2, 'type:ticket status:new created>=2026-02-26'),
-      searchCount(configZD1, 'type:ticket created>=2026-02-26'),
-      searchCount(configZD2, 'type:ticket created>=2026-02-26'),
+      searchCount(configZD1, 'type:ticket status:new created:today'),
+      searchCount(configZD2, 'type:ticket status:new created:today'),
+      searchCount(configZD1, 'type:ticket created:today'),
+      searchCount(configZD2, 'type:ticket created:today'),
     ]);
 
     const result = {

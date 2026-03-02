@@ -26,6 +26,8 @@ interface InstanceResult {
   lastHourNew: number;
   lastHourResponded: number;
   remainingYesterday: number;
+  totalYesterday: number;
+  workedYesterday: number;
   oldestNewTicket: OldestTicket | null;
   resolution: ResolutionData;
 }
@@ -176,10 +178,12 @@ async function fetchResolutionMetrics(config: ZendeskConfig): Promise<Resolution
 
 async function fetchInstanceData(config: ZendeskConfig): Promise<InstanceResult> {
   // Run the simpler queries in parallel
-  const [lastHourNew, lastHourResponded, remainingYesterday, oldestNewTicket] = await Promise.all([
+  const [lastHourNew, lastHourResponded, remainingYesterday, totalYesterday, workedYesterday, oldestNewTicket] = await Promise.all([
     searchCount(config, 'type:ticket status:new created>=1hour_ago'),
     searchCount(config, 'type:ticket status>new created>=1hour_ago'),
     searchCount(config, 'type:ticket status:new created:yesterday'),
+    searchCount(config, 'type:ticket created:yesterday'),
+    searchCount(config, 'type:ticket status>new created:yesterday'),
     searchOldestNew(config),
   ]);
 
@@ -190,6 +194,8 @@ async function fetchInstanceData(config: ZendeskConfig): Promise<InstanceResult>
     lastHourNew,
     lastHourResponded,
     remainingYesterday,
+    totalYesterday,
+    workedYesterday,
     oldestNewTicket,
     resolution,
   };

@@ -18,6 +18,8 @@ export interface SlaInstanceData {
   lastHourNew: number;
   lastHourResponded: number;
   remainingYesterday: number;
+  totalYesterday: number;
+  workedYesterday: number;
   oldestNewTicket: OldestTicket | null;
   resolution: ResolutionData;
 }
@@ -102,6 +104,8 @@ export function combineInstances(zd1: SlaInstanceData, zd2: SlaInstanceData): Sl
     lastHourNew: zd1.lastHourNew + zd2.lastHourNew,
     lastHourResponded: zd1.lastHourResponded + zd2.lastHourResponded,
     remainingYesterday: zd1.remainingYesterday + zd2.remainingYesterday,
+    totalYesterday: zd1.totalYesterday + zd2.totalYesterday,
+    workedYesterday: zd1.workedYesterday + zd2.workedYesterday,
     oldestNewTicket: oldest,
     resolution: {
       avgFirstReplyMinutes: avgOrNull(zd1.resolution.avgFirstReplyMinutes, zd2.resolution.avgFirstReplyMinutes),
