@@ -191,12 +191,17 @@ export function useSlaHistory() {
       setIsLoading(true);
       const { data, error: err } = await supabase
         .from('sla_daily_snapshots')
-        .select('date, zd_instance, total_new, total_responded, remaining_unanswered, avg_first_reply_minutes, avg_full_resolution_minutes, distribution')
+        .select('*')
         .gte('date', '2026-02-26')
         .order('date', { ascending: true });
 
+      console.log('SLA history raw response:', { data, error: err, count: data?.length });
+
       if (err) throw new Error(err.message);
-      setSnapshots((data || []) as DailySnapshot[]);
+      if (!data || data.length === 0) {
+        console.warn('SLA history: no rows returned');
+      }
+      setSnapshots((data || []) as unknown as DailySnapshot[]);
       setError(null);
     } catch (e: any) {
       console.error('SLA history fetch error:', e);
