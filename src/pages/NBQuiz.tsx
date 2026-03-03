@@ -23,6 +23,14 @@ const DELAY_SECONDS = 2 * 60; // 2 minutes delay before timer starts
 const TIMER_SECONDS = 20 * 60; // 20 minutes quiz time
 const TOTAL_SECONDS = DELAY_SECONDS + TIMER_SECONDS; // total window from started_at
 
+/** Check if agent answer matches any variant in correct_answer (split by "/") */
+function answerMatchesCorrect(agentAnswer: string, correctAnswer: string): boolean {
+  const agent = agentAnswer.trim().toLowerCase();
+  if (!agent) return false;
+  const variants = correctAnswer.split('/').map(v => v.trim().toLowerCase());
+  return variants.some(v => v === agent || agent === v);
+}
+
 interface QuizQuestion {
   id: string;
   question_number: number;
@@ -156,7 +164,7 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
                           {questions.map((q) => {
                             const entry = (r.answers || []).find((a: any) => a.question_id === q.id);
                             const agentAnswer = entry?.answer || '(no answer)';
-                            const isMatch = agentAnswer.trim().toLowerCase() === q.correct_answer.trim().toLowerCase();
+                            const isMatch = answerMatchesCorrect(agentAnswer, q.correct_answer);
                             return (
                               <div key={q.id} className="text-sm">
                                 <p className="text-xs text-muted-foreground font-medium">Q{q.question_number}: {q.question_text}</p>
@@ -940,7 +948,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
       {questions.map((q) => {
         const userAnswer = answers[q.id] || '';
         const isCorrect = showResults && submission
-          ? (submission.gradeResults ? submission.gradeResults[q.id] === true : userAnswer.trim().toLowerCase() === q.correct_answer.trim().toLowerCase())
+          ? (submission.gradeResults ? submission.gradeResults[q.id] === true : answerMatchesCorrect(userAnswer, q.correct_answer))
           : null;
 
         return (
