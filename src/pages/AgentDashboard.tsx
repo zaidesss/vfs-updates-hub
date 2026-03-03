@@ -892,6 +892,7 @@ export default function AgentDashboard() {
                     otEnabled={profile.ot_enabled}
                     shiftSchedule={effectiveShiftSchedule}
                     breakSchedule={profile.break_schedule}
+                    profileId={profile.id}
                   />
                 );
               })()}
