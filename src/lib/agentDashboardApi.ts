@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolvePositionCategory } from '@/lib/positionUtils';
 import { startOfWeek, endOfWeek, format, parseISO, isAfter, isBefore, isEqual, addMinutes } from 'date-fns';
-import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal, getESTDayBoundaries } from '@/lib/timezoneUtils';
+import { parseScheduleRange as parseScheduleRangeMinutes, getESTDateFromTimestamp, getCurrentESTTimeMinutes, getTodayEST, parseDateStringLocal, getESTDayBoundaries, getESTWeekBoundaries } from '@/lib/timezoneUtils';
 
 /**
  * Determine if a week should be read from snapshots (older than 2 weeks) or live tables
@@ -1291,8 +1291,9 @@ export async function getWeekStatusEvents(
   weekEnd: Date
 ): Promise<{ data: ProfileEvent[] | null; error: string | null }> {
   try {
-    const startStr = weekStart.toISOString();
-    const endStr = weekEnd.toISOString();
+    const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+    const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+    const { start: startStr, end: endStr } = getESTWeekBoundaries(weekStartStr, weekEndStr);
 
     const { data, error } = await supabase
       .from('profile_events')
@@ -1325,8 +1326,9 @@ export async function getWeekAllEvents(
   weekEnd: Date
 ): Promise<{ data: ProfileEvent[] | null; error: string | null }> {
   try {
-    const startStr = weekStart.toISOString();
-    const endStr = weekEnd.toISOString();
+    const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+    const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+    const { start: startStr, end: endStr } = getESTWeekBoundaries(weekStartStr, weekEndStr);
 
     const { data, error } = await supabase
       .from('profile_events')
@@ -1521,12 +1523,6 @@ export function calculateAttendanceForWeek(
   // Build override lookup: date -> override
   const overrideMap = new Map<string, CoverageOverrideForWeek>();
   coverageOverrides?.forEach(o => overrideMap.set(o.date, o));
-
-  // Parse allowed break minutes from profile
-  const allowedBreakMinutes = parseBreakScheduleMinutes(profile.break_schedule);
-  // Grace period: allowed + 5 minutes (or proportional: allowed/6 rounded up)
-  const breakGraceMinutes = Math.ceil(allowedBreakMinutes / 6); // 30min break = 5min grace
-  const maxBreakMinutes = allowedBreakMinutes + breakGraceMinutes;
 
   return DAYS.map((day) => {
     const date = new Date(weekStart);
@@ -1729,6 +1725,12 @@ export function calculateAttendanceForWeek(
       }
     }
 
+    // Calculate per-day break allowance from effective schedule (fallback to profile)
+    const dayBreakSchedule = effectiveDay?.breakSchedule ?? profile.break_schedule;
+    const allowedBreakMinutes = parseBreakScheduleMinutes(dayBreakSchedule);
+    const breakGraceMinutes = Math.ceil(allowedBreakMinutes / 6);
+    const maxBreakMinutes = allowedBreakMinutes + breakGraceMinutes;
+
     // Calculate OT for this day
     const otData = calculateOTForDay();
 
@@ -1871,19 +1873,15 @@ export async function getAgentTagByEmail(email: string): Promise<{ data: string 
  */
 export async function getTodayTicketCount(agentTag: string): Promise<{ data: number; error: string | null }> {
   try {
-    // Get today's date range in UTC
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Get today's date range using EST boundaries
+    const { start, end } = getESTDayBoundaries(getTodayEST());
 
     const { count, error } = await supabase
       .from('ticket_logs')
       .select('*', { count: 'exact', head: true })
       .ilike('agent_name', agentTag)
-      .gte('timestamp', startOfDay.toISOString())
-      .lte('timestamp', endOfDay.toISOString());
+      .gte('timestamp', start)
+      .lte('timestamp', end);
 
     if (error) {
       return { data: 0, error: error.message };
