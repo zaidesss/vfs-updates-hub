@@ -10,11 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORIES, getCategoryLabel } from '@/lib/categories';
-import { PRE_APPROVERS, FINAL_APPROVER, isPreApprover, isFinalApprover } from '@/lib/approvers';
+import { PRE_APPROVERS, isPreApprover } from '@/lib/approvers';
 import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates, deleteArticleRequest } from '@/lib/requestApi';
 import { writeAuditLog } from '@/lib/auditLogApi';
 import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
-import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2 } from 'lucide-react';
+import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2, ArrowUpRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -59,7 +59,7 @@ export default function Requests() {
   });
 
   const userIsPreApprover = user?.email ? isPreApprover(user.email) : false;
-  const userIsFinalApprover = user?.email ? isFinalApprover(user.email) : false;
+  const canFinalReview = isAdmin || isHR;
   const canDelete = isAdmin || isHR;
 
   useEffect(() => {
@@ -94,7 +94,6 @@ export default function Requests() {
       setSimilarUpdates(result.data);
       setShowSimilarResults(true);
     } else {
-      // No similar updates found, show confirmation dialog
       setShowNoSimilarDialog(true);
     }
   };
@@ -161,7 +160,11 @@ export default function Requests() {
     if (result.error) {
       toast({ title: 'Error', description: result.error, variant: 'destructive' });
     } else {
-      toast({ title: decision === 'reject' ? 'Rejected' : 'Approved', description: 'HR and submitter have been notified.' });
+      const toastTitle = decision === 'reject' ? 'Rejected' : decision === 'escalate_to_improvements' ? 'Escalated' : 'Approved';
+      const toastDesc = decision === 'escalate_to_improvements'
+        ? 'Request escalated to Improvements Tracker. HR and submitter have been notified.'
+        : 'HR and submitter have been notified.';
+      toast({ title: toastTitle, description: toastDesc });
       loadRequests();
     }
     setProcessingRequest(null);
@@ -195,6 +198,16 @@ export default function Requests() {
       case 'approved': return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Approved</Badge>;
       case 'rejected': return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Rejected</Badge>;
       default: return <Badge>{status}</Badge>;
+    }
+  };
+
+  const getDecisionLabel = (decision: string) => {
+    switch (decision) {
+      case 'create_new': return 'Create New Article';
+      case 'update_existing': return 'Update Existing';
+      case 'reject': return 'Rejected';
+      case 'escalate_to_improvements': return 'Escalated to Improvements';
+      default: return decision;
     }
   };
 
@@ -396,9 +409,8 @@ export default function Requests() {
           <Card><CardContent className="py-12 text-center text-muted-foreground">No requests yet</CardContent></Card>
         ) : (
           <div className="space-y-4">
-            {requests.map((request, index) => {
+            {requests.map((request) => {
               const preApprovals = request.approvals.filter(a => a.stage === 1);
-              const finalApproval = request.approvals.find(a => a.stage === 2);
               const preApprovedCount = preApprovals.filter(a => a.approved).length;
               const referenceNumber = (request as any).reference_number;
 
@@ -477,14 +489,14 @@ export default function Requests() {
                     <div className="border-t pt-4">
                       <p className="text-sm font-medium mb-2 flex items-center gap-2">
                         <Crown className="h-4 w-4" />
-                        Final Review ({FINAL_APPROVER.name})
+                        Final Review (Super Admin / HR)
                       </p>
                       
                       {request.status === 'pending' && (
                         <p className="text-sm text-muted-foreground">Waiting for all pre-approvals before final review.</p>
                       )}
 
-                      {request.status === 'pending_final_review' && userIsFinalApprover && (
+                      {request.status === 'pending_final_review' && canFinalReview && (
                         <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
                           <Textarea 
                             placeholder="Optional notes for your decision..."
@@ -500,6 +512,10 @@ export default function Requests() {
                             <Button size="sm" variant="secondary" onClick={() => handleFinalDecision(request.id, 'update_existing')} disabled={processingRequest === request.id}>
                               Approve: Update Existing
                             </Button>
+                            <Button size="sm" variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => handleFinalDecision(request.id, 'escalate_to_improvements')} disabled={processingRequest === request.id}>
+                              <ArrowUpRight className="h-3 w-3 mr-1" />
+                              Escalate to Improvements
+                            </Button>
                             <Button size="sm" variant="destructive" onClick={() => handleFinalDecision(request.id, 'reject')} disabled={processingRequest === request.id}>
                               Reject
                             </Button>
@@ -507,15 +523,16 @@ export default function Requests() {
                         </div>
                       )}
 
-                      {request.status === 'pending_final_review' && !userIsFinalApprover && (
-                        <p className="text-sm text-amber-600">Awaiting {FINAL_APPROVER.name}'s final decision.</p>
+                      {request.status === 'pending_final_review' && !canFinalReview && (
+                        <p className="text-sm text-amber-600">Awaiting Super Admin / HR final decision.</p>
                       )}
 
                       {(request.status === 'approved' || request.status === 'rejected') && request.final_decision && (
                         <div className="text-sm">
-                          <p><strong>Decision:</strong> {request.final_decision === 'create_new' ? 'Create New Article' : request.final_decision === 'update_existing' ? 'Update Existing' : 'Rejected'}</p>
+                          <p><strong>Decision:</strong> {getDecisionLabel(request.final_decision)}</p>
                           {request.final_notes && <p><strong>Notes:</strong> {request.final_notes}</p>}
                           {request.final_reviewed_at && <p className="text-muted-foreground">Reviewed: {format(new Date(request.final_reviewed_at), 'PPp')}</p>}
+                          {request.final_reviewed_by && <p className="text-muted-foreground">By: {request.final_reviewed_by}</p>}
                         </div>
                       )}
                     </div>
