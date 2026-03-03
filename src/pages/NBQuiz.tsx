@@ -694,7 +694,11 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
                     const { data: gradeData, error: gradeErr } = await supabase.functions.invoke('grade-nb-quiz', {
                       body: { items },
                     });
-                    if (gradeErr || gradeData?.error) continue;
+                    console.log('Grade response for', sub.agent_email, { gradeData, gradeErr });
+                    if (gradeErr || gradeData?.error) {
+                      console.error('Grade error for', sub.agent_email, gradeErr, gradeData?.error);
+                      continue;
+                    }
 
                     const results: Record<string, boolean> = gradeData.results || {};
                     const newScore = questions.filter((q) => results[q.id] === true).length;
