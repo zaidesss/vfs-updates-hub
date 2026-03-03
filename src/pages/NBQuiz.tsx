@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, RefreshCw } from 'lucide-react';
 
 const QUIZ_DATES = [
   { label: '03.03.26', value: '2026-03-03' },
@@ -397,6 +397,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [regrading, setRegrading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
@@ -648,6 +649,75 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
               <Badge variant={isVisible ? 'default' : 'secondary'}>{isVisible ? 'Visible' : 'Hidden'}</Badge>
             </div>
             <Switch checked={isVisible} onCheckedChange={toggleVisibility} disabled={togglingVisibility} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Admin re-grade & timer monitor */}
+      {isAdmin && (
+        <Card>
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Re-grade All Submissions (AI)</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={regrading}
+              onClick={async () => {
+                setRegrading(true);
+                try {
+                  // Fetch all submissions for this date
+                  const { data: subs } = await supabase
+                    .from('nb_quiz_submissions')
+                    .select('id, agent_email, answers')
+                    .eq('quiz_date', quizDate);
+                  if (!subs || subs.length === 0) {
+                    toast({ title: 'No submissions to re-grade' });
+                    return;
+                  }
+
+                  let updated = 0;
+                  for (const sub of subs) {
+                    const subAnswers = sub.answers as any[];
+                    const items = questions.map((q) => {
+                      const entry = subAnswers.find((a: any) => a.question_id === q.id);
+                      return {
+                        question_id: q.id,
+                        question_text: q.question_text,
+                        correct_answer: q.correct_answer,
+                        agent_answer: entry?.answer || '',
+                      };
+                    });
+
+                    const { data: gradeData, error: gradeErr } = await supabase.functions.invoke('grade-nb-quiz', {
+                      body: { items },
+                    });
+                    if (gradeErr || gradeData?.error) continue;
+
+                    const results: Record<string, boolean> = gradeData.results || {};
+                    const newScore = questions.filter((q) => results[q.id] === true).length;
+
+                    await supabase
+                      .from('nb_quiz_submissions')
+                      .update({ score: newScore } as any)
+                      .eq('id', sub.id);
+                    updated++;
+                  }
+
+                  toast({ title: 'Re-grading complete', description: `Updated ${updated} submission(s)` });
+                  setRefreshSummary((c) => c + 1);
+                } catch (err: any) {
+                  toast({ title: 'Re-grade failed', description: err.message, variant: 'destructive' });
+                } finally {
+                  setRegrading(false);
+                }
+              }}
+            >
+              {regrading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {regrading ? 'Re-grading...' : 'Re-grade'}
+            </Button>
           </CardContent>
         </Card>
       )}
