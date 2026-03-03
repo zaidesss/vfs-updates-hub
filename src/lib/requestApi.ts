@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { ArticleRequest, ArticleRequestWithApprovals, RequestApproval, FinalDecision } from '@/types/request';
-import { PRE_APPROVERS, FINAL_APPROVER } from '@/lib/approvers';
+import { PRE_APPROVERS } from '@/lib/approvers';
 import { writeAuditLog } from '@/lib/auditLogApi';
 
 export interface ApiResponse<T> {
@@ -175,7 +175,7 @@ export async function approveRequest(requestId: string, approverEmail: string): 
   }
 }
 
-// Final review by Patrick
+// Final review by Super Admin / HR
 export async function finalizeRequestReview(
   requestId: string,
   approverEmail: string,

@@ -6,14 +6,10 @@ export const PRE_APPROVERS = [
   { email: 'mjesguerraiman@gmail.com', name: 'Meryl' },
 ];
 
-// Final approver (Patrick) - second stage, reviews after all pre-approvers approve
-export const FINAL_APPROVER = { email: 'patrickargao@gmail.com', name: 'Patrick' };
-
-// All approvers for reference
-export const ALL_APPROVERS = [...PRE_APPROVERS, FINAL_APPROVER];
+// All approvers for reference (no more dedicated final approver)
+export const ALL_APPROVERS = [...PRE_APPROVERS];
 
 export const PRE_APPROVER_EMAILS = PRE_APPROVERS.map(a => a.email);
-export const FINAL_APPROVER_EMAIL = FINAL_APPROVER.email;
 
 export const HR_EMAIL = 'hr@virtualfreelancesolutions.com';
 
@@ -26,12 +22,13 @@ export function isPreApprover(email: string): boolean {
   return PRE_APPROVER_EMAILS.some(e => e.toLowerCase() === email.toLowerCase());
 }
 
-export function isFinalApprover(email: string): boolean {
-  return FINAL_APPROVER_EMAIL.toLowerCase() === email.toLowerCase();
+// Final review is now done by any Super Admin, Admin, or HR — no dedicated person
+export function isFinalApprover(_email: string): boolean {
+  return false;
 }
 
 export function isAnyApprover(email: string): boolean {
-  return isPreApprover(email) || isFinalApprover(email);
+  return isPreApprover(email);
 }
 
 // Legacy exports for backward compatibility

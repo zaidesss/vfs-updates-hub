@@ -3,7 +3,7 @@ import type { UpdateCategory } from '@/lib/categories';
 export type RequestType = 'new_article' | 'update_existing' | 'general';
 export type RequestStatus = 'pending' | 'pending_final_review' | 'approved' | 'rejected';
 export type RequestPriority = 'low' | 'normal' | 'high' | 'urgent';
-export type FinalDecision = 'create_new' | 'update_existing' | 'reject' | null;
+export type FinalDecision = 'create_new' | 'update_existing' | 'reject' | 'escalate_to_improvements' | null;
 
 export interface ArticleRequest {
   id: string;

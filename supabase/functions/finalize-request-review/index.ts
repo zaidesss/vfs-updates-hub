@@ -7,7 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const FINAL_APPROVER_EMAIL = 'patrickargao@gmail.com';
 const HR_EMAIL = 'hr@virtualfreelancesolutions.com';
 
 serve(async (req) => {
@@ -19,28 +18,33 @@ serve(async (req) => {
     const { requestId, approverEmail, decision, notes } = await req.json();
     console.log("Finalize review:", { requestId, approverEmail, decision });
 
-    // Verify the approver is Patrick
-    if (approverEmail.toLowerCase() !== FINAL_APPROVER_EMAIL.toLowerCase()) {
-      console.error("Unauthorized: Not the final approver");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Verify the approver has Super Admin, Admin, or HR role
+    const { data: roles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("email", approverEmail.toLowerCase())
+      .in("role", ["super_admin", "admin", "hr"]);
+
+    if (rolesError || !roles || roles.length === 0) {
+      console.error("Unauthorized: Not a Super Admin, Admin, or HR user");
       return new Response(
-        JSON.stringify({ error: "Only the final approver can finalize requests" }),
+        JSON.stringify({ error: "Only Super Admins, Admins, or HR can finalize requests" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Validate decision
-    const validDecisions = ['create_new', 'update_existing', 'reject'];
+    const validDecisions = ['create_new', 'update_existing', 'reject', 'escalate_to_improvements'];
     if (!validDecisions.includes(decision)) {
       return new Response(
-        JSON.stringify({ error: "Invalid decision. Must be: create_new, update_existing, or reject" }),
+        JSON.stringify({ error: "Invalid decision. Must be: create_new, update_existing, reject, or escalate_to_improvements" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify request exists and is in pending_final_review status
     const { data: request, error: requestError } = await supabase
@@ -87,18 +91,35 @@ serve(async (req) => {
       );
     }
 
-    // Mark Patrick's approval as complete
-    const { error: approvalError } = await supabase
-      .from("request_approvals")
-      .update({
-        approved: true,
-        approved_at: now,
-      })
-      .eq("request_id", requestId)
-      .eq("approver_email", FINAL_APPROVER_EMAIL);
+    // If escalate_to_improvements, create an improvement entry
+    if (decision === 'escalate_to_improvements') {
+      const priorityMap: Record<string, string> = {
+        'low': 'low',
+        'normal': 'medium',
+        'high': 'high',
+        'urgent': 'high',
+      };
 
-    if (approvalError) {
-      console.error("Error updating approval:", approvalError);
+      const { error: improvementError } = await supabase
+        .from("improvements")
+        .insert({
+          category: request.category || 'Other',
+          task: (request.description || '').substring(0, 200),
+          description: request.description,
+          priority: priorityMap[request.priority] || 'medium',
+          status: 'not_started',
+          requested_by_email: request.submitted_by,
+          notes: request.reference_number
+            ? `Escalated from Article Request ${request.reference_number}`
+            : `Escalated from Article Request`,
+        });
+
+      if (improvementError) {
+        console.error("Error creating improvement:", improvementError);
+        // Don't fail the whole request, just log it
+      } else {
+        console.log("Created improvement entry from escalated request");
+      }
     }
 
     // Send notification to HR
@@ -106,16 +127,17 @@ serve(async (req) => {
       'create_new': 'Create New Article',
       'update_existing': 'Update Existing Article',
       'reject': 'Rejected',
+      'escalate_to_improvements': 'Escalated to Improvements',
     };
 
     const statusLabel = decision === 'reject' ? 'Rejected' : 'Approved';
 
     try {
-      // Notify HR
       const html = `
         <h2>Article Request ${statusLabel}</h2>
         ${request.reference_number ? `<p><strong>Reference:</strong> ${request.reference_number}</p>` : ''}
-        <p>Patrick has completed the final review for the following request.</p>
+        <p>A final review has been completed for the following request.</p>
+        <p><strong>Reviewed by:</strong> ${approverEmail}</p>
         <p><strong>Decision:</strong> ${decisionLabels[decision]}</p>
         ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
         <hr style="margin: 20px 0;">
@@ -138,7 +160,7 @@ serve(async (req) => {
       console.error("Error sending HR notification:", emailError);
     }
 
-    // Also notify the original submitter
+    // Notify the original submitter
     try {
       const html = `
         <h2>Your Request has been ${statusLabel}</h2>
