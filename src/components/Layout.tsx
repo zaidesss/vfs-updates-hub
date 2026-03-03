@@ -163,6 +163,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/team-performance/scorecard', label: 'Scorecard', icon: BarChart3 },
         { href: '/team-performance/revalida', label: 'Revalida', icon: GraduationCap },
         { href: '/team-performance/revalida-v2', label: 'Revalida 2.0', icon: GraduationCap },
+        { href: '/team-performance/nb-quiz', label: 'NB Quiz', icon: BookOpen },
         { href: '/team-performance/zendesk-insights', label: 'Zendesk Insights', icon: BarChart3 },
       ],
     });

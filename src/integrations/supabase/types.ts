@@ -1249,6 +1249,66 @@ export type Database = {
         }
         Relationships: []
       }
+      nb_quiz_questions: {
+        Row: {
+          correct_answer: string
+          created_at: string | null
+          id: string
+          question_number: number
+          question_text: string
+          quiz_date: string
+          source_article_title: string | null
+        }
+        Insert: {
+          correct_answer: string
+          created_at?: string | null
+          id?: string
+          question_number: number
+          question_text: string
+          quiz_date: string
+          source_article_title?: string | null
+        }
+        Update: {
+          correct_answer?: string
+          created_at?: string | null
+          id?: string
+          question_number?: number
+          question_text?: string
+          quiz_date?: string
+          source_article_title?: string | null
+        }
+        Relationships: []
+      }
+      nb_quiz_submissions: {
+        Row: {
+          agent_email: string
+          answers: Json
+          id: string
+          quiz_date: string
+          score: number
+          submitted_at: string | null
+          total: number
+        }
+        Insert: {
+          agent_email: string
+          answers: Json
+          id?: string
+          quiz_date: string
+          score: number
+          submitted_at?: string | null
+          total: number
+        }
+        Update: {
+          agent_email?: string
+          answers?: Json
+          id?: string
+          quiz_date?: string
+          score?: number
+          submitted_at?: string | null
+          total?: number
+        }
+        Relationships: []
+      }
       notification_settings: {
         Row: {
           created_at: string
