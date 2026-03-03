@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users } from 'lucide-react';
 
 const QUIZ_DATES = [
   { label: '03.03.26', value: '2026-03-03' },
@@ -259,6 +259,136 @@ function TimerBadge({ phase, secondsLeft }: { phase: string; secondsLeft: number
   return null;
 }
 
+interface AgentTimerRow {
+  agent_email: string;
+  agent_name: string;
+  started_at: string;
+}
+
+function AgentTimerMonitor({ quizDate }: { quizDate: string }) {
+  const [rows, setRows] = useState<AgentTimerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data: timers } = await supabase
+        .from('nb_quiz_timer_starts')
+        .select('agent_email, started_at')
+        .eq('quiz_date', quizDate);
+
+      if (!timers || timers.length === 0) {
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const emails = timers.map((t: any) => t.agent_email);
+      const { data: profiles } = await supabase
+        .from('agent_profiles')
+        .select('email, agent_name, full_name')
+        .in('email', emails);
+
+      const nameMap: Record<string, string> = {};
+      (profiles || []).forEach((p: any) => {
+        nameMap[p.email.toLowerCase()] = p.agent_name || p.full_name || p.email;
+      });
+
+      setRows(
+        timers.map((t: any) => ({
+          agent_email: t.agent_email,
+          agent_name: nameMap[t.agent_email.toLowerCase()] || t.agent_email,
+          started_at: t.started_at,
+        })).sort((a: AgentTimerRow, b: AgentTimerRow) => a.agent_name.localeCompare(b.agent_name))
+      );
+      setLoading(false);
+    };
+    load();
+  }, [quizDate]);
+
+  // Tick every second to update countdowns
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-4">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Agent Timers</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No agents have started this quiz yet.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Agent Timers ({rows.length})</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Agent</TableHead>
+              <TableHead className="text-right w-40">Time Remaining</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => {
+              const elapsed = Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000);
+              let label: string;
+              let className = 'text-muted-foreground';
+
+              if (elapsed < DELAY_SECONDS) {
+                const left = DELAY_SECONDS - elapsed;
+                label = `Preparing (${formatTime(left)})`;
+                className = 'text-muted-foreground';
+              } else if (elapsed < TOTAL_SECONDS) {
+                const left = TOTAL_SECONDS - elapsed;
+                label = formatTime(left);
+                if (left <= 120) className = 'text-destructive font-semibold';
+                else className = 'text-primary font-medium';
+              } else {
+                label = 'Expired';
+                className = 'text-muted-foreground line-through';
+              }
+
+              return (
+                <TableRow key={r.agent_email}>
+                  <TableCell className="text-sm">{r.agent_name}</TableCell>
+                  <TableCell className={`text-right text-sm ${className}`}>{label}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail: string; isAdmin: boolean }) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -445,6 +575,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
             </CardContent>
           </Card>
         )}
+        {isAdmin && <AgentTimerMonitor quizDate={quizDate} />}
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
             <Clock className="h-10 w-10 text-primary animate-pulse" />
@@ -474,6 +605,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
             </CardContent>
           </Card>
         )}
+        {isAdmin && <AgentTimerMonitor quizDate={quizDate} />}
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
             <p className="text-muted-foreground">No questions generated yet for this date.</p>
@@ -503,6 +635,9 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
           </CardContent>
         </Card>
       )}
+
+      {/* Admin agent timer monitor */}
+      {isAdmin && <AgentTimerMonitor quizDate={quizDate} />}
 
       {/* Timer display for non-admins */}
       {!isAdmin && phase === 'active' && (
