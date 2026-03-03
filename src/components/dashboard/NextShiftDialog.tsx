@@ -19,16 +19,21 @@ interface NextShiftDialogProps {
   onOpenChange: (open: boolean) => void;
   onAcknowledge: () => void;
   profileId: string;
+  agentEmail?: string;
+}
+
+interface OffDay {
+  date: Date;
+  reason: string; // "Day Off", "Planned Leave", "Sick Leave", etc.
 }
 
 interface ShiftInfo {
-  tomorrowDate: Date;
-  tomorrowIsDayOff: boolean;
+  offDays: OffDay[];
   nextShiftDate: Date;
   nextShiftStartTime: string;
 }
 
-export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }: NextShiftDialogProps) {
+export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId, agentEmail }: NextShiftDialogProps) {
   const { now } = usePortalClock();
   const [loading, setLoading] = useState(false);
   const [shiftInfo, setShiftInfo] = useState<ShiftInfo | null>(null);
@@ -48,36 +53,10 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
     setShiftInfo(null);
 
     async function fetchNextShift() {
-      const tomorrow = addDays(baseDate, 1);
-      const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+      const offDays: OffDay[] = [];
+      let offset = 1; // start from tomorrow
 
-      const { data: tomorrowData, error: tomorrowErr } = await supabase
-        .rpc('get_effective_schedule', { p_agent_id: profileId, p_target_date: tomorrowStr });
-
-      if (cancelled) return;
-      if (tomorrowErr) {
-        setError('Could not fetch schedule.');
-        setLoading(false);
-        return;
-      }
-
-      const tomorrowRow = tomorrowData?.[0];
-      const tomorrowIsDayOff = tomorrowRow?.is_day_off ?? true;
-      const tomorrowSchedule = tomorrowRow?.effective_schedule;
-
-      if (!tomorrowIsDayOff && tomorrowSchedule && tomorrowSchedule.toLowerCase() !== 'day off') {
-        const parsed = parseScheduleRange(tomorrowSchedule);
-        setShiftInfo({
-          tomorrowDate: tomorrow,
-          tomorrowIsDayOff: false,
-          nextShiftDate: tomorrow,
-          nextShiftStartTime: parsed?.startTime ?? tomorrowSchedule,
-        });
-        setLoading(false);
-        return;
-      }
-
-      let offset = 2;
+      // Scan consecutive off days
       while (!cancelled) {
         const checkDate = addDays(baseDate, offset);
         const checkStr = format(checkDate, 'yyyy-MM-dd');
@@ -97,16 +76,49 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
         const schedule = row?.effective_schedule;
 
         if (!isDayOff && schedule && schedule.toLowerCase() !== 'day off') {
+          // Found a work day — this is the next shift
           const parsed = parseScheduleRange(schedule);
+
+          // If there are off days, fetch leave reasons
+          if (offDays.length > 0 && agentEmail) {
+            const firstOff = format(offDays[0].date, 'yyyy-MM-dd');
+            const lastOff = format(offDays[offDays.length - 1].date, 'yyyy-MM-dd');
+
+            const { data: leaveData } = await supabase
+              .from('leave_requests')
+              .select('outage_reason, start_date, end_date')
+              .eq('status', 'approved')
+              .ilike('agent_email', agentEmail)
+              .lte('start_date', lastOff)
+              .gte('end_date', firstOff);
+
+            if (!cancelled && leaveData) {
+              // Cross-reference each off day with leave requests
+              for (const offDay of offDays) {
+                const offDateStr = format(offDay.date, 'yyyy-MM-dd');
+                const matchingLeave = leaveData.find(
+                  (lr) => lr.start_date <= offDateStr && lr.end_date >= offDateStr
+                );
+                if (matchingLeave) {
+                  offDay.reason = matchingLeave.outage_reason;
+                }
+              }
+            }
+          }
+
+          if (cancelled) return;
+
           setShiftInfo({
-            tomorrowDate: tomorrow,
-            tomorrowIsDayOff: true,
+            offDays,
             nextShiftDate: checkDate,
             nextShiftStartTime: parsed?.startTime ?? schedule,
           });
           setLoading(false);
           return;
         }
+
+        // It's an off day — collect it
+        offDays.push({ date: checkDate, reason: 'Day Off' });
 
         offset++;
         if (offset > 60) {
@@ -146,17 +158,33 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
                 </div>
               )}
 
-              {shiftInfo && !shiftInfo.tomorrowIsDayOff && (
+              {shiftInfo && shiftInfo.offDays.length === 0 && (
                 <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 text-blue-900 dark:text-blue-100 text-sm leading-relaxed">
                   Please note your next shift is <strong>tomorrow, {formatDate(shiftInfo.nextShiftDate)}</strong>, at <strong>{shiftInfo.nextShiftStartTime} EST</strong>.
                 </div>
               )}
 
-              {shiftInfo && shiftInfo.tomorrowIsDayOff && (
+              {shiftInfo && shiftInfo.offDays.length === 1 && (
                 <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 text-blue-900 dark:text-blue-100 text-sm leading-relaxed space-y-2">
                   <p>
-                    Please note tomorrow is your <strong>rest day, {formatDate(shiftInfo.tomorrowDate)}</strong>.
+                    Tomorrow is your <strong>{shiftInfo.offDays[0].reason} — {formatDate(shiftInfo.offDays[0].date)}</strong>.
                   </p>
+                  <p>
+                    Your next shift is on <strong>{formatDate(shiftInfo.nextShiftDate)}</strong>, at <strong>{shiftInfo.nextShiftStartTime} EST</strong>.
+                  </p>
+                </div>
+              )}
+
+              {shiftInfo && shiftInfo.offDays.length > 1 && (
+                <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 text-blue-900 dark:text-blue-100 text-sm leading-relaxed space-y-3">
+                  <p className="font-medium">Your upcoming days off:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {shiftInfo.offDays.map((offDay, idx) => (
+                      <li key={idx}>
+                        <strong>{formatDate(offDay.date)}</strong> — {offDay.reason}
+                      </li>
+                    ))}
+                  </ul>
                   <p>
                     Your next shift is on <strong>{formatDate(shiftInfo.nextShiftDate)}</strong>, at <strong>{shiftInfo.nextShiftStartTime} EST</strong>.
                   </p>

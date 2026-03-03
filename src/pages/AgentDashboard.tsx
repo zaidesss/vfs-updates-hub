@@ -893,6 +893,7 @@ export default function AgentDashboard() {
                     shiftSchedule={effectiveShiftSchedule}
                     breakSchedule={profile.break_schedule}
                     profileId={profile.id}
+                    agentEmail={profile.email}
                   />
                 );
               })()}

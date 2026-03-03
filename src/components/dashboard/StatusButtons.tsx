@@ -20,6 +20,7 @@ interface StatusButtonsProps {
   shiftSchedule?: string | null;
   breakSchedule?: string | null;
   profileId?: string;
+  agentEmail?: string;
 }
 
 const DEVICE_RESTART_LIMIT_SECONDS = 5 * 60; // 5 minutes
@@ -44,6 +45,7 @@ export function StatusButtons({
   shiftSchedule = null,
   breakSchedule = null,
   profileId,
+  agentEmail,
 }: StatusButtonsProps) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showBreakConfirm, setShowBreakConfirm] = useState(false);
@@ -355,6 +357,7 @@ export function StatusButtons({
             handleClick('LOGOUT');
           }}
           profileId={profileId}
+          agentEmail={agentEmail}
         />
       )}
       {/* Break Confirmation Dialog */}
