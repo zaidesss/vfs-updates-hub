@@ -1333,6 +1333,27 @@ export type Database = {
         }
         Relationships: []
       }
+      nb_quiz_timer_starts: {
+        Row: {
+          agent_email: string
+          id: string
+          quiz_date: string
+          started_at: string
+        }
+        Insert: {
+          agent_email: string
+          id?: string
+          quiz_date: string
+          started_at?: string
+        }
+        Update: {
+          agent_email?: string
+          id?: string
+          quiz_date?: string
+          started_at?: string
+        }
+        Relationships: []
+      }
       notification_settings: {
         Row: {
           created_at: string

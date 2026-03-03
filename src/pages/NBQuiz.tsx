@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock } from 'lucide-react';
 
 const QUIZ_DATES = [
   { label: '03.03.26', value: '2026-03-03' },
@@ -18,6 +18,10 @@ const QUIZ_DATES = [
   { label: '03.05.26', value: '2026-03-05' },
   { label: '03.06.26', value: '2026-03-06' },
 ];
+
+const DELAY_SECONDS = 2 * 60; // 2 minutes delay before timer starts
+const TIMER_SECONDS = 20 * 60; // 20 minutes quiz time
+const TOTAL_SECONDS = DELAY_SECONDS + TIMER_SECONDS; // total window from started_at
 
 interface QuizQuestion {
   id: string;
@@ -40,6 +44,12 @@ interface ScoreSummaryRow {
   total: number;
 }
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
   const [rows, setRows] = useState<ScoreSummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +69,6 @@ function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
         return;
       }
 
-      // Fetch agent names from profiles
       const emails = submissions.map((s) => s.agent_email);
       const { data: profiles } = await supabase
         .from('agent_profiles')
@@ -132,6 +141,124 @@ function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
   );
 }
 
+function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'delay' | 'active' | 'expired'>('loading');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const computeState = useCallback((startedAt: Date) => {
+    const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+
+    if (elapsed < DELAY_SECONDS) {
+      // Still in the 2-min delay phase
+      setPhase('delay');
+      setSecondsLeft(DELAY_SECONDS - elapsed);
+    } else if (elapsed < TOTAL_SECONDS) {
+      // Active quiz time
+      setPhase('active');
+      setSecondsLeft(TOTAL_SECONDS - elapsed);
+    } else {
+      setPhase('expired');
+      setSecondsLeft(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) {
+      setPhase('active');
+      setSecondsLeft(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const init = async () => {
+      // Check if timer already started
+      const { data: existing } = await supabase
+        .from('nb_quiz_timer_starts')
+        .select('started_at')
+        .eq('agent_email', userEmail)
+        .eq('quiz_date', quizDate)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      let startedAt: Date;
+
+      if (existing) {
+        startedAt = new Date((existing as any).started_at);
+      } else {
+        // Insert new timer start
+        const { data: inserted, error } = await supabase
+          .from('nb_quiz_timer_starts')
+          .insert({ agent_email: userEmail, quiz_date: quizDate } as any)
+          .select('started_at')
+          .single();
+
+        if (cancelled) return;
+
+        if (error) {
+          // Race condition - another tab inserted first, re-fetch
+          const { data: refetched } = await supabase
+            .from('nb_quiz_timer_starts')
+            .select('started_at')
+            .eq('agent_email', userEmail)
+            .eq('quiz_date', quizDate)
+            .maybeSingle();
+          if (cancelled) return;
+          startedAt = new Date((refetched as any)?.started_at || Date.now());
+        } else {
+          startedAt = new Date((inserted as any).started_at);
+        }
+      }
+
+      computeState(startedAt);
+
+      // Tick every second
+      intervalRef.current = setInterval(() => {
+        computeState(startedAt);
+      }, 1000);
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [quizDate, userEmail, isAdmin, computeState]);
+
+  // Clear interval when expired
+  useEffect(() => {
+    if (phase === 'expired' && intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+  }, [phase]);
+
+  return { secondsLeft, phase };
+}
+
+function TimerBadge({ phase, secondsLeft }: { phase: string; secondsLeft: number | null }) {
+  if (phase === 'delay' && secondsLeft !== null) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Clock className="h-4 w-4" />
+        <span>Quiz starts in <strong>{formatTime(secondsLeft)}</strong></span>
+      </div>
+    );
+  }
+  if (phase === 'active' && secondsLeft !== null) {
+    const isLow = secondsLeft <= 120;
+    return (
+      <div className={`flex items-center gap-2 text-sm ${isLow ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+        <Clock className="h-4 w-4" />
+        <span>Time remaining: <strong>{formatTime(secondsLeft)}</strong></span>
+      </div>
+    );
+  }
+  return null;
+}
+
 function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail: string; isAdmin: boolean }) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -144,6 +271,8 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [refreshSummary, setRefreshSummary] = useState(0);
 
+  const { secondsLeft, phase } = useQuizTimer(quizDate, userEmail, isAdmin);
+
   useEffect(() => {
     loadData();
   }, [quizDate]);
@@ -151,7 +280,6 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load visibility setting
       const { data: settings } = await supabase
         .from('nb_quiz_settings')
         .select('is_visible')
@@ -160,7 +288,6 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
       setIsVisible((settings as any)?.is_visible ?? false);
 
-      // Load questions
       const { data: q } = await supabase
         .from('nb_quiz_questions')
         .select('*')
@@ -169,7 +296,6 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
       setQuestions((q as QuizQuestion[]) || []);
 
-      // Load existing submission
       const { data: s } = await supabase
         .from('nb_quiz_submissions')
         .select('*')
@@ -269,7 +395,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
     }
   };
 
-  if (loading) {
+  if (loading || phase === 'loading') {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -277,7 +403,22 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
     );
   }
 
-  // If quiz is hidden and user is not admin, show message
+  // Timer expired - lock out non-admin users
+  if (phase === 'expired' && !isAdmin) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+          <Lock className="h-10 w-10 text-muted-foreground" />
+          <p className="text-lg font-semibold">Time's Up!</p>
+          <p className="text-muted-foreground text-sm text-center">
+            The 20-minute quiz window has expired. You can no longer access this quiz.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Quiz hidden for non-admins
   if (!isVisible && !isAdmin) {
     return (
       <Card>
@@ -286,6 +427,35 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
           <p className="text-muted-foreground">This quiz is not yet available.</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  // Delay phase - waiting for quiz to unlock
+  if (phase === 'delay') {
+    return (
+      <div className="space-y-4">
+        {isAdmin && (
+          <Card>
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Quiz Visibility</span>
+                <Badge variant={isVisible ? 'default' : 'secondary'}>{isVisible ? 'Visible' : 'Hidden'}</Badge>
+              </div>
+              <Switch checked={isVisible} onCheckedChange={toggleVisibility} disabled={togglingVisibility} />
+            </CardContent>
+          </Card>
+        )}
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <Clock className="h-10 w-10 text-primary animate-pulse" />
+            <p className="text-lg font-semibold">Quiz is preparing...</p>
+            <p className="text-muted-foreground text-sm text-center">
+              The quiz will be available in <strong>{formatTime(secondsLeft ?? 0)}</strong>
+            </p>
+            <p className="text-xs text-muted-foreground">Please stay on this page. The quiz will appear automatically.</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -330,6 +500,15 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
               <Badge variant={isVisible ? 'default' : 'secondary'}>{isVisible ? 'Visible' : 'Hidden'}</Badge>
             </div>
             <Switch checked={isVisible} onCheckedChange={toggleVisibility} disabled={togglingVisibility} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Timer display for non-admins */}
+      {!isAdmin && phase === 'active' && (
+        <Card className={secondsLeft !== null && secondsLeft <= 120 ? 'border-destructive/50 bg-destructive/5' : 'border-primary/30 bg-primary/5'}>
+          <CardContent className="flex items-center justify-center py-3">
+            <TimerBadge phase={phase} secondsLeft={secondsLeft} />
           </CardContent>
         </Card>
       )}
