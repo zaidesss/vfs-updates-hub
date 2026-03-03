@@ -1279,6 +1279,30 @@ export type Database = {
         }
         Relationships: []
       }
+      nb_quiz_settings: {
+        Row: {
+          id: string
+          is_visible: boolean
+          quiz_date: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          is_visible?: boolean
+          quiz_date: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          is_visible?: boolean
+          quiz_date?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       nb_quiz_submissions: {
         Row: {
           agent_email: string
