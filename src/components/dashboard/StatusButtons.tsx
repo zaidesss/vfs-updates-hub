@@ -5,6 +5,7 @@ import { LogIn, LogOut, Coffee, GraduationCap, Loader2, RotateCcw, User, Clock }
 import type { ProfileStatus, EventType } from '@/lib/agentDashboardApi';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 import { BreakConfirmDialog } from './BreakConfirmDialog';
+import { NextShiftDialog } from './NextShiftDialog';
 
 interface StatusButtonsProps {
   currentStatus: ProfileStatus;
@@ -18,6 +19,7 @@ interface StatusButtonsProps {
   otEnabled?: boolean;
   shiftSchedule?: string | null;
   breakSchedule?: string | null;
+  profileId?: string;
 }
 
 const DEVICE_RESTART_LIMIT_SECONDS = 5 * 60; // 5 minutes
@@ -41,9 +43,11 @@ export function StatusButtons({
   otEnabled = false,
   shiftSchedule = null,
   breakSchedule = null,
+  profileId,
 }: StatusButtonsProps) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showBreakConfirm, setShowBreakConfirm] = useState(false);
+  const [showNextShiftDialog, setShowNextShiftDialog] = useState(false);
   const [loadingEvent, setLoadingEvent] = useState<EventType | null>(null);
   
   // Device Restart timer state
@@ -337,10 +341,22 @@ export function StatusButtons({
         onOpenChange={setShowLogoutConfirm}
         onConfirm={() => {
           setShowLogoutConfirm(false);
-          handleClick('LOGOUT');
+          setShowNextShiftDialog(true);
         }}
         shiftSchedule={shiftSchedule}
       />
+      {/* Next Shift Acknowledgment Dialog */}
+      {profileId && (
+        <NextShiftDialog
+          open={showNextShiftDialog}
+          onOpenChange={setShowNextShiftDialog}
+          onAcknowledge={() => {
+            setShowNextShiftDialog(false);
+            handleClick('LOGOUT');
+          }}
+          profileId={profileId}
+        />
+      )}
       {/* Break Confirmation Dialog */}
       <BreakConfirmDialog
         open={showBreakConfirm}
