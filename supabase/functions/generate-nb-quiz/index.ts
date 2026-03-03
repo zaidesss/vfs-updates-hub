@@ -35,16 +35,16 @@ serve(async (req) => {
     // Fetch published KB articles
     const { data: articles, error: articlesError } = await supabase
       .from("updates")
-      .select("title, content")
+      .select("title, body")
       .eq("status", "published")
-      .order("created_at", { ascending: false })
+      .order("posted_at", { ascending: false })
       .limit(50);
 
     if (articlesError) throw articlesError;
     if (!articles || articles.length === 0) throw new Error("No KB articles found");
 
     const articlesText = articles
-      .map((a: any) => `### ${a.title}\n${a.content}`)
+      .map((a: any) => `### ${a.title}\n${a.body}`)
       .join("\n\n---\n\n");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
