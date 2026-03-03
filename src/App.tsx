@@ -54,6 +54,7 @@ import ContactReasons from "./pages/operations/ContactReasons";
 import FourWeekComparison from "./pages/operations/FourWeekComparison";
 import CapacityPlanning from "./pages/operations/CapacityPlanning";
 import AIRecommendations from "./pages/operations/AIRecommendations";
+import NBQuiz from "./pages/NBQuiz";
 
 import NotFound from "./pages/NotFound";
 
@@ -373,6 +374,7 @@ function AppRoutes() {
       <Route path="/operations/reports/comparison" element={<ProtectedRoute><FourWeekComparison /></ProtectedRoute>} />
       <Route path="/operations/reports/capacity" element={<ProtectedRoute><CapacityPlanning /></ProtectedRoute>} />
       <Route path="/operations/ai/recommendations" element={<ProtectedRoute><AIRecommendations /></ProtectedRoute>} />
+      <Route path="/team-performance/nb-quiz" element={<ProtectedRoute><NBQuiz /></ProtectedRoute>} />
       
       <Route
         path="/admin/audit-log"
