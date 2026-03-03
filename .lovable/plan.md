@@ -1,61 +1,69 @@
 
 
-## Plan: Enhanced Next Shift Dialog with Off-Day Details and Leave Reasons
+## Plan: NB Quiz Page — AI-Generated Fill-in-the-Blank Quizzes
 
-### Current Behavior
-The dialog only says "tomorrow is your rest day" and shows the next shift date. It doesn't distinguish between regular day off, planned leave, sick leave, or other outage reasons. It also doesn't list all consecutive off days.
+### What We're Building
+A new "NB Quiz" page under Team Performance with 4 date tabs (03.03.26 through 03.06.26). Each tab contains 10 AI-generated fill-in-the-blank questions sourced from Knowledge Base articles. Agents type answers, submit, and see their score. Results persist to the database.
 
-### Enhanced Behavior
-The dialog will:
-1. **Collect all consecutive off days** from tomorrow until the next work day
-2. **Cross-reference each off day** with the `leave_requests` table to determine if it's a regular day off or an approved leave (and which type)
-3. **Display each off day with its reason**, e.g.:
-   - "Day Off" for regular rest days
-   - "Planned Leave", "Medical Leave", "Sick Leave", etc. for approved leaves
+### Database Changes (2 new tables + 1 migration)
 
-### Prompt Examples
+**Table: `nb_quiz_questions`**
+- `id` uuid PK
+- `quiz_date` date NOT NULL (e.g. 2026-03-03)
+- `question_number` integer NOT NULL
+- `question_text` text NOT NULL (with `______` blank marker)
+- `correct_answer` text NOT NULL
+- `source_article_title` text
+- `created_at` timestamptz DEFAULT now()
+- UNIQUE(quiz_date, question_number)
 
-**Regular Day Off tomorrow, work day after:**
-> Please note your next shift is **tomorrow, Tuesday, March 3, 2026**, at **9:00 AM EST**.
+**Table: `nb_quiz_submissions`**
+- `id` uuid PK
+- `agent_email` text NOT NULL
+- `quiz_date` date NOT NULL
+- `answers` jsonb NOT NULL (array of {question_id, answer})
+- `score` integer NOT NULL
+- `total` integer NOT NULL
+- `submitted_at` timestamptz DEFAULT now()
+- UNIQUE(agent_email, quiz_date) — one attempt per day
 
-**1 regular Day Off tomorrow:**
-> Tomorrow is your **Day Off — Wednesday, March 4, 2026**.
-> Your next shift is on **Thursday, March 5, 2026**, at **9:00 AM EST**.
+RLS: Authenticated users can SELECT questions. Agents can INSERT their own submission (agent_email = auth email) and SELECT their own submissions. Admins can SELECT all submissions.
 
-**2 consecutive regular Day Offs:**
-> Your upcoming days off:
-> - **Saturday, March 7, 2026** — Day Off
-> - **Sunday, March 8, 2026** — Day Off
->
-> Your next shift is on **Monday, March 9, 2026**, at **9:00 AM EST**.
+### Edge Function: `generate-nb-quiz`
 
-**Planned Leave tomorrow + Day Off after:**
-> Your upcoming days off:
-> - **Friday, March 6, 2026** — Planned Leave
-> - **Saturday, March 7, 2026** — Day Off
->
-> Your next shift is on **Sunday, March 8, 2026**, at **9:00 AM EST**.
+- Accepts `{ quizDate: string }`
+- Fetches all published KB articles from `updates` table
+- Calls Lovable AI (google/gemini-2.5-flash) with a prompt to generate 10 fill-in-the-blank questions with answers
+- Inserts into `nb_quiz_questions`
+- Returns success
 
-**Medical Leave for 3 days:**
-> Your upcoming days off:
-> - **Monday, March 9, 2026** — Medical Leave
-> - **Tuesday, March 10, 2026** — Medical Leave
-> - **Wednesday, March 11, 2026** — Medical Leave
->
-> Your next shift is on **Thursday, March 12, 2026**, at **9:00 AM EST**.
+### New Page: `src/pages/NBQuiz.tsx`
 
-### Technical Changes
+- 4 date tabs: "03.03.26", "03.04.26", "03.05.26", "03.06.26"
+- Each tab loads questions from `nb_quiz_questions` for that date
+- If no questions exist yet (admin view), shows a "Generate Questions" button that calls the edge function
+- Quiz UI: numbered questions with text inputs for blanks
+- Submit button → grades answers (case-insensitive match), saves to `nb_quiz_submissions`, shows score card
+- If agent already submitted for that date, shows their previous score (read-only)
 
-**File: `src/components/dashboard/NextShiftDialog.tsx`**
-- Update the `ShiftInfo` interface to include an array of off days, each with a date and reason (e.g., "Day Off", "Planned Leave", "Medical Leave")
-- After scanning consecutive off days, query `leave_requests` for the agent's email where `status = 'approved'` and the date range overlaps
-- For each off day, check if any approved leave covers that date; if yes, use the `outage_reason` as the label; otherwise label as "Day Off"
-- Update the JSX to render a list of off days with their reasons when there are multiple, or a single-line message for just one off day
+### Navigation
+- Add to Team Performance menu in `Layout.tsx` as "NB Quiz" with `BookOpen` icon
+- Route: `/team-performance/nb-quiz`
 
-**File: `src/components/dashboard/StatusButtons.tsx`**
-- Add `agentEmail` prop to `StatusButtonsProps`
-- Pass it through to `NextShiftDialog`
+### File Changes
 
-**File: `src/pages/AgentDashboard.tsx`**
-- Pass `profile.email` as `agentEmail` to `StatusButtons`
+| File | Change |
+|------|--------|
+| Migration SQL | Create `nb_quiz_questions` and `nb_quiz_submissions` tables with RLS |
+| `supabase/functions/generate-nb-quiz/index.ts` | New edge function for AI question generation |
+| `supabase/config.toml` | Add function entry (verify_jwt = false) |
+| `src/pages/NBQuiz.tsx` | New page component with tabs, quiz form, scoring |
+| `src/App.tsx` | Add route `/team-performance/nb-quiz` |
+| `src/components/Layout.tsx` | Add "NB Quiz" nav item under Team Performance |
+
+### Step-by-Step Implementation Order
+1. Create database tables + RLS policies
+2. Create edge function for AI generation
+3. Build the NBQuiz page component
+4. Wire up route + navigation
 
