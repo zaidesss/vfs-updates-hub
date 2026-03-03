@@ -629,7 +629,7 @@ export default function NBQuiz() {
                 <li>Once you open a quiz tab, a <strong>2-minute preparation window</strong> begins. Use this time to get ready — the questions are not yet visible.</li>
                 <li>After the 2-minute delay, the quiz unlocks and a <strong>20-minute countdown</strong> starts. This is your time to read and answer all questions.</li>
                 <li>When the 20 minutes are up, the quiz is <strong>automatically locked</strong> — you will no longer be able to view or submit answers.</li>
-                <li>The timer <strong>persists across sessions</strong>. Refreshing the page or navigating away will not reset it.</li>
+                <li>You are free to <strong>check your notes</strong>, switch to other tabs, or navigate to other pages to look something up — however, the timer <strong>will continue running</strong> in the background.</li>
               </ul>
             </div>
           </CardContent>
