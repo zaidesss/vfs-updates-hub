@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, RefreshCw, Pencil, Check, X } from 'lucide-react';
 
 const QUIZ_DATES = [
   { label: '03.03.26', value: '2026-03-03' },
@@ -390,6 +390,142 @@ function AgentTimerMonitor({ quizDate }: { quizDate: string }) {
   );
 }
 
+function QuestionCard({
+  question: q,
+  userAnswer,
+  isCorrect,
+  showResults,
+  isAdmin,
+  hasSubmission,
+  onAnswerChange,
+  onQuestionUpdated,
+}: {
+  question: QuizQuestion;
+  userAnswer: string;
+  isCorrect: boolean | null;
+  showResults: boolean;
+  isAdmin: boolean;
+  hasSubmission: boolean;
+  onAnswerChange: (val: string) => void;
+  onQuestionUpdated: (q: QuizQuestion) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(q.question_text);
+  const [editAnswer, setEditAnswer] = useState(q.correct_answer);
+  const [editSource, setEditSource] = useState(q.source_article_title || '');
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setEditText(q.question_text);
+    setEditAnswer(q.correct_answer);
+    setEditSource(q.source_article_title || '');
+    setEditing(true);
+  };
+
+  const cancelEdit = () => setEditing(false);
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('nb_quiz_questions')
+        .update({
+          question_text: editText.trim(),
+          correct_answer: editAnswer.trim(),
+          source_article_title: editSource.trim() || null,
+        } as any)
+        .eq('id', q.id);
+      if (error) throw error;
+      onQuestionUpdated({ ...q, question_text: editText.trim(), correct_answer: editAnswer.trim(), source_article_title: editSource.trim() || null });
+      setEditing(false);
+      toast({ title: 'Question updated' });
+    } catch (err: any) {
+      toast({ title: 'Update failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className={showResults ? (isCorrect ? 'border-primary/30' : 'border-destructive/30') : ''}>
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <CardTitle className="text-base">Question {q.question_number}</CardTitle>
+          <div className="flex items-center gap-1">
+            {showResults && (
+              isCorrect
+                ? <CheckCircle2 className="h-5 w-5 text-primary" />
+                : <XCircle className="h-5 w-5 text-destructive" />
+            )}
+            {isAdmin && !editing && (
+              <button onClick={startEdit} className="p-1 rounded hover:bg-muted" title="Edit question">
+                <Pencil className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+        </div>
+        {!editing && q.source_article_title && (
+          <CardDescription className="text-xs">Source: {q.source_article_title}</CardDescription>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {editing ? (
+          <div className="space-y-2 rounded-md border border-border p-3 bg-muted/30">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Question Text</label>
+              <textarea
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[60px]"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Correct Answer</label>
+              <Input value={editAnswer} onChange={(e) => setEditAnswer(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Source Article</label>
+              <Input value={editSource} onChange={(e) => setEditSource(e.target.value)} placeholder="(optional)" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>
+                <X className="h-3.5 w-3.5 mr-1" /> Cancel
+              </Button>
+              <Button size="sm" onClick={saveEdit} disabled={saving || !editText.trim() || !editAnswer.trim()}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm leading-relaxed">{q.question_text}</p>
+            {isAdmin && (
+              <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                <span className="font-medium">Answer:</span> {q.correct_answer}
+              </p>
+            )}
+          </>
+        )}
+        {!editing && (
+          <>
+            <Input
+              placeholder="Type your answer..."
+              value={userAnswer}
+              onChange={(e) => onAnswerChange(e.target.value)}
+              disabled={hasSubmission}
+              className={showResults && !isCorrect ? 'border-destructive' : ''}
+            />
+            {showResults && !isCorrect && (
+              <p className="text-sm text-primary">Correct answer: <strong>{q.correct_answer}</strong></p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail: string; isAdmin: boolean }) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -761,34 +897,17 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
           : null;
 
         return (
-          <Card key={q.id} className={showResults ? (isCorrect ? 'border-primary/30' : 'border-destructive/30') : ''}>
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <CardTitle className="text-base">Question {q.question_number}</CardTitle>
-                {showResults && (
-                  isCorrect
-                    ? <CheckCircle2 className="h-5 w-5 text-primary" />
-                    : <XCircle className="h-5 w-5 text-destructive" />
-                )}
-              </div>
-              {q.source_article_title && (
-                <CardDescription className="text-xs">Source: {q.source_article_title}</CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm leading-relaxed">{q.question_text}</p>
-              <Input
-                placeholder="Type your answer..."
-                value={userAnswer}
-                onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                disabled={!!submission}
-                className={showResults && !isCorrect ? 'border-destructive' : ''}
-              />
-              {showResults && !isCorrect && (
-                <p className="text-sm text-primary">Correct answer: <strong>{q.correct_answer}</strong></p>
-              )}
-            </CardContent>
-          </Card>
+          <QuestionCard
+            key={q.id}
+            question={q}
+            userAnswer={userAnswer}
+            isCorrect={isCorrect}
+            showResults={showResults}
+            isAdmin={isAdmin}
+            hasSubmission={!!submission}
+            onAnswerChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+            onQuestionUpdated={(updated) => setQuestions((prev) => prev.map((qq) => qq.id === updated.id ? updated : qq))}
+          />
         );
       })}
 
