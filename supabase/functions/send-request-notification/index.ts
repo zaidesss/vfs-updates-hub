@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/gmail-sender.ts";
 
 const corsHeaders = {
@@ -26,19 +27,37 @@ serve(async (req) => {
   try {
     const payload: RequestNotificationPayload = await req.json();
 
-    console.log("Sending request notifications to approvers:", payload.approverEmails);
+    // Fetch all Super Admin, Admin, and HR emails from user_roles
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: roleUsers } = await supabase
+      .from("user_roles")
+      .select("email")
+      .in("role", ["super_admin", "admin", "hr"]);
+
+    const roleEmails = (roleUsers || []).map((u: any) => u.email.toLowerCase());
+
+    // Merge with pre-approver emails and de-duplicate
+    const allEmails = [...new Set([
+      ...payload.approverEmails.map(e => e.toLowerCase()),
+      ...roleEmails,
+    ])];
+
+    console.log("Sending request notifications to:", allEmails);
 
     const refBadge = payload.referenceNumber 
       ? `<span style="background-color: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${payload.referenceNumber}</span>` 
       : '';
 
-    const emailPromises = payload.approverEmails.map(email =>
+    const emailPromises = allEmails.map(email =>
       sendEmail({
         to: [email],
-        subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}New Article Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
+        subject: `${payload.referenceNumber ? `[${payload.referenceNumber}] ` : ''}New Update Request - ${payload.requestType === 'new_article' ? 'New Article' : 'Update Existing'}`,
         html: `
-          <h2>New Article Request ${refBadge}</h2>
-          <p>A new request requires your approval.</p>
+          <h2>New Update Request ${refBadge}</h2>
+          <p>A new update request has been submitted and requires your review.</p>
           
           <table style="border-collapse: collapse; margin: 20px 0;">
             ${payload.referenceNumber ? `
@@ -77,7 +96,7 @@ serve(async (req) => {
           <p style="background: #f5f5f5; padding: 15px; border-radius: 5px;">${payload.description}</p>
           
           <p style="margin-top: 20px;">
-            <strong>Please log in to the VFS Updates Hub to review and approve this request.</strong>
+            <strong>Please log in to the VFS Updates Hub to review this request.</strong>
           </p>
           
           <p style="color: #666; font-size: 12px; margin-top: 30px;">
