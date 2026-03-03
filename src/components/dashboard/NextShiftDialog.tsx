@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { parseScheduleRange } from '@/lib/agentDashboardApi';
 import { CalendarClock, Loader2 } from 'lucide-react';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, addDays } from 'date-fns';
 
 interface NextShiftDialogProps {
   open: boolean;
@@ -33,9 +33,14 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
   const [loading, setLoading] = useState(false);
   const [shiftInfo, setShiftInfo] = useState<ShiftInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const baseDateRef = useRef<Date | null>(null);
 
   useEffect(() => {
     if (!open || !profileId) return;
+
+    // Capture the current date once when dialog opens
+    baseDateRef.current = now;
+    const baseDate = baseDateRef.current;
 
     let cancelled = false;
     setLoading(true);
@@ -43,11 +48,9 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
     setShiftInfo(null);
 
     async function fetchNextShift() {
-      // Calculate tomorrow in EST
-      const tomorrow = addDays(now, 1);
+      const tomorrow = addDays(baseDate, 1);
       const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
 
-      // Check tomorrow first
       const { data: tomorrowData, error: tomorrowErr } = await supabase
         .rpc('get_effective_schedule', { p_agent_id: profileId, p_target_date: tomorrowStr });
 
@@ -62,7 +65,6 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
       const tomorrowIsDayOff = tomorrowRow?.is_day_off ?? true;
       const tomorrowSchedule = tomorrowRow?.effective_schedule;
 
-      // If tomorrow is a work day, we're done
       if (!tomorrowIsDayOff && tomorrowSchedule && tomorrowSchedule.toLowerCase() !== 'day off') {
         const parsed = parseScheduleRange(tomorrowSchedule);
         setShiftInfo({
@@ -75,10 +77,9 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
         return;
       }
 
-      // Tomorrow is a day off – search forward for next work day
-      let offset = 2; // start from day after tomorrow
+      let offset = 2;
       while (!cancelled) {
-        const checkDate = addDays(now, offset);
+        const checkDate = addDays(baseDate, offset);
         const checkStr = format(checkDate, 'yyyy-MM-dd');
 
         const { data, error: err } = await supabase
@@ -108,8 +109,6 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
         }
 
         offset++;
-
-        // Safety: give up after 60 days
         if (offset > 60) {
           setError('Could not find an upcoming shift within 60 days.');
           setLoading(false);
@@ -120,19 +119,19 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
 
     fetchNextShift();
     return () => { cancelled = true; };
-  }, [open, profileId, now]);
+  }, [open, profileId]);
 
   const formatDate = (d: Date) => format(d, 'EEEE, MMMM d, yyyy');
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-blue-500" />
             Next Shift Reminder
-          </AlertDialogTitle>
-          <AlertDialogDescription asChild>
+          </DialogTitle>
+          <DialogDescription asChild>
             <div className="space-y-4 pt-2">
               {loading && (
                 <div className="flex items-center justify-center gap-2 py-6">
@@ -164,18 +163,18 @@ export function NextShiftDialog({ open, onOpenChange, onAcknowledge, profileId }
                 </div>
               )}
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogAction
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
             onClick={onAcknowledge}
             disabled={loading || !!error}
             className="bg-blue-600 hover:bg-blue-700"
           >
             I Acknowledge
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
