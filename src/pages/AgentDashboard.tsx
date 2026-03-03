@@ -11,6 +11,7 @@ import { ArrowLeft, LayoutDashboard, Bug } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
 import { getTodayEST, parseDateStringLocal } from '@/lib/timezoneUtils';
+import { clearScheduleCache } from '@/lib/scheduleResolver';
 import { supabase } from '@/integrations/supabase/client';
 
 import { ProfileHeader } from '@/components/dashboard/ProfileHeader';
@@ -147,6 +148,7 @@ export default function AgentDashboard() {
 
     setIsLoading(true);
     setError(null);
+    clearScheduleCache();
 
     try {
       // Proactively check for stale sessions before loading dashboard data
