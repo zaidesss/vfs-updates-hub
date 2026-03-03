@@ -1,0 +1,1 @@
+ALTER TABLE public.nb_quiz_submissions ADD COLUMN IF NOT EXISTS grade_results jsonb;

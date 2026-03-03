@@ -1307,6 +1307,7 @@ export type Database = {
         Row: {
           agent_email: string
           answers: Json
+          grade_results: Json | null
           id: string
           quiz_date: string
           score: number
@@ -1316,6 +1317,7 @@ export type Database = {
         Insert: {
           agent_email: string
           answers: Json
+          grade_results?: Json | null
           id?: string
           quiz_date: string
           score: number
@@ -1325,6 +1327,7 @@ export type Database = {
         Update: {
           agent_email?: string
           answers?: Json
+          grade_results?: Json | null
           id?: string
           quiz_date?: string
           score?: number

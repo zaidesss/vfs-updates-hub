@@ -627,7 +627,13 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
         .maybeSingle();
 
       if (s) {
-        setSubmission(s as unknown as QuizSubmission);
+        const loaded = s as any;
+        setSubmission({
+          score: loaded.score,
+          total: loaded.total,
+          answers: loaded.answers,
+          gradeResults: loaded.grade_results || undefined,
+        });
         setShowResults(true);
         const restored: Record<string, string> = {};
         ((s as any).answers as { question_id: string; answer: string }[]).forEach((a) => {
@@ -718,6 +724,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
         answers: answerEntries,
         score,
         total: questions.length,
+        grade_results: gradeResults,
       } as any);
 
       if (error) throw error;
@@ -896,7 +903,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
                     await supabase
                       .from('nb_quiz_submissions')
-                      .update({ score: newScore } as any)
+                      .update({ score: newScore, grade_results: results } as any)
                       .eq('id', sub.id);
                     updated++;
                   }
