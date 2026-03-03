@@ -733,8 +733,8 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
     );
   }
 
-  // Timer expired - lock out non-admin users
-  if (phase === 'expired' && !isAdmin) {
+  // Timer expired - lock out non-admin users who haven't submitted
+  if (phase === 'expired' && !isAdmin && !submission) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
