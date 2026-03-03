@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -43,6 +43,7 @@ interface ScoreSummaryRow {
   agent_name: string;
   score: number;
   total: number;
+  answers?: { question_id: string; answer: string }[];
 }
 
 function formatTime(seconds: number): string {
@@ -51,16 +52,17 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
+function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string; isAdmin: boolean; questions: QuizQuestion[] }) {
   const [rows, setRows] = useState<ScoreSummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data: submissions } = await supabase
         .from('nb_quiz_submissions')
-        .select('agent_email, score, total')
+        .select('agent_email, score, total, answers')
         .eq('quiz_date', quizDate)
         .order('score', { ascending: false });
 
@@ -87,6 +89,7 @@ function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
           agent_name: nameMap[s.agent_email.toLowerCase()] || s.agent_email,
           score: s.score,
           total: s.total,
+          answers: s.answers as any,
         }))
       );
       setLoading(false);
@@ -123,18 +126,60 @@ function ScoresSummaryTable({ quizDate }: { quizDate: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r, i) => (
-              <TableRow key={r.agent_email}>
-                <TableCell className="font-medium">{i + 1}</TableCell>
-                <TableCell>{r.agent_name}</TableCell>
-                <TableCell className="text-right">{r.score}/{r.total}</TableCell>
-                <TableCell className="text-right">
-                  <Badge variant={r.score / r.total >= 0.8 ? 'default' : r.score / r.total >= 0.5 ? 'secondary' : 'destructive'}>
-                    {Math.round((r.score / r.total) * 100)}%
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((r, i) => {
+              const pct = r.total > 0 ? Math.round((r.score / r.total) * 100) : 0;
+              const isExpanded = isAdmin && expandedEmail === r.agent_email;
+              return (
+                <Fragment key={r.agent_email}>
+                  <TableRow
+                    className={isAdmin ? 'cursor-pointer hover:bg-muted/50' : ''}
+                    onClick={() => isAdmin && setExpandedEmail(isExpanded ? null : r.agent_email)}
+                  >
+                    <TableCell className="font-medium">{i + 1}</TableCell>
+                    <TableCell>
+                      {r.agent_name}
+                      {isAdmin && (
+                        <span className={`text-xs text-muted-foreground ml-1 inline-block transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{r.score}/{r.total}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={pct >= 80 ? 'default' : pct >= 50 ? 'secondary' : 'destructive'}>
+                        {pct}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                  {isExpanded && r.answers && questions.length > 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="p-0">
+                        <div className="bg-muted/30 border-t px-4 py-3 space-y-2.5">
+                          {questions.map((q) => {
+                            const entry = (r.answers || []).find((a: any) => a.question_id === q.id);
+                            const agentAnswer = entry?.answer || '(no answer)';
+                            const isMatch = agentAnswer.trim().toLowerCase() === q.correct_answer.trim().toLowerCase();
+                            return (
+                              <div key={q.id} className="text-sm">
+                                <p className="text-xs text-muted-foreground font-medium">Q{q.question_number}: {q.question_text}</p>
+                                <div className="flex flex-wrap items-start gap-x-6 gap-y-0.5 pl-2 mt-0.5">
+                                  <p>
+                                    <span className="text-xs text-muted-foreground">Agent: </span>
+                                    <span className={isMatch ? 'text-primary font-medium' : 'text-destructive font-medium'}>{agentAnswer}</span>
+                                  </p>
+                                  <p>
+                                    <span className="text-xs text-muted-foreground">Correct: </span>
+                                    <span className="font-medium">{q.correct_answer}</span>
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>
@@ -516,8 +561,10 @@ function QuestionCard({
               disabled={hasSubmission}
               className={showResults && !isCorrect ? 'border-destructive' : ''}
             />
-            {showResults && !isCorrect && (
-              <p className="text-sm text-primary">Correct answer: <strong>{q.correct_answer}</strong></p>
+            {showResults && (
+              <p className={`text-sm ${isCorrect ? 'text-primary' : 'text-destructive'}`}>
+                Correct answer: <strong>{q.correct_answer}</strong>
+              </p>
             )}
           </>
         )}
@@ -920,7 +967,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
       )}
 
       {/* Scores summary table */}
-      <ScoresSummaryTable key={refreshSummary} quizDate={quizDate} />
+      <ScoresSummaryTable key={refreshSummary} quizDate={quizDate} isAdmin={isAdmin} questions={questions} />
     </div>
   );
 }
