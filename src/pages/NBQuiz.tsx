@@ -623,9 +623,15 @@ export default function NBQuiz() {
               <li>Build <strong>confidence</strong> in handling diverse ticket types independently</li>
               <li>Identify <strong>knowledge gaps</strong> for targeted coaching and improvement</li>
             </ul>
-            <p className="text-xs text-muted-foreground italic">
-              You have 20 minutes to complete each quiz. Read each question carefully and answer to the best of your ability.
-            </p>
+            <div className="mt-2 rounded-md bg-background/60 border border-border/50 p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-foreground">⏱ How the Timer Works</p>
+              <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+                <li>Once you open a quiz tab, a <strong>2-minute preparation window</strong> begins. Use this time to get ready — the questions are not yet visible.</li>
+                <li>After the 2-minute delay, the quiz unlocks and a <strong>20-minute countdown</strong> starts. This is your time to read and answer all questions.</li>
+                <li>When the 20 minutes are up, the quiz is <strong>automatically locked</strong> — you will no longer be able to view or submit answers.</li>
+                <li>The timer <strong>persists across sessions</strong>. Refreshing the page or navigating away will not reset it.</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
 
