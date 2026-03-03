@@ -1,26 +1,28 @@
 
 
-## Notify Admins/Super Admins/HR on Update Request Submission
+## Plan: Next Shift Acknowledgment Dialog on Dashboard Logout
 
-### What Changes
+### Summary
+After the agent confirms the existing Logout dialog (early out check), a second dialog appears showing their next scheduled shift. The agent must click "I Acknowledge" before the LOGOUT event fires. This applies to all users.
 
-**1. `supabase/functions/send-request-notification/index.ts`**
-- Add Supabase client initialization to query `user_roles` for all Super Admin, Admin, and HR emails
-- Merge those emails with the pre-approver emails (de-duplicated)
-- Send the notification to all of them — the email already says "A new request requires your approval" which works for both audiences
-- Slightly adjust the email wording for non-approvers: "A new update request has been submitted and requires review"
+### New File: `src/components/dashboard/NextShiftDialog.tsx`
+- A dialog component that:
+  - On open, calls the `get_effective_schedule` RPC iterating day-by-day starting from tomorrow until a non-day-off day is found (no limit)
+  - Displays the next shift info in two formats:
+    - **If tomorrow is a work day**: "Please note your next shift is tomorrow, [Day], [Date], at [Start Time] EST."
+    - **If tomorrow is a day off**: "Please note tomorrow is your rest day, [Day], [Date]. Your next shift is on [Day], [Date], at [Start Time] EST."
+  - Shows an "I Acknowledge" button that triggers the actual logout
+  - Shows a loading spinner while fetching schedule data
+  - Uses `usePortalClock` for the current EST date to calculate "tomorrow"
 
-**2. `src/lib/requestApi.ts`** (line ~108)
-- Remove hardcoded `PRE_APPROVERS.map(a => a.email)` from the `approverEmails` payload
-- Instead, let the edge function handle fetching the full recipient list (pass a flag or just let the function query roles internally)
-- Alternatively, keep the client-side call simple and let the edge function expand the recipient list
+### Modified File: `src/components/dashboard/StatusButtons.tsx`
+- Add state: `showNextShiftDialog` (boolean)
+- Change the `LogoutConfirmDialog` onConfirm handler:
+  - Instead of directly calling `handleClick('LOGOUT')`, set `showNextShiftDialog = true`
+- Add `NextShiftDialog` component:
+  - On acknowledge → call `handleClick('LOGOUT')` and close both dialogs
+- Pass the agent's profile ID (new prop `profileId`) so the dialog can query the RPC
 
-### Approach
-The cleanest approach: modify `send-request-notification` to accept the pre-approver emails AND internally query `user_roles` for Super Admins, Admins, and HR, then de-duplicate and send to all. This keeps the client code simple.
-
-### Already Done (Notification #2)
-The `check-full-approval` edge function was already updated in the previous change to notify all Super Admins, Admins, and HR when all pre-approvers approve. No additional work needed for that part.
-
-### No Database Changes
-No schema changes required.
+### No database or edge function changes needed
+The `get_effective_schedule(p_agent_id, p_target_date)` RPC already exists and returns `effective_schedule`, `is_day_off`, etc.
 
