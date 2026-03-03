@@ -52,6 +52,7 @@ interface ScoreSummaryRow {
   score: number;
   total: number;
   answers?: { question_id: string; answer: string }[];
+  grade_results?: Record<string, boolean>;
 }
 
 function formatTime(seconds: number): string {
@@ -70,7 +71,7 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
       setLoading(true);
       const { data: submissions } = await supabase
         .from('nb_quiz_submissions')
-        .select('agent_email, score, total, answers')
+        .select('agent_email, score, total, answers, grade_results')
         .eq('quiz_date', quizDate)
         .order('score', { ascending: false });
 
@@ -98,6 +99,7 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
           score: s.score,
           total: s.total,
           answers: s.answers as any,
+          grade_results: (s as any).grade_results || undefined,
         }))
       );
       setLoading(false);
@@ -164,7 +166,7 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
                           {questions.map((q) => {
                             const entry = (r.answers || []).find((a: any) => a.question_id === q.id);
                             const agentAnswer = entry?.answer || '(no answer)';
-                            const isMatch = answerMatchesCorrect(agentAnswer, q.correct_answer);
+                            const isMatch = r.grade_results ? r.grade_results[q.id] === true : answerMatchesCorrect(agentAnswer, q.correct_answer);
                             return (
                               <div key={q.id} className="text-sm">
                                 <p className="text-xs text-muted-foreground font-medium">Q{q.question_number}: {q.question_text}</p>
