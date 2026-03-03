@@ -1,30 +1,58 @@
 
 
-## Add Editable Productivity Ticket Count to Scorecard
+## Fix Timezone-Dependent Dashboard Inconsistencies
 
-### What Changes
+### Root Cause
 
-**Step 1 — Database**: Add `productivity_count_override` (integer, nullable) column to `zendesk_agent_metrics`.
+Three issues cause agent dashboards (viewed from PHT/UTC+8) to show different data than admin views (EST):
 
-**Step 2 — API (`scorecardApi.ts`)**:
-- Add `productivity_count_override` to `upsertZendeskMetrics` accepted fields
-- In `fetchWeeklyScorecardRPC`, read the override from `zendesk_agent_metrics` and apply it: override the `productivityCount` and recalculate `productivity` percentage
-- Add `productivityCountOverride` to `AgentScorecard` interface for tracking
+1. **Event query boundaries use `.toISOString()`** — `getWeekStatusEvents` and `getWeekAllEvents` convert `weekStart`/`weekEnd` Date objects via `.toISOString()`, which produces UTC timestamps based on the viewer's local timezone. For PHT agents, this shifts the query window ~13 hours earlier than EST-anchored boundaries, causing events near week edges to be missed or misplaced.
 
-**Step 3 — UI (`TeamScorecard.tsx`)**:
-- Add `productivityCount` to `EditedMetrics` interface
-- Replace the static Productivity cell with an editable cell (admin-only click to edit the count)
-- Display: percentage + count (same as now), but admins can click the count to override it
-- On edit, recalculate and display the new productivity percentage live
-- Include `productivity_count_override` in `saveChangesMutation` payload
-- Include in audit log diff
-- Apply override when saving scorecard snapshot
+2. **Break schedule uses a single value for the whole week** — `calculateAttendanceForWeek` reads `profile.break_schedule` (which is set to "today's" effective break schedule) and applies that same value to every day row. If the agent's break schedule varies by day, all rows show the wrong break allowance.
 
-**Step 4 — Audit logging**: Productivity count overrides included in existing "Save Changes" audit entry.
+3. **`getTodayTicketCount` uses local midnight** — It sets `startOfDay`/`endOfDay` using the viewer's local `setHours(0,0,0,0)`, then calls `.toISOString()`. This produces different query windows per timezone.
 
-### Technical Notes
-- The Productivity cell will show the percentage and ticket count. Admins click the count number to edit it inline.
-- The percentage auto-recalculates based on the edited count and weekly quota.
-- "edited" badge appears when override differs from auto-calculated count.
-- Override persists in `zendesk_agent_metrics` and carries through to `saved_scorecards` via the existing save flow.
+### Fix Plan (3 steps, done one at a time)
+
+---
+
+**Step 1 — Fix event query boundaries in `agentDashboardApi.ts`**
+
+In `getWeekStatusEvents` and `getWeekAllEvents`, replace:
+```typescript
+const startStr = weekStart.toISOString();
+const endStr = weekEnd.toISOString();
+```
+with:
+```typescript
+const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+const { start: startStr, end: endStr } = getESTWeekBoundaries(weekStartStr, weekEndStr);
+```
+
+This ensures all viewers query the identical EST-anchored UTC window.
+
+Also fix `getTodayTicketCount` to use `getESTDayBoundaries(getTodayEST())` instead of local-midnight `.toISOString()`.
+
+---
+
+**Step 2 — Use per-day break schedule in attendance calculation**
+
+In `calculateAttendanceForWeek`, instead of using the single `profile.break_schedule` for the `allowedBreakMinutes` calculation on every row, read `effectiveDay.breakSchedule` for each day individually. This means moving the break parsing inside the `DAYS.map()` loop and using the effective schedule's per-day break value when available, falling back to `profile.break_schedule` otherwise.
+
+---
+
+**Step 3 — Clear schedule cache on dashboard load**
+
+Add `clearScheduleCache()` at the start of `loadDashboardData()` in `AgentDashboard.tsx` to prevent stale cached schedules from causing incorrect day-off or shift displays after profile/schedule changes.
+
+---
+
+### Day-level query audit (Additional Consideration #1)
+
+`getDayPortalHours` and `getDayTicketCountByType` already use `getESTDayBoundaries` — no fix needed. `getTodayTicketCount` needs fixing (covered in Step 1).
+
+### Redeployment (Additional Consideration #2)
+
+After all fixes, the published app must be redeployed so agents on the production URL see the corrected code.
 
