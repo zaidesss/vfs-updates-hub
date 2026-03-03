@@ -606,6 +606,29 @@ export default function NBQuiz() {
           <p className="text-muted-foreground">Fill-in-the-blank knowledge quiz from KB articles</p>
         </div>
 
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-5 space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">Purpose of This Quiz</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              This quiz is designed to evaluate and strengthen your capabilities as a support agent. Specifically, it aims to:
+            </p>
+            <ul className="grid gap-1.5 text-sm text-foreground list-disc pl-5">
+              <li>Test your <strong>knowledge</strong> of processes, policies, and product information</li>
+              <li>Test your <strong>retention</strong> of key details from KB articles and updates</li>
+              <li>Test your <strong>critical thinking</strong> when applying knowledge to real scenarios</li>
+              <li>Test your <strong>efficiency</strong> in answering under time pressure</li>
+              <li>Test your <strong>reading and comprehension</strong> skills</li>
+              <li>Test how fast you can <strong>analyze and respond</strong> to customer concerns</li>
+              <li>Test how quickly you can <strong>comprehend an issue</strong> and identify the right course of action</li>
+              <li>Build <strong>confidence</strong> in handling diverse ticket types independently</li>
+              <li>Identify <strong>knowledge gaps</strong> for targeted coaching and improvement</li>
+            </ul>
+            <p className="text-xs text-muted-foreground italic">
+              You have 20 minutes to complete each quiz. Read each question carefully and answer to the best of your ability.
+            </p>
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue={QUIZ_DATES[0].value}>
           <TabsList className="grid grid-cols-4 w-full">
             {QUIZ_DATES.map((d) => (
