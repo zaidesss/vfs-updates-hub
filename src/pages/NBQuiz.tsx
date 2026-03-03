@@ -35,6 +35,7 @@ interface QuizSubmission {
   score: number;
   total: number;
   answers: { question_id: string; answer: string }[];
+  gradeResults?: Record<string, boolean>;
 }
 
 interface ScoreSummaryRow {
@@ -496,11 +497,26 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
     setSubmitting(true);
     try {
+      // Prepare items for AI grading
+      const gradeItems = questions.map((q) => ({
+        question_id: q.id,
+        question_text: q.question_text,
+        correct_answer: q.correct_answer,
+        agent_answer: (answers[q.id] || '').trim(),
+      }));
+
+      // Call AI grading edge function
+      const { data: gradeData, error: gradeError } = await supabase.functions.invoke('grade-nb-quiz', {
+        body: { items: gradeItems },
+      });
+
+      if (gradeError) throw new Error(gradeError.message || 'Grading failed');
+      if (gradeData?.error) throw new Error(gradeData.error);
+
+      const gradeResults: Record<string, boolean> = gradeData.results || {};
       let score = 0;
       const answerEntries = questions.map((q) => {
-        const userAnswer = (answers[q.id] || '').trim().toLowerCase();
-        const correct = q.correct_answer.trim().toLowerCase();
-        if (userAnswer === correct) score++;
+        if (gradeResults[q.id]) score++;
         return { question_id: q.id, answer: answers[q.id]?.trim() || '' };
       });
 
@@ -514,7 +530,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
       if (error) throw error;
 
-      setSubmission({ score, total: questions.length, answers: answerEntries });
+      setSubmission({ score, total: questions.length, answers: answerEntries, gradeResults });
       setShowResults(true);
       setRefreshSummary((c) => c + 1);
       toast({ title: 'Quiz submitted!', description: `You scored ${score}/${questions.length}` });
@@ -667,7 +683,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
       {questions.map((q) => {
         const userAnswer = answers[q.id] || '';
         const isCorrect = showResults && submission
-          ? userAnswer.trim().toLowerCase() === q.correct_answer.trim().toLowerCase()
+          ? (submission.gradeResults ? submission.gradeResults[q.id] === true : userAnswer.trim().toLowerCase() === q.correct_answer.trim().toLowerCase())
           : null;
 
         return (
