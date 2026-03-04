@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, RefreshCw, Pencil, Check, X } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, Pencil, Check, X } from 'lucide-react';
 
 const QUIZ_DATES = [
   { label: '03.03.26', value: '2026-03-03' },
@@ -21,17 +22,9 @@ const QUIZ_DATES = [
   { label: '03.06.26', value: '2026-03-06' },
 ];
 
-const DELAY_SECONDS = 2 * 60; // 2 minutes delay before timer starts
-const TIMER_SECONDS = 20 * 60; // 20 minutes quiz time
-const TOTAL_SECONDS = DELAY_SECONDS + TIMER_SECONDS; // total window from started_at
-
-/** Check if agent answer matches any variant in correct_answer (split by "/") */
-function answerMatchesCorrect(agentAnswer: string, correctAnswer: string): boolean {
-  const agent = agentAnswer.trim().toLowerCase();
-  if (!agent) return false;
-  const variants = correctAnswer.split('/').map(v => v.trim().toLowerCase());
-  return variants.some(v => v === agent || agent === v);
-}
+const DELAY_SECONDS = 2 * 60;
+const TIMER_SECONDS = 20 * 60;
+const TOTAL_SECONDS = DELAY_SECONDS + TIMER_SECONDS;
 
 interface QuizQuestion {
   id: string;
@@ -43,19 +36,21 @@ interface QuizQuestion {
 }
 
 interface QuizSubmission {
+  id?: string;
   score: number;
   total: number;
   answers: { question_id: string; answer: string }[];
-  gradeResults?: Record<string, boolean>;
+  gradeResults?: Record<string, boolean> | null;
 }
 
 interface ScoreSummaryRow {
+  id: string;
   agent_email: string;
   agent_name: string;
   score: number;
   total: number;
   answers?: { question_id: string; answer: string }[];
-  grade_results?: Record<string, boolean>;
+  grade_results?: Record<string, boolean> | null;
 }
 
 function formatTime(seconds: number): string {
@@ -68,13 +63,14 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
   const [rows, setRows] = useState<ScoreSummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  const [savingGrade, setSavingGrade] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data: submissions } = await supabase
         .from('nb_quiz_submissions')
-        .select('agent_email, score, total, answers, grade_results')
+        .select('id, agent_email, score, total, answers, grade_results')
         .eq('quiz_date', quizDate)
         .order('score', { ascending: false });
 
@@ -97,18 +93,45 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
 
       setRows(
         submissions.map((s) => ({
+          id: s.id,
           agent_email: s.agent_email,
           agent_name: nameMap[s.agent_email.toLowerCase()] || s.agent_email,
           score: s.score,
           total: s.total,
           answers: s.answers as any,
-          grade_results: (s as any).grade_results || undefined,
+          grade_results: (s as any).grade_results || null,
         }))
       );
       setLoading(false);
     };
     load();
   }, [quizDate]);
+
+  const handleGradeToggle = async (row: ScoreSummaryRow, questionId: string, isCorrect: boolean) => {
+    const currentResults = row.grade_results || {};
+    const newResults = { ...currentResults, [questionId]: isCorrect };
+    const newScore = questions.filter((q) => newResults[q.id] === true).length;
+
+    // Update local state immediately
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === row.id ? { ...r, grade_results: newResults, score: newScore } : r
+      )
+    );
+
+    // Persist to DB
+    setSavingGrade(row.id);
+    try {
+      await supabase
+        .from('nb_quiz_submissions')
+        .update({ grade_results: newResults, score: newScore } as any)
+        .eq('id', row.id);
+    } catch (err: any) {
+      toast({ title: 'Failed to save grade', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingGrade(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -140,6 +163,7 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
           </TableHeader>
           <TableBody>
             {rows.map((r, i) => {
+              const isGraded = r.grade_results !== null && r.grade_results !== undefined && Object.keys(r.grade_results).length > 0;
               const pct = r.total > 0 ? Math.round((r.score / r.total) * 100) : 0;
               const isExpanded = isAdmin && expandedEmail === r.agent_email;
               return (
@@ -150,33 +174,65 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
                   >
                     <TableCell className="font-medium">{i + 1}</TableCell>
                     <TableCell>
-                      {r.agent_name}
-                      {isAdmin && (
-                        <span className={`text-xs text-muted-foreground ml-1 inline-block transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                      <div className="flex items-center gap-2">
+                        {r.agent_name}
+                        {isAdmin && !isGraded && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-300 bg-amber-50">
+                            Pending
+                          </Badge>
+                        )}
+                        {isAdmin && (
+                          <span className={`text-xs text-muted-foreground inline-block transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isGraded ? `${r.score}/${r.total}` : (
+                        <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{r.score}/{r.total}</TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={pct >= 80 ? 'default' : pct >= 50 ? 'secondary' : 'destructive'}>
-                        {pct}%
-                      </Badge>
+                      {isGraded ? (
+                        <Badge variant={pct >= 80 ? 'default' : pct >= 50 ? 'secondary' : 'destructive'}>
+                          {pct}%
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                          Pending
+                        </Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                   {isExpanded && r.answers && questions.length > 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="p-0">
-                        <div className="bg-muted/30 border-t px-4 py-3 space-y-2.5">
+                        <div className="bg-muted/30 border-t px-4 py-3 space-y-3">
                           {questions.map((q) => {
                             const entry = (r.answers || []).find((a: any) => a.question_id === q.id);
                             const agentAnswer = entry?.answer || '(no answer)';
-                            const isMatch = r.grade_results ? r.grade_results[q.id] === true : answerMatchesCorrect(agentAnswer, q.correct_answer);
+                            const gradeResult = r.grade_results?.[q.id];
+                            const isChecked = gradeResult === true;
                             return (
                               <div key={q.id} className="text-sm">
                                 <p className="text-xs text-muted-foreground font-medium">Q{q.question_number}: {q.question_text}</p>
-                                <div className="flex flex-wrap items-start gap-x-6 gap-y-0.5 pl-2 mt-0.5">
+                                <div className="flex items-start gap-3 pl-2 mt-1">
+                                  <div className="flex items-center gap-2 pt-0.5">
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        handleGradeToggle(r, q.id, checked === true);
+                                      }}
+                                      disabled={savingGrade === r.id}
+                                    />
+                                    <span className={`text-xs font-medium ${isChecked ? 'text-primary' : gradeResult === false ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                      {isChecked ? 'Correct' : gradeResult === false ? 'Incorrect' : 'Ungraded'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-start gap-x-6 gap-y-0.5 pl-2 mt-1">
                                   <p>
                                     <span className="text-xs text-muted-foreground">Agent: </span>
-                                    <span className={isMatch ? 'text-primary font-medium' : 'text-destructive font-medium'}>{agentAnswer}</span>
+                                    <span className={`font-medium ${isChecked ? 'text-primary' : gradeResult === false ? 'text-destructive' : ''}`}>{agentAnswer}</span>
                                   </p>
                                   <p>
                                     <span className="text-xs text-muted-foreground">Correct: </span>
@@ -186,6 +242,11 @@ function ScoresSummaryTable({ quizDate, isAdmin, questions }: { quizDate: string
                               </div>
                             );
                           })}
+                          {savingGrade === r.id && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -209,11 +270,9 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
     const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
 
     if (elapsed < DELAY_SECONDS) {
-      // Still in the 2-min delay phase
       setPhase('delay');
       setSecondsLeft(DELAY_SECONDS - elapsed);
     } else if (elapsed < TOTAL_SECONDS) {
-      // Active quiz time
       setPhase('active');
       setSecondsLeft(TOTAL_SECONDS - elapsed);
     } else {
@@ -232,7 +291,6 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
     let cancelled = false;
 
     const init = async () => {
-      // Check if timer already started
       const { data: existing } = await supabase
         .from('nb_quiz_timer_starts')
         .select('started_at')
@@ -247,7 +305,6 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
       if (existing) {
         startedAt = new Date((existing as any).started_at);
       } else {
-        // Insert new timer start
         const { data: inserted, error } = await supabase
           .from('nb_quiz_timer_starts')
           .insert({ agent_email: userEmail, quiz_date: quizDate } as any)
@@ -257,7 +314,6 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
         if (cancelled) return;
 
         if (error) {
-          // Race condition - another tab inserted first, re-fetch
           const { data: refetched } = await supabase
             .from('nb_quiz_timer_starts')
             .select('started_at')
@@ -273,7 +329,6 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
 
       computeState(startedAt);
 
-      // Tick every second
       intervalRef.current = setInterval(() => {
         computeState(startedAt);
       }, 1000);
@@ -287,7 +342,6 @@ function useQuizTimer(quizDate: string, userEmail: string, isAdmin: boolean) {
     };
   }, [quizDate, userEmail, isAdmin, computeState]);
 
-  // Clear interval when expired
   useEffect(() => {
     if (phase === 'expired' && intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -366,7 +420,6 @@ function AgentTimerMonitor({ quizDate }: { quizDate: string }) {
     load();
   }, [quizDate]);
 
-  // Tick every second to update countdowns
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
@@ -473,10 +526,14 @@ function QuestionCard({
   const [editSource, setEditSource] = useState(q.source_article_title || '');
   const [saving, setSaving] = useState(false);
 
+  // Editing for options
+  const [editOptions, setEditOptions] = useState<string[]>(q.options || []);
+
   const startEdit = () => {
     setEditText(q.question_text);
     setEditAnswer(q.correct_answer);
     setEditSource(q.source_article_title || '');
+    setEditOptions(q.options || []);
     setEditing(true);
   };
 
@@ -485,16 +542,26 @@ function QuestionCard({
   const saveEdit = async () => {
     setSaving(true);
     try {
+      const updatePayload: any = {
+        question_text: editText.trim(),
+        correct_answer: editAnswer.trim(),
+        source_article_title: editSource.trim() || null,
+      };
+      if (q.options) {
+        updatePayload.options = editOptions.map(o => o.trim()).filter(Boolean);
+      }
       const { error } = await supabase
         .from('nb_quiz_questions')
-        .update({
-          question_text: editText.trim(),
-          correct_answer: editAnswer.trim(),
-          source_article_title: editSource.trim() || null,
-        } as any)
+        .update(updatePayload)
         .eq('id', q.id);
       if (error) throw error;
-      onQuestionUpdated({ ...q, question_text: editText.trim(), correct_answer: editAnswer.trim(), source_article_title: editSource.trim() || null });
+      onQuestionUpdated({
+        ...q,
+        question_text: editText.trim(),
+        correct_answer: editAnswer.trim(),
+        source_article_title: editSource.trim() || null,
+        options: q.options ? editOptions.map(o => o.trim()).filter(Boolean) : null,
+      });
       setEditing(false);
       toast({ title: 'Question updated' });
     } catch (err: any) {
@@ -505,12 +572,12 @@ function QuestionCard({
   };
 
   return (
-    <Card className={showResults ? (isCorrect ? 'border-primary/30' : 'border-destructive/30') : ''}>
+    <Card className={showResults && isCorrect !== null ? (isCorrect ? 'border-primary/30' : 'border-destructive/30') : ''}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between">
           <CardTitle className="text-base">Question {q.question_number}</CardTitle>
           <div className="flex items-center gap-1">
-            {showResults && (
+            {showResults && isCorrect !== null && (
               isCorrect
                 ? <CheckCircle2 className="h-5 w-5 text-primary" />
                 : <XCircle className="h-5 w-5 text-destructive" />
@@ -541,6 +608,25 @@ function QuestionCard({
               <label className="text-xs font-medium text-muted-foreground">Correct Answer</label>
               <Input value={editAnswer} onChange={(e) => setEditAnswer(e.target.value)} />
             </div>
+            {q.options && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Options</label>
+                {editOptions.map((opt, idx) => (
+                  <div key={idx} className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-semibold w-5">{String.fromCharCode(65 + idx)}.</span>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const updated = [...editOptions];
+                        updated[idx] = e.target.value;
+                        setEditOptions(updated);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <label className="text-xs font-medium text-muted-foreground">Source Article</label>
               <Input value={editSource} onChange={(e) => setEditSource(e.target.value)} placeholder="(optional)" />
@@ -575,11 +661,11 @@ function QuestionCard({
                 className="space-y-2"
               >
                 {q.options.map((opt, idx) => {
-                  const letter = String.fromCharCode(65 + idx); // A, B, C, D, E
+                  const letter = String.fromCharCode(65 + idx);
                   const isSelected = userAnswer === opt;
                   const isCorrectOption = opt.toLowerCase() === q.correct_answer.toLowerCase() || q.correct_answer.split('/').some(v => v.trim().toLowerCase() === opt.toLowerCase());
                   let optionClass = 'flex items-center space-x-3 rounded-lg border p-3 transition-colors';
-                  if (showResults) {
+                  if (showResults && isCorrect !== null) {
                     if (isCorrectOption) {
                       optionClass += ' border-primary/50 bg-primary/10';
                     } else if (isSelected && !isCorrectOption) {
@@ -598,10 +684,10 @@ function QuestionCard({
                       <Label htmlFor={`${q.id}-${idx}`} className="flex-1 cursor-pointer text-sm">
                         <span className="font-semibold mr-2">{letter}.</span>
                         {opt}
-                        {showResults && isCorrectOption && (
+                        {showResults && isCorrect !== null && isCorrectOption && (
                           <CheckCircle2 className="inline-block h-4 w-4 text-primary ml-2" />
                         )}
-                        {showResults && isSelected && !isCorrectOption && (
+                        {showResults && isCorrect !== null && isSelected && !isCorrectOption && (
                           <XCircle className="inline-block h-4 w-4 text-destructive ml-2" />
                         )}
                       </Label>
@@ -615,10 +701,10 @@ function QuestionCard({
                 value={userAnswer}
                 onChange={(e) => onAnswerChange(e.target.value)}
                 disabled={hasSubmission}
-                className={showResults && !isCorrect ? 'border-destructive' : ''}
+                className={showResults && isCorrect !== null && !isCorrect ? 'border-destructive' : ''}
               />
             )}
-            {showResults && !q.options && (
+            {showResults && isCorrect !== null && !q.options && (
               <p className={`text-sm ${isCorrect ? 'text-primary' : 'text-destructive'}`}>
                 Correct answer: <strong>{q.correct_answer}</strong>
               </p>
@@ -637,7 +723,6 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [regrading, setRegrading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
@@ -681,10 +766,11 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
       if (s) {
         const loaded = s as any;
         setSubmission({
+          id: loaded.id,
           score: loaded.score,
           total: loaded.total,
           answers: loaded.answers,
-          gradeResults: loaded.grade_results || undefined,
+          gradeResults: loaded.grade_results || null,
         });
         setShowResults(true);
         const restored: Record<string, string> = {};
@@ -747,44 +833,36 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
 
     setSubmitting(true);
     try {
-      // Prepare items for AI grading
-      const gradeItems = questions.map((q) => ({
+      const answerEntries = questions.map((q) => ({
         question_id: q.id,
-        question_text: q.question_text,
-        correct_answer: q.correct_answer,
-        agent_answer: (answers[q.id] || '').trim(),
+        answer: answers[q.id]?.trim() || '',
       }));
 
-      // Call AI grading edge function
-      const { data: gradeData, error: gradeError } = await supabase.functions.invoke('grade-nb-quiz', {
-        body: { items: gradeItems },
-      });
-
-      if (gradeError) throw new Error(gradeError.message || 'Grading failed');
-      if (gradeData?.error) throw new Error(gradeData.error);
-
-      const gradeResults: Record<string, boolean> = gradeData.results || {};
-      let score = 0;
-      const answerEntries = questions.map((q) => {
-        if (gradeResults[q.id]) score++;
-        return { question_id: q.id, answer: answers[q.id]?.trim() || '' };
-      });
-
-      const { error } = await supabase.from('nb_quiz_submissions').insert({
-        agent_email: userEmail,
-        quiz_date: quizDate,
-        answers: answerEntries,
-        score,
-        total: questions.length,
-        grade_results: gradeResults,
-      } as any);
+      const { data: inserted, error } = await supabase
+        .from('nb_quiz_submissions')
+        .insert({
+          agent_email: userEmail,
+          quiz_date: quizDate,
+          answers: answerEntries,
+          score: 0,
+          total: questions.length,
+          grade_results: null,
+        } as any)
+        .select('id')
+        .single();
 
       if (error) throw error;
 
-      setSubmission({ score, total: questions.length, answers: answerEntries, gradeResults });
+      setSubmission({
+        id: (inserted as any)?.id,
+        score: 0,
+        total: questions.length,
+        answers: answerEntries,
+        gradeResults: null,
+      });
       setShowResults(true);
       setRefreshSummary((c) => c + 1);
-      toast({ title: 'Quiz submitted!', description: `You scored ${score}/${questions.length}` });
+      toast({ title: 'Quiz submitted!', description: 'Your answers are pending review by an admin.' });
     } catch (err: any) {
       toast({ title: 'Submit failed', description: err.message, variant: 'destructive' });
     } finally {
@@ -827,7 +905,7 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
     );
   }
 
-  // Delay phase - waiting for quiz to unlock
+  // Delay phase
   if (phase === 'delay') {
     return (
       <div className="space-y-4">
@@ -888,6 +966,9 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
     );
   }
 
+  // Determine if submission is graded
+  const isGraded = submission?.gradeResults !== null && submission?.gradeResults !== undefined && Object.keys(submission.gradeResults).length > 0;
+
   return (
     <div className="space-y-4">
       {/* Admin visibility toggle */}
@@ -899,79 +980,6 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
               <Badge variant={isVisible ? 'default' : 'secondary'}>{isVisible ? 'Visible' : 'Hidden'}</Badge>
             </div>
             <Switch checked={isVisible} onCheckedChange={toggleVisibility} disabled={togglingVisibility} />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Admin re-grade & timer monitor */}
-      {isAdmin && (
-        <Card>
-          <CardContent className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Re-grade All Submissions (AI)</span>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={regrading}
-              onClick={async () => {
-                setRegrading(true);
-                try {
-                  // Fetch all submissions for this date
-                  const { data: subs } = await supabase
-                    .from('nb_quiz_submissions')
-                    .select('id, agent_email, answers')
-                    .eq('quiz_date', quizDate);
-                  if (!subs || subs.length === 0) {
-                    toast({ title: 'No submissions to re-grade' });
-                    return;
-                  }
-
-                  let updated = 0;
-                  for (const sub of subs) {
-                    const subAnswers = sub.answers as any[];
-                    const items = questions.map((q) => {
-                      const entry = subAnswers.find((a: any) => a.question_id === q.id);
-                      return {
-                        question_id: q.id,
-                        question_text: q.question_text,
-                        correct_answer: q.correct_answer,
-                        agent_answer: entry?.answer || '',
-                      };
-                    });
-
-                    const { data: gradeData, error: gradeErr } = await supabase.functions.invoke('grade-nb-quiz', {
-                      body: { items },
-                    });
-                    console.log('Grade response for', sub.agent_email, { gradeData, gradeErr });
-                    if (gradeErr || gradeData?.error) {
-                      console.error('Grade error for', sub.agent_email, gradeErr, gradeData?.error);
-                      continue;
-                    }
-
-                    const results: Record<string, boolean> = gradeData.results || {};
-                    const newScore = questions.filter((q) => results[q.id] === true).length;
-
-                    await supabase
-                      .from('nb_quiz_submissions')
-                      .update({ score: newScore, grade_results: results } as any)
-                      .eq('id', sub.id);
-                    updated++;
-                  }
-
-                  toast({ title: 'Re-grading complete', description: `Updated ${updated} submission(s)` });
-                  setRefreshSummary((c) => c + 1);
-                } catch (err: any) {
-                  toast({ title: 'Re-grade failed', description: err.message, variant: 'destructive' });
-                } finally {
-                  setRegrading(false);
-                }
-              }}
-            >
-              {regrading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {regrading ? 'Re-grading...' : 'Re-grade'}
-            </Button>
           </CardContent>
         </Card>
       )}
@@ -988,26 +996,39 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
         </Card>
       )}
 
-      {/* Score card if submitted */}
+      {/* Score card or Pending Review */}
       {showResults && submission && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="flex items-center justify-between py-6">
-            <div>
-              <p className="text-sm text-muted-foreground">Your Score</p>
-              <p className="text-3xl font-bold">{submission.score}/{submission.total}</p>
-            </div>
-            <Badge variant={submission.score >= 8 ? 'default' : submission.score >= 5 ? 'secondary' : 'destructive'} className="text-lg px-4 py-1">
-              {Math.round((submission.score / submission.total) * 100)}%
-            </Badge>
-          </CardContent>
-        </Card>
+        isGraded ? (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="flex items-center justify-between py-6">
+              <div>
+                <p className="text-sm text-muted-foreground">Your Score</p>
+                <p className="text-3xl font-bold">{submission.score}/{submission.total}</p>
+              </div>
+              <Badge variant={submission.score >= 8 ? 'default' : submission.score >= 5 ? 'secondary' : 'destructive'} className="text-lg px-4 py-1">
+                {Math.round((submission.score / submission.total) * 100)}%
+              </Badge>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-amber-300/50 bg-amber-50/50">
+            <CardContent className="flex items-center justify-center py-6 gap-3">
+              <Clock className="h-6 w-6 text-amber-600" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Pending Review</p>
+                <p className="text-xs text-amber-600">Your submission is awaiting manual grading by an admin.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* Questions */}
       {questions.map((q) => {
         const userAnswer = answers[q.id] || '';
-        const isCorrect = showResults && submission
-          ? (submission.gradeResults ? submission.gradeResults[q.id] === true : answerMatchesCorrect(userAnswer, q.correct_answer))
+        // Only show correctness indicators if graded
+        const isCorrect = showResults && submission && isGraded
+          ? (submission.gradeResults![q.id] === true)
           : null;
 
         return (
