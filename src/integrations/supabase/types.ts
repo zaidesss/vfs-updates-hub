@@ -1254,6 +1254,7 @@ export type Database = {
           correct_answer: string
           created_at: string | null
           id: string
+          options: Json | null
           question_number: number
           question_text: string
           quiz_date: string
@@ -1263,6 +1264,7 @@ export type Database = {
           correct_answer: string
           created_at?: string | null
           id?: string
+          options?: Json | null
           question_number: number
           question_text: string
           quiz_date: string
@@ -1272,6 +1274,7 @@ export type Database = {
           correct_answer?: string
           created_at?: string | null
           id?: string
+          options?: Json | null
           question_number?: number
           question_text?: string
           quiz_date?: string
