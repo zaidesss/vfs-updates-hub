@@ -1,34 +1,40 @@
 
 
-## Plan: Convert NB Quiz to Multiple Choice (5 Options)
+## Plan: Manual Grading via Checkboxes in Expanded Leaderboard
 
-### What Changes
+### Summary
+Replace AI grading with manual admin grading. Agents see "Pending review" after submitting. Admins expand a row in the Scores Summary table, see each answer alongside the correct answer, and toggle checkboxes to mark correct/incorrect. Score updates live (auto-saves each toggle to the database).
 
-**1. Database: Add `options` column to `nb_quiz_questions`**
-- Add a `jsonb` column `options` (nullable) to store an array of 5 strings (the choices, one of which is the correct answer)
-- Migration: `ALTER TABLE nb_quiz_questions ADD COLUMN options jsonb;`
+### Changes
 
-**2. Update the 20 existing questions for 03.04.26**
-- Use the insert tool to UPDATE each question's `options` field with 5 choices (including the correct answer, shuffled among 4 distractors)
-- The correct_answer column stays as-is; options just adds the selectable choices
+**1. Submission flow (remove AI grading)**
+- `handleSubmit` in `QuizTab`: Remove the call to `supabase.functions.invoke('grade-nb-quiz')`. Instead, save the submission with `score: 0`, `total: questions.length`, `grade_results: null` (ungraded).
+- Remove the "Re-grade All Submissions (AI)" admin card entirely.
 
-**3. Update `QuestionCard` UI in `src/pages/NBQuiz.tsx`**
-- Replace the `<Input>` text field with a radio group showing 5 labeled options (A–E)
-- When `options` exist on a question, render radio buttons; fall back to text input for older fill-in-the-blank questions
-- On results view, highlight the selected answer as correct/incorrect and show the correct option
-- Update the page subtitle from "Fill-in-the-blank" to "Knowledge quiz"
+**2. Agent post-submission view**
+- When `submission.gradeResults` is `null`, show a "Pending Review" badge instead of a score card.
+- Hide correctness indicators (green/red) on individual questions until `gradeResults` is populated.
+- Once graded, show the score card and correctness indicators as they do today.
 
-**4. Admin inline edit**
-- Not included per your selection (only updating existing questions)
+**3. Admin grading UI in Scores Summary table**
+- In the expanded row for each agent, add a `Checkbox` next to each question's agent answer.
+- Checkbox is checked = correct, unchecked = incorrect.
+- Pre-populate checkboxes from `grade_results` if already graded (allows corrections).
+- On each checkbox toggle:
+  - Compute new `grade_results` map and `score` count.
+  - `UPDATE nb_quiz_submissions SET grade_results = {...}, score = X WHERE id = ...`
+  - Update local state immediately (live update).
+- Show a visual indicator (graded vs ungraded) on each row in the summary table.
 
-### Technical Details
+**4. Scores Summary table adjustments**
+- Add `id` to the submission query (needed for updates).
+- For ungraded submissions, show "Pending" badge instead of score/percentage.
+- Admin can still expand any row to view answers + grade them.
 
-- The `options` array will contain 5 strings in display order. The correct answer will be one of them (matched by `correct_answer` field).
-- Answers stored in submissions remain as `{ question_id, answer }` — the `answer` value will be the selected option text instead of typed text.
-- AI grading via `grade-nb-quiz` still works since it compares agent answer to correct answer semantically, but for multiple choice it will effectively be an exact match.
+**5. No database schema changes needed**
+- `grade_results` (jsonb) and `score` columns already exist on `nb_quiz_submissions`.
+- `null` in `grade_results` will indicate "not yet graded."
 
-### Implementation Order
-1. Run migration to add `options` column
-2. Insert the 5 options for each of the 20 questions (I'll craft the distractors based on the coaching content)
-3. Update `NBQuiz.tsx` — QuestionCard renders radio buttons when options exist
+### Files Modified
+- `src/pages/NBQuiz.tsx` — all changes above (submission flow, ScoresSummaryTable grading UI, agent results display)
 
