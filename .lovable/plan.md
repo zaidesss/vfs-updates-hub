@@ -1,69 +1,34 @@
 
 
-## Plan: NB Quiz Page — AI-Generated Fill-in-the-Blank Quizzes
+## Plan: Convert NB Quiz to Multiple Choice (5 Options)
 
-### What We're Building
-A new "NB Quiz" page under Team Performance with 4 date tabs (03.03.26 through 03.06.26). Each tab contains 10 AI-generated fill-in-the-blank questions sourced from Knowledge Base articles. Agents type answers, submit, and see their score. Results persist to the database.
+### What Changes
 
-### Database Changes (2 new tables + 1 migration)
+**1. Database: Add `options` column to `nb_quiz_questions`**
+- Add a `jsonb` column `options` (nullable) to store an array of 5 strings (the choices, one of which is the correct answer)
+- Migration: `ALTER TABLE nb_quiz_questions ADD COLUMN options jsonb;`
 
-**Table: `nb_quiz_questions`**
-- `id` uuid PK
-- `quiz_date` date NOT NULL (e.g. 2026-03-03)
-- `question_number` integer NOT NULL
-- `question_text` text NOT NULL (with `______` blank marker)
-- `correct_answer` text NOT NULL
-- `source_article_title` text
-- `created_at` timestamptz DEFAULT now()
-- UNIQUE(quiz_date, question_number)
+**2. Update the 20 existing questions for 03.04.26**
+- Use the insert tool to UPDATE each question's `options` field with 5 choices (including the correct answer, shuffled among 4 distractors)
+- The correct_answer column stays as-is; options just adds the selectable choices
 
-**Table: `nb_quiz_submissions`**
-- `id` uuid PK
-- `agent_email` text NOT NULL
-- `quiz_date` date NOT NULL
-- `answers` jsonb NOT NULL (array of {question_id, answer})
-- `score` integer NOT NULL
-- `total` integer NOT NULL
-- `submitted_at` timestamptz DEFAULT now()
-- UNIQUE(agent_email, quiz_date) — one attempt per day
+**3. Update `QuestionCard` UI in `src/pages/NBQuiz.tsx`**
+- Replace the `<Input>` text field with a radio group showing 5 labeled options (A–E)
+- When `options` exist on a question, render radio buttons; fall back to text input for older fill-in-the-blank questions
+- On results view, highlight the selected answer as correct/incorrect and show the correct option
+- Update the page subtitle from "Fill-in-the-blank" to "Knowledge quiz"
 
-RLS: Authenticated users can SELECT questions. Agents can INSERT their own submission (agent_email = auth email) and SELECT their own submissions. Admins can SELECT all submissions.
+**4. Admin inline edit**
+- Not included per your selection (only updating existing questions)
 
-### Edge Function: `generate-nb-quiz`
+### Technical Details
 
-- Accepts `{ quizDate: string }`
-- Fetches all published KB articles from `updates` table
-- Calls Lovable AI (google/gemini-2.5-flash) with a prompt to generate 10 fill-in-the-blank questions with answers
-- Inserts into `nb_quiz_questions`
-- Returns success
+- The `options` array will contain 5 strings in display order. The correct answer will be one of them (matched by `correct_answer` field).
+- Answers stored in submissions remain as `{ question_id, answer }` — the `answer` value will be the selected option text instead of typed text.
+- AI grading via `grade-nb-quiz` still works since it compares agent answer to correct answer semantically, but for multiple choice it will effectively be an exact match.
 
-### New Page: `src/pages/NBQuiz.tsx`
-
-- 4 date tabs: "03.03.26", "03.04.26", "03.05.26", "03.06.26"
-- Each tab loads questions from `nb_quiz_questions` for that date
-- If no questions exist yet (admin view), shows a "Generate Questions" button that calls the edge function
-- Quiz UI: numbered questions with text inputs for blanks
-- Submit button → grades answers (case-insensitive match), saves to `nb_quiz_submissions`, shows score card
-- If agent already submitted for that date, shows their previous score (read-only)
-
-### Navigation
-- Add to Team Performance menu in `Layout.tsx` as "NB Quiz" with `BookOpen` icon
-- Route: `/team-performance/nb-quiz`
-
-### File Changes
-
-| File | Change |
-|------|--------|
-| Migration SQL | Create `nb_quiz_questions` and `nb_quiz_submissions` tables with RLS |
-| `supabase/functions/generate-nb-quiz/index.ts` | New edge function for AI question generation |
-| `supabase/config.toml` | Add function entry (verify_jwt = false) |
-| `src/pages/NBQuiz.tsx` | New page component with tabs, quiz form, scoring |
-| `src/App.tsx` | Add route `/team-performance/nb-quiz` |
-| `src/components/Layout.tsx` | Add "NB Quiz" nav item under Team Performance |
-
-### Step-by-Step Implementation Order
-1. Create database tables + RLS policies
-2. Create edge function for AI generation
-3. Build the NBQuiz page component
-4. Wire up route + navigation
+### Implementation Order
+1. Run migration to add `options` column
+2. Insert the 5 options for each of the 20 questions (I'll craft the distractors based on the coaching content)
+3. Update `NBQuiz.tsx` — QuestionCard renders radio buttons when options exist
 
