@@ -1,0 +1,1 @@
+ALTER TABLE public.nb_quiz_questions ADD COLUMN options jsonb;

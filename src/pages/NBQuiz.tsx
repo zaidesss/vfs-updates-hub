@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle2, XCircle, Sparkles, EyeOff, Trophy, Clock, Lock, Users, RefreshCw, Pencil, Check, X } from 'lucide-react';
 
 const QUIZ_DATES = [
@@ -37,6 +39,7 @@ interface QuizQuestion {
   question_text: string;
   correct_answer: string;
   source_article_title: string | null;
+  options: string[] | null;
 }
 
 interface QuizSubmission {
@@ -564,14 +567,58 @@ function QuestionCard({
         )}
         {!editing && (
           <>
-            <Input
-              placeholder="Type your answer..."
-              value={userAnswer}
-              onChange={(e) => onAnswerChange(e.target.value)}
-              disabled={hasSubmission}
-              className={showResults && !isCorrect ? 'border-destructive' : ''}
-            />
-            {showResults && (
+            {q.options && q.options.length > 0 ? (
+              <RadioGroup
+                value={userAnswer}
+                onValueChange={(val) => onAnswerChange(val)}
+                disabled={hasSubmission}
+                className="space-y-2"
+              >
+                {q.options.map((opt, idx) => {
+                  const letter = String.fromCharCode(65 + idx); // A, B, C, D, E
+                  const isSelected = userAnswer === opt;
+                  const isCorrectOption = opt.toLowerCase() === q.correct_answer.toLowerCase() || q.correct_answer.split('/').some(v => v.trim().toLowerCase() === opt.toLowerCase());
+                  let optionClass = 'flex items-center space-x-3 rounded-lg border p-3 transition-colors';
+                  if (showResults) {
+                    if (isCorrectOption) {
+                      optionClass += ' border-primary/50 bg-primary/10';
+                    } else if (isSelected && !isCorrectOption) {
+                      optionClass += ' border-destructive/50 bg-destructive/10';
+                    } else {
+                      optionClass += ' border-border opacity-60';
+                    }
+                  } else if (isSelected) {
+                    optionClass += ' border-primary bg-primary/5';
+                  } else {
+                    optionClass += ' border-border hover:bg-muted/50';
+                  }
+                  return (
+                    <div key={idx} className={optionClass}>
+                      <RadioGroupItem value={opt} id={`${q.id}-${idx}`} disabled={hasSubmission} />
+                      <Label htmlFor={`${q.id}-${idx}`} className="flex-1 cursor-pointer text-sm">
+                        <span className="font-semibold mr-2">{letter}.</span>
+                        {opt}
+                        {showResults && isCorrectOption && (
+                          <CheckCircle2 className="inline-block h-4 w-4 text-primary ml-2" />
+                        )}
+                        {showResults && isSelected && !isCorrectOption && (
+                          <XCircle className="inline-block h-4 w-4 text-destructive ml-2" />
+                        )}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
+            ) : (
+              <Input
+                placeholder="Type your answer..."
+                value={userAnswer}
+                onChange={(e) => onAnswerChange(e.target.value)}
+                disabled={hasSubmission}
+                className={showResults && !isCorrect ? 'border-destructive' : ''}
+              />
+            )}
+            {showResults && !q.options && (
               <p className={`text-sm ${isCorrect ? 'text-primary' : 'text-destructive'}`}>
                 Correct answer: <strong>{q.correct_answer}</strong>
               </p>
@@ -619,7 +666,10 @@ function QuizTab({ quizDate, userEmail, isAdmin }: { quizDate: string; userEmail
         .eq('quiz_date', quizDate)
         .order('question_number');
 
-      setQuestions((q as QuizQuestion[]) || []);
+      setQuestions(((q as any[]) || []).map((item: any) => ({
+        ...item,
+        options: item.options ? (Array.isArray(item.options) ? item.options : JSON.parse(item.options)) : null,
+      })) as QuizQuestion[]);
 
       const { data: s } = await supabase
         .from('nb_quiz_submissions')
@@ -1011,7 +1061,7 @@ export default function NBQuiz() {
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold">NB Quiz</h1>
-          <p className="text-muted-foreground">Fill-in-the-blank knowledge quiz from KB articles</p>
+          <p className="text-muted-foreground">Knowledge quiz from KB articles and coaching observations</p>
         </div>
 
         <Card className="border-primary/20 bg-primary/5">
