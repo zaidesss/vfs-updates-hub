@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail, Calendar, Timer } from 'lucide-react';
-import { useZendeskRealtime } from '@/lib/zendeskRealtimeApi';
+import { RefreshCw, AlertTriangle, Ticket, Info, Clock, CheckCircle2, Mail, Calendar, Timer, FolderOpen, ChevronDown, ChevronRight, User } from 'lucide-react';
+import { useZendeskRealtime, OpenTicketsData } from '@/lib/zendeskRealtimeApi';
 import { useSlaResponsiveness, formatAge } from '@/lib/slaResponsivenessApi';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '@/components/ui/table';
 
 function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading, emphasized }: {
   icon: React.ReactNode;
@@ -38,6 +40,78 @@ function MetricRow({ icon, label, total, zd1, zd2, variant, isLoading, emphasize
         </span>
       </div>
     </div>
+  );
+}
+function OpenTicketsSection({ zd1, zd2, isLoading }: { zd1?: OpenTicketsData; zd2?: OpenTicketsData; isLoading: boolean }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const totalZd1 = zd1?.total ?? 0;
+  const totalZd2 = zd2?.total ?? 0;
+  const total = totalZd1 + totalZd2;
+
+  // Merge agents from both instances
+  const mergedAgents = new Map<string, { zd1: number; zd2: number }>();
+  for (const a of zd1?.byAgent ?? []) {
+    mergedAgents.set(a.name, { zd1: a.count, zd2: 0 });
+  }
+  for (const a of zd2?.byAgent ?? []) {
+    const existing = mergedAgents.get(a.name) ?? { zd1: 0, zd2: 0 };
+    mergedAgents.set(a.name, { ...existing, zd2: a.count });
+  }
+  const sortedAgents = Array.from(mergedAgents.entries())
+    .map(([name, counts]) => ({ name, ...counts, total: counts.zd1 + counts.zd2 }))
+    .sort((a, b) => b.total - a.total);
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <CollapsibleTrigger asChild>
+        <button className="w-full flex items-center justify-between gap-4 hover:bg-muted/30 rounded-lg transition-colors py-1 -mx-1 px-1">
+          <div className="flex items-center gap-3">
+            <span className="text-amber-600 dark:text-amber-400">
+              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </span>
+            <span className="text-amber-600 dark:text-amber-400"><FolderOpen className="h-4 w-4" /></span>
+            <span className="text-sm font-medium text-muted-foreground">Open Tickets</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400">
+              {isLoading ? '—' : total.toLocaleString()}
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              ({isLoading ? '—' : `ZD1: ${totalZd1.toLocaleString()} / ZD2: ${totalZd2.toLocaleString()}`})
+            </span>
+          </div>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {sortedAgents.length > 0 && (
+          <div className="mt-2 rounded-lg border border-border/50 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="h-8 text-xs">Agent</TableHead>
+                  <TableHead className="h-8 text-xs text-right">ZD1</TableHead>
+                  <TableHead className="h-8 text-xs text-right">ZD2</TableHead>
+                  <TableHead className="h-8 text-xs text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedAgents.map((agent) => (
+                  <TableRow key={agent.name} className="hover:bg-muted/30">
+                    <TableCell className="py-1.5 text-sm flex items-center gap-2">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      {agent.name}
+                    </TableCell>
+                    <TableCell className="py-1.5 text-sm text-right tabular-nums">{agent.zd1 || '—'}</TableCell>
+                    <TableCell className="py-1.5 text-sm text-right tabular-nums">{agent.zd2 || '—'}</TableCell>
+                    <TableCell className="py-1.5 text-sm text-right tabular-nums font-semibold">{agent.total}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -182,6 +256,12 @@ export function NewTicketsCounter() {
             zd2={slaData?.zd2?.remainingYesterday ?? 0}
             variant="destructive"
             isLoading={slaLoading}
+          />
+          <div className="border-t border-border/50" />
+          <OpenTicketsSection
+            zd1={data?.zd1?.openTickets}
+            zd2={data?.zd2?.openTickets}
+            isLoading={isLoading}
           />
           <div className="border-t border-border/50" />
           <div className="flex items-center justify-between gap-4">
