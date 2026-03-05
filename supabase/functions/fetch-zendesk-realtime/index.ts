@@ -122,32 +122,60 @@ async function fetchOpenTicketsFromView(
   viewId: string,
   customFieldId: string
 ): Promise<OpenTicketsData> {
-  const url = `https://${config.subdomain}.zendesk.com/api/v2/views/${viewId}/execute.json?per_page=100`;
-  const res = await fetch(url, {
-    headers: {
-      'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const headers = {
+    'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+    'Content-Type': 'application/json',
+  };
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`View execute failed for ${config.subdomain} view ${viewId}: ${res.status} - ${errText}`);
-    return { total: 0, byAgent: [] };
-  }
-
-  const data = await res.json();
-  const rows = data.rows || [];
-  const total = data.count ?? rows.length;
-
-  // Group by agent name from custom field
   const agentMap = new Map<string, number>();
-  for (const row of rows) {
-    const ticket = row.ticket || row;
-    const customFields = ticket.custom_fields || [];
-    const field = customFields.find((f: any) => String(f.id) === customFieldId);
-    const agentName = field?.value || 'Unassigned';
-    agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
+  let total = 0;
+  const maxPages = 10;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `https://${config.subdomain}.zendesk.com/api/v2/views/${viewId}/execute.json?per_page=100&page=${page}`;
+    const res = await fetch(url, { headers });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`View execute failed for ${config.subdomain} view ${viewId} page ${page}: ${res.status} - ${errText}`);
+      break;
+    }
+
+    const data = await res.json();
+    const rows = data.rows || [];
+
+    if (page === 1) {
+      total = data.count ?? rows.length;
+      // Log first row structure for debugging
+      if (rows.length > 0) {
+        const sample = rows[0];
+        console.log(`[open-tickets] ${config.subdomain} view ${viewId} - first row keys: ${Object.keys(sample).join(', ')}`);
+        if (sample.ticket) {
+          console.log(`[open-tickets] ticket keys: ${Object.keys(sample.ticket).join(', ')}`);
+          if (sample.ticket.custom_fields) {
+            console.log(`[open-tickets] has custom_fields (${sample.ticket.custom_fields.length} fields)`);
+          }
+        }
+        if (sample.custom_fields) {
+          console.log(`[open-tickets] row has direct custom_fields`);
+        }
+      }
+    }
+
+    for (const row of rows) {
+      let agentName = 'Unassigned';
+
+      // The custom field value is available directly as row[customFieldId]
+      const directValue = row[customFieldId];
+      if (directValue && typeof directValue === 'string') {
+        agentName = directValue;
+      }
+
+      agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
+    }
+
+    // Stop if we've fetched all rows
+    if (rows.length < 100) break;
   }
 
   const byAgent: OpenTicketAgent[] = Array.from(agentMap.entries())
