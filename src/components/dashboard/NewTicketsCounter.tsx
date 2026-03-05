@@ -258,12 +258,6 @@ export function NewTicketsCounter() {
             isLoading={slaLoading}
           />
           <div className="border-t border-border/50" />
-          <OpenTicketsSection
-            zd1={data?.zd1?.openTickets}
-            zd2={data?.zd2?.openTickets}
-            isLoading={isLoading}
-          />
-          <div className="border-t border-border/50" />
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="text-muted-foreground"><Timer className="h-4 w-4" /></span>
@@ -286,6 +280,12 @@ export function NewTicketsCounter() {
               })()}
             </span>
           </div>
+          <div className="border-t border-border/50" />
+          <OpenTicketsSection
+            zd1={data?.zd1?.openTickets}
+            zd2={data?.zd2?.openTickets}
+            isLoading={isLoading}
+          />
         </div>
       </CardContent>
     </Card>
