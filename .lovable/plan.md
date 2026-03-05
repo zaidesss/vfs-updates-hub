@@ -1,40 +1,39 @@
 
 
-## Plan: Manual Grading via Checkboxes in Expanded Leaderboard
+## Plan: Reduce Zendesk API Calls via Caching and Disabling
 
 ### Summary
-Replace AI grading with manual admin grading. Agents see "Pending review" after submitting. Admins expand a row in the Scores Summary table, see each answer alongside the correct answer, and toggle checkboxes to mark correct/incorrect. Score updates live (auto-saves each toggle to the database).
+Three changes to fix the 429 rate-limit errors breaking the New Tickets Monitor:
+1. **Cache `fetch-zendesk-realtime`** in a DB table with 3-min TTL — all users share one cached result
+2. **Cache `fetch-sla-responsiveness`** in a DB table with 5-min TTL — same shared approach
+3. **Disable `fetch-zendesk-insights`** — the highest API consumer, making 1,000+ calls per invocation
 
-### Changes
+---
 
-**1. Submission flow (remove AI grading)**
-- `handleSubmit` in `QuizTab`: Remove the call to `supabase.functions.invoke('grade-nb-quiz')`. Instead, save the submission with `score: 0`, `total: questions.length`, `grade_results: null` (ungraded).
-- Remove the "Re-grade All Submissions (AI)" admin card entirely.
+### Step 1: Create a `zendesk_cache` table
+- Migration: Create `zendesk_cache` table with columns: `cache_key TEXT PRIMARY KEY`, `data JSONB`, `fetched_at TIMESTAMPTZ`
+- Used by both realtime and SLA functions as a shared cache
 
-**2. Agent post-submission view**
-- When `submission.gradeResults` is `null`, show a "Pending Review" badge instead of a score card.
-- Hide correctness indicators (green/red) on individual questions until `gradeResults` is populated.
-- Once graded, show the score card and correctness indicators as they do today.
+### Step 2: Add caching to `fetch-zendesk-realtime`
+- At the start of the function, check `zendesk_cache` for key `'realtime'`
+- If `fetched_at` is less than 3 minutes old, return the cached `data` immediately (zero ZD API calls)
+- Otherwise, fetch fresh from Zendesk, upsert the result into `zendesk_cache`, then return it
+- **Result**: Multiple users polling every 60s all get the same cached result; only 1 actual ZD fetch per 3 minutes
 
-**3. Admin grading UI in Scores Summary table**
-- In the expanded row for each agent, add a `Checkbox` next to each question's agent answer.
-- Checkbox is checked = correct, unchecked = incorrect.
-- Pre-populate checkboxes from `grade_results` if already graded (allows corrections).
-- On each checkbox toggle:
-  - Compute new `grade_results` map and `score` count.
-  - `UPDATE nb_quiz_submissions SET grade_results = {...}, score = X WHERE id = ...`
-  - Update local state immediately (live update).
-- Show a visual indicator (graded vs ungraded) on each row in the summary table.
+### Step 3: Add caching to `fetch-sla-responsiveness`
+- Same pattern with key `'sla_responsiveness'` and 5-minute TTL
+- Each invocation checks cache first, only fetches from ZD if stale
+- **Result**: Eliminates the per-ticket metrics calls from multiplying across users
 
-**4. Scores Summary table adjustments**
-- Add `id` to the submission query (needed for updates).
-- For ungraded submissions, show "Pending" badge instead of score/percentage.
-- Admin can still expand any row to view answers + grade them.
-
-**5. No database schema changes needed**
-- `grade_results` (jsonb) and `score` columns already exist on `nb_quiz_submissions`.
-- `null` in `grade_results` will indicate "not yet graded."
+### Step 4: Disable `fetch-zendesk-insights`
+- In the edge function, return an error/empty response immediately with a message like "Zendesk Insights is temporarily disabled to reduce API load"
+- On the frontend (`ZendeskInsights.tsx`), show a banner/alert explaining the feature is paused
+- This removes the biggest API consumer (1,000+ per-ticket metric calls per load)
 
 ### Files Modified
-- `src/pages/NBQuiz.tsx` — all changes above (submission flow, ScoresSummaryTable grading UI, agent results display)
+- **New migration**: Create `zendesk_cache` table
+- `supabase/functions/fetch-zendesk-realtime/index.ts` — add Supabase client, cache check/write logic
+- `supabase/functions/fetch-sla-responsiveness/index.ts` — same cache pattern
+- `supabase/functions/fetch-zendesk-insights/index.ts` — short-circuit with disabled message
+- `src/pages/ZendeskInsights.tsx` — show "temporarily disabled" banner
 
