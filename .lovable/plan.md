@@ -1,39 +1,32 @@
 
 
-## Plan: Reduce Zendesk API Calls via Caching and Disabling
+## Plan: Add Open Tickets with Agent Name Counter via Views API
 
 ### Summary
-Three changes to fix the 429 rate-limit errors breaking the New Tickets Monitor:
-1. **Cache `fetch-zendesk-realtime`** in a DB table with 3-min TTL — all users share one cached result
-2. **Cache `fetch-sla-responsiveness`** in a DB table with 5-min TTL — same shared approach
-3. **Disable `fetch-zendesk-insights`** — the highest API consumer, making 1,000+ calls per invocation
+Add a new "Open Tickets" section to the New Tickets Monitor by fetching ticket data from pre-built Zendesk Views using the Views API. The view execute endpoint returns tickets with custom field values, which we'll use to extract agent names from the custom fields (ZD1: `14923047306265`, ZD2: `44524282221593`).
 
----
+### Step 1: Update `fetch-zendesk-realtime` edge function
+- Add `fetchOpenTicketsFromView()` that calls `/api/v2/views/{id}/execute.json` for each instance
+  - ZD1 View ID: `55735766685081`, custom field: `14923047306265`
+  - ZD2 View ID: `55551228002585`, custom field: `44524282221593`
+- Parse the response rows, extract the agent name from each ticket's custom field value
+- Group by agent name → `{ total: number, byAgent: { name: string, count: number }[] }`
+- Include in the existing result object as `zd1.openTickets` and `zd2.openTickets`
+- Covered by the same 3-minute DB cache — no extra API pressure
 
-### Step 1: Create a `zendesk_cache` table
-- Migration: Create `zendesk_cache` table with columns: `cache_key TEXT PRIMARY KEY`, `data JSONB`, `fetched_at TIMESTAMPTZ`
-- Used by both realtime and SLA functions as a shared cache
+### Step 2: Update `src/lib/zendeskRealtimeApi.ts`
+- Add `OpenTicketAgent` interface: `{ name: string, count: number }`
+- Add `OpenTicketsData` interface: `{ total: number, byAgent: OpenTicketAgent[] }`
+- Add `openTickets?: OpenTicketsData` to `InstanceStats`
 
-### Step 2: Add caching to `fetch-zendesk-realtime`
-- At the start of the function, check `zendesk_cache` for key `'realtime'`
-- If `fetched_at` is less than 3 minutes old, return the cached `data` immediately (zero ZD API calls)
-- Otherwise, fetch fresh from Zendesk, upsert the result into `zendesk_cache`, then return it
-- **Result**: Multiple users polling every 60s all get the same cached result; only 1 actual ZD fetch per 3 minutes
-
-### Step 3: Add caching to `fetch-sla-responsiveness`
-- Same pattern with key `'sla_responsiveness'` and 5-minute TTL
-- Each invocation checks cache first, only fetches from ZD if stale
-- **Result**: Eliminates the per-ticket metrics calls from multiplying across users
-
-### Step 4: Disable `fetch-zendesk-insights`
-- In the edge function, return an error/empty response immediately with a message like "Zendesk Insights is temporarily disabled to reduce API load"
-- On the frontend (`ZendeskInsights.tsx`), show a banner/alert explaining the feature is paused
-- This removes the biggest API consumer (1,000+ per-ticket metric calls per load)
+### Step 3: Update `src/components/dashboard/NewTicketsCounter.tsx`
+- Add a new section below existing metrics showing:
+  - **Open Tickets** total with ZD1/ZD2 split (using existing `MetricRow`)
+  - Collapsible agent breakdown table sorted by count descending
+  - Agents with no name value shown as "Unassigned"
 
 ### Files Modified
-- **New migration**: Create `zendesk_cache` table
-- `supabase/functions/fetch-zendesk-realtime/index.ts` — add Supabase client, cache check/write logic
-- `supabase/functions/fetch-sla-responsiveness/index.ts` — same cache pattern
-- `supabase/functions/fetch-zendesk-insights/index.ts` — short-circuit with disabled message
-- `src/pages/ZendeskInsights.tsx` — show "temporarily disabled" banner
+- `supabase/functions/fetch-zendesk-realtime/index.ts` — add Views API fetch with custom field extraction
+- `src/lib/zendeskRealtimeApi.ts` — add open tickets types
+- `src/components/dashboard/NewTicketsCounter.tsx` — render open tickets section
 
