@@ -13,11 +13,22 @@ export interface MessagingStats {
   conversationsInQueue: number;
 }
 
+export interface OpenTicketAgent {
+  name: string;
+  count: number;
+}
+
+export interface OpenTicketsData {
+  total: number;
+  byAgent: OpenTicketAgent[];
+}
+
 export interface InstanceStats {
   talk: TalkStats;
   messaging: MessagingStats;
   newTickets: number;
   totalTicketsToday: number;
+  openTickets?: OpenTicketsData;
 }
 
 export interface ZendeskRealtimeData {

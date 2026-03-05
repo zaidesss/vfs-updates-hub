@@ -107,6 +107,56 @@ async function fetchMessagingStats(config: ZendeskConfig): Promise<MessagingStat
   };
 }
 
+interface OpenTicketAgent {
+  name: string;
+  count: number;
+}
+
+interface OpenTicketsData {
+  total: number;
+  byAgent: OpenTicketAgent[];
+}
+
+async function fetchOpenTicketsFromView(
+  config: ZendeskConfig,
+  viewId: string,
+  customFieldId: string
+): Promise<OpenTicketsData> {
+  const url = `https://${config.subdomain}.zendesk.com/api/v2/views/${viewId}/execute.json?per_page=100`;
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Basic ${btoa(`${config.email}/token:${config.token}`)}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`View execute failed for ${config.subdomain} view ${viewId}: ${res.status} - ${errText}`);
+    return { total: 0, byAgent: [] };
+  }
+
+  const data = await res.json();
+  const rows = data.rows || [];
+  const total = data.count ?? rows.length;
+
+  // Group by agent name from custom field
+  const agentMap = new Map<string, number>();
+  for (const row of rows) {
+    const ticket = row.ticket || row;
+    const customFields = ticket.custom_fields || [];
+    const field = customFields.find((f: any) => String(f.id) === customFieldId);
+    const agentName = field?.value || 'Unassigned';
+    agentMap.set(agentName, (agentMap.get(agentName) || 0) + 1);
+  }
+
+  const byAgent: OpenTicketAgent[] = Array.from(agentMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return { total, byAgent };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -141,7 +191,7 @@ Deno.serve(async (req) => {
 
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
-    const [talkZD1, msgZD1, msgZD2, newTicketsZD1, newTicketsZD2, totalTodayZD1, totalTodayZD2] = await Promise.all([
+    const [talkZD1, msgZD1, msgZD2, newTicketsZD1, newTicketsZD2, totalTodayZD1, totalTodayZD2, openZD1, openZD2] = await Promise.all([
       fetchTalkStats(configZD1),
       fetchMessagingStats(configZD1),
       fetchMessagingStats(configZD2),
@@ -149,11 +199,13 @@ Deno.serve(async (req) => {
       searchCount(configZD2, `type:ticket status:new created>=${todayEST}`),
       searchCount(configZD1, `type:ticket created>=${todayEST}`),
       searchCount(configZD2, `type:ticket created>=${todayEST}`),
+      fetchOpenTicketsFromView(configZD1, '55735766685081', '14923047306265'),
+      fetchOpenTicketsFromView(configZD2, '55551228002585', '44524282221593'),
     ]);
 
     const result = {
-      zd1: { talk: talkZD1, messaging: msgZD1, newTickets: newTicketsZD1, totalTicketsToday: totalTodayZD1 },
-      zd2: { talk: talkZD2, messaging: msgZD2, newTickets: newTicketsZD2, totalTicketsToday: totalTodayZD2 },
+      zd1: { talk: talkZD1, messaging: msgZD1, newTickets: newTicketsZD1, totalTicketsToday: totalTodayZD1, openTickets: openZD1 },
+      zd2: { talk: talkZD2, messaging: msgZD2, newTickets: newTicketsZD2, totalTicketsToday: totalTodayZD2, openTickets: openZD2 },
       fetchedAt: new Date().toISOString(),
     };
 
