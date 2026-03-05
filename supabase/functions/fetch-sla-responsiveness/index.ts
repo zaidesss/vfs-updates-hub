@@ -1,7 +1,12 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+const CACHE_KEY = 'sla_responsiveness';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 interface ZendeskConfig {
   subdomain: string;
@@ -30,6 +35,13 @@ interface InstanceResult {
   workedYesterday: number;
   oldestNewTicket: OldestTicket | null;
   resolution: ResolutionData;
+}
+
+function getSupabaseClient() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
 }
 
 function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig {
@@ -84,7 +96,6 @@ async function searchOldestNew(config: ZendeskConfig): Promise<OldestTicket | nu
 }
 
 async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string): Promise<ResolutionData> {
-  // Get tickets solved today to compute resolution metrics
   const query = todayEST ? `type:ticket status:solved solved>=${todayEST}` : 'type:ticket status:solved solved>=today';
   const url = `https://${config.subdomain}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=100&page=1`;
   const res = await fetch(url, { headers: authHeaders(config) });
@@ -98,7 +109,6 @@ async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string):
   const data = await res.json();
   let tickets = data.results || [];
 
-  // If there are more pages, fetch up to 200 total
   if (data.next_page && tickets.length >= 100) {
     const res2 = await fetch(data.next_page, { headers: authHeaders(config) });
     if (res2.ok) {
@@ -111,12 +121,10 @@ async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string):
     return { avgFirstReplyMinutes: null, avgFullResolutionMinutes: null, distribution: [] };
   }
 
-  // Batch fetch ticket metrics (up to 100 per call)
   const ticketIds = tickets.map((t: any) => t.id).slice(0, 200);
   const firstReplyTimes: number[] = [];
   const fullResTimes: number[] = [];
 
-  // Fetch metrics in batches of 50
   for (let i = 0; i < ticketIds.length; i += 50) {
     const batch = ticketIds.slice(i, i + 50);
     const metricsPromises = batch.map(async (id: number) => {
@@ -150,7 +158,6 @@ async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string):
 
   const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
 
-  // Build distribution from full resolution times
   const buckets = [
     { label: '<30m', max: 30 },
     { label: '30m–1h', max: 60 },
@@ -177,7 +184,6 @@ async function fetchResolutionMetrics(config: ZendeskConfig, todayEST?: string):
 }
 
 async function fetchInstanceData(config: ZendeskConfig, todayEST: string, yesterdayEST: string): Promise<InstanceResult> {
-  // Run the simpler queries in parallel
   const [lastHourNew, lastHourResponded, remainingYesterday, totalYesterday, workedYesterday, oldestNewTicket] = await Promise.all([
     searchCount(config, 'type:ticket status:new created>=1hour_ago'),
     searchCount(config, 'type:ticket status>new created>=1hour_ago'),
@@ -187,7 +193,6 @@ async function fetchInstanceData(config: ZendeskConfig, todayEST: string, yester
     searchOldestNew(config),
   ]);
 
-  // Resolution metrics separately (heavier)
   const resolution = await fetchResolutionMetrics(config, todayEST);
 
   return {
@@ -207,10 +212,29 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const sb = getSupabaseClient();
+
+    // Check cache first
+    const { data: cached } = await sb
+      .from('zendesk_cache')
+      .select('data, fetched_at')
+      .eq('cache_key', CACHE_KEY)
+      .single();
+
+    if (cached?.fetched_at) {
+      const age = Date.now() - new Date(cached.fetched_at).getTime();
+      if (age < CACHE_TTL_MS) {
+        console.log(`[sla] Serving from cache (age: ${Math.round(age / 1000)}s)`);
+        return new Response(JSON.stringify(cached.data), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Cache miss — fetch fresh
     const configZD1 = getZdConfig('ZD1');
     const configZD2 = getZdConfig('ZD2');
 
-    // Compute today and yesterday in EST (Zendesk requires YYYY-MM-DD format)
     const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
     const todayEST = `${estNow.getFullYear()}-${String(estNow.getMonth()+1).padStart(2,'0')}-${String(estNow.getDate()).padStart(2,'0')}`;
     const estYesterday = new Date(estNow);
@@ -227,6 +251,13 @@ Deno.serve(async (req) => {
       zd2,
       fetchedAt: new Date().toISOString(),
     };
+
+    // Upsert cache
+    await sb.from('zendesk_cache').upsert({
+      cache_key: CACHE_KEY,
+      data: result,
+      fetched_at: new Date().toISOString(),
+    });
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
