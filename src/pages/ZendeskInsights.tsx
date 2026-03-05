@@ -359,73 +359,17 @@ export default function ZendeskInsights() {
               Zendesk Insights
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Team-wide averages for {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+              Team-wide performance metrics
             </p>
           </div>
-          <PageGuideButton pageId="zendesk-insights" />
         </div>
 
-        {/* Week Selectors */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={selectedYear} onValueChange={(v) => { setSelectedYear(v); setSelectedWeek(''); }}>
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover z-50">
-              {availableYears.map(y => (
-                <SelectItem key={y} value={y}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); setSelectedWeek(''); }}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover z-50">
-              {MONTHS.map(m => (
-                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select week" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover z-50">
-              {availableWeeks.map(w => (
-                <SelectItem key={w.value} value={w.value} className={w.isCurrent ? 'font-medium text-primary' : ''}>
-                  {w.label}{w.isCurrent ? ' ✓' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover z-50">
-              <SelectItem value="all">All Channels</SelectItem>
-              <SelectItem value="voice">Voice</SelectItem>
-              <SelectItem value="chat">Chat</SelectItem>
-              <SelectItem value="email">Email</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Instance Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" channel={selectedChannel} />
-          <InsightsCard weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" channel={selectedChannel} />
-        </div>
-
-        {/* Auto-Solved Chat Impact */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AdjustedAHTSection weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD1" channel={selectedChannel} />
-          <AdjustedAHTSection weekStart={weekStartStr} weekEnd={weekEndStr} zdInstance="ZD2" channel={selectedChannel} />
-        </div>
+        <Alert variant="destructive" className="border-destructive/50">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            <strong>Temporarily Disabled</strong> — Zendesk Insights has been paused to reduce API load and restore stability to the New Tickets Monitor and other realtime features. This page will be re-enabled once Zendesk rate limits stabilize.
+          </AlertDescription>
+        </Alert>
       </div>
     </Layout>
   );

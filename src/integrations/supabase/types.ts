@@ -3677,6 +3677,24 @@ export type Database = {
         }
         Relationships: []
       }
+      zendesk_cache: {
+        Row: {
+          cache_key: string
+          data: Json
+          fetched_at: string
+        }
+        Insert: {
+          cache_key: string
+          data?: Json
+          fetched_at?: string
+        }
+        Update: {
+          cache_key?: string
+          data?: Json
+          fetched_at?: string
+        }
+        Relationships: []
+      }
       zendesk_insights_cache: {
         Row: {
           autosolved_chat_count: number | null

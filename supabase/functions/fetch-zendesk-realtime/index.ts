@@ -1,7 +1,12 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+const CACHE_KEY = 'realtime';
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 
 interface TalkStats {
   agentsOnline: number;
@@ -15,15 +20,17 @@ interface MessagingStats {
   conversationsInQueue: number;
 }
 
-interface InstanceStats {
-  talk: TalkStats;
-  messaging: MessagingStats;
-}
-
 interface ZendeskConfig {
   subdomain: string;
   token: string;
   email: string;
+}
+
+function getSupabaseClient() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
 }
 
 function getZdConfig(instance: 'ZD1' | 'ZD2'): ZendeskConfig {
@@ -49,18 +56,6 @@ async function fetchTalkStats(config: ZendeskConfig): Promise<TalkStats> {
   if (agentsRes.ok) {
     const data = await agentsRes.json();
     const agents = data.agents_activity || [];
-    // DEBUG: Log raw agent data to investigate 0-online issue
-    console.log(`[Talk DEBUG ${config.subdomain}] Total agents in response: ${agents.length}`);
-    if (agents.length > 0) {
-      const statuses = agents.map((a: any) => ({
-        name: a.agent_name || a.name,
-        available: a.available,
-        via: a.via,
-        call_status: a.call_status,
-        forwarding_number: a.forwarding_number,
-      }));
-      console.log(`[Talk DEBUG ${config.subdomain}] Agent statuses:`, JSON.stringify(statuses));
-    }
     agentsOnline = agents.filter((a: any) => a.available === true || a.via === 'phone').length;
     ongoingCalls = agents.filter((a: any) => a.via === 'phone' && a.call_status === 'on_call').length;
   } else {
@@ -106,8 +101,6 @@ async function fetchMessagingStats(config: ZendeskConfig): Promise<MessagingStat
     searchCount(config, 'type:ticket status:new channel:messaging'),
   ]);
 
-  console.log(`[Messaging ${config.subdomain}] active=${active}, inQueue=${inQueue}`);
-
   return {
     activeConversations: active,
     conversationsInQueue: inQueue,
@@ -120,14 +113,32 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const sb = getSupabaseClient();
+
+    // Check cache first
+    const { data: cached } = await sb
+      .from('zendesk_cache')
+      .select('data, fetched_at')
+      .eq('cache_key', CACHE_KEY)
+      .single();
+
+    if (cached?.fetched_at) {
+      const age = Date.now() - new Date(cached.fetched_at).getTime();
+      if (age < CACHE_TTL_MS) {
+        console.log(`[realtime] Serving from cache (age: ${Math.round(age / 1000)}s)`);
+        return new Response(JSON.stringify(cached.data), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Cache miss or stale — fetch fresh
     const configZD1 = getZdConfig('ZD1');
     const configZD2 = getZdConfig('ZD2');
 
-    // Compute today's date in EST (Zendesk requires YYYY-MM-DD format)
     const estNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
     const todayEST = `${estNow.getFullYear()}-${String(estNow.getMonth()+1).padStart(2,'0')}-${String(estNow.getDate()).padStart(2,'0')}`;
 
-    // ZD2 does not have Talk
     const talkZD2: TalkStats = { agentsOnline: 0, ongoingCalls: 0, callsInQueue: 0, callbacksInQueue: 0 };
 
     const [talkZD1, msgZD1, msgZD2, newTicketsZD1, newTicketsZD2, totalTodayZD1, totalTodayZD2] = await Promise.all([
@@ -145,6 +156,13 @@ Deno.serve(async (req) => {
       zd2: { talk: talkZD2, messaging: msgZD2, newTickets: newTicketsZD2, totalTicketsToday: totalTodayZD2 },
       fetchedAt: new Date().toISOString(),
     };
+
+    // Upsert cache
+    await sb.from('zendesk_cache').upsert({
+      cache_key: CACHE_KEY,
+      data: result,
+      fetched_at: new Date().toISOString(),
+    });
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
