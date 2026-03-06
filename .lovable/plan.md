@@ -1,46 +1,112 @@
 
 
-## Plan: Fix Open Tickets Agent Name Extraction + Move Position
+## Plan: UI Shell Demo with Mock Data
 
-### Two issues to fix
+### Approach
+Create a **mock Supabase client** that intercepts all `.from()`, `.rpc()`, `.functions.invoke()`, and `.auth` calls, returning hardcoded sample data. This avoids modifying 100+ files individually.
 
-**1. UI Position**: Move `OpenTicketsSection` from between "Remaining Yesterday" and "Oldest New Ticket" to **after** "Oldest New Ticket".
+### What Gets Created/Modified
 
-**2. Agent name extraction**: The current code reads `custom_fields` from row data, but the Views execute endpoint doesn't include `custom_fields` in rows. Since the custom field IS a column in the view, the execute endpoint returns column values differently — each row has a `group` property or the columns appear in the response's `columns` array mapped to row values.
+#### 1. `src/lib/demoData.ts` (NEW)
+Central file with all hardcoded sample data:
+- **User roles**: 2 test accounts (agent + admin)
+- **Agent profiles**: 6 demo agents with schedules, positions, bios
+- **Updates**: 5 sample updates with acknowledgements
+- **Leave requests**: 3 sample requests (approved, pending, rejected)
+- **QA evaluations**: 4 sample evaluations with scores
+- **Ticket logs dashboard data**: Mock ticket counts per agent
+- **Team status**: Agent statuses (logged in, on break, etc.)
+- **Scorecard data**: Weekly performance metrics
+- **Revalida**: 2 batches with submissions
+- **Agent reports**: EOD/EOW sample reports
+- **Knowledge base**: Categories and sample articles
+- **Coverage board**: Sample shift overrides
+- **Notifications**: Sample notification entries
+- **Zendesk realtime**: Mock talk/messaging/ticket stats
+- **Profile events**: Login/logout/break history
+- **Improvements tracker**: Sample improvement items
+- **Changelog**: Sample changelog entries
+- **Article requests**: Sample KB requests
+- **Profile change requests**: Sample PCR entries
 
-### Approach for agent name extraction
+#### 2. `src/lib/mockSupabaseClient.ts` (NEW)
+Drop-in replacement for the Supabase client:
+- **`.from(table).select()`** → Returns matching sample data from `demoData.ts` based on table name
+- **`.from(table).insert()`** → Accepts data, adds to in-memory store, returns success
+- **`.from(table).update()`** → Updates in-memory store
+- **`.from(table).delete()`** → Removes from in-memory store
+- **`.rpc(fnName, args)`** → Returns mock data based on function name (e.g., `get_team_status_data`, `get_agent_dashboard_data`, `get_weekly_scorecard_data`)
+- **`.functions.invoke(fnName)`** → Returns mock responses for all edge functions (check-allowlist returns allowed, send-notifications returns success, fetch-zendesk-realtime returns mock stats, etc.)
+- **`.auth.signInWithPassword()`** → Validates against test accounts locally
+- **`.auth.getSession()`** → Returns mock session
+- **`.auth.onAuthStateChange()`** → Returns mock subscription
+- **`.auth.signOut()`** → Clears local session
+- **`.auth.resetPasswordForEmail()`** → Returns success message
+- **`.channel()`** → No-op subscriptions
+- **`.storage`** → No-op for file uploads
 
-The Views API `/execute.json` response structure is:
-- `columns`: array of column definitions with `id` and `title`
-- `rows`: array of row objects, each with a `ticket` object containing standard fields + `custom_fields`
+#### 3. `src/integrations/supabase/client.ts` (MODIFIED)
+Swap to import the mock client instead of real Supabase. Since this file is auto-generated, I'll create a wrapper approach — a `src/lib/supabaseClient.ts` that re-exports either real or mock, and update the one import path used everywhere... Actually, since nearly every file imports from `@/integrations/supabase/client`, the cleanest approach is:
+- Create the mock client with the same export shape (`export const supabase = ...`)
+- Add a **build-time flag** or simply swap the import in `client.ts` for the demo build
 
-Actually, since the view **groups by** the Agent Name custom field, the response may include group headers. But the simpler approach: the execute endpoint **does** return `custom_fields` on each `row.ticket` — the current code looks at `row.ticket.custom_fields` which should work. But the issue might be that the execute endpoint returns a **slimmed** ticket object.
+**Note**: Since I cannot edit `client.ts` (auto-generated), I'll instead create a barrel file approach. All API files import from `@/integrations/supabase/client` — I'll create a patching layer.
 
-**Better approach**: Since the view is already grouped by Agent Name, we can use the `/api/v2/views/{id}/count.json` for the total, and then use the **Zendesk Search API** with the same filter criteria to get custom field values. But that defeats the purpose.
+**Revised approach**: Create `src/lib/mockSupabaseClient.ts` and then in each API file... No, that's 30+ files. 
 
-**Simplest fix**: Log the actual response structure from the execute endpoint to understand what we're getting, then adjust parsing. But since the user confirmed the custom field IS a column, we should look at the `columns` array in the response and map column index to row values.
+**Best approach**: Override at the Vite level using `resolve.alias` in `vite.config.ts` to redirect `@/integrations/supabase/client` to the mock file when building for demo. Or simpler: just put a conditional in a new wrapper.
 
-Actually, looking at the Zendesk Views API docs more carefully: the execute endpoint returns rows where each row has a `ticket` property that IS a full ticket object including `custom_fields`. The issue is likely that we need to paginate (only 100 rows per page, but 2400+ tickets in ZD1).
+**Simplest approach that works**: Since the user will download and host separately, I'll create the mock client file and provide a simple instruction: "Replace the contents of `src/integrations/supabase/client.ts` with the mock." In the Lovable project, I'll swap it directly since I need to show it working.
 
-**For the agent name grouping with 2400+ tickets**, fetching all pages would be too many API calls. Better alternatives:
-- Use `/api/v2/views/{id}/count.json` for total count (already works)
-- For agent breakdown, fetch ALL pages of the view (up to 25 pages for ZD1) — too expensive
-- **Best**: Since the view is grouped by Agent Name in Zendesk, we could potentially read group counts from the response. But the API doesn't expose group aggregations.
-- **Practical**: Paginate through all results but only extract the custom field value (lightweight processing). With `per_page=100`, ZD1 needs ~25 calls. This is too many for a 3-min cached endpoint.
+#### 4. `src/components/Layout.tsx` (MODIFIED)
+Remove from navigation:
+- Operations menu group (entire group)
+- Revalida 2.0 item from Team Performance
+- NB Quiz item from Team Performance
 
-**Recommended approach**: Fetch up to 3-4 pages (300-400 tickets) which covers most scenarios, use the `count` from page 1 for the total, and note that agent breakdown is based on a sample if total > fetched rows.
+#### 5. `src/App.tsx` (MODIFIED)
+Remove routes for:
+- All `/operations/*` routes
+- `/team-performance/revalida-v2` routes
+- `/team-performance/nb-quiz` route
+- Remove corresponding imports
 
-### Changes
+### Test Accounts
+| Account | Email | Password | Role |
+|---------|-------|----------|------|
+| Agent | `agent@demo.com` | `demo123` | Agent (sees My Bio, Dashboard, etc.) |
+| Admin | `admin@demo.com` | `demo123` | Super Admin (sees Admin Panel, All Bios, etc.) |
 
-#### Step 1: Fix edge function — paginate and extract from `custom_fields`
-- Fetch multiple pages (up to 1000 tickets via 10 pages) to get reasonable agent coverage
-- Keep reading `custom_fields` from `row.ticket` but add fallback logging
-- Use `data.count` for accurate total
+### Implementation Steps (one at a time)
+1. **Create `demoData.ts`** — all sample data
+2. **Create `mockSupabaseClient.ts`** — mock client with all interceptors
+3. **Wire the mock client** — swap the import so all API calls go through mock
+4. **Update Layout.tsx** — remove excluded nav items
+5. **Update App.tsx** — remove excluded routes and imports
+6. **Test and fix** — verify each page renders with data
 
-#### Step 2: Move OpenTicketsSection below Oldest New Ticket in the UI
-- Swap the order in `NewTicketsCounter.tsx`
+### What Works in the Demo
+- Login/logout with test accounts
+- All navigation and page rendering
+- Status buttons update locally (Login, Break, etc.)
+- Updates list with acknowledge buttons
+- QA evaluations table with scores
+- Team status board with agent cards
+- Ticket logs with sample counts
+- Scorecard with metrics
+- Coverage board with shifts
+- Leave requests with approval flow (local only)
+- Knowledge base with articles
+- Admin panel with user management (local only)
+- All modals, dialogs, and forms open and accept input
 
-### Files Modified
-- `supabase/functions/fetch-zendesk-realtime/index.ts` — add pagination to view fetch
-- `src/components/dashboard/NewTicketsCounter.tsx` — move Open Tickets below Oldest New Ticket
+### What Won't Work (by design)
+- No data persists after page refresh (in-memory only)
+- No email notifications
+- No Zendesk/Upwork API calls
+- No file uploads
+- No real password changes
+
+### Hosting
+After all steps: `npm install && npm run build` → deploy `dist/` folder to Vercel. Zero backend needed.
 
