@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   FileText, User, Settings, LogOut, Bell, BarChart3, FileQuestion, 
-  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap, Sparkles, TrendingUp, Gauge, Briefcase, MessageSquare, GitCompare, Target, Bot
+  CalendarDays, Clock, Users, BookOpen, KeyRound, ChevronDown, HelpCircle, Lightbulb, ClipboardList, LayoutDashboard, Activity, Ticket, FileWarning, GraduationCap, Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -162,25 +162,7 @@ export function Layout({ children }: LayoutProps) {
         { href: '/team-performance/agent-reports', label: 'Agent Reports', icon: FileWarning },
         { href: '/team-performance/scorecard', label: 'Scorecard', icon: BarChart3 },
         { href: '/team-performance/revalida', label: 'Revalida', icon: GraduationCap },
-        { href: '/team-performance/revalida-v2', label: 'Revalida 2.0', icon: GraduationCap },
-        { href: '/team-performance/nb-quiz', label: 'NB Quiz', icon: BookOpen },
         { href: '/team-performance/zendesk-insights', label: 'Zendesk Insights', icon: BarChart3 },
-      ],
-    });
-
-    // Operations Group (available to all users)
-    groups.push({
-      label: 'Operations',
-      icon: Briefcase,
-      items: [
-        { href: '/operations/reports/volume', label: 'Volume & Demand', icon: TrendingUp },
-        { href: '/operations/reports/responsiveness', label: 'Responsiveness', icon: Gauge },
-        { href: '/operations/reports/workload', label: 'Workload', icon: Briefcase },
-        { href: '/operations/reports/contact-reasons', label: 'Contact Reasons', icon: MessageSquare },
-        { href: '/operations/reports/comparison', label: '4-Week Comparison', icon: GitCompare },
-        { href: '/operations/reports/capacity', label: 'Capacity Planning', icon: Target },
-        
-        { href: '/operations/ai/recommendations', label: 'AI Recommendations', icon: Bot },
       ],
     });
 

@@ -43,18 +43,9 @@ import QAEvaluationEdit from "./pages/QAEvaluationEdit";
 import AgentReports from "./pages/AgentReports";
 import TeamScorecard from "./pages/TeamScorecard";
 import Revalida from "./pages/Revalida";
-import RevalidaV2 from "./pages/RevalidaV2";
 import CoverageBoard from "./pages/CoverageBoard";
 import ZendeskInsights from "./pages/ZendeskInsights";
 import AuditLog from "./pages/AuditLog";
-import VolumeDemand from "./pages/operations/VolumeDemand";
-import Responsiveness from "./pages/operations/Responsiveness";
-import Workload from "./pages/operations/Workload";
-import ContactReasons from "./pages/operations/ContactReasons";
-import FourWeekComparison from "./pages/operations/FourWeekComparison";
-import CapacityPlanning from "./pages/operations/CapacityPlanning";
-import AIRecommendations from "./pages/operations/AIRecommendations";
-import NBQuiz from "./pages/NBQuiz";
 
 import NotFound from "./pages/NotFound";
 
@@ -328,30 +319,6 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/team-performance/revalida-v2"
-        element={
-          <ProtectedRoute>
-            <RevalidaV2 />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/team-performance/revalida-v2/:batchId"
-        element={
-          <ProtectedRoute>
-            <RevalidaV2 />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/team-performance/revalida-v2/:batchId/:section"
-        element={
-          <ProtectedRoute>
-            <RevalidaV2 />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/people/coverage-board"
         element={
           <ProtectedRoute>
@@ -367,14 +334,6 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="/operations/reports/volume" element={<ProtectedRoute><VolumeDemand /></ProtectedRoute>} />
-      <Route path="/operations/reports/responsiveness" element={<ProtectedRoute><Responsiveness /></ProtectedRoute>} />
-      <Route path="/operations/reports/workload" element={<ProtectedRoute><Workload /></ProtectedRoute>} />
-      <Route path="/operations/reports/contact-reasons" element={<ProtectedRoute><ContactReasons /></ProtectedRoute>} />
-      <Route path="/operations/reports/comparison" element={<ProtectedRoute><FourWeekComparison /></ProtectedRoute>} />
-      <Route path="/operations/reports/capacity" element={<ProtectedRoute><CapacityPlanning /></ProtectedRoute>} />
-      <Route path="/operations/ai/recommendations" element={<ProtectedRoute><AIRecommendations /></ProtectedRoute>} />
-      <Route path="/team-performance/nb-quiz" element={<ProtectedRoute><NBQuiz /></ProtectedRoute>} />
       
       <Route
         path="/admin/audit-log"
