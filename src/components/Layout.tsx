@@ -217,7 +217,7 @@ export function Layout({ children }: LayoutProps) {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Bell className="h-5 w-5" />
               </div>
-              <span className="text-lg font-semibold">VFS Agent Portal</span>
+              <span className="text-lg font-semibold">Agent Portal</span>
             </Link>
 
             {/* Desktop Navigation with Dropdowns */}

@@ -4,14 +4,12 @@ import { useAuth } from '@/context/AuthContext';
 import { usePortalClock } from '@/context/PortalClockContext';
 import { fetchScheduledTeamMembers, CategorizedTeamMembers, TeamMemberStatus } from '@/lib/teamStatusApi';
 import { StatusCard } from '@/components/team-status/StatusCard';
-import { ZendeskRealtimePanel } from '@/components/team-status/ZendeskRealtimePanel';
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
-import { NewTicketsCounter } from '@/components/dashboard/NewTicketsCounter';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageGuideButton } from '@/components/PageGuideButton';
-import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package, Bug } from 'lucide-react';
+import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type SortOption = 'login' | 'name';
@@ -77,7 +75,6 @@ export default function TeamStatusBoard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('login');
-  const [showDebug, setShowDebug] = useState(false);
 
   const canViewDashboards = isAdmin || isHR || isSuperAdmin;
 
@@ -90,7 +87,6 @@ export default function TeamStatusBoard() {
       
       if (!result) {
         setError('No response from team status API');
-        console.error('[TeamStatus] fetchScheduledTeamMembers returned undefined');
         return;
       }
       
@@ -101,23 +97,9 @@ export default function TeamStatusBoard() {
         setTotalScheduled(result.totalScheduled);
         setTotalOnline(result.totalOnline);
       }
-      
-      console.log('[TeamStatus] loadData result:', {
-        totalScheduled: result.totalScheduled,
-        totalOnline: result.totalOnline,
-        phone: result.categories.phoneSupport.length,
-        chat: result.categories.chatSupport.length,
-        email: result.categories.emailSupport.length,
-        hybrid: result.categories.hybridSupport.length,
-        leads: result.categories.teamLeads.length,
-        tech: result.categories.techSupport.length,
-        other: result.categories.other.length,
-        error: result.error,
-      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unexpected error occurred';
       setError(message);
-      console.error('[TeamStatus] loadData exception:', err);
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +109,6 @@ export default function TeamStatusBoard() {
     loadData();
   }, []);
 
-  // Check if leads/tech sidebar has content
   const hasLeadsOrTech = categories.teamLeads.length > 0 || categories.techSupport.length > 0;
   const hasSupportAgents = categories.phoneSupport.length > 0 || 
     categories.chatSupport.length > 0 || 
@@ -141,7 +122,7 @@ export default function TeamStatusBoard() {
        {/* Header */}
        <PageHeader
          title="Team Status Board"
-         description={`${totalScheduled} scheduled now (${totalOnline} online)`}
+         description={`${totalScheduled} scheduled now (${totalOnline} online) · ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} EST`}
        >
            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
              <Button
@@ -173,38 +154,29 @@ export default function TeamStatusBoard() {
            <PageGuideButton pageId="team-status" />
        </PageHeader>
 
-        {/* New Tickets Counter */}
-        <NewTicketsCounter />
-
-        {/* Zendesk Real-Time Stats */}
-        <ZendeskRealtimePanel />
-
-        {/* Admin Debug Panel (temporary) */}
-        {canViewDashboards && (
-          <div className="space-y-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDebug(!showDebug)}
-              className="text-xs text-muted-foreground"
-            >
-              <Bug className="h-3 w-3 mr-1" />
-              {showDebug ? 'Hide' : 'Show'} Debug Info
-            </Button>
-            {showDebug && (
-              <div className="rounded-lg border border-border bg-muted/50 p-4 text-xs font-mono space-y-1">
-                <p>totalScheduled: {totalScheduled} | totalOnline: {totalOnline}</p>
-                <p>phone: {categories.phoneSupport.length} | chat: {categories.chatSupport.length} | email: {categories.emailSupport.length}</p>
-                <p>hybrid: {categories.hybridSupport.length} | leads: {categories.teamLeads.length} | tech: {categories.techSupport.length} | other: {categories.other.length}</p>
-                <p>clock: {now.toLocaleTimeString()} EST</p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-muted-foreground">Raw JSON</summary>
-                  <pre className="mt-1 max-h-48 overflow-auto text-[10px]">{JSON.stringify(categories, null, 2)}</pre>
-                </details>
-              </div>
-            )}
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scheduled</p>
+            <p className="text-2xl font-semibold text-foreground mt-1">{totalScheduled}</p>
           </div>
-        )}
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Online</p>
+            <p className="text-2xl font-semibold text-success mt-1">{totalOnline}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">On Break</p>
+            <p className="text-2xl font-semibold text-warning mt-1">
+              {Object.values(categories).flat().filter(m => m.currentStatus === 'ON_BREAK' || m.currentStatus === 'ON_BIO').length}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Offline</p>
+            <p className="text-2xl font-semibold text-muted-foreground mt-1">
+              {Object.values(categories).flat().filter(m => m.currentStatus === 'LOGGED_OUT').length}
+            </p>
+          </div>
+        </div>
 
         {/* Error State */}
         {error && (
@@ -298,6 +270,11 @@ export default function TeamStatusBoard() {
 
                 <LiveActivityFeed />
               </div>
+            )}
+
+            {/* If only support agents, show activity feed below */}
+            {hasSupportAgents && !hasLeadsOrTech && (
+              <LiveActivityFeed />
             )}
           </div>
         )}

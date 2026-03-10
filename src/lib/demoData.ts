@@ -2,7 +2,7 @@
 // No backend required
 
 export const DEMO_ACCOUNTS = {
-  agent: { email: 'agent@demo.com', password: 'demo123', name: 'Jane Smith', role: 'agent' },
+  agent: { email: 'agent@demo.com', password: 'demo123', name: 'Jane Smith', role: 'super_admin' },
   admin: { email: 'admin@demo.com', password: 'demo123', name: 'Admin User', role: 'super_admin' },
 };
 
@@ -234,7 +234,7 @@ export const DEMO_PROFILES = [
 ];
 
 export const DEMO_USER_ROLES = [
-  { id: '1', email: 'agent@demo.com', role: 'user', must_change_password: false },
+  { id: '1', email: 'agent@demo.com', role: 'super_admin', must_change_password: false },
   { id: '2', email: 'admin@demo.com', role: 'super_admin', must_change_password: false },
   { id: '3', email: 'mike.jones@demo.com', role: 'user', must_change_password: false },
   { id: '4', email: 'sarah.lee@demo.com', role: 'user', must_change_password: false },
@@ -599,6 +599,20 @@ export const DEMO_PROFILE_STATUS = [
   { profile_id: profileId4, current_status: 'LOGGED_OUT', status_since: new Date(Date.now() - 36000000).toISOString() },
   { profile_id: profileId5, current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 5400000).toISOString() },
   { profile_id: profileId6, current_status: 'LOGGED_OUT', status_since: new Date(Date.now() - 43200000).toISOString() },
+  { profile_id: 'demo-p01', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 4200000).toISOString() },
+  { profile_id: 'demo-p02', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 2700000).toISOString() },
+  { profile_id: 'demo-p03', current_status: 'ON_BREAK', status_since: new Date(Date.now() - 900000).toISOString() },
+  { profile_id: 'demo-p04', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 6000000).toISOString() },
+  { profile_id: 'demo-p05', current_status: 'COACHING', status_since: new Date(Date.now() - 1200000).toISOString() },
+  { profile_id: 'demo-p06', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 3000000).toISOString() },
+  { profile_id: 'demo-p07', current_status: 'ON_BIO', status_since: new Date(Date.now() - 600000).toISOString() },
+  { profile_id: 'demo-p08', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 4800000).toISOString() },
+  { profile_id: 'demo-p09', current_status: 'LOGGED_OUT', status_since: new Date(Date.now() - 18000000).toISOString() },
+  { profile_id: 'demo-p10', current_status: 'ON_OT', status_since: new Date(Date.now() - 1500000).toISOString() },
+  { profile_id: 'demo-p11', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 5100000).toISOString() },
+  { profile_id: 'demo-p12', current_status: 'RESTARTING', status_since: new Date(Date.now() - 300000).toISOString() },
+  { profile_id: 'demo-p13', current_status: 'LOGGED_IN', status_since: new Date(Date.now() - 7800000).toISOString() },
+  { profile_id: 'demo-p14', current_status: 'ON_BREAK', status_since: new Date(Date.now() - 2400000).toISOString() },
 ];
 
 export const DEMO_PROFILE_EVENTS = [
@@ -609,18 +623,38 @@ export const DEMO_PROFILE_EVENTS = [
   { id: 'pe-5', profile_id: profileId5, event_type: 'LOGIN', created_at: new Date(Date.now() - 5400000).toISOString() },
 ];
 
-export const DEMO_TEAM_STATUS_DATA = DEMO_PROFILES
-  .filter(p => p.employment_status !== 'Terminated')
-  .map(p => ({
-    id: p.id,
-    email: p.email,
-    full_name: p.full_name,
-    position: p.position,
-    break_schedule: p.break_schedule,
-    effective_schedule: p.mon_schedule,
-    effective_ot_schedule: null,
-    is_day_off: false,
-  }));
+const EXTRA_TEAM_MEMBERS = [
+  { id: 'demo-p01', email: 'alex.rivera@demo.com', full_name: 'Alex Rivera', position: ['Phone'], break_schedule: '12:00 PM - 1:00 PM', effective_schedule: '8:00 AM - 5:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p02', email: 'priya.patel@demo.com', full_name: 'Priya Patel', position: ['Chat'], break_schedule: '1:00 PM - 2:00 PM', effective_schedule: '9:00 AM - 6:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p03', email: 'carlos.mendez@demo.com', full_name: 'Carlos Mendez', position: ['Phone'], break_schedule: '11:30 AM - 12:30 PM', effective_schedule: '7:00 AM - 4:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p04', email: 'emma.chen@demo.com', full_name: 'Emma Chen', position: ['Email', 'Chat'], break_schedule: '12:30 PM - 1:30 PM', effective_schedule: '8:30 AM - 5:30 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p05', email: 'david.kim@demo.com', full_name: 'David Kim', position: ['Chat'], break_schedule: '1:30 PM - 2:30 PM', effective_schedule: '10:00 AM - 7:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p06', email: 'rachel.foster@demo.com', full_name: 'Rachel Foster', position: ['Email'], break_schedule: '12:00 PM - 1:00 PM', effective_schedule: '9:00 AM - 6:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p07', email: 'james.oconnor@demo.com', full_name: 'James O\'Connor', position: ['Phone'], break_schedule: '11:00 AM - 12:00 PM', effective_schedule: '7:00 AM - 4:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p08', email: 'maria.santos@demo.com', full_name: 'Maria Santos', position: ['Email', 'Phone'], break_schedule: '12:00 PM - 1:00 PM', effective_schedule: '8:00 AM - 5:00 PM', effective_ot_schedule: '5:00 PM - 7:00 PM', is_day_off: false },
+  { id: 'demo-p09', email: 'kevin.wu@demo.com', full_name: 'Kevin Wu', position: ['Technical'], break_schedule: '1:00 PM - 2:00 PM', effective_schedule: '9:00 AM - 6:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p10', email: 'nina.petrova@demo.com', full_name: 'Nina Petrova', position: ['Chat'], break_schedule: '12:30 PM - 1:30 PM', effective_schedule: '10:00 AM - 7:00 PM', effective_ot_schedule: '7:00 PM - 9:00 PM', is_day_off: false },
+  { id: 'demo-p11', email: 'omar.hassan@demo.com', full_name: 'Omar Hassan', position: ['Email'], break_schedule: '12:00 PM - 1:00 PM', effective_schedule: '8:00 AM - 5:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p12', email: 'sophia.adams@demo.com', full_name: 'Sophia Adams', position: ['Phone'], break_schedule: '11:30 AM - 12:30 PM', effective_schedule: '7:30 AM - 4:30 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p13', email: 'lucas.martinez@demo.com', full_name: 'Lucas Martinez', position: ['Team Lead'], break_schedule: '12:00 PM - 1:00 PM', effective_schedule: '8:00 AM - 5:00 PM', effective_ot_schedule: null, is_day_off: false },
+  { id: 'demo-p14', email: 'aisha.johnson@demo.com', full_name: 'Aisha Johnson', position: ['Email', 'Chat'], break_schedule: '1:00 PM - 2:00 PM', effective_schedule: '9:00 AM - 6:00 PM', effective_ot_schedule: null, is_day_off: false },
+];
+
+export const DEMO_TEAM_STATUS_DATA = [
+  ...DEMO_PROFILES
+    .filter(p => p.employment_status !== 'Terminated')
+    .map(p => ({
+      id: p.id,
+      email: p.email,
+      full_name: p.full_name,
+      position: p.position,
+      break_schedule: p.break_schedule,
+      effective_schedule: p.mon_schedule,
+      effective_ot_schedule: null as string | null,
+      is_day_off: false,
+    })),
+  ...EXTRA_TEAM_MEMBERS,
+];
 
 export const DEMO_SCORECARD_DATA = DEMO_PROFILES
   .filter(p => !p.position?.includes('Team Lead'))

@@ -5,7 +5,7 @@ export function AuthenticationSection() {
     <>
       <GuideSection letter="A" color="bg-blue-500" title="Authentication - Login Page">
         <p className="text-muted-foreground mb-4">
-          The login page is used to access the VFS Agent Portal. Only users who have been added to the system can log in.
+          The login page is used to access the Agent Portal. Only users who have been added to the system can log in.
         </p>
 
         <h3 className="font-semibold mb-2">Login Form Fields</h3>

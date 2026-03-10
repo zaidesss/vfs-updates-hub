@@ -5,7 +5,7 @@ export function RolesSection() {
     <>
       <GuideSection letter="Y" color="bg-slate-500" title="Roles and Permissions - Definitions">
         <p className="text-muted-foreground mb-4">
-          The VFS Agent Portal has four user roles, each with different access levels.
+          The Agent Portal has four user roles, each with different access levels.
         </p>
 
         <h3 className="font-semibold mb-2">Role Definitions</h3>

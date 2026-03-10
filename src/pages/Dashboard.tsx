@@ -13,7 +13,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     ensureLoaded();
-    document.title = 'Dashboard | VFS Updates Hub';
+    document.title = 'Dashboard | Agent Portal';
   }, [ensureLoaded]);
 
   if (!isAdmin) {

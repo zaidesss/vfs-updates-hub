@@ -3,7 +3,7 @@ import { TourStep } from '@/components/DemoTour';
 // User Tour Steps - For all standard users
 export const USER_TOUR_STEPS: TourStep[] = [
   {
-    title: '🎉 Welcome to VFS Agent Portal!',
+    title: '🎉 Welcome to Agent Portal!',
     content: `Welcome! This interactive guide will walk you through all the features available to you.
 
 You can navigate using:

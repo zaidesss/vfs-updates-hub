@@ -34,7 +34,7 @@ export default function Updates() {
   // Trigger lazy loading of updates data
   useEffect(() => {
     ensureLoaded();
-    document.title = 'Updates | VFS Updates Hub';
+    document.title = 'Updates | Agent Portal';
   }, [ensureLoaded]);
   const [activeTab, setActiveTab] = useState<FilterTab>('unread');
   const [searchQuery, setSearchQuery] = useState('');

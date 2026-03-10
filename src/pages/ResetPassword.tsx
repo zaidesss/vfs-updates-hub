@@ -84,7 +84,7 @@ export default function ResetPassword() {
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-4 shadow-lg">
             <Bell className="h-8 w-8" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">VFS Agent Portal</h1>
+          <h1 className="text-3xl font-bold text-foreground">Agent Portal</h1>
           <p className="text-muted-foreground mt-2">Set your new password</p>
         </div>
 

@@ -12,7 +12,7 @@ export function UserGuideContent() {
       <div className="mb-6">
         <h2 className="text-xl font-bold mb-2">User Guide</h2>
         <p className="text-muted-foreground">
-          Complete guide to using the VFS Agent Portal, organized by navigation menu.
+          Complete guide to using the Agent Portal, organized by navigation menu.
         </p>
       </div>
 

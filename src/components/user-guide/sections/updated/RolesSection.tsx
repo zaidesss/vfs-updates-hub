@@ -7,7 +7,7 @@ export function UpdatedRolesSection() {
       {/* PART 1: ROLE DEFINITIONS */}
       <GuideSection letter="1" color="bg-primary" title="User Roles — Overview">
         <p className="text-muted-foreground mb-4">
-          The VFS Agent Portal uses <strong>four distinct roles</strong> to control access. Your role is assigned by a Super Admin and determines every menu, button, and action you can see or perform.
+          The Agent Portal uses <strong>four distinct roles</strong> to control access. Your role is assigned by a Super Admin and determines every menu, button, and action you can see or perform.
         </p>
 
         <GuideImagePlaceholder description="Screenshot: Role badge displayed next to user email in the top navigation header" />
