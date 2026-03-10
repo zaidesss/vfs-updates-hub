@@ -75,8 +75,8 @@ export function BatchCard({ batch, attempt, onStartTest, onContinueTest, isStart
         {attempt?.status === 'graded' && attempt.final_percent !== null && (
           <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <span className="font-semibold text-green-600">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <span className="font-semibold text-green-600 dark:text-green-400">
                 Your Score: {attempt.final_percent.toFixed(1)}%
               </span>
             </div>

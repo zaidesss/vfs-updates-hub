@@ -25,6 +25,7 @@ import { Separator } from '@/components/ui/separator';
 import { DatePicker } from '@/components/ui/date-picker';
 import { getNextMondayEST, getCurrentMondayEST, upsertScheduleAssignment } from '@/lib/scheduleResolver';
 import { ScheduleChangeConfirmDialog } from '@/components/profile/ScheduleChangeConfirmDialog';
+import { PageHeader } from '@/components/ui/page-header';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -509,13 +510,12 @@ export default function AgentProfilePage() {
   return (
     <Layout>
       <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
-            <p className="text-muted-foreground">Manage your personal and work information</p>
-          </div>
+        <PageHeader
+          title="My Profile"
+          description="Manage your personal and work information"
+        >
           <PageGuideButton pageId="profile" />
-        </div>
+        </PageHeader>
 
         <Tabs defaultValue="profile" className="w-full">
           <TabsList>

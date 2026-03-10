@@ -119,9 +119,9 @@ export default function ResetPassword() {
                 )}
 
                 {success && (
-                  <Alert className="animate-scale-in border-green-500 bg-green-50 dark:bg-green-950">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertDescription className="text-green-800 dark:text-green-200">
+                  <Alert className="animate-scale-in border-success/30 bg-success/10">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                    <AlertDescription className="text-success">
                       {success}
                     </AlertDescription>
                   </Alert>

@@ -79,14 +79,14 @@ export function SubmissionDetailV2({ attempt, questions, answers }: SubmissionDe
                   {/* Correctness indicator */}
                   {answer && !isSituational && (
                     isCorrect ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                     ) : (
-                      <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                      <XCircle className="h-5 w-5 text-red-500 dark:text-red-400 shrink-0" />
                     )
                   )}
                   {answer && isSituational && (
                     (answer.ai_suggested_score !== undefined && answer.ai_suggested_score !== null) || answer.admin_override_score !== undefined ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                     ) : (
                       <Clock className="h-5 w-5 text-yellow-500 shrink-0" />
                     )
@@ -104,7 +104,7 @@ export function SubmissionDetailV2({ attempt, questions, answers }: SubmissionDe
                 {/* Points and Correct Answer */}
                 <div className="flex flex-col gap-2 text-sm">
                   <div className="flex items-center gap-4">
-                    <span className={`font-medium ${pointsEarned === maxPoints ? 'text-green-600' : pointsEarned > 0 ? 'text-yellow-600' : 'text-red-500'}`}>
+                    <span className={`font-medium ${pointsEarned === maxPoints ? 'text-green-600 dark:text-green-400' : pointsEarned > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500 dark:text-red-400'}`}>
                       {pointsEarned}/{maxPoints} points
                     </span>
 

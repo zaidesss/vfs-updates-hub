@@ -224,10 +224,10 @@ export function ScoreOverrideDialog({
                         <p className="text-sm">{question.prompt}</p>
                       </div>
                       {answer.is_correct === true && !override.changed && (
-                        <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                       )}
                       {answer.is_correct === false && !override.changed && (
-                        <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                        <XCircle className="h-5 w-5 text-red-500 dark:text-red-400 shrink-0" />
                       )}
                     </div>
 

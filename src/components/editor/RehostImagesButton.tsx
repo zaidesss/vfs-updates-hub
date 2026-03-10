@@ -167,7 +167,7 @@ export function RehostImagesButton({
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{img.url}</p>
                   {completed.has(img.url) && (
-                    <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                    <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 mt-0.5">
                       <Check className="h-3 w-3" /> Re-hosted
                     </p>
                   )}

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Bell, Mail, MessageSquare, Calendar, FileText, HelpCircle, Loader2 } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
@@ -134,10 +135,10 @@ export default function NotificationSettings() {
   return (
     <Layout>
       <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Notification Settings</h1>
-          <p className="text-muted-foreground">Manage how you receive notifications</p>
-        </div>
+        <PageHeader
+          title="Notification Settings"
+          description="Manage how you receive notifications"
+        />
 
         <Card>
           <CardHeader>

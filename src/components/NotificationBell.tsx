@@ -171,7 +171,7 @@ export function NotificationBell() {
       case 'new_update':
         return <FileText className="h-4 w-4 text-primary" />;
       case 'leave_decision':
-        return <Calendar className="h-4 w-4 text-green-500" />;
+        return <Calendar className="h-4 w-4 text-green-500 dark:text-green-400" />;
       case 'request_approval':
       case 'request_status':
       case 'request_pending':

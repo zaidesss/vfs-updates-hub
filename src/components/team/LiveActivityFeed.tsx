@@ -221,7 +221,7 @@ export function LiveActivityFeed({ maxItems = 15, className }: LiveActivityFeedP
                 >
                   {/* Status indicator */}
                   <div className="flex-shrink-0 mt-1">
-                    <div className={cn('h-2 w-2 rounded-full', STATUS_COLORS[activity.newStatus] || 'bg-gray-400')} />
+                    <div className={cn('h-2 w-2 rounded-full', STATUS_COLORS[activity.newStatus] || 'bg-muted-foreground')} />
                   </div>
 
                   {/* Content */}

@@ -35,7 +35,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Notifications': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
   'Security': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
   'Calendar': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
-  'Other': 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+  'Other': 'bg-muted text-muted-foreground',
 };
 
 interface WhatsNewTabProps {

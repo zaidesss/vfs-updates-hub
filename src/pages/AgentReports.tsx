@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FileWarning, Eye, ChevronRight, BarChart3 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -109,18 +111,12 @@ export default function AgentReports() {
     <Layout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <FileWarning className="h-6 w-6 text-primary" />
-              Agent Reports
-            </h1>
-            <p className="text-muted-foreground">
-              Behavioral and compliance incident reports for investigation and validation
-            </p>
-          </div>
+        <PageHeader
+          title="Agent Reports"
+          description="Behavioral and compliance incident reports for investigation and validation"
+        >
           <PageGuideButton pageId="agent-reports" />
-        </div>
+        </PageHeader>
 
         {/* Summary Cards */}
         <ReportSummaryCards summary={summary} isLoading={isLoading} data-tour="summary-cards" />
@@ -201,10 +197,11 @@ export default function AgentReports() {
                 ))}
               </div>
             ) : reports.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileWarning className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No incident reports found for the selected filters.</p>
-              </div>
+              <EmptyState
+                icon={<FileWarning className="h-6 w-6" />}
+                title="No incident reports found"
+                description="Try adjusting your filters to see more results."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table>

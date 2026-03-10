@@ -73,7 +73,7 @@ export function LogoutConfirmDialog({
             {hasSchedule && isEarlyOut ? (
               <AlertTriangle className="h-5 w-5 text-amber-500" />
             ) : (
-              <CheckCircle className="h-5 w-5 text-green-500" />
+              <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             )}
             Confirm Logout
           </AlertDialogTitle>

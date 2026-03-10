@@ -16,9 +16,9 @@ export function AttemptResult({ attempt, canViewResults, onViewResults }: Attemp
         <CardContent className="pt-6">
           <div className="flex flex-col items-center text-center space-y-3">
             <div className="h-16 w-16 rounded-full bg-green-500/20 flex items-center justify-center">
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
-            <h3 className="text-xl font-semibold text-green-600">Test Submitted</h3>
+            <h3 className="text-xl font-semibold text-green-600 dark:text-green-400">Test Submitted</h3>
             <p className="text-3xl font-bold">
               {attempt.final_percent.toFixed(1)}%
             </p>

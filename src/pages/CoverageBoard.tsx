@@ -13,6 +13,7 @@ import { usePortalClock } from '@/context/PortalClockContext';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 import { Pencil, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { writeAuditLog } from '@/lib/auditLogApi';
@@ -301,18 +302,12 @@ export default function CoverageBoard() {
     <Layout>
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">Team Coverage Board</h1>
-            <p className="text-sm text-muted-foreground">
-              {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
+        <PageHeader
+          title="Team Coverage Board"
+          description={`${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`}
+        >
             <CoverageFilters showEffective={showEffective} onToggleView={setShowEffective} filters={filters} onFiltersChange={setFilters} agents={agents} />
             <DashboardWeekSelector selectedDate={weekStart} onDateChange={setWeekStart} />
-
-            {/* Edit mode buttons */}
             {canEdit && !editMode && (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditMode(true)}>
                 <Pencil className="h-3.5 w-3.5" /> Edit
@@ -329,8 +324,7 @@ export default function CoverageBoard() {
                 </Button>
               </>
             )}
-          </div>
-        </div>
+        </PageHeader>
 
         {/* Timeline */}
         {loadingAgents ? (

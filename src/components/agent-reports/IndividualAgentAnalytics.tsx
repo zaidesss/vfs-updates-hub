@@ -528,7 +528,7 @@ export function IndividualAgentAnalytics() {
               <Card className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Ticket className="h-4 w-4 text-green-600" />
+                    <Ticket className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <span className="font-medium text-sm">Tickets</span>
                   </div>
                   <div className="text-2xl font-bold mb-1">
@@ -538,7 +538,7 @@ export function IndividualAgentAnalytics() {
                   <div className="text-xs text-muted-foreground">
                     E: {dailyMetrics.tickets.email} | C: {dailyMetrics.tickets.chat} | P: {dailyMetrics.tickets.call}
                   </div>
-                  <Badge className={cn('mt-1', dailyMetrics.quotaMet ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')}>
+                  <Badge className={cn('mt-1', dailyMetrics.quotaMet ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}>
                     {dailyMetrics.quotaMet ? 'Quota Met' : 'Below Quota'}
                   </Badge>
                 </CardContent>
@@ -572,7 +572,7 @@ export function IndividualAgentAnalytics() {
                     <span className="font-medium text-sm">Incidents</span>
                   </div>
                   {dailyMetrics.incidents.length === 0 ? (
-                    <div className="text-sm text-green-600 font-medium">✓ Clean</div>
+                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">✓ Clean</div>
                   ) : (
                     <div className="space-y-1">
                       {dailyMetrics.incidents.map(inc => (
@@ -613,7 +613,7 @@ export function IndividualAgentAnalytics() {
               <Card className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Ticket className="h-4 w-4 text-green-600" />
+                    <Ticket className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <span className="font-medium text-sm">Tickets</span>
                   </div>
                   <div className="text-2xl font-bold mb-1">
@@ -622,7 +622,7 @@ export function IndividualAgentAnalytics() {
                   <div className="text-xs text-muted-foreground">
                     E: {weeklyMetrics.tickets.email} | C: {weeklyMetrics.tickets.chat} | P: {weeklyMetrics.tickets.call}
                   </div>
-                  <Badge className={cn('mt-1', weeklyMetrics.quotaMet ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')}>
+                  <Badge className={cn('mt-1', weeklyMetrics.quotaMet ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}>
                     {weeklyMetrics.quotaMet ? 'On Track' : 'Below Target'}
                   </Badge>
                 </CardContent>
@@ -656,7 +656,7 @@ export function IndividualAgentAnalytics() {
                     <span className="font-medium text-sm">Incidents</span>
                   </div>
                   {weeklyMetrics.incidents.length === 0 ? (
-                    <div className="text-sm text-green-600 font-medium">✓ Clean Week</div>
+                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">✓ Clean Week</div>
                   ) : (
                     <div className="space-y-1">
                       {weeklyMetrics.incidents.slice(0, 3).map(inc => (

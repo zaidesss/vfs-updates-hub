@@ -196,11 +196,11 @@ export default function ChangePassword() {
                   {passwordRequirements.map((req, index) => (
                     <div key={index} className="flex items-center gap-2 text-xs">
                       {req.met ? (
-                        <CheckCircle className="h-3 w-3 text-green-600" />
+                        <CheckCircle className="h-3 w-3 text-success" />
                       ) : (
                         <div className="h-3 w-3 rounded-full border border-muted-foreground/30" />
                       )}
-                      <span className={req.met ? 'text-green-600' : 'text-muted-foreground'}>
+                      <span className={req.met ? 'text-success' : 'text-muted-foreground'}>
                         {req.label}
                       </span>
                     </div>

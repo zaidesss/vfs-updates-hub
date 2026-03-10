@@ -98,7 +98,7 @@ interface ImprovementsTrackerProps {
 const priorityConfig = {
   low: { label: "Low", color: "bg-slate-100 text-slate-700 border-slate-200", icon: Circle, order: 1 },
   medium: { label: "Medium", color: "bg-amber-100 text-amber-700 border-amber-200", icon: AlertCircle, order: 2 },
-  high: { label: "High", color: "bg-red-100 text-red-700 border-red-200", icon: AlertCircle, order: 3 },
+  high: { label: "High", color: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800", icon: AlertCircle, order: 3 },
 };
 
 const statusConfig = {
@@ -106,7 +106,7 @@ const statusConfig = {
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Clock, order: 2 },
   on_hold: { label: "On Hold", color: "bg-amber-100 text-amber-700", icon: Pause, order: 3 },
   for_checking: { label: "For Checking", color: "bg-yellow-100 text-yellow-700", icon: Eye, order: 4 },
-  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle2, order: 5 },
+  completed: { label: "Completed", color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300", icon: CheckCircle2, order: 5 },
 };
 
 const defaultCategories = [

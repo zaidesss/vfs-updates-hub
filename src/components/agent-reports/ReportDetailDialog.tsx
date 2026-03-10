@@ -276,7 +276,7 @@ export function ReportDetailDialog({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Shortfall</span>
-              <span className="font-medium text-red-600">{details.shortfall ?? '-'} tickets</span>
+              <span className="font-medium text-red-600 dark:text-red-400">{details.shortfall ?? '-'} tickets</span>
             </div>
             {details.breakdown && (
               <div className="mt-2 p-3 bg-muted/50 rounded-lg text-sm">
@@ -299,7 +299,7 @@ export function ReportDetailDialog({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Exceeded By</span>
-              <span className="font-medium text-red-600">
+              <span className="font-medium text-red-600 dark:text-red-400">
                 {details.durationMinutes ? Math.max(0, details.durationMinutes - 5) : 0} mins
               </span>
             </div>
@@ -319,7 +319,7 @@ export function ReportDetailDialog({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Exceeded By</span>
-              <span className="font-medium text-red-600">
+              <span className="font-medium text-red-600 dark:text-red-400">
                 {details.overageSeconds ? Math.ceil(details.overageSeconds / 60) : 0} mins
               </span>
             </div>
@@ -414,7 +414,7 @@ export function ReportDetailDialog({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Shortfall</span>
-              <span className="font-medium text-red-600">{details.shortfallMinutes ?? '-'} mins</span>
+              <span className="font-medium text-red-600 dark:text-red-400">{details.shortfallMinutes ?? '-'} mins</span>
             </div>
             {details.source && (
               <div className="flex justify-between">

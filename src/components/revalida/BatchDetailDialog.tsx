@@ -106,25 +106,25 @@ export function BatchDetailDialog({
                       {question.type === 'mcq' && (
                         <div className="space-y-1.5 pl-2">
                           {question.choice_a && (
-                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'A' ? 'bg-green-500/10 text-green-600 font-medium' : ''}`}>
+                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'A' ? 'bg-green-500/10 text-green-600 dark:text-green-400 font-medium' : ''}`}>
                               {question.correct_answer === 'A' && <CheckCircle2 className="h-4 w-4" />}
                               <span className="font-medium">A.</span> {question.choice_a}
                             </div>
                           )}
                           {question.choice_b && (
-                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'B' ? 'bg-green-500/10 text-green-600 font-medium' : ''}`}>
+                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'B' ? 'bg-green-500/10 text-green-600 dark:text-green-400 font-medium' : ''}`}>
                               {question.correct_answer === 'B' && <CheckCircle2 className="h-4 w-4" />}
                               <span className="font-medium">B.</span> {question.choice_b}
                             </div>
                           )}
                           {question.choice_c && (
-                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'C' ? 'bg-green-500/10 text-green-600 font-medium' : ''}`}>
+                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'C' ? 'bg-green-500/10 text-green-600 dark:text-green-400 font-medium' : ''}`}>
                               {question.correct_answer === 'C' && <CheckCircle2 className="h-4 w-4" />}
                               <span className="font-medium">C.</span> {question.choice_c}
                             </div>
                           )}
                           {question.choice_d && (
-                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'D' ? 'bg-green-500/10 text-green-600 font-medium' : ''}`}>
+                            <div className={`flex items-center gap-2 text-sm p-1.5 rounded ${question.correct_answer === 'D' ? 'bg-green-500/10 text-green-600 dark:text-green-400 font-medium' : ''}`}>
                               {question.correct_answer === 'D' && <CheckCircle2 className="h-4 w-4" />}
                               <span className="font-medium">D.</span> {question.choice_d}
                             </div>
@@ -135,8 +135,8 @@ export function BatchDetailDialog({
                       {/* True/False Answer */}
                       {question.type === 'true_false' && (
                         <div className="flex items-center gap-2 text-sm pl-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span className="font-medium text-green-600">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          <span className="font-medium text-green-600 dark:text-green-400">
                             Correct Answer: {question.correct_answer}
                           </span>
                         </div>

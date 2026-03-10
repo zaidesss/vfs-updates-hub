@@ -3,6 +3,7 @@ import { useUpdates } from '@/context/UpdatesContext';
 import { CATEGORY_CONFIG, UpdateCategory, getCategoryLabel } from '@/lib/categories';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Search, FileText, Clock, ChevronLeft } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
@@ -120,11 +121,12 @@ export default function CategoryArticles() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-12 bg-card border border-border rounded-xl">
-            <FileText className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              {searchQuery ? 'No articles match your search' : 'No articles in this category yet'}
-            </p>
+          <div className="bg-card border border-border rounded-xl">
+            <EmptyState
+              icon={<FileText className="h-6 w-6" />}
+              title={searchQuery ? 'No articles match your search' : 'No articles in this category yet'}
+              description={searchQuery ? 'Try a different search term' : undefined}
+            />
           </div>
         )}
       </div>

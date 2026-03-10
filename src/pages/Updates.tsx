@@ -14,6 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Search, FileText, RefreshCw, Loader2, Filter, MessageSquare, MessageCircle, CheckCircle2, Lock, Clock } from 'lucide-react';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { cn } from '@/lib/utils';
@@ -133,33 +136,28 @@ export default function Updates() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Updates</h1>
-            <p className="text-muted-foreground mt-1">
-              Review the latest process updates and acknowledge when complete
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <PageGuideButton pageId="updates" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-            >
-              <RefreshCw className={cn("h-4 w-4 mr-2", isRefreshing && "animate-spin")} />
-              Refresh
-            </Button>
-            {(isAdmin || isHR) && (
-              <CreateUpdateDialog 
-                onUpdateCreated={handleRefresh}
-                buttonSize="sm"
-                data-tour="create-update"
-              />
-            )}
-          </div>
-        </div>
+        <PageHeader
+          title="Updates"
+          description="Review the latest process updates and acknowledge when complete"
+        >
+          <PageGuideButton pageId="updates" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isRefreshing && "animate-spin")} />
+            Refresh
+          </Button>
+          {(isAdmin || isHR) && (
+            <CreateUpdateDialog 
+              onUpdateCreated={handleRefresh}
+              buttonSize="sm"
+              data-tour="create-update"
+            />
+          )}
+        </PageHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row gap-4">
@@ -214,19 +212,17 @@ export default function Updates() {
         </div>
 
         {filteredUpdates.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
-              <FileText className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="font-medium text-foreground">No updates found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {activeTab === 'unread' 
+          <EmptyState
+            icon={<FileText className="h-6 w-6" />}
+            title="No updates found"
+            description={
+              activeTab === 'unread' 
                 ? "You're all caught up!" 
                 : searchQuery 
                   ? 'Try a different search term'
-                  : 'No updates available'}
-            </p>
-          </div>
+                  : 'No updates available'
+            }
+          />
         ) : (
           <div className="grid gap-4" data-tour="updates-list">
             {filteredUpdates.map((update, index) => (
@@ -293,25 +289,25 @@ export default function Updates() {
                       </TableCell>
                       <TableCell>
                         {q.status === 'closed' ? (
-                          <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
-                            <Lock className="h-3 w-3 mr-1" />
+                          <StatusBadge variant="muted">
+                            <Lock className="h-3 w-3" />
                             Closed
-                          </Badge>
+                          </StatusBadge>
                         ) : q.status === 'answered' ? (
-                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                          <StatusBadge variant="success">
+                            <CheckCircle2 className="h-3 w-3" />
                             Answered
-                          </Badge>
+                          </StatusBadge>
                         ) : q.status === 'on_going' ? (
-                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            <MessageCircle className="h-3 w-3 mr-1" />
+                          <StatusBadge variant="info">
+                            <MessageCircle className="h-3 w-3" />
                             On-Going
-                          </Badge>
+                          </StatusBadge>
                         ) : (
-                          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                            <Clock className="h-3 w-3 mr-1" />
+                          <StatusBadge variant="warning">
+                            <Clock className="h-3 w-3" />
                             Pending
-                          </Badge>
+                          </StatusBadge>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">

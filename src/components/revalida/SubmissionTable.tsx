@@ -109,7 +109,7 @@ export function SubmissionTable({
                   <TableCell>{getStatusBadge(attempt.status)}</TableCell>
                   <TableCell>
                     {attempt.final_percent !== null ? (
-                      <span className={`font-medium ${attempt.final_percent >= 95 ? 'text-green-600' : 'text-red-600'}`}>
+                      <span className={`font-medium ${attempt.final_percent >= 95 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {attempt.final_percent.toFixed(1)}%
                       </span>
                     ) : attempt.status === 'in_progress' ? (

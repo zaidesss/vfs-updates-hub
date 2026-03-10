@@ -381,7 +381,7 @@ export function BackfillManager() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Updated</span>
-                    <p className="font-semibold text-lg text-green-600">{currentJob.updated}</p>
+                    <p className="font-semibold text-lg text-green-600 dark:text-green-400">{currentJob.updated}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Skipped</span>
@@ -498,7 +498,7 @@ export function BackfillManager() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Inserted</span>
-                    <p className="font-semibold text-lg text-green-600">{reconResult.inserted}</p>
+                    <p className="font-semibold text-lg text-green-600 dark:text-green-400">{reconResult.inserted}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Skipped</span>
@@ -550,7 +550,7 @@ export function BackfillManager() {
                       </TableCell>
                       <TableCell>{getStatusBadge(job.status)}</TableCell>
                       <TableCell>{job.processed}</TableCell>
-                      <TableCell className="text-green-600">{job.updated}</TableCell>
+                      <TableCell className="text-green-600 dark:text-green-400">{job.updated}</TableCell>
                       <TableCell>{job.skipped}</TableCell>
                       <TableCell className={job.errors > 0 ? 'text-destructive' : ''}>{job.errors}</TableCell>
                       <TableCell>{job.dry_run ? 'Yes' : 'No'}</TableCell>

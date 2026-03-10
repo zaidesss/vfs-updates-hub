@@ -86,8 +86,8 @@ export function AgentAnalyticsPanel({ agentEmail, agentName }: AgentAnalyticsPan
 
   const TrendIcon = analytics.trend === 'increasing' ? TrendingUp : 
                     analytics.trend === 'decreasing' ? TrendingDown : Minus;
-  const trendColor = analytics.trend === 'increasing' ? 'text-red-600' : 
-                     analytics.trend === 'decreasing' ? 'text-green-600' : 'text-gray-600';
+  const trendColor = analytics.trend === 'increasing' ? 'text-destructive' : 
+                     analytics.trend === 'decreasing' ? 'text-success' : 'text-muted-foreground';
 
   return (
     <Card>

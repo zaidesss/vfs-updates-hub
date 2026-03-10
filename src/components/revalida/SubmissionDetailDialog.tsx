@@ -153,14 +153,14 @@ export function SubmissionDetailDialog({
                       {/* Admin/post-expiry: correctness indicator */}
                       {showCorrectAnswers && answer && !isSituational && (
                         isCorrect ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                         ) : (
-                          <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                          <XCircle className="h-5 w-5 text-red-500 dark:text-red-400 shrink-0" />
                         )
                       )}
                       {showCorrectAnswers && answer && isSituational && (
                         answer.points_awarded !== null ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                         ) : (
                           <Clock className="h-5 w-5 text-yellow-500 shrink-0" />
                         )
@@ -179,7 +179,7 @@ export function SubmissionDetailDialog({
                     {showCorrectAnswers && (
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-4">
-                          <span className={`font-medium ${pointsAwarded === maxPoints ? 'text-green-600' : pointsAwarded > 0 ? 'text-yellow-600' : 'text-red-500'}`}>
+                          <span className={`font-medium ${pointsAwarded === maxPoints ? 'text-green-600 dark:text-green-400' : pointsAwarded > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500 dark:text-red-400'}`}>
                             {pointsAwarded}/{maxPoints} points
                           </span>
                           

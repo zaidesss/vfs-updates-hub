@@ -13,6 +13,8 @@ import { fetchMyLeaveRequests, fetchAllLeaveRequests, LeaveRequest } from '@/lib
 import { useToast } from '@/hooks/use-toast';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { getUniqueTeamLeads, getAgentEmailsByTeamLead } from '@/lib/agentDirectory';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -235,14 +237,10 @@ export default function OutageReport() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Outage Report</h1>
-            <p className="text-muted-foreground">
-              {isAdmin ? 'View outage statistics for all agents' : 'View your outage statistics'}
-            </p>
-          </div>
-          
+        <PageHeader
+          title="Outage Report"
+          description={isAdmin ? 'View outage statistics for all agents' : 'View your outage statistics'}
+        >
           <div className="flex gap-3 flex-wrap items-center">
             <div className="flex items-center gap-2">
               <Label htmlFor="report-view-mode" className="text-sm text-muted-foreground whitespace-nowrap">Quarterly</Label>
@@ -305,7 +303,7 @@ export default function OutageReport() {
               </Select>
             )}
           </div>
-        </div>
+        </PageHeader>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -375,9 +373,12 @@ export default function OutageReport() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  No outages recorded for this period
-                </div>
+                <EmptyState
+                  icon={<AlertTriangle className="h-6 w-6" />}
+                  title="No outages recorded"
+                  description="No data available for the selected period"
+                  className="h-[300px] py-0"
+                />
               )}
             </CardContent>
           </Card>
@@ -426,9 +427,12 @@ export default function OutageReport() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  No outages recorded for this period
-                </div>
+                <EmptyState
+                  icon={<AlertTriangle className="h-6 w-6" />}
+                  title="No outages recorded"
+                  description="No data available for the selected period"
+                  className="h-[300px] py-0"
+                />
               )}
             </CardContent>
           </Card>

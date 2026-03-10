@@ -41,6 +41,8 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { getAgentInfoByEmail, getAgentClients, CLIENT_OPTIONS, AGENT_DIRECTORY } from '@/lib/agentDirectory';
 import { DatePicker } from '@/components/ui/date-picker';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // Get all agents for dropdown
 const ALL_AGENTS = Object.entries(AGENT_DIRECTORY).map(([email, info]) => ({
@@ -70,11 +72,11 @@ const OUTAGE_REASONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-warning/10 text-warning border-warning/20',
-  pending_override: 'bg-orange-100 text-orange-700 border-orange-200',
+  pending_override: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
   approved: 'bg-success/10 text-success border-success/20',
   declined: 'bg-destructive/10 text-destructive border-destructive/20',
   canceled: 'bg-muted text-muted-foreground border-muted',
-  for_review: 'bg-blue-100 text-blue-700 border-blue-200'
+  for_review: 'bg-info/10 text-info border-info/20'
 };
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -747,13 +749,12 @@ export default function LeaveRequest() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Outage Requests</h1>
-            <p className="text-muted-foreground">Submit and manage your outage requests</p>
-          </div>
+        <PageHeader
+          title="Outage Requests"
+          description="Submit and manage your outage requests"
+        >
           <PageGuideButton pageId="leave-request" />
-        </div>
+        </PageHeader>
 
         {/* Submit Form */}
         <Card>
@@ -1182,9 +1183,12 @@ export default function LeaveRequest() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : filteredRequests.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                {activeTab === 'override' ? 'No override requests pending' : 'No outage requests found'}
-              </p>
+              <EmptyState
+                icon={<Clock className="h-6 w-6" />}
+                title={activeTab === 'override' ? 'No override requests pending' : 'No outage requests found'}
+                description={activeTab === 'override' ? 'Override requests will appear here when agents submit them' : 'Outage requests matching your filters will appear here'}
+                className="py-8"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table data-tour="requests-list">
@@ -1227,7 +1231,7 @@ export default function LeaveRequest() {
                               {(req as any).reference_number || '-'}
                             </Badge>
                             {(req as any).is_auto_generated && (
-                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                              <Badge variant="secondary" className="text-xs bg-info/10 text-info">
                                 Auto
                               </Badge>
                             )}

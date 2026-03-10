@@ -52,6 +52,7 @@ import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal';
 import { CreateUpdateDialog } from '@/components/admin/CreateUpdateDialog';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Separator } from '@/components/ui/separator';
+import { PageHeader } from '@/components/ui/page-header';
 import { CATEGORIES, UpdateCategory } from '@/lib/categories';
 import { supabase } from '@/integrations/supabase/client';
 import { ChangelogManagement } from '@/components/admin/ChangelogManagement';
@@ -632,30 +633,24 @@ export default function Admin() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage updates and track team acknowledgements
-            </p>
-          </div>
+        <PageHeader
+          title="Admin Dashboard"
+          description="Manage updates and track team acknowledgements"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+          <CreateUpdateDialog onUpdateCreated={handleRefresh} />
 
-            <CreateUpdateDialog onUpdateCreated={handleRefresh} />
-            
-            <PageGuideButton pageId="admin" />
-          </div>
-        </div>
+          <PageGuideButton pageId="admin" />
+        </PageHeader>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -767,7 +762,7 @@ export default function Admin() {
                       super_admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
                       admin: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
                       hr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-                      user: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+                      user: 'bg-muted text-muted-foreground',
                     };
                     return (
                       <div key={userItem.id} className="flex items-center justify-between p-3">
@@ -782,7 +777,7 @@ export default function Admin() {
                             {userItem.role === 'super_admin' || userItem.role === 'admin' ? (
                               <Shield className="h-4 w-4 text-primary" />
                             ) : userItem.role === 'hr' ? (
-                              <UserCheck className="h-4 w-4 text-green-600" />
+                              <UserCheck className="h-4 w-4 text-success" />
                             ) : (
                               <Users className="h-4 w-4 text-muted-foreground" />
                             )}

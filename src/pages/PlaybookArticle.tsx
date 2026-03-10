@@ -48,7 +48,7 @@ export default function PlaybookArticle() {
   // If we can't parse as structured data, show fallback
   if (!articleData) {
     return (
-      <div className="min-h-screen bg-[hsl(35,40%,96%)]">
+      <div className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-4 py-8">
           <Link 
             to={category ? `/knowledge-base/${category}` : '/knowledge-base'}
@@ -81,7 +81,7 @@ export default function PlaybookArticle() {
       <div className="fixed top-4 left-4 z-20">
         <Link 
           to={category ? `/knowledge-base/${category}` : '/knowledge-base'}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-[hsl(35,40%,96%)]/90 backdrop-blur-sm rounded-lg border border-[hsl(35,30%,88%)] shadow-sm transition-colors"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-background/90 backdrop-blur-sm rounded-lg border border-border shadow-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back

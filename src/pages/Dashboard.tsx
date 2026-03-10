@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { UserAcknowledgementDashboard } from '@/components/UserAcknowledgementDashboard';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdates } from '@/context/UpdatesContext';
+import { ShieldAlert } from 'lucide-react';
 
 export default function Dashboard() {
   const { isAdmin } = useAuth();
@@ -16,20 +19,21 @@ export default function Dashboard() {
   if (!isAdmin) {
     return (
       <Layout>
-        <section className="text-center py-12">
-          <h1 className="text-xl font-semibold">Access Denied</h1>
-          <p className="text-muted-foreground mt-2">You don't have permission to view this page.</p>
-        </section>
+        <EmptyState
+          icon={<ShieldAlert className="h-6 w-6" />}
+          title="Access Denied"
+          description="You don't have permission to view this page."
+        />
       </Layout>
     );
   }
 
   return (
     <Layout>
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Team acknowledgement overview</p>
-      </header>
+      <PageHeader
+        title="Dashboard"
+        description="Team acknowledgement overview"
+      />
 
       <main className="space-y-6">
         <UserAcknowledgementDashboard updates={updates} acknowledgements={acknowledgements} />

@@ -25,6 +25,8 @@ import { format } from 'date-fns';
 import { DatePicker, formatDisplayDate, formatDisplayDateTime } from '@/components/ui/date-picker';
 import { writeAuditLog } from '@/lib/auditLogApi';
 import { getAgentInfoByEmail, getUniqueTeamLeads } from '@/lib/agentDirectory';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const EMPLOYMENT_STATUS_OPTIONS = ['Active', 'Probationary', 'Training', 'Terminated', 'Resigned'];
 const PAYMENT_FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
@@ -364,13 +366,12 @@ export default function ManageProfilesPage() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Manage Agent Profiles</h1>
-            <p className="text-muted-foreground">View and edit agent information and compensation</p>
-          </div>
+        <PageHeader
+          title="Manage Agent Profiles"
+          description="View and edit agent information and compensation"
+        >
           <PageGuideButton pageId="manage-profiles" />
-        </div>
+        </PageHeader>
 
         {isSuperAdmin && pendingRequests.length > 0 && (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -455,7 +456,12 @@ export default function ManageProfilesPage() {
                     ))}
                     
                     {pendingRequests.length === 0 && (
-                      <p className="text-center text-muted-foreground py-8">No pending change requests</p>
+                      <EmptyState
+                        icon={<FileText className="h-6 w-6" />}
+                        title="No pending change requests"
+                        description="Change requests from agents will appear here"
+                        className="py-8"
+                      />
                     )}
                   </div>
                 </CardContent>
@@ -653,7 +659,12 @@ function ProfilesGrid({
                 </button>
               ))}
               {users.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">No agents found</p>
+                <EmptyState
+                  icon={<Search className="h-5 w-5" />}
+                  title="No agents found"
+                  description="Try adjusting your search or filters"
+                  className="py-6"
+                />
               )}
             </div>
           </ScrollArea>
@@ -1044,10 +1055,12 @@ function ProfilesGrid({
             </CardContent>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground">
-            <User className="h-12 w-12 mb-4 opacity-50" />
-            <p>Select an agent to view and edit their profile</p>
-          </div>
+          <EmptyState
+            icon={<User className="h-6 w-6" />}
+            title="No agent selected"
+            description="Select an agent from the list to view and edit their profile"
+            className="h-[600px]"
+          />
         )}
       </Card>
     </div>

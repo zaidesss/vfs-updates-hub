@@ -9,7 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, FileText, Megaphone, Search, Filter, Loader2, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, Megaphone, Search, Filter, Loader2, Trash2, ClipboardList } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { fetchAuditLogs, deleteAuditLog, AuditLogEntry, AuditLogFilters, AUDIT_AREAS, ACTION_TYPES } from '@/lib/auditLogApi';
 import { format } from 'date-fns';
 import { getKnownNameByEmail } from '@/lib/nameDirectory';
@@ -192,10 +194,10 @@ export default function AuditLog() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Audit Log</h1>
-          <p className="text-muted-foreground">Centralized view of all portal changes and actions.</p>
-        </div>
+        <PageHeader
+          title="Audit Log"
+          description="Centralized view of all portal changes and actions."
+        />
 
         {/* Filters */}
         <Card>
@@ -292,10 +294,11 @@ export default function AuditLog() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : logs.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p>No audit log entries found.</p>
-                <p className="text-sm mt-1">Logs will appear here as portal changes are recorded.</p>
-              </div>
+              <EmptyState
+                icon={<ClipboardList className="h-6 w-6" />}
+                title="No audit log entries found"
+                description="Logs will appear here as portal changes are recorded."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table>

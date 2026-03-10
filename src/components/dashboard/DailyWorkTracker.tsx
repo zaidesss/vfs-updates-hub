@@ -80,7 +80,7 @@ function TicketProgressBar({ icon, label, count, quota, colorClass = 'text-prima
           {icon}
           {label}
         </div>
-        <span className={cn("text-sm font-medium", isOverQuota && 'text-green-600')}>
+        <span className={cn("text-sm font-medium", isOverQuota && 'text-green-600 dark:text-green-400')}>
           {hasQuota ? `${count}/${quota}` : count}
         </span>
       </div>
@@ -214,7 +214,7 @@ export function DailyWorkTracker({
                 label="Chat"
                 count={ticketCounts.chat}
                 quota={quotaChat}
-                colorClass="text-green-600"
+                colorClass="text-green-600 dark:text-green-400"
               />
             )}
             {showCall && (
@@ -289,7 +289,7 @@ export function DailyWorkTracker({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4 text-green-600" />
+                  <Clock className="h-4 w-4 text-green-600 dark:text-green-400" />
                   Upwork Time
                 </div>
                 <div className="flex items-center gap-2">
@@ -299,13 +299,13 @@ export function DailyWorkTracker({
                   {varianceStatus && (
                     <span title={`Variance: ${variance !== null ? (variance > 0 ? '+' : '') + formatHours(variance) : '--'}`}>
                       {varianceStatus === 'ok' && (
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                       )}
                       {varianceStatus === 'over' && (
                         <AlertTriangle className="h-4 w-4 text-yellow-500" />
                       )}
                       {varianceStatus === 'under' && (
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400" />
                       )}
                     </span>
                   )}

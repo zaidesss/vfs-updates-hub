@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { Clock, Timer, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, RefreshCw, Database, Phone, Bot } from 'lucide-react';
 import { usePortalClock } from '@/context/PortalClockContext';
@@ -352,17 +353,10 @@ export default function ZendeskInsights() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <BarChart3 className="h-6 w-6 text-primary" />
-              Zendesk Insights
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Team-wide performance metrics
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Zendesk Insights"
+          description="Team-wide performance metrics"
+        />
 
         <Alert variant="destructive" className="border-destructive/50">
           <AlertTriangle className="h-4 w-4" />

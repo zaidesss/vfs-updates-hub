@@ -147,7 +147,7 @@ export function CreateUpdateDialog({
                   size="sm"
                   onClick={() => setShowSimilarModal(true)}
                   disabled={!newUpdate.title && !newUpdate.summary && !newUpdate.body}
-                  className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-300"
+                  className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-300 dark:border-red-700"
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
                   Check for Similar Updates

@@ -23,6 +23,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { Save, CheckCircle2, AlertTriangle, RefreshCw, Search, ArrowUpDown, Download } from 'lucide-react';
 import { exportToCSV, formatSecondsForExport, formatPercentForExport } from '@/lib/exportUtils';
@@ -580,14 +582,10 @@ export default function TeamScorecard() {
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Team Scorecard</h1>
-            <p className="text-muted-foreground">Weekly performance metrics by support type</p>
-          </div>
-
-          {/* Buttons */}
-          <div className="flex items-center gap-2">
+        <PageHeader
+          title="Team Scorecard"
+          description="Weekly performance metrics by support type"
+        >
             {canSave && hasEdits && (
               <Button
                 onClick={() => saveChangesMutation.mutate()}
@@ -693,8 +691,7 @@ export default function TeamScorecard() {
             )}
             
             <PageGuideButton pageId="scorecard" data-tour="date-filter" />
-          </div>
-        </div>
+        </PageHeader>
 
          {/* Filters Card */}
          <Card>
@@ -1227,11 +1224,12 @@ export default function TeamScorecard() {
                   </Table>
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  {searchQuery || scoreFilter !== 'all' 
+                <EmptyState
+                  title={searchQuery || scoreFilter !== 'all' 
                     ? 'No agents match your filters'
                     : `No agents found${isAllMode ? '' : ` for ${supportType}`}`}
-                </div>
+                  description="Try adjusting your filters or selecting a different week."
+                />
               )}
             </CardContent>
           </Card>

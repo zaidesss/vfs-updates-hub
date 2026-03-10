@@ -34,7 +34,7 @@ export function ReportSummaryCards({ summary, isLoading }: ReportSummaryCardsPro
       label: 'Validated',
       value: summary?.validated || 0,
       icon: CheckCircle,
-      color: 'text-green-600',
+      color: 'text-green-600 dark:text-green-400',
       bgColor: 'bg-green-50 dark:bg-green-950',
     },
   ];

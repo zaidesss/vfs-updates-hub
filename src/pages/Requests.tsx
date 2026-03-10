@@ -14,7 +14,8 @@ import { PRE_APPROVERS, isPreApprover } from '@/lib/approvers';
 import { fetchArticleRequests, createArticleRequest, approveRequest, finalizeRequestReview, findSimilarUpdates, deleteArticleRequest } from '@/lib/requestApi';
 import { writeAuditLog } from '@/lib/auditLogApi';
 import { ArticleRequestWithApprovals, FinalDecision } from '@/types/request';
-import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2, ArrowUpRight } from 'lucide-react';
+import { Plus, Clock, CheckCircle, XCircle, Loader2, UserCheck, Crown, Sparkles, FileText, ExternalLink, Trash2, ArrowUpRight, Inbox } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -134,7 +135,7 @@ export default function Requests() {
       case 'high':
         return <Badge variant="destructive">High Match</Badge>;
       case 'medium':
-        return <Badge className="bg-orange-500">Medium Match</Badge>;
+        return <Badge className="bg-warning text-warning-foreground">Medium Match</Badge>;
       case 'low':
         return <Badge variant="secondary">Low Match</Badge>;
       default:
@@ -194,8 +195,8 @@ export default function Requests() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending': return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Pending Pre-Approval</Badge>;
-      case 'pending_final_review': return <Badge className="bg-amber-500"><Crown className="h-3 w-3 mr-1" /> Awaiting Final Review</Badge>;
-      case 'approved': return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Approved</Badge>;
+      case 'pending_final_review': return <Badge className="bg-warning text-warning-foreground"><Crown className="h-3 w-3 mr-1" /> Awaiting Final Review</Badge>;
+      case 'approved': return <Badge className="bg-success text-success-foreground"><CheckCircle className="h-3 w-3 mr-1" /> Approved</Badge>;
       case 'rejected': return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Rejected</Badge>;
       default: return <Badge>{status}</Badge>;
     }
@@ -300,7 +301,7 @@ export default function Requests() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <CheckCircle className="h-5 w-5 text-success" />
                   No Similar Updates Found
                 </DialogTitle>
                 <DialogDescription>
@@ -406,7 +407,15 @@ export default function Requests() {
         {isLoading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : requests.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">No requests yet</CardContent></Card>
+          <Card>
+            <CardContent className="py-0">
+              <EmptyState
+                icon={<Inbox className="h-6 w-6" />}
+                title="No requests yet"
+                description="Submit a new request to get started."
+              />
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-4">
             {requests.map((request) => {
@@ -478,7 +487,7 @@ export default function Requests() {
                           return (
                             <div key={approval.id} className="flex items-center gap-2">
                               <Checkbox checked={approval.approved} disabled={!canApprove} onCheckedChange={() => canApprove && handlePreApprove(request.id)} />
-                              <span className={`text-sm ${approval.approved ? 'text-green-600' : 'text-muted-foreground'}`}>{approval.approver_name || approval.approver_email}</span>
+                              <span className={`text-sm ${approval.approved ? 'text-success' : 'text-muted-foreground'}`}>{approval.approver_name || approval.approver_email}</span>
                             </div>
                           );
                         })}
@@ -512,7 +521,7 @@ export default function Requests() {
                             <Button size="sm" variant="secondary" onClick={() => handleFinalDecision(request.id, 'update_existing')} disabled={processingRequest === request.id}>
                               Approve: Update Existing
                             </Button>
-                            <Button size="sm" variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => handleFinalDecision(request.id, 'escalate_to_improvements')} disabled={processingRequest === request.id}>
+                            <Button size="sm" variant="outline" className="border-warning text-warning hover:bg-warning/10" onClick={() => handleFinalDecision(request.id, 'escalate_to_improvements')} disabled={processingRequest === request.id}>
                               <ArrowUpRight className="h-3 w-3 mr-1" />
                               Escalate to Improvements
                             </Button>
@@ -524,7 +533,7 @@ export default function Requests() {
                       )}
 
                       {request.status === 'pending_final_review' && !canFinalReview && (
-                        <p className="text-sm text-amber-600">Awaiting Super Admin / HR final decision.</p>
+                        <p className="text-sm text-warning">Awaiting Super Admin / HR final decision.</p>
                       )}
 
                       {(request.status === 'approved' || request.status === 'rejected') && request.final_decision && (

@@ -167,7 +167,7 @@ export function BatchManagement({
                               {actionLoading === batch.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Play className="h-4 w-4 text-green-600" />
+                                <Play className="h-4 w-4 text-green-600 dark:text-green-400" />
                               )}
                             </Button>
                           </AlertDialogTrigger>

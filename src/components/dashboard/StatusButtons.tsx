@@ -204,7 +204,7 @@ export function StatusButtons({
         className={cn(
           'min-w-[100px] sm:min-w-[110px]',
           !breakEnabled && 'opacity-50',
-          isOnBreak && 'border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950',
+          isOnBreak && 'border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950',
           !isOnBreak && breakEnabled && 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950'
         )}
       >
@@ -285,7 +285,7 @@ export function StatusButtons({
             isOnBio && !bioExceeded && 'bg-cyan-600 hover:bg-cyan-700',
             isOnBio && bioExceeded && 'bg-red-600 hover:bg-red-700 animate-pulse',
             !isOnBio && bioEnabled && 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-950',
-            !isOnBio && !bioEnabled && bioRemaining <= 0 && 'border-gray-300 text-gray-400'
+            !isOnBio && !bioEnabled && bioRemaining <= 0 && 'border-border text-muted-foreground/60'
           )}
         >
           {loadingEvent === 'BIO_START' || loadingEvent === 'BIO_END' ? (

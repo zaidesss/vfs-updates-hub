@@ -46,6 +46,8 @@ import {
   ColumnFilter,
   SortDirection,
 } from '@/components/master-directory/FilterableColumnHeader';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // Column definitions for the table
 type ColDef = {
@@ -367,34 +369,28 @@ export default function MasterDirectory() {
   return (
     <Layout>
       <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Master Directory</h1>
-            <p className="text-muted-foreground text-sm">
-              Centralized agent configuration reference (read-only synced from Bios)
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <PageGuideButton pageId="master-directory" />
-            <Button data-tour="sync-button" onClick={handleSyncAll} disabled={isSyncing || isSaving} variant="outline">
-              <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
-              {isSyncing ? 'Syncing...' : 'Sync from Bios'}
-            </Button>
-            <Button
-              data-tour="save-button"
-              onClick={handleSave}
-              disabled={!hasChanges || isSaving}
-              className={cn(
-                'transition-all',
-                hasChanges ? 'bg-primary hover:bg-primary/90' : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
-              )}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {isSaving ? 'Saving...' : 'Save All'}
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="Master Directory"
+          description="Centralized agent configuration reference (read-only synced from Bios)"
+        >
+          <PageGuideButton pageId="master-directory" />
+          <Button data-tour="sync-button" onClick={handleSyncAll} disabled={isSyncing || isSaving} variant="outline">
+            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+            {isSyncing ? 'Syncing...' : 'Sync from Bios'}
+          </Button>
+          <Button
+            data-tour="save-button"
+            onClick={handleSave}
+            disabled={!hasChanges || isSaving}
+            className={cn(
+              'transition-all',
+              hasChanges ? 'bg-primary hover:bg-primary/90' : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+            )}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {isSaving ? 'Saving...' : 'Save All'}
+          </Button>
+        </PageHeader>
 
         {/* Filter Bar */}
         <div className="flex flex-wrap items-center gap-3" data-tour="filter-bar">
@@ -546,7 +542,7 @@ export default function MasterDirectory() {
                                 )}
                               </Tooltip>
                             </TooltipProvider>
-                            <span className={cn("text-xs", isZD2orNull ? "text-amber-600" : "text-muted-foreground")}>
+                            <span className={cn("text-xs", isZD2orNull ? "text-warning" : "text-muted-foreground")}>
                               {isZD2orNull ? 'ZD2' : (entry.ticket_assignment_enabled ? 'On' : 'Off')}
                             </span>
                           </div>
@@ -669,7 +665,12 @@ export default function MasterDirectory() {
         </div>
 
         {filteredEntries.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">No agents found.</div>
+          <EmptyState
+            icon={<Search className="h-6 w-6" />}
+            title="No agents found"
+            description="Try adjusting your search or filter criteria"
+            className="py-12"
+          />
         )}
       </div>
     </Layout>

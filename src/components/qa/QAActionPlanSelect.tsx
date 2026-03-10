@@ -50,7 +50,7 @@ export function QAActionPlanSelect({
             {suggestedPlans.map(plan => (
               <div 
                 key={plan.id} 
-                className="flex items-start gap-2 p-2 border border-primary/30 rounded-md bg-white hover:bg-primary/5 cursor-pointer"
+                className="flex items-start gap-2 p-2 border border-primary/30 rounded-md bg-card hover:bg-primary/5 cursor-pointer"
                 onClick={() => handleToggle(plan.id)}
               >
                 <Checkbox

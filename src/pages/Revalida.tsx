@@ -42,6 +42,7 @@ import { GradingDialog } from '@/components/revalida/GradingDialog';
 import { SubmissionDetailDialog } from '@/components/revalida/SubmissionDetailDialog';
 import { ScoreOverrideDialog } from '@/components/revalida/ScoreOverrideDialog';
 import { BatchDetailDialog } from '@/components/revalida/BatchDetailDialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FileText, Loader2 } from 'lucide-react';
 
 export default function Revalida() {
@@ -731,11 +732,11 @@ export default function Revalida() {
                 )}
               </>
             ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No active test available.</p>
-                <p className="text-sm">Check back later for the next Revalida.</p>
-              </div>
+              <EmptyState
+                icon={<FileText className="h-6 w-6" />}
+                title="No active test available"
+                description="Check back later for the next Revalida."
+              />
             )}
           </div>
         )}

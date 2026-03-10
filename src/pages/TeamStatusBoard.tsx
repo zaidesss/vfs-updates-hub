@@ -8,6 +8,8 @@ import { ZendeskRealtimePanel } from '@/components/team-status/ZendeskRealtimePa
 import { LiveActivityFeed } from '@/components/team/LiveActivityFeed';
 import { NewTicketsCounter } from '@/components/dashboard/NewTicketsCounter';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { RefreshCw, Users, Shield, Phone, MessageSquare, Mail, Shuffle, Package, Bug } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -137,16 +139,10 @@ export default function TeamStatusBoard() {
     <Layout>
       <div className="space-y-6">
        {/* Header */}
-       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-         <div>
-           <h1 className="text-2xl font-bold text-foreground">Team Status Board</h1>
-           <p className="text-muted-foreground">
-             {totalScheduled} scheduled now ({totalOnline} online)
-           </p>
-         </div>
-
-         <div className="flex items-center gap-2">
-           {/* Sort Toggle */}
+       <PageHeader
+         title="Team Status Board"
+         description={`${totalScheduled} scheduled now (${totalOnline} online)`}
+       >
            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
              <Button
                variant={sortBy === 'login' ? 'secondary' : 'ghost'}
@@ -165,8 +161,6 @@ export default function TeamStatusBoard() {
                By Name
              </Button>
            </div>
-
-           {/* Refresh Button */}
            <Button
              variant="outline"
              size="sm"
@@ -176,10 +170,8 @@ export default function TeamStatusBoard() {
              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
              <span className="ml-2 hidden sm:inline">Refresh</span>
            </Button>
-           
            <PageGuideButton pageId="team-status" />
-         </div>
-       </div>
+       </PageHeader>
 
         {/* New Tickets Counter */}
         <NewTicketsCounter />
@@ -230,13 +222,11 @@ export default function TeamStatusBoard() {
 
         {/* Empty State */}
         {!isLoading && !error && totalScheduled === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium text-foreground">No one is scheduled right now</h3>
-            <p className="text-muted-foreground">
-              Team members will appear here during their scheduled shift hours.
-            </p>
-          </div>
+          <EmptyState
+            icon={<Users className="h-6 w-6" />}
+            title="No one is scheduled right now"
+            description="Team members will appear here during their scheduled shift hours."
+          />
         )}
 
         {/* Main Content - Two Column Layout */}

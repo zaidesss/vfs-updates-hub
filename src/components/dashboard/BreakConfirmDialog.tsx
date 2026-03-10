@@ -79,7 +79,7 @@ export function BreakConfirmDialog({
             {hasSchedule && !isWithinWindow ? (
               <AlertTriangle className="h-5 w-5 text-amber-500" />
             ) : hasSchedule ? (
-              <CheckCircle className="h-5 w-5 text-green-500" />
+              <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             ) : (
               <Info className="h-5 w-5 text-muted-foreground" />
             )}

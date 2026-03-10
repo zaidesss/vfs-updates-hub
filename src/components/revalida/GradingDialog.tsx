@@ -171,7 +171,7 @@ export function GradingDialog({
                       <p className="text-sm">{question.prompt}</p>
                     </div>
                     {answer.points_awarded !== null ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
                     ) : (
                       <XCircle className="h-5 w-5 text-muted-foreground shrink-0" />
                     )}

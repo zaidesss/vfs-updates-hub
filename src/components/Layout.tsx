@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/NotificationBell';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import ImprovementsTracker from '@/components/ImprovementsTracker';
 import { PendingUpdatesModal } from '@/components/PendingUpdatesModal';
 import type { Update } from '@/types';
@@ -302,13 +303,15 @@ export function Layout({ children }: LayoutProps) {
             </nav>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <PortalClockDisplay />
             <div className="hidden sm:block text-right">
-              <p className="text-sm font-medium">{user?.name}</p>
+              <p className="text-sm font-medium text-foreground">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
+            <div className="h-5 w-px bg-border hidden sm:block" />
             <NotificationBell />
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"

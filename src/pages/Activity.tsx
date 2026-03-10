@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { CheckCircle2, Circle, Clock, FileText, TrendingUp, Activity as ActivityIcon } from 'lucide-react';
 import { formatDisplayDateTime } from '@/components/ui/date-picker';
 import { MyActivityTab } from '@/components/profile/MyActivityTab';
@@ -53,12 +55,10 @@ export default function Activity() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">My Activity</h1>
-          <p className="text-muted-foreground mt-1">
-            Track your progress and portal activity
-          </p>
-        </div>
+        <PageHeader
+          title="My Activity"
+          description="Track your progress and portal activity"
+        />
 
         <Tabs defaultValue="audit-trail" className="w-full">
           <TabsList>
@@ -165,15 +165,16 @@ export default function Activity() {
               </CardHeader>
               <CardContent>
                 {acknowledgedUpdates.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
-                      <Circle className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-muted-foreground">No acknowledgements yet</p>
-                    <Link to="/updates" className="text-primary text-sm hover:underline mt-1 block">
-                      View pending updates
-                    </Link>
-                  </div>
+                  <EmptyState
+                    icon={<Circle className="h-6 w-6" />}
+                    title="No acknowledgements yet"
+                    action={
+                      <Link to="/updates" className="text-primary text-sm hover:underline">
+                        View pending updates
+                      </Link>
+                    }
+                    className="py-8"
+                  />
                 ) : (
                   <div className="space-y-3">
                     {acknowledgedUpdates.map((update) => (

@@ -8,6 +8,8 @@ import { Loader2, ChevronLeft, ChevronRight, Clock, CheckCircle2, Building2, Ale
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, parseISO, isSameDay, isWithinInterval } from 'date-fns';
 import { fetchCalendarRequests, CalendarLeaveRequest } from '@/lib/leaveRequestApi';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-warning text-warning-foreground',
@@ -79,10 +81,10 @@ export default function Calendar() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Calendar Outages</h1>
-          <p className="text-muted-foreground">View all pending and approved leave requests</p>
-        </div>
+        <PageHeader
+          title="Calendar Outages"
+          description="View all pending and approved leave requests"
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendar */}
@@ -211,9 +213,19 @@ export default function Calendar() {
             </CardHeader>
             <CardContent>
               {!selectedDate ? (
-                <p className="text-muted-foreground text-sm">Click on a day in the calendar to view outage details.</p>
+                <EmptyState
+                  icon={<Clock className="h-6 w-6" />}
+                  title="Select a day"
+                  description="Click on a day in the calendar to view outage details"
+                  className="py-8"
+                />
               ) : selectedDayRequests.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No outages scheduled for this day.</p>
+                <EmptyState
+                  icon={<CheckCircle2 className="h-6 w-6" />}
+                  title="No outages"
+                  description="No outages scheduled for this day"
+                  className="py-8"
+                />
               ) : (
                 <div className="space-y-3">
                   {selectedDayRequests.map(req => (

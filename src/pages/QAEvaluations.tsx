@@ -30,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PageGuideButton } from '@/components/PageGuideButton';
 import { 
   Plus, 
@@ -368,14 +370,10 @@ export default function QAEvaluations() {
     <Layout>
       <div className="space-y-6">
          {/* Header */}
-         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-           <div>
-             <h1 className="text-2xl font-bold">QA Evaluations</h1>
-             <p className="text-muted-foreground">
-               {canViewAll ? 'Quality assurance evaluations for all agents' : 'Your quality assurance evaluations'}
-             </p>
-           </div>
-           <div className="flex gap-2">
+         <PageHeader
+           title="QA Evaluations"
+           description={canViewAll ? 'Quality assurance evaluations for all agents' : 'Your quality assurance evaluations'}
+         >
              {canCreate && (
                <Button onClick={() => navigate('/team-performance/qa-evaluations/new')} data-tour="create-qa">
                  <Plus className="h-4 w-4 mr-2" />
@@ -383,8 +381,7 @@ export default function QAEvaluations() {
                </Button>
              )}
              <PageGuideButton pageId="qa-evaluations" />
-           </div>
-         </div>
+         </PageHeader>
 
          {/* Filters Section - Year, Month, Week selectors in a row */}
          <Card>
@@ -541,19 +538,18 @@ export default function QAEvaluations() {
                 <div className="animate-pulse text-muted-foreground">Loading evaluations...</div>
               </div>
             ) : filteredEvaluations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-                <FileText className="h-12 w-12 mb-4 opacity-50" />
-                <p>No evaluations found</p>
-                {canCreate && (
+              <EmptyState
+                icon={<FileText className="h-6 w-6" />}
+                title="No evaluations found"
+                action={canCreate ? (
                   <Button 
                     variant="link" 
                     onClick={() => navigate('/team-performance/qa-evaluations/new')}
-                    className="mt-2"
                   >
                     Create your first evaluation
                   </Button>
-                )}
-              </div>
+                ) : undefined}
+              />
              ) : (
                <Table data-tour="qa-table">
                 <TableHeader>

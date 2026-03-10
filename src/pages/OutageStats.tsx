@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { getUniqueTeamLeads, getAgentEmailsByTeamLead } from '@/lib/agentDirectory';
+import { PageHeader } from '@/components/ui/page-header';
 
 const OUTAGE_REASONS = [
   'Power Outage',
@@ -419,7 +420,7 @@ export default function OutageStats() {
     if (status === 'action_required') {
       return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Action Required</Badge>;
     }
-    return <Badge className="gap-1 bg-amber-500 hover:bg-amber-600"><AlertTriangle className="h-3 w-3" /> Needs Review</Badge>;
+    return <Badge className="gap-1 bg-warning hover:bg-warning/90 text-warning-foreground"><AlertTriangle className="h-3 w-3" /> Needs Review</Badge>;
   };
 
 
@@ -436,13 +437,11 @@ export default function OutageStats() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Outage Statistics</h1>
-            <p className="text-muted-foreground">Trends, patterns, and repeat offender tracking</p>
-          </div>
-          
-           <div className="flex gap-3 flex-wrap items-center">
+        <PageHeader
+          title="Outage Statistics"
+          description="Trends, patterns, and repeat offender tracking"
+        >
+          <div className="flex gap-3 flex-wrap items-center">
             <div className="flex items-center gap-2">
               <Label htmlFor="view-mode" className="text-sm text-muted-foreground whitespace-nowrap">Quarterly</Label>
               <Switch 
@@ -511,7 +510,7 @@ export default function OutageStats() {
               </Button>
             )}
           </div>
-        </div>
+        </PageHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
@@ -560,7 +559,7 @@ export default function OutageStats() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold text-amber-500">{offenderCounts.needsReview}</p>
+                  <p className="text-3xl font-bold text-warning">{offenderCounts.needsReview}</p>
                 </CardContent>
               </Card>
               
@@ -834,7 +833,7 @@ export default function OutageStats() {
                         <TableHead className="text-center">
                           <Tooltip>
                             <TooltipTrigger className="flex items-center gap-1 justify-center cursor-help">
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              <CheckCircle2 className="h-4 w-4 text-success" />
                               Acceptable
                               <Info className="h-3 w-3 text-muted-foreground" />
                             </TooltipTrigger>
@@ -846,7 +845,7 @@ export default function OutageStats() {
                         <TableHead className="text-center">
                           <Tooltip>
                             <TooltipTrigger className="flex items-center gap-1 justify-center cursor-help">
-                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                              <AlertTriangle className="h-4 w-4 text-warning" />
                               Needs Review
                               <Info className="h-3 w-3 text-muted-foreground" />
                             </TooltipTrigger>
@@ -882,7 +881,7 @@ export default function OutageStats() {
                             </TableCell>
                             <TableCell className="text-center">
                               {thresholds ? (
-                                <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
+                                <Badge variant="outline" className="bg-success/10 text-success border-success/30">
                                   ≤{thresholds.acceptable}/mo
                                 </Badge>
                               ) : (
@@ -891,7 +890,7 @@ export default function OutageStats() {
                             </TableCell>
                             <TableCell className="text-center">
                               {thresholds ? (
-                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">
+                                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
                                   {thresholds.needsReview}/mo
                                 </Badge>
                               ) : (
@@ -918,10 +917,10 @@ export default function OutageStats() {
 
             {/* Inline Callouts */}
             <div className="grid gap-4 md:grid-cols-3">
-              <Alert className="border-amber-500/50 bg-amber-500/10">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <AlertTitle className="text-amber-700">Needs Review</AlertTitle>
-                <AlertDescription className="text-sm text-amber-600">
+              <Alert className="border-warning/50 bg-warning/10">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <AlertTitle className="text-warning">Needs Review</AlertTitle>
+                <AlertDescription className="text-sm text-warning/80">
                   Indicates early issues and may result in coaching, discussion, and guidance.
                 </AlertDescription>
               </Alert>
@@ -968,11 +967,11 @@ export default function OutageStats() {
                       {repeatOffenders.map((offender) => (
                         <TableRow 
                           key={offender.agentEmail} 
-                          className={offender.worstStatus === 'action_required' ? 'bg-destructive/5' : 'bg-amber-500/5'}
+                          className={offender.worstStatus === 'action_required' ? 'bg-destructive/5' : 'bg-warning/5'}
                         >
                           <TableCell>
                             <div>
-                              <p className={`font-medium ${offender.worstStatus === 'action_required' ? 'text-destructive' : 'text-amber-700'}`}>
+                              <p className={`font-medium ${offender.worstStatus === 'action_required' ? 'text-destructive' : 'text-warning'}`}>
                                 {offender.agentName}
                               </p>
                               <p className="text-xs text-muted-foreground">{offender.agentEmail}</p>
@@ -984,7 +983,7 @@ export default function OutageStats() {
                                 <Badge 
                                   key={i} 
                                   variant={v.status === 'action_required' ? 'destructive' : 'outline'}
-                                  className={v.status === 'needs_review' ? 'bg-amber-500/20 text-amber-700 border-amber-500/30' : ''}
+                                  className={v.status === 'needs_review' ? 'bg-warning/20 text-warning border-warning/30' : ''}
                                 >
                                   {v.reason}: {v.count}/{v.status === 'action_required' ? v.thresholds.actionRequired : v.thresholds.needsReview}
                                 </Badge>
@@ -1000,8 +999,8 @@ export default function OutageStats() {
                   </Table>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500 opacity-50" />
-                    <p className="text-green-700">No flagged agents this month</p>
+                    <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-success opacity-50" />
+                    <p className="text-success">No flagged agents this month</p>
                     <p className="text-sm">All agents are within acceptable thresholds</p>
                   </div>
                 )}
@@ -1015,7 +1014,7 @@ export default function OutageStats() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  <CheckCircle2 className="h-5 w-5 text-success" />
                   Acceptable Monthly Thresholds
                 </CardTitle>
                 <CardDescription>Maximum occurrences per month considered within normal expectations</CardDescription>
@@ -1042,7 +1041,7 @@ export default function OutageStats() {
                           </TableCell>
                           <TableCell className="text-center">
                             {thresholds ? (
-                              <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
+                              <Badge variant="outline" className="bg-success/10 text-success border-success/30">
                                 {thresholds.acceptable} per month
                               </Badge>
                             ) : (
@@ -1076,7 +1075,7 @@ export default function OutageStats() {
                       <TableHead>Aspect</TableHead>
                       <TableHead>
                         <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          <AlertTriangle className="h-4 w-4 text-warning" />
                           Needs Review
                         </div>
                       </TableHead>
@@ -1133,7 +1132,7 @@ export default function OutageStats() {
                   <TableBody>
                     <TableRow>
                       <TableCell>
-                        <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">
+                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
                           Verbal Warning
                         </Badge>
                       </TableCell>
@@ -1143,7 +1142,7 @@ export default function OutageStats() {
                     </TableRow>
                     <TableRow>
                       <TableCell>
-                        <Badge variant="outline" className="bg-orange-500/10 text-orange-700 border-orange-500/30">
+                        <Badge variant="outline" className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30">
                           Written Warning
                         </Badge>
                       </TableCell>
@@ -1153,7 +1152,7 @@ export default function OutageStats() {
                     </TableRow>
                     <TableRow>
                       <TableCell>
-                        <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/30">
+                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                           Final Written Warning
                         </Badge>
                       </TableCell>
@@ -1230,15 +1229,15 @@ export default function OutageStats() {
                 <CardContent>
                   <ul className="space-y-3">
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Notify Team Lead via Slack before or during any outage</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Provide honest, timely updates with documentation if required</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Take steps to prevent recurring issues (e.g., backup internet)</span>
                     </li>
                   </ul>
@@ -1255,19 +1254,19 @@ export default function OutageStats() {
                 <CardContent>
                   <ul className="space-y-3">
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Monitor and document agent outage patterns</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Initiate coaching when patterns emerge</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Escalate to HR if outages persist or are unsupported</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success mt-1 flex-shrink-0" />
                       <span className="text-sm">Apply progressive discipline fairly and consistently</span>
                     </li>
                   </ul>

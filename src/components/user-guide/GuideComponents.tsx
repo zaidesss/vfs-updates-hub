@@ -24,7 +24,7 @@ export function CalloutBox({
     info: { bg: 'bg-blue-50 border-blue-200', icon: Info, iconColor: 'text-blue-600' },
     tip: { bg: 'bg-purple-50 border-purple-200', icon: Lightbulb, iconColor: 'text-purple-600' },
     warning: { bg: 'bg-amber-50 border-amber-200', icon: AlertTriangle, iconColor: 'text-amber-600' },
-    success: { bg: 'bg-green-50 border-green-200', icon: CheckCircle, iconColor: 'text-green-600' },
+    success: { bg: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800', icon: CheckCircle, iconColor: 'text-green-600 dark:text-green-400' },
   };
 
   const style = styles[variant];
@@ -49,7 +49,7 @@ export function Checklist({ items }: { items: string[] }) {
     <ul className="space-y-2 my-4">
       {items.map((item, index) => (
         <li key={index} className="flex items-start gap-2">
-          <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
           <span className="text-sm">{item}</span>
         </li>
       ))}

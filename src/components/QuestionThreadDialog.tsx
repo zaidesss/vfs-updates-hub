@@ -232,7 +232,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
       },
       closed: { 
         label: 'Closed', 
-        className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+        className: 'bg-muted text-muted-foreground',
         icon: <Lock className="h-3 w-3 mr-1" />
       }
     };
@@ -458,7 +458,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                 variant="outline"
                 size="sm"
                 onClick={handleMarkAnswered}
-                className="text-green-600 hover:text-green-700"
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
               >
                 <CheckCircle2 className="h-4 w-4 mr-1" />
                 Mark as Answered
@@ -482,7 +482,7 @@ export function QuestionThreadDialog({ open, onOpenChange, question, onReplySubm
                 variant="outline"
                 size="sm"
                 onClick={handleMarkAnswered}
-                className="text-green-600 hover:text-green-700"
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
               >
                 <CheckCircle2 className="h-4 w-4 mr-1" />
                 Mark as Answered

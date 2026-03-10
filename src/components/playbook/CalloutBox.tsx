@@ -21,7 +21,7 @@ const VARIANTS = {
     icon: CheckCircle,
     bg: 'bg-green-50 dark:bg-green-950/30',
     border: 'border-green-200 dark:border-green-800',
-    iconColor: 'text-green-600',
+    iconColor: 'text-green-600 dark:text-green-400',
     titleColor: 'text-green-800 dark:text-green-200',
   },
   tip: {
